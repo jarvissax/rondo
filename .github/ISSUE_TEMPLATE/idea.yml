@@ -1,0 +1,16 @@
+name: Idea or wish
+description: Something you'd like Rondo to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What would you like to do on the Y1?
+      description: The thing you want to do, more than the fix you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How do you picture it working?
+      description: Optional. Which screen, which buttons.
