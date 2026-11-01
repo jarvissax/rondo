@@ -8,11 +8,15 @@ nothing goes through anyone else's computer.
 One server serves one Y1. It needs [Docker](https://docs.docker.com/get-docker/) with Compose,
 about 1 GB of disk, and has to stay on while you listen.
 
+It runs on regular PCs and servers (x86-64) and on 64-bit ARM, such as a Raspberry Pi 4 or 5 with
+the 64-bit Raspberry Pi OS, or most NAS boxes. 32-bit systems don't work, because the tools it
+uses to reach YouTube aren't made for them. So far it has been tested on x86-64 only.
+
 ## Where to run it
 
 | | At home | On a VPS |
 | --- | --- | --- |
-| Runs on | a computer, NAS or Raspberry Pi on your Wi-Fi | a rented server, with a domain name |
+| Runs on | a computer, NAS or Raspberry Pi on your Wi-Fi (see below) | a rented server, with a domain name |
 | The Y1 can use it | on your home Wi-Fi | anywhere it has Wi-Fi |
 | Address | `http://192.168.1.10:3000` | `https://music.example.com` |
 | Compose file | `infra/compose.home.yaml` | `infra/compose.vps.yaml` |
