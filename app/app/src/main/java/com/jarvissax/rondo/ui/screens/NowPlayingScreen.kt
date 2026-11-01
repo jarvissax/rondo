@@ -361,7 +361,7 @@ class NowPlayingScreen(shell: ShellActivity) : Screen(shell) {
         shuffle.invalidate()
         repeat.invalidate()
         source.show(if (p.isLocal) item.id.substringAfterLast('.').uppercase() + " · Library" else "Streaming · AAC")
-        nextTitle.show(p.upNext?.let { "${it.title} · ${it.subtitle.substringBefore(" · ")}" } ?: "—")
+        nextTitle.show(p.upNext?.let { listOf(it.title, it.subtitle.substringBefore(" · ")).filter { s -> s.isNotEmpty() }.joinToString(" · ") } ?: "—")
 
         val pos = if (scrubber.active) scrubber.target else p.positionMs()
         progress.fraction = if (d > 0) p.positionMs() / d.toFloat() else 0f

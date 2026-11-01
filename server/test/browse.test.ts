@@ -5,6 +5,7 @@ import {
   cookiesToHeader,
   feedChunk,
   feedVideo,
+  fillAlbumRows,
   headerInfo,
   historyChunk,
   homeChunk,
@@ -403,5 +404,18 @@ describe("browse routes", () => {
     expect(bad.statusCode).toBe(400);
     expect(bad.json()).toEqual({ error: "host" });
     expect((await get("/thumb?u=nope")).statusCode).toBe(400);
+  });
+});
+
+describe("fillAlbumRows", () => {
+  const row = (id: string, subtitle = "") => ({ kind: "song" as const, id, title: "Track " + id, subtitle });
+  it("names the album's artist and the album on rows that have neither", () => {
+    expect(fillAlbumRows([row("aaaaaaaaaaa")], "Paramore", "Brand New Eyes")[0]?.subtitle).toBe("Paramore · Brand New Eyes");
+  });
+  it("keeps the artists a row names itself", () => {
+    expect(fillAlbumRows([row("bbbbbbbbbbb", "Paramore, Guest")], "Paramore", "Brand New Eyes")[0]?.subtitle).toBe("Paramore, Guest");
+  });
+  it("leaves rows alone when the header names nothing", () => {
+    expect(fillAlbumRows([row("ccccccccccc")], "", "")[0]?.subtitle).toBe("");
   });
 });

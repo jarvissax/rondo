@@ -232,9 +232,15 @@ export function shelfSection(s: Node, maxItems = SECTION_ITEMS): Section | undef
 
 // MusicResponsiveHeader (album, playlist), MusicDetailHeader (older), MusicImmersiveHeader /
 // MusicVisualHeader (artist); own playlists wrap theirs in MusicEditablePlaylistDetailHeader
+// who made an album or playlist, from its page header
+function headerBy(h: Node | undefined): string {
+  const hh: Node | undefined = h?.type === "MusicEditablePlaylistDetailHeader" ? h.header : h;
+  return text(hh?.strapline_text_one) || text(hh?.author?.name);
+}
+
 export function headerInfo(h: Node | undefined): { title: string; subtitle: string; thumb?: string } {
   const hh: Node | undefined = h?.type === "MusicEditablePlaylistDetailHeader" ? h.header : h;
-  const by = text(hh?.strapline_text_one) || text(hh?.author?.name);
+  const by = headerBy(h);
   const count = text(hh?.second_subtitle)
     .split("•")
     .map((s) => s.trim())
@@ -244,6 +250,14 @@ export function headerInfo(h: Node | undefined): { title: string; subtitle: stri
     subtitle: join([by, bullets(text(hh?.subtitle)), count]),
     thumb: nodeThumb(hh),
   };
+}
+
+// An album's rows leave the artist out (it's the album's) and the album too, so its songs had no
+// subtitle on Now Playing and in Up next; they get "Artist · Album" like songs anywhere else. Rows
+// that name their own artists (features) keep them.
+export function fillAlbumRows(items: Item[], artist: string, album: string): Item[] {
+  const subtitle = join([artist, album]);
+  return subtitle ? items.map((i) => (i.subtitle ? i : { ...i, subtitle })) : items;
 }
 
 // headerless pages (album playlists "OLAK5uy_…", mixes) get a header from their first rows
@@ -644,7 +658,8 @@ export class Browse {
     const album: any = await (await this.yt()).music.getAlbum(id);
     const info = headerInfo(album.header);
     // album rows have no artwork of their own; give them the cover
-    const items = uniqueById((album.contents ?? []).map((n: Node) => trackItem(n, info.thumb))).slice(0, LIST_ITEMS);
+    const rows = uniqueById((album.contents ?? []).map((n: Node) => trackItem(n, info.thumb))).slice(0, LIST_ITEMS);
+    const items = fillAlbumRows(rows, headerBy(album.header), info.title);
     return { title: info.title, subtitle: info.subtitle, ...(info.thumb ? { thumb: info.thumb } : {}), items };
   }
 
