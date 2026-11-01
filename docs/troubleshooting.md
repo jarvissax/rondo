@@ -2,6 +2,16 @@
 
 ## Installing
 
+### The web installer doesn't list the Y1, or can't connect
+
+- Use Chrome or Edge. Firefox and Safari can't talk to USB devices.
+- Only one program can use the Y1's USB connection: close the Innioasis Updater, and run
+  `adb kill-server` if you have adb. Then unplug the Y1 and plug it back in.
+- **Windows:** install Google's [USB driver](https://developer.android.com/studio/run/win-usb)
+  for the Y1; without it, the browser can't see it.
+- **Linux:** give your user access to USB ID `0bb4:0c03` with a udev rule.
+- The tips below for adb apply too: cable, firmware.
+
 ### adb doesn't see the Y1
 
 - Try another cable. Many USB-C cables only charge.
@@ -15,8 +25,9 @@
 
 ### The Y1 asks "Complete action using" and the wheel doesn't move
 
-Android's own dialogs ignore the wheel. Connect the Y1 to your computer and run the install
-script again. It finds the dialog, picks Rondo and taps **Always** for you.
+Android's own dialogs ignore the wheel. Connect the Y1 to your computer and run the installer
+again, from [the web page](https://jarvissax.github.io/rondo/) or the script. It finds the dialog,
+picks Rondo and taps **Always** for you.
 
 ## YouTube Music and YouTube
 
@@ -98,8 +109,8 @@ completely, see [Removing Rondo](install.md#removing-rondo).
 
 ## Still stuck?
 
-[Open an issue](https://github.com/jarvissax/rondo/issues). Say which Y1 you have (Type A or B),
-what you did and what happened. If you can, include Rondo's log:
+[Open an issue](https://github.com/jarvissax/rondo/issues). Say what you did and what
+happened. If you can, include Rondo's log:
 
 ```bash
 adb logcat -d -v time -s Y1 > rondo-log.txt

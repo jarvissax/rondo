@@ -142,13 +142,46 @@ const songItem = (s) => ({
 });
 
 // ---------- settings, theme, Wi-Fi, server ----------
-let settings = { videoQuality: null, brightness: 60, screenTimeoutSec: 60, lyricsOnOpen: false, wheelAcceleration: 'normal' };
+let settings = { videoQuality: null, brightness: 60, screenTimeoutSec: 60, lyricsOnOpen: false, wheelAcceleration: 'normal', wheelVibration: 'normal', clickSound: true };
+
+// ---------- FM radio and Bluetooth (docs/dev/dashboard-api.md) ----------
+const radio = {
+  headphones: !EMPTY, on: !EMPTY, frequency: 1005, muted: false, volume: 6, speaker: false, band: 'world',
+  seeking: false, scanning: false,
+  presets: [{ frequency: 1005, name: 'City FM' }, { frequency: 1021, name: 'Jazz 102' }, { frequency: 945, name: '' }],
+  found: [886, 912, 945, 978, 1005, 1021, 1043, 1067],
+};
+const STATIONS = { 886: 'Classic', 912: 'News 91', 978: 'Pop Hits', 1005: 'City FM', 1021: 'Jazz 102', 1043: 'Rock 104' };
+const radioRange = () => (radio.band === 'japan' ? { min: 760, max: 950 } : { min: 875, max: 1080 });
+function radioJson() {
+  const on = radio.on && radio.headphones;
+  const station = STATIONS[radio.frequency] ?? '';
+  const saved = new Set(radio.presets.map((p) => p.frequency));
+  return {
+    headphones: radio.headphones, on, starting: false, frequency: radio.frequency,
+    name: on ? station : '', text: on && station ? `Now on ${station}` : '',
+    signal: on ? (station ? 3 + (radio.frequency % 2) : 1) : 0, stereo: on && !!station,
+    muted: radio.muted, volume: radio.volume, maxVolume: 13, speaker: radio.speaker,
+    seeking: radio.seeking, scanning: radio.scanning, ...(radio.headphones ? {} : { error: 'headphones' }),
+    band: radio.band, ...radioRange(),
+    presets: radio.presets.map((p) => ({ frequency: p.frequency, name: p.name || STATIONS[p.frequency] || '' })),
+    found: radio.found.filter((f) => !saved.has(f)).map((f) => ({ frequency: f, name: STATIONS[f] ?? '' })),
+  };
+}
+
+const bt = {
+  state: 'on', searching: false,
+  mine: [{ address: '00:1A:7D:DA:71:13', name: 'Studio Headphones', kind: 'headphones', audio: true, status: 'connected' },
+    { address: '00:1A:7D:DA:71:22', name: 'Kitchen Speaker', kind: 'speaker', audio: true, status: 'disconnected' }],
+  others: [{ address: '00:1A:7D:DA:71:35', name: 'Running Buds', kind: 'headphones', audio: true, pairing: false }],
+};
+const btJson = () => ({ available: true, state: bt.state, searching: bt.searching, ...(bt.state === 'on' ? { mine: bt.mine, others: bt.others } : {}) });
 const PRESETS = [
   { name: 'iPod Blue', accent: '#1c5ccc' }, { name: 'Rondo Red', accent: '#ff3b4f' }, { name: 'Mint', accent: '#11a683' },
   { name: 'Violet', accent: '#7b4fe0' }, { name: 'Amber', accent: '#e8860c' }, { name: 'Graphite', accent: '#4a4f59' },
 ];
 // key order is the default menu order, as on the device
-const LABELS = { nowPlaying: 'Now Playing', device: 'Library', videos: 'YouTube', music: 'YouTube Music', settings: 'Settings' };
+const LABELS = { nowPlaying: 'Now Playing', device: 'Library', videos: 'YouTube', music: 'YouTube Music', radio: 'FM Radio', settings: 'Settings' };
 let theme = {
   accent: '#1c5ccc', appearance: 'light', textScale: 1.4,
   menu: Object.keys(LABELS).map((id) => ({ id, visible: true })),
@@ -388,6 +421,8 @@ async function api(req, res, url) {
       if ('screenTimeoutSec' in b) { if (![15, 30, 60, 120, 300, 600].includes(b.screenTimeoutSec)) return err(res, 400, 'screenTimeoutSec'); next.screenTimeoutSec = b.screenTimeoutSec; }
       if ('lyricsOnOpen' in b) next.lyricsOnOpen = !!b.lyricsOnOpen;
       if ('wheelAcceleration' in b) { if (!['off', 'normal', 'fast'].includes(b.wheelAcceleration)) return err(res, 400, 'wheelAcceleration'); next.wheelAcceleration = b.wheelAcceleration; }
+      if ('wheelVibration' in b) { if (!['off', 'light', 'normal', 'strong'].includes(b.wheelVibration)) return err(res, 400, 'wheelVibration'); next.wheelVibration = b.wheelVibration; }
+      if ('clickSound' in b) next.clickSound = !!b.clickSound;
       settings = next;
       return send(res, 200, settings);
     }
@@ -409,6 +444,71 @@ async function api(req, res, url) {
       console.log(`  theme: ${theme.accent} ${theme.appearance} ${theme.textScale} [${theme.menu.map((m) => (m.visible ? m.id : `(${m.id})`)).join(' ')}]`);
       return send(res, 200, themeJson());
     }
+  }
+
+  if (pathname === '/api/radio') {
+    if (method === 'GET') return send(res, 200, radioJson());
+    if (method === 'PUT') {
+      const b = await readJson(req);
+      if (!b) return err(res, 400, 'json');
+      if ('on' in b) radio.on = !!b.on;
+      if ('band' in b) { radio.band = b.band === 'japan' ? 'japan' : 'world'; const { min, max } = radioRange(); radio.frequency = Math.min(max, Math.max(min, radio.frequency)); }
+      if ('frequency' in b) { const { min, max } = radioRange(); radio.frequency = Math.min(max, Math.max(min, Math.round(b.frequency))); }
+      if ('muted' in b) radio.muted = !!b.muted;
+      if ('volume' in b) radio.volume = Math.min(13, Math.max(0, Math.round(b.volume)));
+      if ('speaker' in b) radio.speaker = !!b.speaker;
+      return send(res, 200, radioJson());
+    }
+  }
+  if (pathname === '/api/radio/seek' && method === 'POST') {
+    const b = await readJson(req);
+    const list = Object.keys(STATIONS).map(Number).sort((x, y) => x - y);
+    const next = b?.up ? list.find((f) => f > radio.frequency) ?? list[0] : [...list].reverse().find((f) => f < radio.frequency) ?? list.at(-1);
+    radio.seeking = true;
+    setTimeout(() => { radio.frequency = next; radio.seeking = false; }, 1200);
+    return send(res, 200, radioJson());
+  }
+  if (pathname === '/api/radio/scan' && method === 'POST') {
+    radio.scanning = true;
+    setTimeout(() => { radio.found = Object.keys(STATIONS).map(Number).concat([945]).sort((x, y) => x - y); radio.scanning = false; }, 6000);
+    return send(res, 200, radioJson());
+  }
+  if (pathname === '/api/radio/presets' && method === 'PUT') {
+    const b = await readJson(req);
+    if (!Array.isArray(b?.presets)) return err(res, 400, 'presets');
+    radio.presets = b.presets.map((p) => ({ frequency: Math.round(p.frequency), name: String(p.name ?? '').slice(0, 40) }));
+    return send(res, 200, radioJson());
+  }
+
+  if (pathname === '/api/bluetooth') {
+    if (method === 'GET') return send(res, 200, btJson());
+    if (method === 'PUT') {
+      const b = await readJson(req);
+      bt.state = b?.enabled ? 'turning_on' : 'turning_off';
+      setTimeout(() => { bt.state = b?.enabled ? 'on' : 'off'; }, 1500);
+      return send(res, 200, btJson());
+    }
+  }
+  if (pathname === '/api/bluetooth/search' && method === 'POST') {
+    bt.searching = true;
+    setTimeout(() => { bt.searching = false; }, 8000);
+    return send(res, 200, btJson());
+  }
+  const btAction = pathname.match(/^\/api\/bluetooth\/(connect|disconnect|forget)$/);
+  if (btAction && method === 'POST') {
+    const b = await readJson(req);
+    const mine = bt.mine.find((d) => d.address === b?.address);
+    const other = bt.others.find((d) => d.address === b?.address);
+    if (btAction[1] === 'forget' && mine) bt.mine = bt.mine.filter((d) => d !== mine);
+    if (btAction[1] === 'disconnect' && mine) mine.status = 'disconnected';
+    if (btAction[1] === 'connect') {
+      const d = mine ?? (other && { ...other, status: 'connecting' });
+      if (!d) return err(res, 404, 'not found');
+      if (other) { bt.others = bt.others.filter((x) => x !== other); delete d.pairing; bt.mine.push(d); }
+      d.status = 'connecting';
+      setTimeout(() => { bt.mine.forEach((x) => { if (x !== d && x.status === 'connected') x.status = 'disconnected'; }); d.status = 'connected'; }, 2000);
+    }
+    return send(res, 200, btJson());
   }
 
   if (pathname === '/api/wifi' && method === 'GET') return send(res, 200, wifiJson());

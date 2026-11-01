@@ -35,8 +35,7 @@ changes nothing else on the device, and comes off with a single uninstall.
 
 ## What you need
 
-- An **Innioasis Y1**. Rondo is tested on the Type A wheel; Type B should work but hasn't been
-  tried yet.
+- An **Innioasis Y1**.
 - A **computer** (macOS, Windows or Linux) and a USB-C data cable, for the one-time install.
 - For YouTube Music and YouTube: a **Rondo server**. That's a computer at home that stays on
   (a Raspberry Pi or NAS is fine), or a small VPS. Your music card and the FM radio work without it.
@@ -45,7 +44,8 @@ changes nothing else on the device, and comes off with a single uninstall.
 ## Getting started
 
 1. **[Install Rondo](docs/install.md)** on your Y1. You flash the community's Android 4.2
-   firmware, then run one script. About 20 minutes.
+   firmware, then install Rondo from [your browser](https://jarvissax.github.io/rondo/) (Chrome or
+   Edge) or with one script. About 20 minutes.
 2. **[Set up a server](docs/server.md)** if you want YouTube Music and YouTube. About 15 minutes
    with Docker.
 3. **[Learn the controls](docs/using.md)**: what the wheel and each button do on each screen.
@@ -76,6 +76,7 @@ form it can play. The Y1 only ever talks to your server, and one server serves o
 | `app/` | The Android app (Kotlin, classic Views, ExoPlayer 2) |
 | `server/` | The Rondo server (Node 22, TypeScript, Fastify) |
 | `infra/` | Docker and Caddy files for running the server |
+| `web-installer/` | The installer web page (WebUSB), published on GitHub Pages |
 | `tools/` | The install script, mock servers for UI work, the boot screen generator |
 | `docs/` | Guides, plus [notes on the Y1's internals](docs/device/README.md) and [API references](docs/dev/) |
 

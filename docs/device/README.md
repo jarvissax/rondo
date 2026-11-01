@@ -1,6 +1,6 @@
 # Notes on the Innioasis Y1
 
-What we learned about the Y1 while building Rondo, on a Type A unit running the community's
+What we learned about the Y1 while building Rondo, on a Y1 running the community's
 "Android 4.2 (Dev)" firmware. Each fact comes from a file in this folder or from the command named
 next to it. If you're writing your own software for the Y1, start here.
 
