@@ -50,7 +50,8 @@ changes nothing else on the device, and comes off with a single uninstall.
    with Docker.
 3. **[Learn the controls](docs/using.md)**: what the wheel and each button do on each screen.
 
-Something not working? See **[Troubleshooting](docs/troubleshooting.md)**.
+Something not working? See **[Troubleshooting](docs/troubleshooting.md)**, or
+[open an issue](https://github.com/jarvissax/rondo/issues/new?template=bug_report.yml).
 
 ## How it works
 
@@ -80,7 +81,18 @@ form it can play. The Y1 only ever talks to your server, and one server serves o
 | `tools/` | The install script, mock servers for UI work, the boot screen generator |
 | `docs/` | Guides, plus [notes on the Y1's internals](docs/device/README.md) and [API references](docs/dev/) |
 
-To build it yourself or help out, start with **[Building Rondo](docs/building.md)**.
+To build it yourself, start with **[Building Rondo](docs/building.md)**.
+
+## Feedback and contributing
+
+If you try Rondo on your Y1, I'd love to hear how it went, good or bad.
+
+- **[Report a problem](https://github.com/jarvissax/rondo/issues/new?template=bug_report.yml)**
+  if something doesn't work.
+- **[Share an idea](https://github.com/jarvissax/rondo/issues/new?template=idea.yml)** for
+  something you'd like Rondo to do.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** says what feedback helps most, how to get Rondo's log,
+  and how to work on the code.
 
 ## Thanks
 
