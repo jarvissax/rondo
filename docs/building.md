@@ -19,6 +19,7 @@ server/             Rondo server (Node 22, TypeScript, Fastify)
   admin/            the admin page (plain HTML, CSS and JS)
   test/             unit tests (vitest)
 infra/              Dockerfile, compose files, Caddyfile
+web-installer/      the installer web page (WebUSB)
 tools/              install script, dashboard and admin mocks, boot screen generator
 docs/               guides; device/ holds notes on the Y1, dev/ the API references
 ```
@@ -123,6 +124,27 @@ Each mock lists its options (empty card, slow device, first run, signed out and 
 of its file. The dashboard's files are in `app/app/src/main/assets/dashboard/`; on a real Y1 you
 need to rebuild the app to see changes. The admin page is in `server/admin/`.
 
+## The web installer
+
+`web-installer/` is the page at jarvissax.github.io/rondo: plain HTML and CSS, plus a script
+bundled with esbuild. It talks to the Y1 with [Tango](https://github.com/yume-chan/ya-webadb)
+over WebUSB, and `src/installer.js` holds the same steps as `tools/install.sh`.
+
+```bash
+cd web-installer
+npm ci
+npm run dev          # http://localhost:8000, with the locally built release APK if there is one
+```
+
+Run `adb kill-server` first; the browser can't claim the Y1 while adb holds it. One thing to know
+about Android 4.2: its adb only has the old `shell:` service, not the `exec:` one Tango's
+subprocess helpers use (that arrived in Android 5), so `installer.js` opens `shell:` sockets
+itself.
+
+The page is published by `.github/workflows/pages.yml` whenever a release is published, with
+that release's APK next to it (browsers can't download GitHub release files from another site).
+In the repository's settings, Pages must be set to **GitHub Actions**.
+
 ## Making a release
 
 1. Raise `versionCode` and `versionName` in `app/app/build.gradle.kts`, and `version` in
@@ -135,8 +157,9 @@ need to rebuild the app to see changes. The admin page is in `server/admin/`.
    RONDO_SIGNING=/path/to/keystore.properties ./gradlew :app:assembleRelease
    ```
 
-3. Check it, then attach `app/build/outputs/apk/release/app-release.apk` to a GitHub release as
-   `rondo-<version>.apk`:
+3. Check it, then attach `app/build/outputs/apk/release/app-release.apk` to a GitHub release
+   tagged `v<version>`, as `rondo-<version>.apk`. Publishing the release also republishes the web
+   installer with the new APK:
 
    ```bash
    apksigner verify --min-sdk-version 17 app/build/outputs/apk/release/app-release.apk

@@ -1,8 +1,8 @@
 # Installing Rondo
 
-There are three parts. You put the community's Android 4.2 firmware on the Y1, install a small
-tool called adb on your computer, and then run Rondo's install script. You only do this once;
-after that, updates are a single command.
+There are two parts. You put the community's Android 4.2 firmware on the Y1, then install
+Rondo, either from your browser or with a script. You only do this once; after that, updating
+takes a minute.
 
 ## Before you start
 
@@ -20,7 +20,7 @@ publishes exactly that as **"Android 4.2 (Dev)"**, and their Innioasis Updater i
 1. Download **Innioasis Updater** for your computer from its
    [releases page](https://github.com/y1-community/Innioasis-Updater/releases/latest).
    On Windows, let it install its drivers and restart the computer once before the first flash.
-2. Open it and choose the **Y1** and your wheel type (**Type A** or **Type B**).
+2. Open it and choose the **Y1** (and your wheel type, if it asks).
 3. In the software list, choose **Android 4.2 (Dev)**. That's the version Rondo is tested on,
    and the one with USB debugging switched on, which the install needs.
 4. Follow the Updater's instructions to connect the Y1 and flash it. Don't unplug anything until
@@ -28,38 +28,46 @@ publishes exactly that as **"Android 4.2 (Dev)"**, and their Innioasis Updater i
 5. The Y1 restarts into the new firmware. It may start in Rockbox, which comes with this
    firmware. That's fine; Rondo installs next to it.
 
-## Step 2: Install adb on your computer
+## Step 2: Install Rondo
 
-adb is Google's tool for talking to Android devices over USB.
+### From your browser (easiest)
 
-- **macOS:** `brew install android-platform-tools` (with [Homebrew](https://brew.sh)), or
-  download Google's [Platform Tools](https://developer.android.com/tools/releases/platform-tools).
-- **Windows:** download [Platform Tools](https://developer.android.com/tools/releases/platform-tools)
-  and unzip it. You'll also want [Git for Windows](https://gitforwindows.org), which brings the
-  "Git Bash" terminal the install script runs in.
-- **Linux:** `sudo apt install adb` (or your distribution's equivalent).
+1. Open **[the Rondo installer](https://jarvissax.github.io/rondo/)** in **Chrome** or **Edge** on a
+   computer. (Chrome on an Android phone works too, with a USB-C cable between the two.)
+2. Plug in the Y1 and click **Connect Y1**. Your browser shows a list of USB devices: choose the
+   Y1 (it calls itself **MT65xx Android Phone**) and click **Connect**.
+3. Click **Install**.
 
-Close the Innioasis Updater first (it stops adb while it runs), plug in the Y1, and check that
-your computer sees it:
+The page copies Rondo over, installs it, and makes it the home screen. It needs nothing installed
+on your computer, with one exception: on **Windows**, the Y1 needs Google's
+[USB driver](https://developer.android.com/studio/run/win-usb) before the browser can see it.
+Only one program can use the Y1 at a time, so close the Innioasis Updater first, and if you use
+adb, run `adb kill-server`.
 
-```bash
-adb devices
-```
+### With adb and the install script
 
-You should see one device listed as `device`. If it says `unauthorized` or nothing shows up, see
-[Troubleshooting](troubleshooting.md#adb-doesnt-see-the-y1).
+If you'd rather use a terminal, or your browser can't do USB (Firefox and Safari can't), install
+Google's adb tool and run Rondo's script.
 
-## Step 3: Install Rondo
-
-1. Download **`rondo-<version>.apk`** from the
-   [latest release](https://github.com/jarvissax/rondo/releases/latest).
-2. Download the install script next to it. On macOS and Linux, use a terminal; on Windows, use Git Bash:
+1. **Install adb:**
+   - **macOS:** `brew install android-platform-tools` (with [Homebrew](https://brew.sh)), or
+     download Google's [Platform Tools](https://developer.android.com/tools/releases/platform-tools).
+   - **Windows:** download [Platform Tools](https://developer.android.com/tools/releases/platform-tools)
+     and unzip it. You'll also want [Git for Windows](https://gitforwindows.org), which brings the
+     "Git Bash" terminal the install script runs in.
+   - **Linux:** `sudo apt install adb` (or your distribution's equivalent).
+2. Close the Innioasis Updater (it stops adb while it runs), plug in the Y1, and check that your
+   computer sees it with `adb devices`. You should see one device listed as `device`. If not, see
+   [Troubleshooting](troubleshooting.md#adb-doesnt-see-the-y1).
+3. Download **`rondo-<version>.apk`** from the
+   [latest release](https://github.com/jarvissax/rondo/releases/latest), and the install script
+   next to it (on Windows, in Git Bash):
 
    ```bash
    curl -LO https://raw.githubusercontent.com/jarvissax/rondo/main/tools/install.sh
    ```
 
-3. Run it with the APK you downloaded:
+4. Run it with the APK you downloaded:
 
    ```bash
    bash install.sh rondo-1.0.0.apk
@@ -68,12 +76,13 @@ You should see one device listed as `device`. If it says `unauthorized` or nothi
    If adb isn't on your PATH (on Windows it usually isn't), tell the script where it is:
    `ADB=/c/Users/you/platform-tools/adb.exe bash install.sh rondo-1.0.0.apk`.
 
-The script checks the Y1, installs Rondo, and makes it the home screen by choosing Rondo and
-**Always** in Android's "Complete action using" dialog. It doesn't change anything else.
+The script does the same as the web page: it checks the Y1, installs Rondo, and makes it the home
+screen by choosing Rondo and **Always** in Android's "Complete action using" dialog. It doesn't
+change anything else.
 
-When it's done, the Y1 shows Rondo's main menu, and it will start in Rondo from now on.
+When either one is done, the Y1 shows Rondo's main menu, and it will start in Rondo from now on.
 
-## Step 4: First steps on the Y1
+## Step 3: First steps on the Y1
 
 1. **Wi-Fi:** Settings › Wi-Fi. Turn the wheel to pick your network, and type the password with
    the on-screen keyboard. Only 2.4 GHz networks show up.
@@ -84,7 +93,8 @@ When it's done, the Y1 shows Rondo's main menu, and it will start in Rondo from 
 
 ## Updating Rondo
 
-Download the new APK and run the same script again, or just:
+Open [the Rondo installer](https://jarvissax.github.io/rondo/) again and click **Install**: it
+always has the latest version. With adb, run the script with the new APK, or just:
 
 ```bash
 adb install -r rondo-1.1.0.apk

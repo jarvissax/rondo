@@ -25,6 +25,13 @@ own license.
 | [undici](https://github.com/nodejs/undici) | MIT |
 | [sharp](https://github.com/lovell/sharp) (with libvips) | Apache-2.0 (libvips: LGPL-3.0) |
 
+## In the web installer
+
+| Project | License |
+| --- | --- |
+| [Tango](https://github.com/yume-chan/ya-webadb) (`@yume-chan/adb` and its WebUSB and credential packages) | MIT |
+| [esbuild](https://github.com/evanw/esbuild) (build only) | MIT |
+
 ## Downloaded when the server's Docker image is built or started
 
 These aren't part of this repository. The Docker image fetches them from their own projects.

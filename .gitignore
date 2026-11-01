@@ -24,3 +24,7 @@ build/
 private/
 CLAUDE.md
 .claude/
+
+# web installer
+web-installer/node_modules/
+web-installer/dist/
