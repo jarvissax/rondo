@@ -38,7 +38,7 @@ changes nothing else on the device, and comes off with a single uninstall.
 - An **Innioasis Y1**.
 - A **computer** (macOS, Windows or Linux) and a USB-C data cable, for the one-time install.
 - For YouTube Music and YouTube: a **Rondo server**. That's a computer at home that stays on
-  (a Raspberry Pi or NAS is fine), or a small VPS. Your music card and the FM radio work without it.
+  (a 64-bit Raspberry Pi or a NAS is fine), or a small VPS. Your music card and the FM radio work without it.
 - **2.4 GHz Wi-Fi.** The Y1 can't see 5 GHz networks.
 
 ## Getting started
