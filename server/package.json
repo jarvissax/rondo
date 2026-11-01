@@ -1,0 +1,30 @@
+{
+  "name": "rondo-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "YouTube resolver, DASH manifest builder and range proxy for the Innioasis Y1 app",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "^11.2.1",
+    "fastify": "^5.12.7",
+    "sharp": "^0.35.5",
+    "undici": "^8.12.3",
+    "youtubei.js": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

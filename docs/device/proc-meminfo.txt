@@ -1,0 +1,6 @@
+$ adb shell cat /proc/meminfo | head -5
+MemTotal:         494376 kB
+MemFree:            7876 kB
+Buffers:            9332 kB
+Cached:           300220 kB
+SwapCached:            0 kB

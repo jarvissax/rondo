@@ -1,0 +1,51 @@
+# Rondo's server on a VPS (docs/server.md): the server plus Caddy, which gets a Let's Encrypt
+# certificate for your domain and serves HTTPS in the older form Android 4.2 can still speak.
+# Put your domain in infra/.env first:
+#
+#   echo "RONDO_DOMAIN=music.example.com" > infra/.env
+#   docker compose -f infra/compose.vps.yaml up -d --build
+#
+# Ports 80 and 443 must be free. If the machine already runs a web server, use compose.home.yaml
+# behind it instead and copy the tls block from infra/Caddyfile.
+name: rondo
+
+services:
+  rondo:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: rondo
+    restart: unless-stopped
+    environment:
+      - PUBLIC_BASE=https://${RONDO_DOMAIN:?put RONDO_DOMAIN=your.domain in infra/.env}
+      - COOKIES_FILE=/data/secrets/cookies.txt
+      - YTDLP_BIN=/data/bin/yt-dlp
+      - PORT=3000
+    volumes:
+      - rondo-data:/data        # yt-dlp, cookies.txt, config.json (admin password and device token hashes)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 15m
+      timeout: 20s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    container_name: rondo-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - RONDO_DOMAIN=${RONDO_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # the certificate
+      - caddy-config:/config
+    depends_on:
+      - rondo
+
+volumes:
+  rondo-data:
+  caddy-data:
+  caddy-config:

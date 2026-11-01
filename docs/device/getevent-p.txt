@@ -1,0 +1,37 @@
+$ adb shell getevent -p
+add device 1: /dev/input/event0
+  name:     "mtk-kpd"
+  events:
+    KEY (0001): 0066  0067  0069  006a  006b  006c  0072  0073 
+                0074  008b  009e  00d3  00d4  00e7  00e8 
+  input props:
+    <none>
+add device 2: /dev/input/event3
+  name:     "mtk-tpd-kpd"
+  events:
+    KEY (0001): 0067  0068  0069  006a  006c  006d  009e  00a4 
+  input props:
+    <none>
+could not get driver version for /dev/input/mouse0, Not a typewriter
+add device 3: /dev/input/event2
+  name:     "mtk-tpd"
+  events:
+    KEY (0001): 0067  0068  0069  006a  006c  006d  009e  00a4 
+                014a 
+    ABS (0003): 0000  : value 0, min 0, max 480, fuzz 0, flat 0, resolution 480
+                0001  : value 0, min 0, max 360, fuzz 0, flat 0, resolution 360
+                0018  : value 0, min 0, max 255, fuzz 0, flat 0, resolution 0
+                0030  : value 0, min 0, max 100, fuzz 0, flat 0, resolution 0
+                0031  : value 0, min 0, max 100, fuzz 0, flat 0, resolution 0
+                0035  : value 0, min 0, max 480, fuzz 0, flat 0, resolution 0
+                0036  : value 0, min 0, max 360, fuzz 0, flat 0, resolution 0
+                0039  : value 0, min 0, max 0, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 4: /dev/input/event1
+  name:     "ACCDET"
+  events:
+    KEY (0001): 0072  0073  00a3  00a4  00a5  00a6 
+  input props:
+    <none>
+could not get driver version for /dev/input/mice, Not a typewriter

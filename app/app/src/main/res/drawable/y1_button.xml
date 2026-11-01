@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No touch screen: the focused button is the only cursor, so it must stand out. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape><solid android:color="#ffffff" /><corners android:radius="4dp" /></shape>
+    </item>
+    <item android:state_focused="true">
+        <shape><solid android:color="#ff0033" /><corners android:radius="4dp" /></shape>
+    </item>
+    <item>
+        <shape><solid android:color="#272727" /><corners android:radius="4dp" /></shape>
+    </item>
+</selector>

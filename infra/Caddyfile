@@ -1,0 +1,23 @@
+# HTTPS for a Rondo server (used by compose.vps.yaml; copy the site block into your own Caddy if
+# you already run one).
+#
+# The tls block is what makes it work on the Y1: Android 4.2 can only finish a TLS 1.2 handshake
+# with a CBC cipher suite and an RSA certificate, and Caddy's defaults (GCM only, ECDSA keys) fail
+# on it. Let's Encrypt is used on purpose: the Rondo app carries its root certificates, which
+# Android 4.2 itself doesn't have. flush_interval -1 streams audio and video through unbuffered.
+#
+# Check it from any computer once it's up:
+#   openssl s_client -connect music.example.com:443 -tls1_2 -cipher ECDHE-RSA-AES128-SHA </dev/null
+
+{$RONDO_DOMAIN} {
+	reverse_proxy rondo:3000 {
+		flush_interval -1
+	}
+	tls {
+		issuer acme
+		protocols tls1.2 tls1.3
+		ciphers TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+		key_type rsa2048
+	}
+	encode zstd gzip
+}

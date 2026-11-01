@@ -1,0 +1,2 @@
+$ adb shell cat /proc/version
+Linux version 3.4.5 (wangliang@innioasis117) (gcc version 4.6.x-google 20120106 (prerelease) (GCC) ) #7 SMP PREEMPT Fri Aug 1 11:22:53 CST 2025

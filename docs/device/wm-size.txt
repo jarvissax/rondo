@@ -1,0 +1,2 @@
+$ adb shell wm size
+/system/bin/sh: wm: not found
