@@ -1,0 +1,53 @@
+name: Something doesn't work
+description: A problem with Rondo, the server, the dashboard or the installer
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it. Please don't paste cookies.txt, tokens or passwords.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where?
+      options:
+        - Installing (web installer)
+        - Installing (script)
+        - Music and videos on the card
+        - YouTube Music
+        - YouTube
+        - FM radio
+        - Bluetooth
+        - Wi-Fi
+        - The dashboard
+        - The server or its admin page
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rondo version
+      description: Settings › About on the Y1
+      placeholder: "1.0.0"
+  - type: dropdown
+    id: server
+    attributes:
+      label: Your server
+      options:
+        - No server, card only
+        - At home
+        - On a VPS
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "Optional. With the Y1 plugged in: adb logcat -d -v time -s Y1. For the server: docker logs rondo 2>&1 | tail -200"
+      render: text
