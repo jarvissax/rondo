@@ -33,7 +33,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # the runner comes with the Android SDK (ANDROID_HOME); Gradle fetches the platform it needs
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :app:assembleDebug
       - uses: actions/upload-artifact@v4
