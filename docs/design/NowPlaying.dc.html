@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#ffffff;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 480px; height: 360px; box-sizing: border-box; background: #0f0f0f; color: #ffffff; font-family: Roboto, 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+  <div style="height: 34px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #272727">
+    <div style="font-size: 14px; font-weight: 500; color: #aaaaaa">Now playing</div>
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="10" height="14" viewBox="0 0 10 14" role="img" aria-label="Bluetooth connected"><path d="M2 3.5l6 7-3 2.5V1l3 2.5-6 7" fill="none" stroke="#3ea6ff" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      <svg width="20" height="12" viewBox="0 0 24 12" role="img" aria-label="Battery 80 percent"><rect x="0.5" y="0.5" width="20" height="11" rx="2" fill="none" stroke="#aaaaaa"/><rect x="21.5" y="3.5" width="2" height="5" rx="1" fill="#aaaaaa"/><rect x="2" y="2" width="14" height="8" rx="1" fill="#aaaaaa"/></svg>
+    </div>
+  </div>
+  <div style="flex: 1; display: flex; gap: 20px; padding: 20px 20px 0; box-sizing: border-box; min-height: 0">
+    <div style="width: 184px; height: 184px; flex: none; background: #5b6b8c; display: flex; align-items: center; justify-content: center">
+      <svg width="48" height="48" viewBox="0 0 24 24" role="img" aria-label="Album art placeholder"><path d="M9 18V5l12-2v13" fill="none" stroke="#1d2436" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6" cy="18" r="3" fill="none" stroke="#1d2436" stroke-width="1.8"/><circle cx="18" cy="16" r="3" fill="none" stroke="#1d2436" stroke-width="1.8"/></svg>
+    </div>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 6px 0">
+      <div style="line-height: 1.25">
+        <div style="font-size: 21px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Song title</div>
+        <div style="font-size: 15px; color: #aaaaaa; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Artist name</div>
+        <div style="font-size: 13px; color: #717171; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Album title · 2024</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 16px">
+          <svg width="20" height="16" viewBox="0 0 20 16" role="img" aria-label="Shuffle on"><path d="M1 3h3.5l9 10H18M14.5 3H18l-4 4M18 13l-3 3M18 3l-3-3" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg width="20" height="16" viewBox="0 0 20 16" role="img" aria-label="Repeat off"><path d="M3 6V4a2 2 0 0 1 2-2h11l-3-2M17 10v2a2 2 0 0 1-2 2H4l3 2" fill="none" stroke="#717171" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="font-size: 12px; color: #aaaaaa; margin-left: auto">Streaming · 128k</div>
+        </div>
+        <div style="font-size: 12px; color: #aaaaaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Next: Song title · Artist name</div>
+      </div>
+    </div>
+  </div>
+  <div style="height: 54px; box-sizing: border-box; padding: 8px 20px 0; display: flex; flex-direction: column; gap: 8px">
+    <div style="height: 4px; background: #3f3f3f; position: relative">
+      <div style="position: absolute; left: 0; top: 0; height: 4px; width: 168px; background: #ffffff"></div>
+      <div style="position: absolute; left: 164px; top: -4px; width: 12px; height: 12px; border-radius: 6px; background: #ffffff"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #aaaaaa">
+      <span>1:24</span>
+      <span style="display: flex; align-items: center; gap: 6px"><svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1.5v9l8-4.5z" fill="#ffffff"/></svg><span style="color: #ffffff">Playing</span></span>
+      <span>3:42</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":480,"height":360}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Rondo server</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-80 -80 160 160'%3E%3Crect x='-80' y='-80' width='160' height='160' rx='36' fill='%23000'/%3E%3Cg fill='none' stroke-width='13' stroke-linecap='round'%3E%3Cpath d='M57.965 2.024A58 58 0 1 1 12.059-56.733' stroke='%23f5f5f7'/%3E%3Cpath d='M29-50.229A58 58 0 0 1 55.753-15.987' stroke='%23ff3b4f'/%3E%3C/g%3E%3Cpath d='M-9-15v30L16 0z' fill='%23ff3b4f' stroke='%23ff3b4f' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preload" href="/admin/fonts/Roboto-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- The Rondo mark: the click wheel as a white ring, the red playhead resting at 52 degrees,
+         a red play mark in the middle (tools/bootscreen/BootScreen.java). -->
+    <symbol id="mark" viewBox="-66 -66 132 132">
+      <g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round">
+        <path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/>
+        <path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/>
+      </g>
+      <path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/>
+    </symbol>
+    <!-- "rondo" in the mark's round strokes -->
+    <symbol id="wordmark" viewBox="-4 -44.5 164 48.5">
+      <g fill="none" stroke="currentColor" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M0 0V-25M0-12.5A12.5 12.5 0 0 1 9.265-24.574"/>
+        <circle cx="34.325" cy="-12.5" r="12.5"/>
+        <path d="M58.325 0V-25M58.325-12.5A12.5 12.5 0 0 1 83.325-12.5V0"/>
+        <circle cx="107.325" cy="-12.5" r="12.5"/>
+        <path d="M119.825 0V-40.5"/>
+        <circle cx="143.825" cy="-12.5" r="12.5"/>
+      </g>
+    </symbol>
+
+    <!-- Icons on the device's 24-unit grid (IconView.kt), round caps -->
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M8 3l8 9-8 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.8v16.4L20.2 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M3 12.5l6 6.5L21 5.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 7.6-1.75" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.9 12.2a1 1 0 0 0 1 .8h7.2a1 1 0 0 0 1-.8L17.5 7M10.2 11v5.5M13.8 11v5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7 8.5L12 4l5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 3.8v4.7h-4.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2L5 13.5h6L10 22l9-12h-6.2z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5L2.5 20h19z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-player" viewBox="0 0 24 24"><rect x="5" y="1.9" width="14" height="20.2" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="7.7" y="4.6" width="8.6" height="6.2" rx="1" fill="currentColor"/><circle cx="12" cy="16.3" r="3.3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-account" viewBox="0 0 24 24"><circle cx="12" cy="8.3" r="4.3" fill="currentColor"/><path d="M3.8 21c.6-4.5 3.9-7.2 8.2-7.2s7.6 2.7 8.2 7.2z" fill="currentColor"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M2.5 12.5h4l2.6-6.5 4.6 12.5 2.6-6h5.2" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></g></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M4 20L20 4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="i-signout" viewBox="0 0 24 24"><path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10M15 7.5l4.5 4.5-4.5 4.5M19.5 12H9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6.5 2.5h7.5l4.5 4.5v14.5h-12z"/><path d="M14 2.5V7h4.5M9.5 12.5h5M9.5 16.5h5" stroke-linecap="round"/></g></symbol>
+  </defs>
+</svg>
+
+<!-- First load: the boot animation's circling playhead -->
+<div class="splash" id="splash">
+  <svg class="lockup-mark is-turning is-intro" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+  <p class="sr-only" role="status">Loading the admin page</p>
+</div>
+
+<!-- Can't reach the server at all -->
+<main class="gate" id="offline" hidden>
+  <div class="gate-inner">
+    <svg class="lockup-mark is-dim" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+    <h1 class="gate-title">Can’t reach the server</h1>
+    <p class="gate-text" id="offlineText">Check that the Rondo server is running, then try again.</p>
+    <button class="btn btn-primary" id="offlineRetry" type="button">Try again</button>
+    <p class="gate-foot" id="offlineNote">Trying again every few seconds.</p>
+  </div>
+</main>
+
+<!-- First run: no admin password yet -->
+<main class="gate" id="setup" hidden>
+  <div class="gate-inner">
+    <svg class="lockup-mark" id="setupMark" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+    <svg class="lockup-word" aria-label="rondo" role="img"><use href="#wordmark"/></svg>
+    <h1 class="gate-title">Set up your Rondo server</h1>
+    <p class="gate-text">Prove the server is yours with the code from its log, then choose the password for this page.</p>
+
+    <form class="gate-form" id="setupForm" autocomplete="off" novalidate>
+      <div class="field">
+        <label class="field-label" for="setupCode">Setup code</label>
+        <div class="code" id="setupCodeBox">
+          <input id="setupCode" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" spellcheck="false" aria-describedby="setupCodeHelp">
+          <div class="code-boxes" aria-hidden="true"><span></span><span></span><span></span><i class="code-dash"></i><span></span><span></span><span></span></div>
+        </div>
+        <p class="field-help" id="setupCodeHelp">Run <code>docker logs y1</code> on the server and look for the line that starts with “Rondo setup”. The code looks like <b class="num">482-913</b> and changes each time the server restarts.</p>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setupPw">New admin password</label>
+        <div class="pw">
+          <input type="password" id="setupPw" autocomplete="new-password" minlength="10" spellcheck="false" aria-describedby="setupStrength">
+          <button class="ib ib-sm pw-eye" type="button" aria-label="Show password" aria-pressed="false"><svg class="i"><use href="#i-eye"/></svg></button>
+        </div>
+        <div class="strength" id="setupStrength" aria-live="polite"><div class="strength-bar" aria-hidden="true"><i></i><i></i><i></i><i></i></div><span>At least 10 characters</span></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="setupPw2">Confirm password</label>
+        <input type="password" id="setupPw2" autocomplete="new-password" spellcheck="false">
+      </div>
+
+      <p class="form-err" id="setupErr" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit" id="setupBtn">Set up and sign in</button>
+    </form>
+    <p class="gate-foot gate-insecure" data-insecure hidden><svg class="i"><use href="#i-unlock"/></svg><span>Not encrypted: use it only on your home network.</span></p>
+  </div>
+</main>
+
+<!-- Admin sign-in: shown whenever the API answers 401 -->
+<main class="gate" id="signin" hidden>
+  <div class="gate-inner">
+    <svg class="lockup-mark" id="signinMark" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+    <svg class="lockup-word" aria-label="rondo" role="img"><use href="#wordmark"/></svg>
+    <h1 class="gate-title">Sign in</h1>
+    <p class="gate-text">Enter the admin password for this Rondo server.</p>
+    <form class="gate-form" id="signinForm" novalidate>
+      <div class="field">
+        <label class="field-label sr-only" for="signinPw">Admin password</label>
+        <div class="pw">
+          <input type="password" id="signinPw" autocomplete="current-password" spellcheck="false" placeholder="Admin password" aria-describedby="signinErr">
+          <button class="ib ib-sm pw-eye" type="button" aria-label="Show password" aria-pressed="false"><svg class="i"><use href="#i-eye"/></svg></button>
+        </div>
+      </div>
+      <p class="form-err" id="signinErr" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit" id="signinBtn">Sign in</button>
+    </form>
+    <p class="gate-foot gate-insecure" data-insecure hidden><svg class="i"><use href="#i-unlock"/></svg><span>Not encrypted: use it only on your home network.</span></p>
+  </div>
+</main>
+
+<div class="app" id="app" hidden>
+  <aside class="side">
+    <a class="brand" href="#overview" aria-label="Rondo server, overview">
+      <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
+      <span class="brand-tag">server</span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+
+  <header class="top">
+    <a class="brand" href="#overview" aria-label="Rondo server, overview">
+      <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
+      <span class="brand-tag">server</span>
+    </a>
+    <div class="top-status" id="topStatus"></div>
+  </header>
+
+  <div class="banner" id="banner" role="status" hidden>
+    <svg class="i"><use href="#i-alert"/></svg>
+    <span id="bannerText">Lost the connection to the server. Trying again…</span>
+  </div>
+
+  <main class="main" id="main">
+
+    <section class="view" id="view-overview" aria-labelledby="h-overview" hidden>
+      <header class="vh"><h1 id="h-overview">Overview</h1></header>
+      <article class="sum" id="sum" aria-live="polite"></article>
+      <h2 class="gh">Status</h2>
+      <div class="group" id="statusRows"></div>
+    </section>
+
+    <section class="view" id="view-youtube" aria-labelledby="h-youtube" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-youtube">YouTube account</h1>
+        <p>No account needed to search and play, or to open artists, albums and public playlists. Sign in for your own home, subscriptions, history and playlists.</p></div></header>
+
+      <h2 class="gh">Sign in with a code</h2>
+      <div id="tvBody"></div>
+
+      <h2 class="gh">YouTube Music home and history</h2>
+      <p class="help">Optional. Only these two need a cookies.txt file from a browser; everything else works with the code sign-in.</p>
+      <div class="group" id="ytState"></div>
+
+      <h2 class="gh" id="h-upload">Upload cookies.txt</h2>
+      <label class="dropzone" id="cookieDrop" for="cookieFile">
+        <input type="file" id="cookieFile" accept=".txt,text/plain" class="sr-only">
+        <span class="dz-ico"><svg class="i"><use href="#i-file"/></svg></span>
+        <span class="dz-text"><b id="dzTitle">Drop cookies.txt here</b><span id="dzSub">or <u>choose a file</u>. It goes straight to your server; this page never shows what’s inside.</span></span>
+      </label>
+      <div class="note err" id="cookieErr" role="alert" hidden><svg class="i"><use href="#i-alert"/></svg><span></span></div>
+
+      <h2 class="gh">Export cookies.txt safely</h2>
+      <ol class="steps">
+        <li><b>Open a private window</b> (incognito) in your browser on a computer.</li>
+        <li><b>Sign in to youtube.com</b> (or music.youtube.com: same cookies) in that window.</li>
+        <li><b>Export the cookies</b> with a cookies.txt browser extension while that page is open, then upload the file here.</li>
+        <li><b>Close the private window at once.</b> If a browser keeps using that session, Google signs it out and the server loses access.</li>
+      </ol>
+      <div class="note info"><svg class="i"><use href="#i-info"/></svg><span>Use a separate Google account for the server, not your main one. Anyone with this file can use that account.</span></div>
+    </section>
+
+    <section class="view" id="view-device" aria-labelledby="h-device" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-device">Device</h1>
+        <p>One Rondo streams from this server at a time, with its own token.</p></div></header>
+      <div id="deviceBody"></div>
+    </section>
+
+    <section class="view" id="view-resolver" aria-labelledby="h-resolver" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-resolver">Resolver</h1>
+        <p>yt-dlp finds the audio and video streams for each song and video. YouTube changes often: when things stop playing, update it first.</p></div></header>
+      <div class="group" id="resolverRows"></div>
+    </section>
+
+    <section class="view" id="view-activity" aria-labelledby="h-activity" hidden>
+      <header class="vh">
+        <div class="vh-text"><h1 id="h-activity">Activity</h1><p>The last 100 warnings and errors from the server, newest first.</p></div>
+        <div class="vh-actions"><button class="btn" type="button" id="logsRefresh"><svg class="i"><use href="#i-refresh"/></svg><span>Refresh</span></button></div>
+      </header>
+      <div class="group logs" id="logList"></div>
+    </section>
+
+    <section class="view" id="view-admin" aria-labelledby="h-admin" hidden>
+      <header class="vh"><h1 id="h-admin">Admin account</h1></header>
+      <h2 class="gh gh-first">Change password</h2>
+      <form class="group form-card" id="pwForm" novalidate>
+        <div class="field">
+          <label class="field-label" for="pwCurrent">Current password</label>
+          <input type="password" id="pwCurrent" autocomplete="current-password" spellcheck="false">
+        </div>
+        <div class="field">
+          <label class="field-label" for="pwNext">New password</label>
+          <div class="pw">
+            <input type="password" id="pwNext" autocomplete="new-password" spellcheck="false" aria-describedby="pwStrength">
+            <button class="ib ib-sm pw-eye" type="button" aria-label="Show password" aria-pressed="false"><svg class="i"><use href="#i-eye"/></svg></button>
+          </div>
+          <div class="strength" id="pwStrength" aria-live="polite"><div class="strength-bar" aria-hidden="true"><i></i><i></i><i></i><i></i></div><span>At least 10 characters</span></div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="pwNext2">Confirm new password</label>
+          <input type="password" id="pwNext2" autocomplete="new-password" spellcheck="false">
+        </div>
+        <p class="form-err" id="pwErr" role="alert"></p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit" id="pwBtn">Change password</button></div>
+      </form>
+
+      <h2 class="gh">This browser</h2>
+      <div class="group">
+        <div class="row row-wrap">
+          <span class="tile t-settings"><svg class="i"><use href="#i-lock"/></svg></span>
+          <div class="row-main"><div class="row-title">Signed in</div><div class="row-sub">A session lasts 12 hours, then this page asks for the password again.</div></div>
+          <button class="btn" type="button" id="signOut"><svg class="i"><use href="#i-signout"/></svg><span>Sign out</span></button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+</div>
+
+<div class="drop" id="drop" hidden>
+  <div class="drop-card">
+    <svg class="i"><use href="#i-upload"/></svg>
+    <p>Drop cookies.txt to upload it</p>
+  </div>
+</div>
+
+<dialog class="sheet" id="sheet"></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

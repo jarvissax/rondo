@@ -1,0 +1,2 @@
+$ adb shell wm density
+/system/bin/sh: wm: not found

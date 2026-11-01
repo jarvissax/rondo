@@ -1,0 +1,34 @@
+add device 1: /dev/input/event0
+  name:     "mtk-kpd"
+add device 2: /dev/input/event3
+  name:     "mtk-tpd-kpd"
+could not get driver version for /dev/input/mouse0, Not a typewriter
+add device 3: /dev/input/event2
+  name:     "mtk-tpd"
+add device 4: /dev/input/event1
+  name:     "ACCDET"
+could not get driver version for /dev/input/mice, Not a typewriter
+[1793347638.172045] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.172055] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.172073] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.172077] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.283571] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.283583] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.283611] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.283614] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.354536] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.354549] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.354574] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.354577] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.595024] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.595034] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.595058] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.595063] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.665954] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.665973] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.666048] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.666053] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.806535] /dev/input/event2: EV_KEY       KEY_DOWN             DOWN                
+[1793347638.806546] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            
+[1793347638.806568] /dev/input/event2: EV_KEY       KEY_DOWN             UP                  
+[1793347638.806572] /dev/input/event2: EV_SYN       SYN_REPORT           00000000            

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video player with quality menu</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#ffffff;text-decoration:none}a:hover{color:#ffffff}
+</style>
+</helmet>
+<div style="width: 480px; height: 360px; box-sizing: border-box; background: #000000; color: #ffffff; font-family: Roboto, 'Helvetica Neue', Arial, sans-serif; position: relative; overflow: hidden">
+  <div style="position: absolute; left: 0; top: 45px; width: 480px; height: 270px; background: #2a3340; display: flex; align-items: center; justify-content: center">
+    <div style="font-size: 12px; color: #8a94a3; letter-spacing: 0.08em; text-transform: uppercase">Video 16:9, letterboxed</div>
+  </div>
+  <div style="position: absolute; left: 0; top: 0; width: 480px; height: 56px; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.72); display: flex; flex-direction: column; justify-content: center; gap: 2px">
+    <div style="font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Video title that can wrap onto a second line on this screen</div>
+    <div style="font-size: 12px; color: #aaaaaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Channel name · 1.2M views</div>
+  </div>
+  <div style="position: absolute; left: 0; bottom: 0; width: 480px; height: 58px; box-sizing: border-box; padding: 8px 14px 10px; background: rgba(0,0,0,0.72); display: flex; flex-direction: column; justify-content: flex-end; gap: 8px">
+    <div style="height: 4px; background: #5a5a5a; position: relative">
+      <div style="position: absolute; left: 0; top: 0; height: 4px; width: 118px; background: #ff0000"></div>
+      <div style="position: absolute; left: 112px; top: -4px; width: 12px; height: 12px; border-radius: 6px; background: #ff0000"></div>
+      <div style="position: absolute; left: 118px; top: 0; height: 4px; width: 60px; background: #9a9a9a"></div>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #ffffff">
+      <span style="display: flex; align-items: center; gap: 8px"><svg width="10" height="10" viewBox="0 0 12 12" role="img" aria-label="Playing"><path d="M2 1.5v9l8-4.5z" fill="#ffffff"/></svg><span>12:34 / 48:10</span></span>
+      <span style="display: flex; align-items: center; gap: 6px; color: #aaaaaa"><span>480p</span><svg width="14" height="14" viewBox="0 0 24 24" role="img" aria-label="Settings"><circle cx="12" cy="12" r="3" fill="none" stroke="#aaaaaa" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" stroke="#aaaaaa" stroke-width="2" stroke-linecap="round"/></svg></span>
+    </div>
+  </div>
+  <div style="position: absolute; right: 14px; top: 64px; width: 168px; background: #212121; border-radius: 6px; padding: 6px 0; box-sizing: border-box">
+    <div style="padding: 4px 14px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #aaaaaa; text-transform: uppercase">Quality</div>
+    <div style="height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #3a3a3a; font-size: 14px; font-weight: 500">
+      <span>Auto (480p)</span>
+      <svg width="14" height="11" viewBox="0 0 14 11" role="img" aria-label="Selected"><path d="M1 5.5l4 4 8-8" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div style="height: 34px; display: flex; align-items: center; padding: 0 14px; font-size: 14px">720p</div>
+    <div style="height: 34px; display: flex; align-items: center; padding: 0 14px; font-size: 14px">480p</div>
+    <div style="height: 34px; display: flex; align-items: center; padding: 0 14px; font-size: 14px">360p</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":480,"height":360}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

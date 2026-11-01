@@ -1,0 +1,4 @@
+Roboto-Regular.ttf: Roboto by Google (the static build "RobotoStatic-Regular.ttf" shipped with
+Android Studio's layoutlib), licensed under the SIL Open Font License 1.1:
+https://openfontlicense.org — https://github.com/googlefonts/roboto-3-classic
+Bundled because the Y1's system Roboto (Android 4.2) lacks Azerbaijani ə/Ə.

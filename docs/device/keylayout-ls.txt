@@ -1,0 +1,16 @@
+$ adb shell ls -l /system/usr/keylayout/
+-rw-r--r-- root     root          184 2025-07-31 18:52 ACCDET.kl
+-rw-r--r-- root     root          894 2025-07-31 18:52 AVRCP.kl
+-rw-r--r-- root     root         9046 2022-10-30 00:07 Generic.kl
+-rw-r--r-- root     root         9046 2026-03-31 06:15 Stock.kl
+-rw-r--r-- root     root         1293 2025-07-31 18:52 Vendor_045e_Product_028e.kl
+-rw-r--r-- root     root         1027 2025-07-31 18:52 Vendor_046d_Product_c216.kl
+-rw-r--r-- root     root         1325 2025-07-31 18:52 Vendor_046d_Product_c294.kl
+-rw-r--r-- root     root         1392 2025-07-31 18:52 Vendor_046d_Product_c299.kl
+-rw-r--r-- root     root         2793 2025-07-31 18:52 Vendor_046d_Product_c532.kl
+-rw-r--r-- root     root         1458 2025-07-31 18:52 Vendor_054c_Product_0268.kl
+-rw-r--r-- root     root         2409 2025-07-31 18:52 Vendor_05ac_Product_0239.kl
+-rw-r--r-- root     root         1994 2025-07-31 18:52 Vendor_22b8_Product_093d.kl
+-rw-r--r-- root     root        10622 2025-07-31 18:52 hid-keyboard.kl
+-rw-r--r-- root     root         1683 2025-07-31 18:52 mtk-kpd.kl
+-rw-r--r-- root     root         2577 2025-07-31 18:52 qwerty.kl

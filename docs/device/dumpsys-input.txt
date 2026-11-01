@@ -1,0 +1,121 @@
+$ adb shell dumpsys input | head -120
+INPUT MANAGER (dumpsys input)
+
+Event Hub State:
+  BuiltInKeyboardId: -2
+  Devices:
+    -1: Virtual
+      Classes: 0x40000023
+      Path: <virtual>
+      Descriptor: a718a782d34bc767f4689c232d64d527998ea7fd
+      Location: 
+      UniqueId: <virtual>
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Virtual.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+    1: mtk-kpd
+      Classes: 0x00000001
+      Path: /dev/input/event0
+      Descriptor: b8fd045cbcf3ea43f0f339b38c4d142ab29283c2
+      Location: 
+      UniqueId: 
+      Identifier: bus=0x0019, vendor=0x2454, product=0x6572, version=0x0010
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+    2: mtk-tpd-kpd
+      Classes: 0x00000001
+      Path: /dev/input/event3
+      Descriptor: 485d69228e24f5e46da1598745890b214130dbc4
+      Location: 
+      UniqueId: 
+      Identifier: bus=0x0019, vendor=0x0001, product=0x0001, version=0x0100
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+    3: mtk-tpd
+      Classes: 0x00000015
+      Path: /dev/input/event2
+      Descriptor: 84931e976ab60191371c1c95baf408538ca4c4c5
+      Location: 
+      UniqueId: 
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+    4: ACCDET
+      Classes: 0x00000001
+      Path: /dev/input/event1
+      Descriptor: 1c78f7e0d16d4dbc8d3ab93943523f379203f90b
+      Location: 
+      UniqueId: 
+      Identifier: bus=0x0019, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/ACCDET.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+
+Input Reader State:
+  Device -1: Virtual
+    Generation: 2
+    IsExternal: false
+    Sources: 0x00000301
+    KeyboardType: 2
+    Keyboard Input Mapper:
+      Parameters:
+        HasAssociatedDisplay: false
+        OrientationAware: false
+      KeyboardType: 2
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 1: mtk-kpd
+    Generation: 10
+    IsExternal: false
+    Sources: 0x00000101
+    KeyboardType: 1
+    Keyboard Input Mapper:
+      Parameters:
+        HasAssociatedDisplay: false
+        OrientationAware: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 603711091000
+  Device 2: mtk-tpd-kpd
+    Generation: 8
+    IsExternal: false
+    Sources: 0x00000101
+    KeyboardType: 1
+    Keyboard Input Mapper:
+      Parameters:
+        HasAssociatedDisplay: false
+        OrientationAware: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 3: mtk-tpd
+    Generation: 12
+    IsExternal: false
+    Sources: 0x00001103
+    KeyboardType: 1
+    Motion Ranges:
+      X: source=0x00001002, min=0.000, max=479.000, flat=0.000, fuzz=0.998
+      Y: source=0x00001002, min=0.000, max=359.000, flat=0.000, fuzz=0.997
+      PRESSURE: source=0x00001002, min=0.000, max=1.000, flat=0.000, fuzz=0.000
+      SIZE: source=0x00001002, min=0.000, max=1.000, flat=0.000, fuzz=0.000
+      TOUCH_MAJOR: source=0x00001002, min=0.000, max=600.000, flat=0.000, fuzz=0.000
+      TOUCH_MINOR: source=0x00001002, min=0.000, max=600.000, flat=0.000, fuzz=0.000
+      TOOL_MAJOR: source=0x00001002, min=0.000, max=600.000, flat=0.000, fuzz=0.000
+      TOOL_MINOR: source=0x00001002, min=0.000, max=600.000, flat=0.000, fuzz=0.000
+    Keyboard Input Mapper:
+      Parameters:

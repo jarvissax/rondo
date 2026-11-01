@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- FM radio: MediaTek's permission puts the app in the media group, which may open /dev/fm
+         (platform.xml); switching FM to the speaker needs MODIFY_AUDIO_SETTINGS -->
+    <uses-permission android:name="android.permission.ACCESS_MTK_MMHW" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!-- our own Wi-Fi and Bluetooth screens: scan, join, pair, connect headphones -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- brightness and screen timeout in Settings (granted at install on API 17) -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <!-- the card is mounted uid/gid media_rw, mode 0770; on this ROM only WRITE_EXTERNAL_STORAGE
+         maps to media_rw (platform.xml). The app only reads the card (no media caching). -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <application
+        android:name=".Y1App"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Y1">
+
+        <!-- the iPod-style shell, and the home screen: the Y1 boots into it.
+             Other launchers stay installed and open from Settings > Other launchers. -->
+        <activity
+            android:name=".ShellActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="stateAlwaysHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- a playback test screen for development: adb shell am start -n com.jarvissax.rondo/.MainActivity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+
+        <service
+            android:name=".player.PlayerService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </service>
+
+        <!-- below API 21 MediaSessionCompat needs a media-button receiver in the manifest -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

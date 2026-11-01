@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="color-scheme" content="dark">
+<title>Rondo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-80 -80 160 160'%3E%3Crect x='-80' y='-80' width='160' height='160' rx='36' fill='%23000'/%3E%3Cg fill='none' stroke-width='13' stroke-linecap='round'%3E%3Cpath d='M57.965 2.024A58 58 0 1 1 12.059-56.733' stroke='%23f5f5f7'/%3E%3Cpath d='M29-50.229A58 58 0 0 1 55.753-15.987' stroke='%23ff3b4f'/%3E%3C/g%3E%3Cpath d='M-9-15v30L16 0z' fill='%23ff3b4f' stroke='%23ff3b4f' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preload" href="/fonts/Roboto-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <!-- The Rondo mark: the click wheel as a white ring, the red playhead resting at 52 degrees,
+         a red play mark in the middle (tools/bootscreen/BootScreen.java). -->
+    <symbol id="mark" viewBox="-66 -66 132 132">
+      <g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round">
+        <path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/>
+        <path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/>
+      </g>
+      <path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/>
+    </symbol>
+    <!-- "rondo" in the mark's round strokes -->
+    <symbol id="wordmark" viewBox="-4 -44.5 164 48.5">
+      <g fill="none" stroke="currentColor" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M0 0V-25M0-12.5A12.5 12.5 0 0 1 9.265-24.574"/>
+        <circle cx="34.325" cy="-12.5" r="12.5"/>
+        <path d="M58.325 0V-25M58.325-12.5A12.5 12.5 0 0 1 83.325-12.5V0"/>
+        <circle cx="107.325" cy="-12.5" r="12.5"/>
+        <path d="M119.825 0V-40.5"/>
+        <circle cx="143.825" cy="-12.5" r="12.5"/>
+      </g>
+    </symbol>
+
+    <!-- Icons on the device's 24-unit grid (IconView.kt), round caps -->
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M8 3l8 9-8 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.8v16.4L20.2 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="5" y="3.5" width="5" height="17" rx="1.3" fill="currentColor"/><rect x="14" y="3.5" width="5" height="17" rx="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M5.5 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M19.5 5.5v13L9 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M18.5 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M4.5 5.5v13L15 12z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
+    <symbol id="i-bars" viewBox="0 0 24 24"><g fill="currentColor"><rect x="3" y="10" width="4" height="11" rx=".8"/><rect x="10" y="4" width="4" height="17" rx=".8"/><rect x="17" y="13" width="4" height="8" rx=".8"/></g></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M2 6h7l2 2.5h11V19H2z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="4"/><path d="M18 14.49l3.7 1.53M14.49 18l1.53 3.7M9.51 18l-1.53 3.7M6 14.49l-3.7 1.53M6 9.51L2.3 7.98M9.51 6L7.98 2.3M14.49 6l1.53-3.7M18 9.51l3.7-1.53" stroke="currentColor" stroke-width="4.2"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4.22 8.22a11 11 0 0 1 15.56 0"/><path d="M7.05 11.05a7 7 0 0 1 9.9 0"/><path d="M9.88 13.88a3 3 0 0 1 4.24 0"/></g><circle cx="12" cy="18.5" r="1.7" fill="currentColor"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M3 12.5l6 6.5L21 5.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bluetooth" viewBox="0 0 24 24"><path d="M6 7l11 10-5 4V3l5 4L6 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8L17 2.5"/><rect x="2.5" y="8" width="19" height="13" rx="3"/></g><circle cx="8.5" cy="14.5" r="3.2" fill="currentColor"/><rect x="14" y="11.5" width="4.5" height="1.6" fill="currentColor"/><rect x="14" y="15.9" width="4.5" height="1.6" fill="currentColor"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="7.5" cy="14.5" r="4.5"/><circle cx="12.5" cy="10.5" r="6"/><circle cx="17.5" cy="14" r="4.5"/><rect x="7.5" y="12.5" width="10" height="6.5" rx="1"/></g></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/><rect x="10.8" y="10.5" width="2.4" height="7" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M19.5 12h3M17.3 17.3l2.12 2.12M12 19.5v3M6.7 17.3l-2.12 2.12M4.5 12h-3M6.7 6.7L4.58 4.58M12 4.5v-3M17.3 6.7l2.12-2.12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8.5"/><path d="M12 13V8M12 13l3.5 2M9.5 2.5h5"/></g></symbol>
+    <symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9h4l5-5v16l-5-5H3z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M15.9 7.9a5 5 0 0 1 0 8.2M18.4 5a9 9 0 0 1 0 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.9 12.2a1 1 0 0 0 1 .8h7.2a1 1 0 0 0 1-.8L17.5 7M10.2 11v5.5M13.8 11v5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7 8.5L12 4l5 4.5M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 3.8v4.7h-4.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></symbol>
+    <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></symbol>
+    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h16M4 17.5h10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2L5 13.5h6L10 22l9-12h-6.2z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5L2.5 20h19z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9v6l5-3z" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<!-- First load: the boot animation's circling playhead -->
+<div class="splash" id="splash">
+  <svg class="lockup-mark is-turning is-intro" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+  <p class="sr-only" role="status">Connecting to your Rondo</p>
+</div>
+
+<!-- Pairing: shown whenever the device answers 401 -->
+<main class="pair" id="pair" hidden>
+  <div class="pair-inner">
+    <svg class="lockup-mark" id="pairMark" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+    <svg class="lockup-word" aria-label="rondo" role="img"><use href="#wordmark"/></svg>
+    <h1 class="pair-title">Pair this browser</h1>
+    <p class="pair-text">Open <b>Settings › Dashboard</b> on your Rondo and type the 6-digit code.</p>
+    <form class="code" id="codeForm" autocomplete="off" novalidate>
+      <label for="codeInput" class="sr-only">Pairing code</label>
+      <input id="codeInput" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" spellcheck="false" aria-describedby="codeMsg">
+      <div class="code-boxes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </form>
+    <p class="code-msg" id="codeMsg" role="alert"></p>
+    <p class="pair-foot">The code is new each time the dashboard starts. Keep that screen open while you use this page.</p>
+  </div>
+</main>
+
+<!-- The Rondo can't be reached at all -->
+<main class="pair" id="offline" hidden>
+  <div class="pair-inner">
+    <svg class="lockup-mark is-dim" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
+    <h1 class="pair-title">Can’t reach your Rondo</h1>
+    <p class="pair-text">Open <b>Settings › Dashboard</b> on your Rondo and keep it open. This phone or computer has to be on the same Wi-Fi.</p>
+    <button class="btn btn-primary" id="offlineRetry" type="button">Try again</button>
+    <p class="pair-foot" id="offlineNote">Trying again every few seconds.</p>
+  </div>
+</main>
+
+<div class="app" id="app" hidden>
+  <aside class="side">
+    <a class="brand" href="#overview" aria-label="Rondo, overview">
+      <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
+    </a>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <div class="side-foot">
+      <div class="mini" id="mini" hidden></div>
+      <div class="side-status" id="sideStatus"></div>
+    </div>
+  </aside>
+
+  <header class="top">
+    <a class="brand" href="#overview" aria-label="Rondo, overview">
+      <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
+      <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
+    </a>
+    <div class="top-status" id="topStatus"></div>
+  </header>
+
+  <div class="banner" id="banner" role="status" hidden>
+    <svg class="i"><use href="#i-alert"/></svg>
+    <span id="bannerText">Lost the connection to your Rondo. Trying again…</span>
+  </div>
+
+  <main class="main" id="main">
+
+    <section class="view" id="view-overview" aria-labelledby="h-overview" hidden>
+      <header class="vh"><h1 id="h-overview">Overview</h1></header>
+      <article class="np is-empty" id="np" aria-label="Now playing">
+        <div class="np-field" aria-hidden="true"></div>
+        <div class="np-art"><svg class="i np-art-glyph"><use href="#i-note"/></svg></div>
+        <div class="np-info">
+          <p class="np-src" id="npSrc"></p>
+          <h2 class="np-title" id="npTitle">Nothing playing</h2>
+          <p class="np-sub" id="npSub">Choose a song in Library and play it on your Rondo, or start something on the Rondo itself.</p>
+          <a class="btn np-empty-btn" href="#library">Open library</a>
+        </div>
+        <div class="np-progress">
+          <input type="range" class="seek" id="npSeek" min="0" max="1000" value="0" step="1" aria-label="Position">
+          <div class="np-times"><span id="npPos">0:00</span><span id="npRem">0:00</span></div>
+        </div>
+        <div class="np-controls">
+          <button class="ctl" type="button" data-act="previous" aria-label="Previous"><svg class="i"><use href="#i-prev"/></svg></button>
+          <button class="ctl ctl-main" type="button" data-act="toggle" id="npToggle" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
+          <button class="ctl" type="button" data-act="next" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button>
+        </div>
+        <div class="np-volume">
+          <svg class="i"><use href="#i-volume"/></svg>
+          <input type="range" class="vol" id="npVol" min="0" max="15" value="0" step="1" aria-label="Volume">
+          <output id="npVolOut">0</output>
+        </div>
+      </article>
+
+      <h2 class="gh">Device</h2>
+      <div class="group" id="deviceRows"></div>
+    </section>
+
+    <section class="view" id="view-library" aria-labelledby="h-library" hidden>
+      <header class="vh">
+        <div class="vh-text">
+          <h1 id="h-library">Library</h1>
+          <p id="libSummary">Music and videos on the card. They play without the internet.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn" type="button" id="rescanBtn"><svg class="i"><use href="#i-refresh"/></svg><span>Rescan</span></button>
+          <button class="btn btn-primary" type="button" id="uploadBtn"><svg class="i"><use href="#i-upload"/></svg><span>Upload</span></button>
+          <input type="file" id="fileInput" multiple hidden accept=".flac,.mp3,.m4a,.aac,.ogg,.opus,.wav,.mp4,.m4v,.mkv,.3gp,.webm,.lrc">
+        </div>
+      </header>
+
+      <div class="uploads" id="uploads" hidden></div>
+
+      <div class="lib-bar">
+        <div class="seg" role="radiogroup" aria-label="Show" id="libKind">
+          <button type="button" role="radio" data-kind="songs" aria-checked="true">Songs</button>
+          <button type="button" role="radio" data-kind="videos" aria-checked="false">Videos</button>
+        </div>
+        <label class="search">
+          <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+          <span class="sr-only">Search the library</span>
+          <input type="search" id="libSearch" placeholder="Search songs" autocomplete="off" enterkeyhint="search">
+        </label>
+        <label class="select" id="libSortWrap">
+          <span class="sr-only">Sort by</span>
+          <select id="libSort">
+            <option value="title">Title</option>
+            <option value="artist">Artist</option>
+            <option value="album">Album</option>
+            <option value="added">Recently added</option>
+          </select>
+          <svg class="i" aria-hidden="true"><use href="#i-down"/></svg>
+        </label>
+      </div>
+
+      <div class="lib" id="lib">
+        <div class="lib-head" id="libHead" role="presentation">
+          <span></span>
+          <button type="button" data-sort="title">Title</button>
+          <button type="button" data-sort="artist">Artist</button>
+          <button type="button" data-sort="album">Album</button>
+          <span class="t-time">Time</span>
+          <span></span>
+        </div>
+        <div class="lib-list" id="libList" role="list" aria-label="Songs"></div>
+        <div class="lib-sentinel" id="libSentinel" aria-hidden="true"></div>
+      </div>
+      <div class="drop-hint" id="dropHint">
+        <svg class="i"><use href="#i-upload"/></svg>
+        <span>Drag music or video files here, or <button type="button" class="link" id="dropPick">choose files</button>. FLAC, MP3, M4A, AAC, OGG, Opus, WAV, MP4, MKV, WebM and .lrc lyrics.</span>
+      </div>
+    </section>
+
+    <section class="view" id="view-theme" aria-labelledby="h-theme" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-theme">Theme</h1><p>Your Rondo redraws as you change things here.</p></div></header>
+      <div class="theme">
+        <div class="theme-preview">
+          <div class="bezel"><div class="screen" id="preview" aria-label="Preview of your Rondo’s main menu" role="img"></div></div>
+          <p class="applied" id="applied" role="status" aria-live="polite"></p>
+        </div>
+        <div class="theme-controls">
+          <section class="ctl-block" aria-labelledby="h-accent">
+            <h2 class="gh" id="h-accent">Accent</h2>
+            <p class="help">Colors the selection bar on the menus.</p>
+            <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="h-accent"></div>
+          </section>
+          <section class="ctl-block" aria-labelledby="h-appearance">
+            <h2 class="gh" id="h-appearance">Appearance</h2>
+            <div class="seg seg-wide" id="appearance" role="radiogroup" aria-labelledby="h-appearance">
+              <button type="button" role="radio" data-v="light">Light</button>
+              <button type="button" role="radio" data-v="dark">Dark</button>
+            </div>
+          </section>
+          <section class="ctl-block" aria-labelledby="h-text">
+            <h2 class="gh" id="h-text">Text size</h2>
+            <div class="seg seg-wide" id="textScale" role="radiogroup" aria-labelledby="h-text">
+              <button type="button" role="radio" data-v="1.25"><span class="aa aa-s">Aa</span> Small</button>
+              <button type="button" role="radio" data-v="1.4"><span class="aa aa-m">Aa</span> Medium</button>
+              <button type="button" role="radio" data-v="1.55"><span class="aa aa-l">Aa</span> Large</button>
+            </div>
+          </section>
+          <section class="ctl-block" aria-labelledby="h-menu">
+            <h2 class="gh" id="h-menu">Main menu</h2>
+            <p class="help">Show, hide and reorder the entries. Settings always stays.</p>
+            <div class="group" id="menuItems"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings" aria-labelledby="h-settings" hidden>
+      <header class="vh"><h1 id="h-settings">Settings</h1></header>
+      <div class="group" id="settingsRows"></div>
+    </section>
+
+    <section class="view" id="view-wifi" aria-labelledby="h-wifi" hidden>
+      <header class="vh">
+        <div class="vh-text"><h1 id="h-wifi">Wi-Fi</h1></div>
+        <div class="vh-actions"><button class="btn" type="button" id="wifiRefresh"><svg class="i"><use href="#i-refresh"/></svg><span>Refresh</span></button></div>
+      </header>
+      <div id="wifiBody"></div>
+    </section>
+
+    <section class="view" id="view-bluetooth" aria-labelledby="h-bluetooth" hidden>
+      <header class="vh">
+        <div class="vh-text"><h1 id="h-bluetooth">Bluetooth</h1><p>Headphones and speakers for your Rondo.</p></div>
+        <div class="vh-actions"><button class="btn" type="button" id="btSearch"><svg class="i"><use href="#i-refresh"/></svg><span>Search again</span></button></div>
+      </header>
+      <div id="btBody"></div>
+    </section>
+
+    <section class="view" id="view-radio" aria-labelledby="h-radio" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-radio">FM Radio</h1><p>Your Rondo's radio. Wired headphones are its antenna.</p></div></header>
+      <div id="radioBody"></div>
+    </section>
+
+    <section class="view" id="view-server" aria-labelledby="h-server" hidden>
+      <header class="vh"><div class="vh-text"><h1 id="h-server">Music server</h1>
+        <p>Rondo streams YouTube Music and YouTube through your music server. The library on the card works without it.</p></div></header>
+      <div id="serverBody"></div>
+    </section>
+
+  </main>
+
+  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+</div>
+
+<div class="drop" id="drop" hidden>
+  <div class="drop-card">
+    <svg class="i"><use href="#i-upload"/></svg>
+    <p>Drop to copy to your Rondo’s card</p>
+  </div>
+</div>
+
+<dialog class="sheet" id="sheet"></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

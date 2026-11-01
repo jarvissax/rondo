@@ -1,0 +1,39 @@
+$ adb shell dumpsys display | head -80
+DISPLAY MANAGER (dumpsys display)
+  mHeadless=false
+  mOnlyCode=false
+  mSafeMode=false
+  mPendingTraversal=false
+  mAllDisplayBlankStateFromPowerManager=2
+  mNextNonDefaultDisplayId=1
+  mDefaultViewport=DisplayViewport{valid=true, displayId=0, orientation=0, logicalFrame=Rect(0, 0 - 480, 360), physicalFrame=Rect(0, 0 - 480, 360), deviceWidth=480, deviceHeight=360}
+  mExternalTouchViewport=DisplayViewport{valid=false, displayId=0, orientation=0, logicalFrame=Rect(0, 0 - 0, 0), physicalFrame=Rect(0, 0 - 0, 0), deviceWidth=0, deviceHeight=0}
+  mSingleDisplayDemoMode=false
+
+Display Adapters: size=2
+  LocalDisplayAdapter
+  OverlayDisplayAdapter
+    mCurrentOverlaySetting=
+    mOverlays: size=0
+
+Display Devices: size=1
+  DisplayDeviceInfo{"Built-in Screen": 480 x 360, 36.43 fps, density 160, 160.42105 x 160.42105 dpi, touch INTERNAL, FLAG_DEFAULT_DISPLAY, FLAG_ROTATES_WITH_CONTENT, FLAG_SECURE, FLAG_SUPPORTS_PROTECTED_BUFFERS, rotation 0, type BUILT_IN, address null}
+    mAdapter=LocalDisplayAdapter
+    mDisplayToken=android.os.BinderProxy@411c3dd0
+    mCurrentLayerStack=0
+    mCurrentOrientation=0
+    mCurrentLayerStackRect=Rect(0, 0 - 480, 360)
+    mCurrentDisplayRect=Rect(0, 0 - 480, 360)
+    mCurrentSurface=null
+    mBuiltInDisplayId=0
+    mPhys=PhysicalDisplayInfo{480 x 360, 36.43 fps, density 1.0, 160.42105 x 160.42105 dpi, secure true}
+    mBlanked=false
+
+Logical Displays: size=1
+  Display 0:
+    mDisplayId=0
+    mLayerStack=0
+    mHasContent=true
+    mPrimaryDisplayDevice=Built-in Screen
+    mBaseDisplayInfo=DisplayInfo{"Built-in Screen", app 480 x 360, real 480 x 360, largest app 480 x 360, smallest app 480 x 360, 36.43 fps, rotation 0, density 160, 160.42105 x 160.42105 dpi, layerStack 0, type BUILT_IN, address null, FLAG_SECURE, FLAG_SUPPORTS_PROTECTED_BUFFERS}
+    mOverrideDisplayInfo=DisplayInfo{"Built-in Screen", app 480 x 360, real 480 x 360, largest app 480 x 455, smallest app 360 x 335, 36.43 fps, rotation 0, density 160, 160.42105 x 160.42105 dpi, layerStack 0, type BUILT_IN, address null, FLAG_SECURE, FLAG_SUPPORTS_PROTECTED_BUFFERS}

@@ -1,0 +1,2 @@
+$ adb shell getprop ro.sf.lcd_density
+160
