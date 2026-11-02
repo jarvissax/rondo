@@ -304,6 +304,43 @@ const searchVideo = (n: Node): Item | undefined => {
 
 export const videoSearchChunk = (res: any): Chunk<Item> => ({ items: (res.videos ?? []).map(searchVideo), more: continued(res, videoSearchChunk) });
 
+// A short from a search or home shelf (ShortsLockupView, or an older ReelItem), or from the Shorts
+// "watch next" chain, which names only the video and its first frame: no title until /video/short/:id.
+export function shortItem(n: Node): Item | undefined {
+  let item: Item | undefined;
+  if (n?.type === "ShortsLockupView") {
+    const id = n.on_tap_endpoint?.payload?.videoId;
+    item = { kind: "video", id, title: text(n.overlay_metadata?.primary_text), subtitle: text(n.overlay_metadata?.secondary_text), thumb: thumbLink(pickThumb(n.thumbnail)) };
+  } else if (n?.type === "ReelItem") {
+    item = { kind: "video", id: n.id, title: text(n.title), subtitle: text(n.views), thumb: thumbLink(pickThumb(n.thumbnails)) };
+  } else if (n?.payload?.videoId) {
+    item = { kind: "video", id: n.payload.videoId, title: "", subtitle: "", thumb: thumbLink(pickThumb(n.payload.thumbnail?.thumbnails)) };
+  }
+  return item && isVideoId(item.id) ? item : undefined;
+}
+
+// the shorts anywhere in a parsed response (search puts them in shelves inside sections)
+export function findShorts(n: unknown, depth = 0, out: Node[] = []): Node[] {
+  if (!n || typeof n !== "object" || depth > 8) return out;
+  if (Array.isArray(n)) {
+    for (const x of n) findShorts(x, depth + 1, out);
+    return out;
+  }
+  const node = n as Node;
+  if (node.type === "ShortsLockupView" || node.type === "ReelItem") out.push(node);
+  else for (const key of ["contents", "items", "content", "results"]) findShorts(node[key], depth + 1, out);
+  return out;
+}
+
+// the Shorts chain: each response names the next few shorts and how to get more
+export const sequenceChunk = (info: any): Chunk<Item> => ({
+  items: (info.watch_next_feed ?? []).map(shortItem),
+  more: info.wn_has_continuation ? async () => sequenceChunk(await info.getWatchNextContinuation()) : undefined,
+});
+
+const compact = (n: number): string =>
+  n >= 1e9 ? `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
+
 export const homeChunk = (page: any): Chunk<Section> => ({
   items: (page.sections ?? []).map((s: Node) => shelfSection(s)),
   more: continued(page, homeChunk),
@@ -742,6 +779,27 @@ export class Browse {
     return this.pager.page("video/home", () => this.popularChunk(), byId);
   }
 
+  // Shorts, like the app's Shorts tab: popular shorts first (titled, from a Shorts search), then
+  // YouTube's own "watch next" chain from one of them, which goes on for as long as anyone scrolls.
+  // With cookies.txt the chain follows the account's taste.
+  async videoShorts(): Promise<Page<Item>> {
+    const yt = await this.yt();
+    return this.pager.page("video/shorts", async () => {
+      const seeds = uniqueById(findShorts((await yt.search("shorts", { type: "shorts" })).results).map(shortItem));
+      const start = seeds[Math.floor(Math.random() * Math.min(5, seeds.length))];
+      return { items: seeds, more: start ? async () => sequenceChunk(await yt.getShortsVideoInfo(start.id)) : undefined };
+    }, byId);
+  }
+
+  // what a short's page shows: title, channel, views
+  async shortInfo(id: string): Promise<{ id: string; title: string; channel: string; subtitle: string; durationSec?: number }> {
+    const yt = await this.yt();
+    const b = (await yt.getShortsVideoInfo(id)).basic_info;
+    const channel = b.author ?? b.channel?.name ?? "";
+    const views = typeof b.view_count === "number" ? `${compact(b.view_count)} views` : "";
+    return { id, title: b.title ?? "", channel, subtitle: join([channel, views]), durationSec: seconds(b.duration) };
+  }
+
   async videoSubscriptions(): Promise<Page<Item>> {
     if (this.tv?.signedIn) return this.pager.page("video/subscriptions", () => this.tvFeed({ browseId: "FEsubscriptions" }), byId);
     const yt = await this.yt();
@@ -870,6 +928,13 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
   list("/video/home", "video/home", () => browse.videoHome(), { cache: true });
   list("/video/subscriptions", "video/subscriptions", () => browse.videoSubscriptions(), { cache: true, account: true });
   list("/video/history", "video/history", () => browse.videoHistory(), { cache: true, account: true });
+  list("/video/shorts", "video/shorts", () => browse.videoShorts(), { cache: true });
+
+  app.get<{ Params: { id: string } }>("/video/short/:id", async (req, reply) => {
+    const id = req.params.id;
+    if (!isVideoId(id)) return reply.code(400).send({ error: "id" });
+    return run(reply, () => browse.cached(`video/short/${id}`, () => browse.shortInfo(id)));
+  });
 
   app.get<{ Params: { id: string }; Querystring: { next?: string } }>("/video/related/:id", async (req, reply) => {
     const id = req.params.id;

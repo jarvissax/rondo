@@ -19,6 +19,9 @@ import {
   playlistChunk,
   playlistPage,
   relatedChunk,
+  findShorts,
+  sequenceChunk,
+  shortItem,
   shelfSection,
   thumbLink,
   trackItem,
@@ -417,5 +420,48 @@ describe("fillAlbumRows", () => {
   });
   it("leaves rows alone when the header names nothing", () => {
     expect(fillAlbumRows([row("ccccccccccc")], "", "")[0]?.subtitle).toBe("");
+  });
+});
+
+describe("shorts", () => {
+  const lockup = (id: string, title: string, views: string) => ({
+    type: "ShortsLockupView",
+    on_tap_endpoint: { payload: { videoId: id } },
+    overlay_metadata: { primary_text: { text: title }, secondary_text: { text: views } },
+    thumbnail: [{ url: "https://i.ytimg.com/vi/" + id + "/oar2.jpg", width: 405 }],
+  });
+  it("reads a short from a search shelf with its title and views", () => {
+    expect(shortItem(lockup("50MR8HO7cy0", "Nutella Jar Chocolate", "140M views"))).toMatchObject({
+      kind: "video", id: "50MR8HO7cy0", title: "Nutella Jar Chocolate", subtitle: "140M views",
+    });
+  });
+  it("reads a short from the watch-next chain, which has no title", () => {
+    const step = { type: "NavigationEndpoint", payload: { videoId: "YiDHzDpXLcs", thumbnail: { thumbnails: [{ url: "https://i.ytimg.com/vi/YiDHzDpXLcs/frame0.jpg", width: 1080 }] } } };
+    expect(shortItem(step)).toMatchObject({ id: "YiDHzDpXLcs", title: "", thumb: expect.stringContaining("/thumb?u=") });
+  });
+  it("drops anything without a usable video id", () => {
+    expect(shortItem(lockup("nope", "x", "y"))).toBeUndefined();
+    expect(shortItem({ type: "Video" })).toBeUndefined();
+  });
+  it("finds shorts nested in sections and shelves", () => {
+    const results = [{ type: "IncludingResultsFor" }, { type: "GridShelfView", contents: [lockup("aaaaaaaaaaa", "A", "1 view"), { type: "Section", items: [lockup("bbbbbbbbbbb", "B", "2 views")] }] }];
+    expect(findShorts(results).map((n) => shortItem(n)?.id)).toEqual(["aaaaaaaaaaa", "bbbbbbbbbbb"]);
+  });
+  it("follows the chain while YouTube has more", async () => {
+    const step = (id: string) => ({ payload: { videoId: id } });
+    const info = {
+      watch_next_feed: [step("aaaaaaaaaaa")],
+      wn_has_continuation: true,
+      async getWatchNextContinuation() {
+        this.watch_next_feed = [step("bbbbbbbbbbb")];
+        this.wn_has_continuation = false;
+        return this;
+      },
+    };
+    const first = sequenceChunk(info);
+    expect(first.items.map((i) => i?.id)).toEqual(["aaaaaaaaaaa"]);
+    const second = await first.more!();
+    expect(second.items.map((i) => i?.id)).toEqual(["bbbbbbbbbbb"]);
+    expect(second.more).toBeUndefined();
   });
 });
