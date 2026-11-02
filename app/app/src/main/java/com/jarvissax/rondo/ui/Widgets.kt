@@ -158,6 +158,7 @@ object Tiles {
     val delete = Tile(IconView.Kind.TRASH, Color.parseColor("#ff7a7a"), Color.parseColor("#e0283c"))
     val rescan = Tile(IconView.Kind.REFRESH, Color.parseColor("#b8bcc4"), Color.parseColor("#6f747d"))
     val shorts = Tile(IconView.Kind.SHORTS, Color.parseColor("#ff6b5a"), Color.parseColor("#e01e1e"))
+    val update = Tile(IconView.Kind.REFRESH, Color.parseColor("#5fb7ff"), Color.parseColor("#1f73e0"))
 }
 
 class IconTile(context: Context, tile: Tile) : FrameLayout(context) {

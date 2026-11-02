@@ -572,14 +572,66 @@ function renderDevice() {
     </div>
     <div class="row">
       <span class="tile t-rondo">${markTile}</span>
-      <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}</div></div>
+      <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}${d.canUpdate ? ` · <button class="link" type="button" data-update="file">Update from a file</button>` : ''}</div></div>
       ${d.power ? `<div class="bt-actions"><button class="btn btn-sm" type="button" data-power="restart">Restart</button><button class="btn btn-sm btn-red-text" type="button" data-power="shutdown">${icon('power')}<span>Shut down</span></button></div>` : ''}
     </div>${newest && isNewer(newest.version, d.version) ? `
     <div class="row update-row">
       <span class="tile t-rondo">${icon('upload')}</span>
-      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">You have ${esc(d.version || '')}. Install it on the Y1 with Innioasis Updater.</div></div>
-      <a class="btn btn-sm btn-primary" href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a>
+      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">You have ${esc(d.version || '')}. <a href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a></div></div>
+      ${d.canUpdate ? `<button class="btn btn-sm btn-primary" type="button" data-update="install">Install</button>` : ''}
     </div>` : ''}`;
+}
+// ---------- installing an update (SoftwareUpdate.kt on the Rondo) ----------
+// The browser downloads rondo.apk from the update page's site (GitHub Pages lets any page fetch its
+// files; GitHub release downloads don't) and sends it to the Rondo, which installs it over itself
+// and restarts with everything kept. The dashboard stops with it.
+const UPDATE_SITE = 'https://jarvissax.github.io/rondo/';
+$('#deviceRows').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-update]');
+  if (!b) return;
+  if (b.dataset.update === 'file') return $('#updateFile').click();
+  installUpdate(b);
+});
+$('#updateFile').addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (file) sendUpdate(file, null).catch((err) => toast(`Couldn’t update. ${err.message}`, 'err'));
+});
+async function installUpdate(btn) {
+  const label = btn.textContent;
+  btn.disabled = true;
+  try {
+    btn.textContent = 'Downloading…';
+    const info = await (await fetch(UPDATE_SITE + 'latest.json', { cache: 'no-store' })).json();
+    if (newest && info.version !== newest.version) throw new Error(`The download page still has Rondo ${info.version}. Try again in a few minutes.`);
+    const res = await fetch(UPDATE_SITE + (info.file || 'rondo.apk'), { cache: 'no-store' });
+    if (!res.ok) throw new Error(`The download failed (${res.status}).`);
+    await sendUpdate(await res.blob(), btn);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    toast(`Couldn’t update. ${e.message || ''}`, 'err');
+  }
+}
+function sendUpdate(blob, btn) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', '/api/update');
+    if (S.session) xhr.setRequestHeader('X-Rondo-Session', S.session);
+    xhr.setRequestHeader('Content-Type', 'application/vnd.android.package-archive');
+    xhr.upload.onprogress = (e) => { if (btn && e.lengthComputable) btn.textContent = `Sending ${Math.round((e.loaded / e.total) * 100)}%`; };
+    xhr.onload = () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch { /* empty */ }
+      if (xhr.status !== 200) return reject(new Error(data?.error || `Your Rondo answered ${xhr.status}.`));
+      if (btn) btn.textContent = 'Installing…';
+      openSheet(`<h2>Installing Rondo ${esc(data?.version || '')}</h2><p>Your Rondo installs it and restarts in about 15 seconds, with its settings, Wi-Fi, playlists and music as they were. This page loses it then: open <b>Settings › Dashboard</b> on the Y1 to come back.</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">OK</button></div>`);
+      $('[data-r="ok"]', sheet).addEventListener('click', () => sheet.close(), { once: true });
+      resolve();
+    };
+    xhr.onerror = () => reject(new Error('Your Rondo didn’t answer.'));
+    xhr.send(blob);
+  });
 }
 // ---------- a newer Rondo ----------
 // Asked of GitHub by this browser, not by the Rondo (which talks only to its music server), at most

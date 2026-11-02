@@ -1,8 +1,8 @@
 {
-  "name": "rondo-web-installer",
+  "name": "rondo-web-updater",
   "version": "1.0.0",
   "private": true,
-  "description": "Installs Rondo on an Innioasis Y1 from the browser, over WebUSB",
+  "description": "Updates Rondo on an Innioasis Y1 running the Rondo firmware, from the browser, over WebUSB",
   "type": "module",
   "license": "MIT",
   "scripts": {

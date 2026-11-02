@@ -1,39 +1,52 @@
 # Troubleshooting
 
-## Installing
+## Installing and updating
 
-### The web installer doesn't list the Y1, or can't connect
+### Innioasis Updater CE doesn't find the Y1
+
+- Try another cable. Many USB-C cables only charge.
+- Follow the Updater's steps exactly: the Y1 has to be **completely off** before you plug it in.
+  If it's on, hold Power and choose Shut down, or use the reset hole between the headphone and
+  USB ports with a paperclip.
+- **Windows:** let the Updater install its drivers, and restart the computer once.
+- Close other programs that use the Y1's USB connection (adb, Android Studio).
+
+### The Y1 stays dark after installing
+
+It doesn't switch itself on after an install. Press the Power button. The first start takes a
+couple of minutes; after the Rondo logo you'll see a spinning click wheel until the main menu
+appears.
+
+### Rondo isn't in the Updater's list
+
+Rondo is for the **Y1, Type A**. Check that the Updater is set to Y1 and Type A. Type B isn't
+supported yet. You can also [install from a file](install.md#from-a-file).
+
+### Software update says "Couldn't check"
+
+The Y1 asks your Rondo server, so it needs Wi-Fi and a connected server (Settings › Server).
+Without a server, update [from the dashboard or over USB](install.md#updating-rondo).
+
+### The update page doesn't list the Y1, or can't connect
 
 - Use Chrome or Edge. Firefox and Safari can't talk to USB devices.
 - Only one program can use the Y1's USB connection: close the Innioasis Updater, and run
-  `adb kill-server` if you have adb. Then unplug the Y1 and plug it back in.
+  `adb kill-server` if you have adb. If the Y1 offers the USB drive, choose **Not now**. Then unplug
+  the Y1 and plug it back in.
 - **Windows:** install Google's [USB driver](https://developer.android.com/studio/run/win-usb)
   for the Y1; without it, the browser can't see it.
 - **Linux:** give your user access to USB ID `0bb4:0c03` with a udev rule.
-- The tips below for adb apply too: cable, firmware.
 
-### adb doesn't see the Y1
+### "That APK isn't signed by Rondo's key"
 
-- Try another cable. Many USB-C cables only charge.
-- Close the Innioasis Updater. It stops adb while it's open.
-- Restart adb: `adb kill-server`, then `adb devices`.
-- Make sure the Y1 runs **Android 4.2 (Dev)**. Other firmware doesn't have USB debugging on.
-- **Windows:** if Device Manager shows the Y1 with a warning sign, install Google's
-  [USB driver](https://developer.android.com/studio/run/win-usb) for it.
-- **Linux:** add a udev rule for the device, or try `sudo adb devices` once to confirm that's
-  the problem.
-
-### The Y1 asks "Complete action using" and the wheel doesn't move
-
-Android's own dialogs ignore the wheel. Connect the Y1 to your computer and run the installer
-again, from [the web page](https://jarvissax.github.io/rondo/) or the script. It finds the dialog,
-picks Rondo and taps **Always** for you.
+Only Rondo's own releases install over the Rondo in the firmware. A build you made yourself is
+signed with your key; put it in a firmware of your own instead ([Building Rondo](building.md)).
 
 ## YouTube Music and YouTube
 
 ### "No music server yet"
 
-The Y1 isn't connected to a server. Set one up and connect it from the dashboard
+The Y1 isn't connected to a server. Set one up and connect it in Settings › Server
 ([server guide](server.md#finish-the-setup)).
 
 ### Settings › Server says "Unreachable"
@@ -42,7 +55,7 @@ The Y1 isn't connected to a server. Set one up and connect it from the dashboard
   not have changed. Give the server a fixed address in your router.
 - **On a VPS:** check the HTTPS from a computer with the `openssl` command in the
   [server guide](server.md#on-a-vps). If you use Cloudflare, the record must be "DNS only".
-- Check the address in the dashboard's **Server** page: `http://` for home, `https://` for a VPS,
+- Check the address in **Settings › Server**: `http://` for home, `https://` for a VPS,
   and the right port.
 
 ### "Token refused"
@@ -102,15 +115,16 @@ search on the Y1 or in the dashboard.
 Try **Settings › Wheel acceleration**: Off moves one step per wheel pulse, Fast jumps further on
 long spins. **Wheel vibration** and **Click sound** change how each step feels.
 
-### Getting back to the Y1's own player
+### Getting back to the Y1's original software
 
-Settings › **Other launchers** opens it. Restart the Y1 to come back to Rondo. To remove Rondo
-completely, see [Removing Rondo](install.md#removing-rondo).
+Install **Original Software** (or Rockbox, or another firmware) with Innioasis Updater CE, the
+same way you installed Rondo. See [Going back](install.md#going-back).
 
 ## Still stuck?
 
 [Open an issue](https://github.com/jarvissax/rondo/issues). Say what you did and what
-happened. If you can, include Rondo's log:
+happened. If you can, include Rondo's log. adb works on the Rondo firmware: plug the Y1 in (choose
+**Not now** when it offers the USB drive) and run
 
 ```bash
 adb logcat -d -v time -s Y1 > rondo-log.txt

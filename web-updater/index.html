@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install Rondo</title>
-<meta name="description" content="Install Rondo on an Innioasis Y1 from your browser, over USB.">
+<title>Update Rondo</title>
+<meta name="description" content="Update the Rondo firmware on an Innioasis Y1 from your browser, over USB.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-66 -66 132 132'%3E%3Cg fill='none' stroke-width='13' stroke-linecap='round'%3E%3Cpath d='M57.965 2.024A58 58 0 1 1 12.059-56.733' stroke='%23f5f5f7'/%3E%3Cpath d='M29-50.229A58 58 0 0 1 55.753-15.987' stroke='%23ff3b4f'/%3E%3C/g%3E%3Cpath d='M-9-15v30L16 0z' fill='%23ff3b4f'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -12,60 +12,52 @@
 <main>
   <header>
     <svg class="mark" viewBox="-66 -66 132 132" aria-hidden="true"><g fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
-    <h1>Install Rondo</h1>
-    <p class="lead">Put Rondo on your Innioasis Y1 straight from this page, over USB. Nothing to
-      install on your computer.</p>
+    <h1>Update Rondo</h1>
+    <p class="lead">Bring the Rondo on your Innioasis Y1 up to date from this page, over USB. It
+      takes a minute, keeps your settings, Wi-Fi, playlists and music, and needs nothing installed
+      on your computer.</p>
   </header>
 
   <section class="note" id="unsupported" hidden>
     <b>This browser can't talk to USB devices.</b> Open this page in <b>Chrome</b> or <b>Edge</b>
-    on a computer, or in Chrome on an Android phone with a USB-C cable. Or use the
-    <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md#with-adb-and-the-install-script">install script</a>.
+    on a computer, or in Chrome on an Android phone with a USB-C cable. Or update over Wi-Fi from
+    the Y1 itself (Settings › Software update) or from its dashboard.
   </section>
 
   <section class="note">
-    Your Y1 needs the <b>Android 4.2 (Dev)</b> firmware first. If it doesn't have it yet, follow
-    <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md#step-1-put-android-42-dev-on-the-y1">step 1 of the install guide</a>,
-    then come back.
+    This is for a Y1 that already runs the <b>Rondo firmware</b>. To install Rondo for the first
+    time, use <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md">Innioasis Updater CE</a>.
   </section>
 
   <ol class="steps">
     <li class="step" id="stepConnect">
       <div class="step-head"><span class="num">1</span><h2>Connect your Y1</h2><span class="tick" hidden>✓</span></div>
       <div class="step-body">
-        <p>Plug the Y1 into this computer with a USB-C data cable and switch it on. Close the
-          Innioasis Updater if it's open.</p>
+        <p>Plug the Y1 into this computer with a USB-C data cable and switch it on. If it asks
+          about a USB drive, choose Not now. Close the Innioasis Updater if it's open.</p>
         <button class="btn primary" id="connectBtn" type="button">Connect Y1</button>
         <p class="status" id="connectStatus" aria-live="polite"></p>
       </div>
     </li>
 
-    <li class="step" id="stepInstall">
-      <div class="step-head"><span class="num">2</span><h2>Install Rondo</h2><span class="tick" hidden>✓</span></div>
+    <li class="step" id="stepUpdate">
+      <div class="step-head"><span class="num">2</span><h2>Update Rondo</h2><span class="tick" hidden>✓</span></div>
       <div class="step-body">
         <p id="apkLine">Looking for the latest Rondo…</p>
         <div class="row">
-          <button class="btn primary" id="installBtn" type="button" disabled>Install</button>
+          <button class="btn primary" id="updateBtn" type="button" disabled>Update</button>
           <label class="btn file">Use an APK file<input type="file" id="apkFile" accept=".apk,application/vnd.android.package-archive"></label>
         </div>
         <div class="progress" id="progress" hidden><div class="bar" id="bar"></div></div>
-        <p class="status" id="installStatus" aria-live="polite"></p>
-        <div class="choice" id="otherBuild" hidden>
-          <p>This Y1 has a Rondo signed with a different key, for example one built from source.
-            To install this one, the old one has to go first, and its settings with it: the theme,
-            saved radio stations and the server connection. Your music and Wi-Fi networks stay.</p>
-          <button class="btn danger" id="replaceBtn" type="button">Remove the old Rondo and install</button>
-        </div>
+        <p class="status" id="updateStatus" aria-live="polite"></p>
       </div>
     </li>
 
     <li class="step" id="stepDone">
       <div class="step-head"><span class="num">3</span><h2>Done</h2><span class="tick" hidden>✓</span></div>
       <div class="step-body">
-        <p id="doneText">The Y1 will start in Rondo from now on.</p>
-        <p>Next, <a href="https://github.com/jarvissax/rondo/blob/main/docs/server.md">set up a server</a>
-          for YouTube Music and YouTube, or <a href="https://github.com/jarvissax/rondo/blob/main/docs/using.md">learn the controls</a>.
-          You can unplug the Y1.</p>
+        <p id="doneText">Rondo is updated.</p>
+        <p>See <a href="https://github.com/jarvissax/rondo/releases/latest">what's new</a>. You can unplug the Y1.</p>
       </div>
     </li>
   </ol>
@@ -80,8 +72,7 @@
         (it shows up as "Android ADB Interface" in Device Manager).</li>
       <li><b>Linux:</b> your user needs access to the device. A udev rule for USB ID
         <code>0bb4:0c03</code>, or the <code>plugdev</code> group, does it.</li>
-      <li>Still stuck? The <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md#with-adb-and-the-install-script">install script</a>
-        does the same steps from a terminal.</li>
+      <li>With adb, the same update is <code>adb install -r rondo-&lt;version&gt;.apk</code>.</li>
     </ul>
   </details>
 

@@ -357,7 +357,7 @@ async function api(req, res, url) {
   if (pathname === '/api/status' && method === 'GET') {
     const used = [...songs, ...videos].reduce((n, x) => n + x.size, 0) + 3_100_000_000;
     return send(res, 200, {
-      device: { name: 'Rondo', version: '1.0.0', model: 'Innioasis Y1', power: true },
+      device: { name: 'Rondo', version: '1.0.0', model: 'Innioasis Y1', power: true, canUpdate: true },
       battery: { level: Math.max(4, 87 - Math.floor((Date.now() - BOOT) / 120000)), charging: false },
       storage: { freeBytes: 62_500_000_000 - used, totalBytes: 62_500_000_000 },
       wifi: wifi.current ? { ssid: wifi.current.ssid, signal: wifi.current.signal, ip: wifi.current.ip } : null,
@@ -440,6 +440,14 @@ async function api(req, res, url) {
       if (paths) p.paths = paths;
       return send(res, 200, playlistJson(p));
     }
+  }
+  // an update APK from the page (SoftwareUpdate.kt installs it on a real Rondo, which then restarts)
+  if (pathname === '/api/update' && method === 'PUT') {
+    let size = 0;
+    for await (const chunk of req) size += chunk.length;
+    if (size < 1000) return err(res, 400, 'That isn’t an update for Rondo');
+    console.log(`  update: ${size} bytes (a real Rondo installs it and restarts)`);
+    return send(res, 200, { version: '1.0.1' });
   }
   if (pathname === '/api/power' && method === 'POST') {
     const body = await readJson(req);

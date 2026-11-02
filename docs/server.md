@@ -90,12 +90,12 @@ Your server's address is `https://music.example.com`.
    the log and choose an admin password.
 2. **Connect the Y1:** on the admin page, go to **Device** and press **Connect a Rondo**. It shows
    a 6-digit code, good for 10 minutes.
-3. On the Y1, open **Settings › Dashboard**. Open the address it shows on your phone or computer
-   (same Wi-Fi), and type the pairing code from the Y1's screen.
-4. In the dashboard, go to **Server**. Enter your server's address and the code from step 2, then
-   press **Connect**.
+3. On the Y1, open **Settings › Server › Connect to a server**. Type your server's address and,
+   on the next screen, the code from step 2. (Typing is quicker in the dashboard: open **Settings ›
+   Dashboard** on the Y1, the address it shows on your phone or computer, then its **Server** page.)
 
-On the Y1, **Settings › Server** now says **OK**. YouTube Music and YouTube are ready.
+**Settings › Server** on the Y1 now says it's connected; **Connection test** checks it. YouTube
+Music and YouTube are ready.
 
 ## The admin page
 
@@ -111,6 +111,8 @@ hours.
   disconnect it.
 - **Resolver:** the yt-dlp version, **Update now**, and **Test playback**, which checks that a
   video can be found the way the Y1 would ask for it.
+- **Updates:** the Overview says when a newer Rondo or yt-dlp is out (the server asks GitHub every
+  6 hours; `UPDATE_CHECK=0` in its environment turns that off).
 - **Activity:** the last 100 warnings and errors, newest first.
 - **Admin account:** change the password or sign out.
 
@@ -157,6 +159,8 @@ session:
   ```
 
   Your admin password, account and connected Y1 are kept on a Docker volume and survive updates.
+- **Updating the Y1:** the server also hands the Y1 its updates. **Settings › Software update** on
+  the Y1 shows a newer Rondo and installs it; the server fetches it from GitHub and passes it on.
 - **One Y1 per server.** Connecting another Rondo disconnects the previous one.
 - **Forgot the admin password?** Remove it and restart. The server prints a new setup code, and
   your Y1 stays connected:

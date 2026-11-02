@@ -20,7 +20,11 @@ pairing for half a minute.
 ## Overview
 
 What's playing, with play/pause, skip and a volume slider, plus the battery, how full the card
-is, the Wi-Fi network and Rondo's version.
+is, the Wi-Fi network and Rondo's version, with **Restart** and **Shut down** buttons.
+
+When a newer Rondo is out, a row says so, with **Install**: your browser downloads the update and
+sends it to the Y1, which installs it and restarts with everything kept (the dashboard stops with
+it). **Update from a file**, under the Rondo row, does the same with an APK you downloaded.
 
 ## Library
 
@@ -31,6 +35,9 @@ date added.
   second over the Y1's Wi-Fi.
 - **Play** a song on the Y1, or **delete** it.
 - **Rescan** after copying files onto the card some other way.
+- **Playlists:** make, rename and delete playlists of songs on the card, add songs (from the
+  playlist, or **Add to playlist** in a song's details), put them in order and play them on the Y1.
+  They're the same playlists as in the Y1's Library: `.m3u8` files in the card's `Playlists` folder.
 
 ## Theme
 
@@ -44,7 +51,8 @@ The Y1 redraws while you change things here.
 ## Settings
 
 The same settings as on the Y1 (see [Using Rondo](using.md#settings)): video quality,
-brightness, screen timeout, lyrics, wheel acceleration, wheel vibration and the click sound.
+brightness, screen timeout, lyrics, wheel acceleration, wheel vibration and the click sound. The
+Theme page above matches the Y1's **Settings › Theme**.
 
 ## Wi-Fi
 
@@ -67,7 +75,8 @@ antenna.
 
 ## Server
 
-Which [Rondo server](server.md) the Y1 uses, and whether it's reachable.
+Which [Rondo server](server.md) the Y1 uses, and whether it's reachable. The Y1's own
+**Settings › Server** does the same.
 
 - **Connect to a server:** enter the server's address and the code from its admin page
   (**Device › Connect a Rondo**), then press **Connect**.

@@ -18,8 +18,8 @@ body:
     attributes:
       label: Where?
       options:
-        - Installing (web installer)
-        - Installing (script)
+        - Installing (Innioasis Updater)
+        - Updating
         - Music and videos on the card
         - YouTube Music
         - YouTube

@@ -45,6 +45,12 @@ needed). This page describes its API, for anyone working on the dashboard or scr
 - `POST /api/player` `{"action": "toggle" | "next" | "previous" | "seek" | "volume", "positionMs"?: n, "volume"?: n}` → the `player` object.
 - `POST /api/player/play` `{"path": "/storage/sdcard0/Music/x.flac", "queue"?: ["…", …]}` → plays that song
   with `queue` (a playlist's songs) or else the current library order as the queue → the `player` object.
+- `GET /api/update` → `{"version": "1.0.0", "canInstall": true, "problem": null}`; `PUT /api/update` with the APK as the
+  body (`Content-Length`, like uploads) → `{"version": "1.0.1"}`, then the Rondo installs it over itself
+  (`SoftwareUpdate.kt`) and restarts about 15 s later, which ends the dashboard. `400` for an APK that isn't
+  Rondo, `409` for an older one or a Rondo that can't install (`status.device.canUpdate: false`). `problem`
+  says why the last one didn't install. The page downloads the APK from the update page's site
+  (`jarvissax.github.io/rondo/latest.json` and `rondo.apk`).
 - `POST /api/power` `{"action": "shutdown" | "restart"}` → `{"ok": true}`; the Rondo shuts down or restarts about a second
   later. `409 {"error": "firmware"}` when it can't (`power: false`).
 

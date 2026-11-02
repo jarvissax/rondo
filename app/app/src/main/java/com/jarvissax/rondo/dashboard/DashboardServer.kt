@@ -54,6 +54,7 @@ import com.jarvissax.rondo.Config
 import com.jarvissax.rondo.Power
 import com.jarvissax.rondo.Prefs
 import com.jarvissax.rondo.ShellActivity
+import com.jarvissax.rondo.SoftwareUpdate
 import com.jarvissax.rondo.input.WheelHaptics
 import com.jarvissax.rondo.local.LocalLibrary
 import com.jarvissax.rondo.local.Playlists
@@ -179,7 +180,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         lastRequestAt = SystemClock.uptimeMillis()
         // read every body now (except uploads): an unread body would be taken for the next request
         // on a kept-alive connection
-        val b = if ((method == Method.POST || method == Method.PUT) && path != "/library/upload") body(s) else JsonObject(emptyMap())
+        val b = if ((method == Method.POST || method == Method.PUT) && path != "/library/upload" && path != "/update") body(s) else JsonObject(emptyMap())
         return when {
             path == "/status" && method == Method.GET -> json(status())
             path == "/player" && method == Method.POST -> json(playerAction(b))
@@ -222,6 +223,8 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
             path == "/server" && method == Method.PUT -> putServer(b)
             path == "/server/test" && method == Method.POST -> json(testServer())
             path == "/power" && method == Method.POST -> power(b)
+            path == "/update" && method == Method.GET -> json(updateState())
+            path == "/update" && method == Method.PUT -> update(s).apply { if (status != Response.Status.OK) closeConnection(true) } // body may be unread
             path == "/playlists" && method == Method.GET -> json(playlists())
             path == "/playlists" && method == Method.POST -> playlistChange { Playlists.create(b["name"]?.jsonPrimitive?.contentOrNull.orEmpty(), songPaths(b).orEmpty()) }
             path == "/playlists" && method == Method.PUT -> playlistChange {
@@ -330,6 +333,60 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         return ok()
     }
 
+    // --- software update (SoftwareUpdate.kt): an APK from the page, installed over Rondo ---
+
+    // the APK as the body (Content-Length, like uploads). The answer goes out first, saying which
+    // version arrived; Android then stops Rondo, swaps it and starts it again (the page reconnects)
+    private fun update(s: IHTTPSession): Response {
+        if (!SoftwareUpdate.available(context)) return error(Response.Status.CONFLICT, "firmware")
+        val length = s.headers["content-length"]?.toLongOrNull() ?: return error(Response.Status.LENGTH_REQUIRED, "length")
+        if (length > 64L * 1024 * 1024) return error(Response.Status.BAD_REQUEST, "That's too big for a Rondo update")
+        val apk = SoftwareUpdate.file(context)
+        val partial = File(apk.path + ".part")
+        try {
+            partial.outputStream().buffered(64 * 1024).use { out ->
+                val buf = ByteArray(64 * 1024)
+                var left = length
+                while (left > 0) {
+                    val r = s.inputStream.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (r < 0) break
+                    out.write(buf, 0, r)
+                    left -= r
+                }
+                if (left > 0) throw IllegalStateException("upload cut short")
+            }
+            if (!partial.renameTo(apk)) throw IllegalStateException("cannot save")
+        } catch (e: Exception) {
+            partial.delete()
+            return error(Response.Status.INTERNAL_ERROR, e.message ?: "upload failed")
+        }
+        val build = SoftwareUpdate.inspect(context, apk)
+        val installed = SoftwareUpdate.installed(context)
+        when {
+            build == null -> return error(Response.Status.BAD_REQUEST, "That isn't an update for Rondo").also { apk.delete() }
+            build.code < installed.code -> return error(Response.Status.CONFLICT, "That's an older Rondo (${build.version})").also { apk.delete() }
+        }
+        Log.i("Y1", "dashboard: update ${build!!.version} arrived")
+        main.postDelayed({
+            shell.player?.let { if (it.isPlaying()) it.togglePlay() }
+            Thread {
+                val problem = SoftwareUpdate.install(context, apk) ?: return@Thread
+                Log.w("Y1", "dashboard: update not installed: $problem")
+                updateProblem = problem
+            }.start()
+        }, 800)
+        return json(buildJsonObject { put("version", build.version) })
+    }
+
+    // why the last update from the page didn't install, for GET /api/update
+    @Volatile private var updateProblem: String? = null
+
+    private fun updateState(): JsonObject = buildJsonObject {
+        put("version", BuildConfig.VERSION_NAME)
+        put("canInstall", SoftwareUpdate.available(context))
+        put("problem", updateProblem)
+    }
+
     // --- status and player ---
 
     private fun status(): JsonObject {
@@ -344,6 +401,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
                 put("version", BuildConfig.VERSION_NAME)
                 put("model", "Innioasis Y1")
                 put("power", Power.available(context)) // shut down and restart (firmware builds)
+                put("canUpdate", SoftwareUpdate.available(context)) // install an update from the page
             })
             put("battery", buildJsonObject {
                 put("level", level)

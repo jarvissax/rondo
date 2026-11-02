@@ -106,3 +106,12 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 - `POST /device/pair` `{"code": "123456", "name": "Rondo"}` → `{"token": "<64 hex>"}`;
   `403 {"error": "code"}` (wrong or expired; 5 wrong tries cancel the code). No auth header.
 
+
+## Software updates for the Rondo (device token)
+
+- `GET /update` → `{"version": "1.0.1", "size": 6413645, "notes": "<release page>"}` for the newest
+  Rondo release that has a `rondo-<version>.apk` asset, or `{"version": null}`. The device compares it
+  with its own version (Settings › Software update).
+- `GET /update/rondo.apk` → that APK, passed through from GitHub as it downloads
+  (`application/vnd.android.package-archive`), so the Y1 never talks to anyone but its server.
+  Android on the Y1 installs it only when it's signed with the same key as the firmware's Rondo.

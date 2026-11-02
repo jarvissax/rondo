@@ -56,6 +56,7 @@ abstract class ShellListScreen(shell: ShellActivity, private val title: String) 
 
 class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") {
     private var server = "Checking…"
+    private var latest: String? = null // a newer Rondo, when the server knows one
 
     override fun render() {
         val c = context
@@ -80,6 +81,7 @@ class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") 
                     render()
                 }),
                 Row.Entry("Server", trailing = server, tile = Tiles.server, chevron = true, onSelect = { shell.push(ServerScreen(shell)) }),
+                Row.Entry("Software update", trailing = latest?.let { "$it is out" } ?: "", tile = Tiles.update, chevron = true, onSelect = { shell.push(SoftwareUpdateScreen(shell)) }),
                 Row.Entry("About", trailing = "Rondo ${BuildConfig.VERSION_NAME}", tile = Tiles.about, chevron = true, onSelect = { shell.push(AboutScreen(shell)) }),
             ) + if (com.jarvissax.rondo.Power.available(c)) listOf(
                 Row.Entry("Shut down", tile = Tiles.power, chevron = true, onSelect = { shell.push(PowerScreen(shell)) }),
@@ -91,6 +93,10 @@ class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") 
     override fun onShow() {
         render()
         checkServer()
+        if (Api.configured) launch {
+            latest = runCatching { Api.updateInfo().version }.getOrNull()?.takeIf { com.jarvissax.rondo.isNewerVersion(it, BuildConfig.VERSION_NAME) }
+            render()
+        }
         Bt.bindA2dp(context) { render() }
     }
 

@@ -26,6 +26,10 @@ data class HealthAccount(val music: Boolean = true, val videos: Boolean = true)
 @Serializable
 data class ServerTime(val epochMs: Long)
 
+// GET /update
+@Serializable
+data class UpdateInfo(val version: String? = null, val size: Long = 0, val notes: String? = null)
+
 // GET /video/short/:id
 @Serializable
 data class ShortInfo(val id: String, val title: String = "", val channel: String = "", val subtitle: String = "", val durationSec: Int? = null)
@@ -166,6 +170,35 @@ object Api {
     // asks the server for a video's manifest now, so it has the stream ready when it's played
     suspend fun warm(id: String) {
         get("/mpd/" + enc(id))
+    }
+
+    // the newest Rondo with an update APK (GET /update; version null when there's none)
+    suspend fun updateInfo() = json.decodeFromString(UpdateInfo.serializer(), get("/update"))
+
+    // the update APK, through the server, into `to`; progress from 0 to 1 as it arrives
+    suspend fun downloadUpdate(to: java.io.File, size: Long, progress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+        if (!configured) throw IOException(NOT_SET_UP)
+        client.newBuilder().readTimeout(60, TimeUnit.SECONDS).build()
+            .newCall(Request.Builder().url("$base/update/rondo.apk").build()).execute().use { res ->
+                if (!res.isSuccessful) throw HttpException(res.code(), "/update/rondo.apk")
+                val body = res.body() ?: throw IOException("empty answer")
+                val total = body.contentLength().takeIf { it > 0 } ?: size
+                val partial = java.io.File(to.path + ".part")
+                partial.outputStream().use { out ->
+                    val input = body.byteStream()
+                    val buf = ByteArray(64 * 1024)
+                    var done = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        done += n
+                        if (total > 0) progress((done.toFloat() / total).coerceAtMost(1f))
+                    }
+                    if (total > 0 && done < total) throw IOException("the download stopped early")
+                }
+                if (!partial.renameTo(to)) throw IOException("couldn't save the update")
+            }
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")

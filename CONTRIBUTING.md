@@ -8,8 +8,8 @@ ideas are welcome too.
 
 If you install Rondo, I'd love to hear about it, good or bad. Things that help the most:
 
-- **The install.** Did the web installer work? Which computer and browser? Or did you use the
-  script?
+- **The install and updates.** Did Innioasis Updater CE install Rondo without trouble? Which
+  computer? Did an update work, and which way (Settings › Software update, the dashboard, USB)?
 - **What broke or felt wrong.** A screen that misbehaves, a song that won't play, a button that
   does the wrong thing.
 - **How the wheel feels.** Too fast, too slow, the vibration, the click sound.
@@ -70,8 +70,8 @@ The ground rules:
 - **Two YouTube libraries, one job each.** youtubei.js for everything you see (home pages, search,
   playlists, up next). yt-dlp only to turn a video ID into stream URLs.
 - **Test app changes on a real Y1.** There's no emulator for the wheel. For the server, run
-  `npm test` and `npm run typecheck` in `server/`. For the web installer, `npm run build` in
-  `web-installer/`.
+  `npm test` and `npm run typecheck` in `server/`. For the update page, `npm run build` in
+  `web-updater/`.
 - **Match the code around you.** Kotlin with classic Views in the app, TypeScript on the server.
   Comments say why, not what. Text the user sees is short, plain and in American English.
 - **Never commit secrets:** `cookies.txt`, tokens, `.env` files or signing keys.

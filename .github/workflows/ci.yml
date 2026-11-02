@@ -1,4 +1,4 @@
-# Builds the app and the web installer, and tests the server, on every push and pull request.
+# Builds the app and the update page, and tests the server, on every push and pull request.
 name: CI
 
 on:
@@ -41,17 +41,17 @@ jobs:
           name: rondo-debug-apk
           path: app/app/build/outputs/apk/debug/app-debug.apk
 
-  web-installer:
+  web-updater:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web-installer
+        working-directory: web-updater
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web-installer/package-lock.json
+          cache-dependency-path: web-updater/package-lock.json
       - run: npm ci
       - run: npm run build

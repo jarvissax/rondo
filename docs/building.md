@@ -6,21 +6,22 @@ This page is for building Rondo from source and working on it. To just use it, s
 ## What's where
 
 ```
-app/                Android app (Kotlin, classic Views)
+app/                Rondo, the Android app at the heart of the firmware (Kotlin, classic Views)
   app/src/main/java/com/jarvissax/rondo/
     ui/             screens, the row list, icons, the theme
     player/         playback service, ExoPlayer setup, FM radio, lyrics
     input/          wheel and button handling, vibration
-    local/          the music and videos on the card
+    local/          the music and videos on the card, playlists
     net/            the server API, TLS for Android 4.2
     dashboard/      the dashboard's web server (the page itself is in assets/dashboard/)
+firmware/           build.sh, which makes the firmware (rom.zip) from the community's base ROM
 server/             Rondo server (Node 22, TypeScript, Fastify)
   src/              routes, YouTube browsing, stream resolving, the range proxy, the admin API
   admin/            the admin page (plain HTML, CSS and JS)
   test/             unit tests (vitest)
 infra/              Dockerfile, compose files, Caddyfile
-web-installer/      the installer web page (WebUSB)
-tools/              install script, dashboard and admin mocks, boot screen generator
+web-updater/        the update page (WebUSB)
+tools/              dashboard and admin mocks, boot screen generator
 docs/               guides; device/ holds notes on the Y1, dev/ the API references
 ```
 
@@ -32,7 +33,7 @@ docs/               guides; device/ holds notes on the Y1, dev/ the API referenc
 | --- | --- |
 | JDK | **17**. Newer JDKs (like the one bundled with recent Android Studio) can't run Gradle 8.9. |
 | Android SDK | platform 34 and build tools 34, which Gradle downloads on the first build |
-| A Y1 | there's no emulator for a click wheel |
+| A Y1 with the Rondo firmware | there's no emulator for a click wheel |
 
 Point Gradle at the SDK with `app/local.properties` (Android Studio writes it for you):
 
@@ -44,22 +45,25 @@ sdk.dir=/path/to/Android/sdk
 
 ```bash
 cd app
-./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+RONDO_SIGNING=/path/to/keystore.properties ./gradlew :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-Debug builds are signed with your machine's debug key, and releases with the release key. Android
-won't install one over the other, so switch with `adb uninstall com.jarvissax.rondo` first. That
-erases Rondo's settings.
+On the Rondo firmware, Rondo is a built-in app, and `adb install -r` installs a build over it
+the way an update does: Android keeps the firmware's copy and runs yours, with the same built-in
+permissions, and everything else stays. adb is on in the firmware; when the Y1 offers the USB
+drive, choose **Not now**.
+
+Android only accepts a build signed with the same key as the Rondo in the firmware. To work with
+your own key (or debug builds), build a firmware with your APK in it once (below) and install
+that; after that, `adb install -r` takes your builds. A new permission in the manifest is only
+granted to the firmware's copy, so that one needs a new firmware too.
 
 Rondo logs under the tag `Y1`:
 
 ```bash
 adb logcat -v time -s Y1
 ```
-
-The Y1's log buffer is small, and ExoPlayer pushes lines out within seconds, so stream it to a
-file while you test.
 
 ### Rules of the road
 
@@ -78,6 +82,35 @@ The Y1 runs Android 4.2 (API 17), which decides a lot:
 
 [docs/device/README.md](device/README.md) collects what's known about the Y1 itself: the wheel's
 key events, the FM chip, the audio paths and the video decoder's timestamp bug.
+
+## The firmware
+
+`firmware/build.sh` turns the y1-community's [Android 4.2 base ROM](https://github.com/y1-community/y1-ata-rom)
+(Type A) into the Rondo firmware, with the APK you give it:
+
+```bash
+firmware/build.sh app/app/build/outputs/apk/release/app-release.apk    # writes firmware/out/rom.zip
+```
+
+It needs curl, unzip, zip, JDK 17 and e2fsprogs (`brew install e2fsprogs` on macOS, `apt install
+e2fsprogs` on Debian and Ubuntu). It downloads the base ROM once (checking its SHA-256), then edits
+the system and data images in place with debugfs, so nothing is mounted and no root is needed:
+
+- everything in `/system/app` goes except Android's background services and Rondo, including
+  Rockbox, the Innioasis player, SystemUI, Settings and the keyboard;
+- Rockbox's button layout and switching scripts go, and the data image is emptied;
+- Rondo goes in as `/system/app/Rondo.apk`, with its boot logo and animation
+  (`tools/bootscreen/`) and the build name `Rondo <version>`;
+- `fw_package.ini` and `updater.png` tell Innioasis Updater CE what it's installing.
+
+It checks both file systems afterwards and stops if anything is off. Install the result with
+Innioasis Updater CE: **Settings › Install from a file…**. The Updater keeps an unpacked copy of
+each package and reuses it for a file of the same name, so give each build its own name (or delete
+the copy, see [docs/device](device/README.md#the-rondo-firmware)).
+
+The firmware has no SystemUI, so Rondo does its visible jobs: the click on each wheel step, the low
+battery warning, the wallpaper Android waits for before it ends the boot animation, and a power
+screen for when Power is held. [docs/device](device/README.md#the-rondo-firmware) has the details.
 
 ## The server
 
@@ -124,58 +157,82 @@ Each mock lists its options (empty card, slow device, first run, signed out and 
 of its file. The dashboard's files are in `app/app/src/main/assets/dashboard/`; on a real Y1 you
 need to rebuild the app to see changes. The admin page is in `server/admin/`.
 
-## The web installer
+## The update page
 
-`web-installer/` is the page at jarvissax.github.io/rondo: plain HTML and CSS, plus a script
+`web-updater/` is the page at jarvissax.github.io/rondo: plain HTML and CSS, plus a script
 bundled with esbuild. It talks to the Y1 with [Tango](https://github.com/yume-chan/ya-webadb)
-over WebUSB, and `src/installer.js` holds the same steps as `tools/install.sh`.
+over WebUSB, checks that the Y1 runs the Rondo firmware, and installs the newest `rondo.apk` with
+`pm install -r` (`src/updater.js`).
 
 ```bash
-cd web-installer
+cd web-updater
 npm ci
 npm run dev          # http://localhost:8000, with the locally built release APK if there is one
 ```
 
 Run `adb kill-server` first; the browser can't claim the Y1 while adb holds it. One thing to know
 about Android 4.2: its adb only has the old `shell:` service, not the `exec:` one Tango's
-subprocess helpers use (that arrived in Android 5), so `installer.js` opens `shell:` sockets
-itself.
+subprocess helpers use (that arrived in Android 5), so `updater.js` opens `shell:` sockets itself.
 
 The page is published by `.github/workflows/pages.yml` whenever a release is published, with
-that release's APK next to it (browsers can't download GitHub release files from another site).
-In the repository's settings, Pages must be set to **GitHub Actions**.
+that release's APK next to it as `rondo.apk` and `latest.json`. The dashboard's **Install** button
+downloads updates from there too, because GitHub Pages lets any page fetch its files and GitHub's
+release downloads don't. In the repository's settings, Pages must be set to **GitHub Actions**.
+
+## Updates
+
+Three ways in, one way of installing: the APK goes over the firmware's Rondo with Android's
+`pm install -r` (`SoftwareUpdate.kt` on the Y1), which needs `INSTALL_PACKAGES`, a permission
+Android 4.2 gives built-in apps. Android stops Rondo, swaps it and starts it again as the home
+screen, in about 10 seconds.
+
+- **Settings › Software update** asks the server (`GET /update`, `GET /update/rondo.apk`; the
+  server finds the release's APK on GitHub and passes it through).
+- **The dashboard** sends the APK the browser downloaded, or a file, to `PUT /api/update`.
+- **The update page** copies it over USB and runs `pm install -r` itself.
+
+An update is just the APK, so it can't change the firmware around Rondo; a release that does ships
+a new `rom.zip` as well.
 
 ## Making a release
 
 1. Raise `versionCode` and `versionName` in `app/app/build.gradle.kts`, and `version` in
-   `server/package.json`.
+   `server/package.json`. `versionCode` has to go up every time, or the update won't install.
 2. Build the release APK with the signing key. `RONDO_SIGNING` points at a `keystore.properties`
    kept outside the repo (with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`):
 
    ```bash
    cd app
    RONDO_SIGNING=/path/to/keystore.properties ./gradlew :app:assembleRelease
-   ```
-
-3. Check it, then attach `app/build/outputs/apk/release/app-release.apk` to a GitHub release
-   tagged `v<version>`, as `rondo-<version>.apk`. Publishing the release also republishes the web
-   installer with the new APK:
-
-   ```bash
    apksigner verify --min-sdk-version 17 app/build/outputs/apk/release/app-release.apk
    ```
 
-Every update has to be signed with the same key, or it won't install over the previous version.
-Keep the key backed up somewhere safe.
+3. Build the firmware with it: `firmware/build.sh app/app/build/outputs/apk/release/app-release.apk`.
+4. Install `firmware/out/rom.zip` on a Y1 with Innioasis Updater CE and check it starts, then
+   update it from the previous release to check updating.
+5. Publish a GitHub release tagged `v<version>` with three assets:
+   - **`rom.zip`**: the firmware. The name matters: Innioasis Updater CE reads it as Y1 Type A.
+   - **`rondo-<version>.apk`**: the update. Settings › Software update and the update page find it
+     by this name.
+   - **`updater.png`** (`firmware/updater.png`): the picture the Updater shows for the release.
 
-GitHub Actions builds the app and runs the server tests on every push (`.github/workflows/ci.yml`).
+   Say in the notes that it's for the **Y1, Type A**, and whether it changes the firmware around
+   Rondo (then updating needs the Updater). Publishing republishes the update page with the new APK.
+
+Innioasis Updater CE lists every release of this repository that has a `rom.zip`, so a new one
+shows up there by itself. Every APK has to be signed with the same key, or it won't install over
+the previous Rondo. Keep the key backed up somewhere safe.
+
+GitHub Actions builds the app and the update page and runs the server tests on every push
+(`.github/workflows/ci.yml`).
 
 ## Extras
 
-### Boot animation
+### Boot screens
 
-`tools/bootscreen/BootScreen.java` draws Rondo's boot animation, a spinning click wheel, as
-Android's `bootanimation.zip`:
+`tools/bootscreen/BootScreen.java` draws Rondo's boot logo and its boot animation, a spinning
+click wheel, as Android's `bootanimation.zip`. The firmware build puts both in. To try a change to
+the animation without a new firmware:
 
 ```bash
 java tools/bootscreen/BootScreen.java out/

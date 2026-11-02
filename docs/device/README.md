@@ -134,6 +134,12 @@ came out of running it on the Y1:
   has changed hands, and `isUsbMassStorageEnabled` asks vold about the wrong volume (vold calls the
   card `sdcard2`) and always says no. `Environment.getExternalStorageState()` reads `shared` while
   a computer has the card. The card shows up on a Mac as a 62.5 GB FAT32 volume named `NO NAME`.
+- **Updates without a flash.** Rondo has `INSTALL_PACKAGES` as a built-in app, and `pm install -r`
+  run by Rondo installs a newer APK over the firmware's copy: Android keeps `/system/app/Rondo.apk`,
+  runs the update from `/data/app`, and grants it the built-in permissions the firmware's copy had
+  (not new ones). Android stops Rondo for the swap and starts it again as the home screen; it's
+  back on screen about 10 s after `pm` starts. Only an APK signed with the firmware copy's key is
+  accepted. adb's `install -r` does the same.
 - **The Y1 doesn't start by itself after a flash.** Press Power once the Updater says it's done;
   the first boot is slower (Android optimizes every app), later ones take about 30 s.
 

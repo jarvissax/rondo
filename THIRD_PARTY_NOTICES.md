@@ -25,7 +25,14 @@ own license.
 | [undici](https://github.com/nodejs/undici) | MIT |
 | [sharp](https://github.com/lovell/sharp) (with libvips) | Apache-2.0 (libvips: LGPL-3.0) |
 
-## In the web installer
+## In the firmware (`rom.zip`)
+
+The firmware is built from the y1-community's [Android 4.2 base ROM](https://github.com/y1-community/y1-ata-rom)
+(`firmware/build.sh` downloads it): Android 4.2.2 from the Android Open Source Project (mostly
+Apache-2.0) with the Y1's MediaTek drivers and system files as Innioasis shipped them. Rondo takes
+apps out of it and adds its own; it redistributes the rest unchanged, as the base ROM does.
+
+## In the update page
 
 | Project | License |
 | --- | --- |

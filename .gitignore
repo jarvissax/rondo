@@ -25,9 +25,9 @@ private/
 CLAUDE.md
 .claude/
 
-# web installer
-web-installer/node_modules/
-web-installer/dist/
+# update page
+web-updater/node_modules/
+web-updater/dist/
 
 # firmware builds (large downloads and images)
 firmware/work/

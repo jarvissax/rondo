@@ -1,7 +1,8 @@
-# Publishes the web installer (web-installer/) on GitHub Pages, with the latest release's APK next
-# to it, whenever a release is published, or by hand from the Actions tab. Pages must be set to
+# Publishes the update page (web-updater/) on GitHub Pages, with the latest release's APK next to
+# it, whenever a release is published, or by hand from the Actions tab. The Rondo dashboard downloads
+# updates from here too (GitHub Pages lets any page fetch its files; release downloads don't). Pages must be set to
 # "GitHub Actions" in the repository's settings (Settings > Pages > Source).
-name: Web installer
+name: Update page
 
 on:
   release:
@@ -25,14 +26,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     defaults:
       run:
-        working-directory: web-installer
+        working-directory: web-updater
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web-installer/package-lock.json
+          cache-dependency-path: web-updater/package-lock.json
       - run: npm ci
       - run: npm run build
       - name: Add the latest release's APK
@@ -46,6 +47,6 @@ jobs:
           printf '{"version":"%s","file":"rondo.apk","size":%s}\n' "${tag#v}" "$(stat -c %s "$apk")" > dist/latest.json
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web-installer/dist
+          path: web-updater/dist
       - id: deploy
         uses: actions/deploy-pages@v4

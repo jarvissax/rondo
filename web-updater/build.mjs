@@ -1,4 +1,4 @@
-// Builds the installer page into dist/: the bundled script, the page, its style and font.
+// Builds the update page into dist/: the bundled script, the page, its style and font.
 //   node build.mjs            build
 //   node build.mjs --serve    build, add the locally built release APK, and serve on
 //                             http://localhost:8000 (WebUSB works on localhost)
