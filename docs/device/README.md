@@ -44,7 +44,8 @@ pulses per felt detent. On the same device, Menu sends `KEY_BACK` (158 → `BACK
 - **The wheel's click sound comes from the system UI.** With no app sound, a wheel pulse still
   plays a short tick from `com.android.systemui` (Innioasis' addition, in every app) while
   `Settings.System.SOUND_EFFECTS_ENABLED` is 1; setting it to 0 silences it at once. Rondo's
-  **Click sound** setting writes this switch.
+  **Click sound** setting writes this switch. The Rondo firmware has no SystemUI, so Rondo plays
+  the tick itself there (see "The Rondo firmware" below).
 - **What Android thinks the wheel is:** `dumpsys input` lists `mtk-tpd` with classes `0x15`,
   keyboard plus multi-touch screen, and a 480×360 touch axis that never fires. `mtk-tpd-kpd`
   (event3) declares the same keys but stays silent. `ACCDET` (event1) is headset-jack detection
@@ -107,6 +108,34 @@ default). The panel refreshes at 36.43 fps. Sources: `dumpsys-display.txt`, `lcd
   WebView browser and no Google services. LatinIME is the only keyboard.
 - **Updater stops adb:** Innioasis Updater kills any running `adb` when it starts. Don't use adb
   while it flashes.
+- **Updater reuses its unpacked copy by file name.** It unpacks a package into
+  `~/Library/Application Support/Innioasis Updater/downloads/.<zip name>_extracted` and reuses that
+  folder the next time a zip of the same name is installed (its `.extract_complete` marker holds
+  just `ok`), so a rebuilt `rom.zip` flashes the old images. Give each build its own file name,
+  or delete that folder first.
+
+### The Rondo firmware
+
+`firmware/build.sh` builds it from the y1-community "Android 4.2 (Dev)" Type A ROM. Facts that
+came out of running it on the Y1:
+
+- **No SystemUI.** On this ROM SystemUI opens its own touch-only "USB connected" screen when a
+  computer is plugged in, and crashes if that screen is disabled, so it is removed. Its other
+  jobs move to Rondo, only when SystemUI is missing: the wheel's click
+  (`AudioManager.playSoundEffect(FX_KEY_CLICK)`, still governed by `SOUND_EFFECTS_ENABLED`) and the
+  low battery warning (`ACTION_BATTERY_LOW`).
+- **The boot animation waits for a wallpaper.** Android 4.2 keeps it on screen
+  (`service.bootanim.exit=0`) until a wallpaper draws, and the default `ImageWallpaper` lives in
+  SystemUI. Rondo sets its own black `WallpaperService` with the hidden
+  `IWallpaperManager.setWallpaperComponent`, which needs `SET_WALLPAPER_COMPONENT` (built-in apps
+  only). Android remembers it, so only the first boot after a flash sets it.
+- **USB drive:** `StorageManager.enableUsbMassStorage` and `disableUsbMassStorage` (hidden, need
+  `MOUNT_UNMOUNT_FILESYSTEMS`, built-in apps only) work, but turning it on returns before the card
+  has changed hands, and `isUsbMassStorageEnabled` asks vold about the wrong volume (vold calls the
+  card `sdcard2`) and always says no. `Environment.getExternalStorageState()` reads `shared` while
+  a computer has the card. The card shows up on a Mac as a 62.5 GB FAT32 volume named `NO NAME`.
+- **The Y1 doesn't start by itself after a flash.** Press Power once the Updater says it's done;
+  the first boot is slower (Android optimizes every app), later ones take about 30 s.
 
 ## Hardware, storage, network, time
 
