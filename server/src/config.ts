@@ -12,6 +12,8 @@ export interface Config {
   trustProxy: boolean;
   cookiesFile: string;
   tvTokensFile: string;
+  // ask GitHub (every 6 hours) whether a newer Rondo or yt-dlp is out; UPDATE_CHECK=0 turns it off
+  updateCheck: boolean;
   ytdlpBin: string;
   port: number;
   logLevel: string;
@@ -33,6 +35,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cookiesFile: env.COOKIES_FILE ?? "/data/secrets/cookies.txt",
     // the admin page's "Sign in with a code" (tv.ts)
     tvTokensFile: env.TV_TOKENS_FILE ?? "/data/secrets/tv-oauth.json",
+    updateCheck: env.UPDATE_CHECK !== "0",
     ytdlpBin: env.YTDLP_BIN ?? "yt-dlp",
     port: Number(env.PORT ?? 3000),
     logLevel: env.LOG_LEVEL ?? "info",

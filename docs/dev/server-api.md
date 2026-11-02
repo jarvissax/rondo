@@ -16,8 +16,9 @@ how it works and its API; for setting a server up, see [docs/server.md](../serve
 - **Admin sign-in:** password → session cookie `rondo_admin` (HttpOnly, SameSite=Strict, Secure
   when the request came over HTTPS), 12 h. 5 wrong passwords a minute → `429`.
 - **The device token:** one at a time. The admin page creates a 6-digit **connect code** (10
-  minutes, one use). On the Rondo, Dashboard › Server takes the server address and that code; the
-  Rondo calls `POST /device/pair` and keeps the token it gets back. Pairing replaces the previous
+  minutes, one use). On the Rondo, Settings › Server › Connect to a server (or the dashboard's Server
+  page) takes the server address and that code; the Rondo calls `POST /device/pair` and keeps the
+  token it gets back. Pairing replaces the previous
   token (the old device stops working). "Disconnect" removes it.
   - Existing installs: until a device is paired through the admin page, the `API_TOKEN` from the
     environment (if set) is the device token, so the current Y1 keeps working. The first pairing or
@@ -72,9 +73,13 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
                "checkedAt": 1793449000000 | null},
    "device": {"paired": true, "source": "paired" | "env" | null, "name": "Rondo" | null, "pairedAt": 1793440000000 | null,
               "lastSeenAt": 1793449100000 | null, "lastIp": "203.0.113.…" | null, "userAgent": "Rondo/1.0.0 …" | null},
-   "pairing": {"code": "123456", "expiresAt": 1793449600000} | null}
+   "pairing": {"code": "123456", "expiresAt": 1793449600000} | null,
+   "updates": {"server": {"version": "1.0.1", "url": "https://github.com/…", "publishedAt": …} | null,
+               "ytdlp": {"version": "2026.11.01.233542", "url": "…", "publishedAt": …} | null, "checkedAt": … | null}}
   ```
-  `signedIn` is null when not checked yet; the server checks after a cookies upload and every
+  `updates` names only releases newer than what runs (`server/src/updates.ts`): the latest Rondo release
+  and yt-dlp's latest nightly, asked of GitHub at most every 6 hours in the background.
+  `UPDATE_CHECK=0` in the environment turns that off.  `signedIn` is null when not checked yet; the server checks after a cookies upload and every
   15 minutes.
 - `POST /admin/api/cookies` with the cookies.txt **text as the body** (`Content-Type: text/plain`,
   at most 1 MB) → `{"ok": true, "signedIn": bool, "account": {…} | null}`;

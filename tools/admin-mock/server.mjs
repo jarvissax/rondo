@@ -11,6 +11,7 @@
 //   node tools/admin-mock/server.mjs --no-autopair  codes wait for a real POST /device/pair
 //   node tools/admin-mock/server.mjs --slow       answers take 0.4-1.2 s
 //   node tools/admin-mock/server.mjs --tv         signed in with a code (otherwise "Get a code" approves itself after 8 s)
+//   node tools/admin-mock/server.mjs --updates    a newer Rondo and yt-dlp are out (updates.ts)
 //   PORT=9000 CODE_SECONDS=40 node tools/admin-mock/server.mjs
 //
 // Cookies upload: any file with a line containing youtube.com is accepted; put "signedout" in it to
@@ -34,6 +35,7 @@ const BROKEN = argv.has('--broken');
 const HTTPS = argv.has('--https');
 const AUTOPAIR = !argv.has('--no-autopair');
 const SLOW = argv.has('--slow');
+const UPDATES = argv.has('--updates');
 const PASSWORD = 'rondo-admin-pass';
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
@@ -129,6 +131,9 @@ function status() {
     },
     pairing: p ? { code: p.code, expiresAt: p.expiresAt } : null,
     tv: { ...S.tv, pending: S.tv.pending && S.tv.pending.expiresAt > Date.now() ? S.tv.pending : null },
+    updates: UPDATES
+      ? { server: { version: '1.0.1', url: 'https://github.com/jarvissax/rondo/releases/tag/v1.0.1', publishedAt: NOW - 86400000 }, ytdlp: S.ytdlp.version < '2026.11.01' ? { version: '2026.11.01.233542', url: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases', publishedAt: NOW - 3600000 } : null, checkedAt: NOW }
+      : { server: null, ytdlp: null, checkedAt: NOW },
   };
 }
 function pairDevice(name = 'Rondo') {

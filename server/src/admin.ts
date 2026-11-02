@@ -15,6 +15,7 @@ import type { Health } from "./health.js";
 import type { Resolver } from "./resolver.js";
 import type { TvAccount } from "./tv.js";
 import { hashPassword, sha256, type Store, verifyPassword } from "./store.js";
+import { isNewer, type Updates } from "./updates.js";
 
 const run = promisify(execFile);
 const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -57,6 +58,8 @@ export interface AdminDeps {
   newCode?: () => string;
   // "Sign in with a code" (tv.ts)
   tv?: TvAccount;
+  // newer Rondo and yt-dlp releases (updates.ts); none when left out
+  updates?: Updates;
 }
 
 const randomCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -277,6 +280,16 @@ export class Admin {
 
   // --- status ---
 
+  // only what is newer than what runs here: a release this server can update to, a newer yt-dlp
+  private updates(ytdlp: string | null | undefined) {
+    const u = this.deps.updates?.get();
+    return {
+      server: u?.rondo && isNewer(u.rondo.version, VERSION) ? u.rondo : null,
+      ytdlp: u?.ytdlp && isNewer(u.ytdlp.version, ytdlp) ? u.ytdlp : null,
+      checkedAt: u?.checkedAt ?? null,
+    };
+  }
+
   status(req: FastifyRequest) {
     const h = this.deps.health.state();
     const device = this.deps.store.data.device;
@@ -295,6 +308,7 @@ export class Admin {
       },
       pairing: this.pairing && this.pairing.expiresAt > Date.now() ? { code: this.pairing.code, expiresAt: this.pairing.expiresAt } : null,
       tv: this.deps.tv?.state() ?? null,
+      updates: this.updates(h.ytdlp),
     };
   }
 

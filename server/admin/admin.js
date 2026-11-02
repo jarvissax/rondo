@@ -61,6 +61,8 @@ const timeAttr = (t) => `datetime="${new Date(t).toISOString()}" title="${esc(df
 const signedInAs = (a) => (a?.name ? `Signed in as ${a.name}${a.handle ? ` (${a.handle})` : ''}` : 'Signed in');
 const ORIGIN = location.origin;
 const LOCAL = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
+// the server guide's update steps (a server updates with git pull and docker compose, not from here)
+const UPDATE_HELP = 'https://github.com/jarvissax/rondo/blob/main/docs/server.md#keeping-it-running';
 
 // ---------- API ----------
 class ApiError extends Error {
@@ -512,6 +514,10 @@ function renderOverview() {
   if (a.yt.level === 'warn') todo.push(['warn', 'cookies.txt is signed out: YouTube Music home and history are generic. Upload new cookies.', '#youtube', 'Upload cookies']);
   if (a.dev.level === 'warn') todo.push(['warn', S.pair && !S.pair.expired ? 'A connect code is waiting for your Rondo.' : 'Connect your Rondo so it can stream from this server.', '#device', S.pair && !S.pair.expired ? 'Show code' : 'Connect']);
   if (a.dev.level === 'info') todo.push(['info', 'Your Rondo uses API_TOKEN from the server’s environment. Connect it here to give it its own token.', '#device', 'Connect']);
+  // newer releases (updates.ts on the server, asked of GitHub every 6 hours)
+  const news = st0().updates || {};
+  if (news.ytdlp) todo.push(['info', `yt-dlp ${news.ytdlp.version} is out. Updating keeps playback working when YouTube changes.`, '#resolver', 'Update']);
+  if (news.server) todo.push(['info', `Rondo ${news.server.version} is out. This server runs ${a.s.version}.`, UPDATE_HELP, 'How to update']);
   const problems = todo.filter((t) => t[0] !== 'info').length;
   // a fresh server with nothing broken: the two setup steps
   const fresh = !a.c.present && !a.d.source && problems === 2;
@@ -546,7 +552,7 @@ function renderOverview() {
       <h2 class="sum-title">${title}</h2>
       <p class="sum-sub">${sub}</p>
     </div>
-    ${todo.length ? `<ul class="todo">${todo.map(([lv, text, href, label]) => `<li class="${lv}">${icon(lv === 'info' ? 'info' : 'alert')}<span>${esc(text)}</span><a class="btn btn-sm" href="${href}">${label}</a></li>`).join('')}</ul>` : ''}
+    ${todo.length ? `<ul class="todo">${todo.map(([lv, text, href, label]) => `<li class="${lv}">${icon(lv === 'info' ? 'info' : 'alert')}<span>${esc(text)}</span><a class="btn btn-sm" href="${href}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}>${label}</a></li>`).join('')}</ul>` : ''}
     ${chain}`);
 
   const up = (a.s.uptimeSec ?? 0) + Math.floor((Date.now() - S.statusAt) / 1000);
@@ -557,7 +563,7 @@ function renderOverview() {
       <div class="row-end">${pill(level, pillText)}${href ? icon('chevron', 'row-chev') : ''}</div></${tag}>`;
   };
   setHtml($('#statusRows'), [
-    row({ tile: 'rondo', title: 'Server', sub: `Rondo server ${a.s.version || ''} · up ${uptime(up)}`, level: 'ok', pillText: 'Running' }),
+    row({ tile: 'rondo', title: 'Server', sub: `Rondo server ${a.s.version || ''} · up ${uptime(up)}${st0().updates?.server ? ` · ${st0().updates.server.version} is out` : ''}`, level: st0().updates?.server ? 'info' : 'ok', pillText: st0().updates?.server ? 'Update' : 'Running' }),
     row({ tile: a.https ? 'ok' : 'warn', glyph: a.https ? 'lock' : 'unlock', title: 'Connection', sub: a.conn.sub, level: a.conn.level, pillText: a.conn.pill }),
     row({ href: '#resolver', tile: 'resolver', glyph: 'bolt', title: 'Resolver', sub: `yt-dlp ${a.y.version || '(version unknown)'}. ${a.rz.sub}`, level: a.rz.level, pillText: a.rz.pill }),
     row({ href: '#youtube', tile: 'youtube', glyph: 'account', title: 'YouTube account', sub: a.yt.detail, level: a.yt.level, pillText: a.yt.pill }),
@@ -858,14 +864,15 @@ function pairHtml(d) {
       <p class="expiry" data-countdown role="timer" aria-live="off"></p>
       <div class="drain" aria-hidden="true"><span data-drain></span></div>
       <div class="pc-actions">
+        ${p.expired ? '' : `<button class="btn btn-sm" type="button" data-act="copyCode">${icon('copy')}<span>Copy code</span></button>`}
         <button class="btn ${p.expired ? 'btn-primary' : 'btn-sm'}" type="button" data-act="newCode"${S.codeBusy ? ' disabled' : ''}>${icon('refresh')}<span>New code</span></button>
         <button class="btn btn-sm btn-quiet" type="button" data-act="cancelCode">${p.expired ? 'Close' : 'Cancel'}</button>
       </div>
     </div>
     <div class="pc-steps">
       <ol class="steps">
-        <li>On your Rondo, open <b class="nowrap">Settings › Dashboard</b>, then open the dashboard it shows in a browser.</li>
-        <li>In the dashboard’s <b>Server</b> page, enter this server’s address:
+        <li>On your Rondo, open <b class="nowrap">Settings › Server › Connect to a server</b>, or the <b>Server</b> page of its dashboard (<b class="nowrap">Settings › Dashboard</b>).</li>
+        <li>Enter this server’s address:
           <div class="addr"><span>${esc(ORIGIN)}</span><button class="ib ib-sm" type="button" data-act="copy" aria-label="Copy the address">${icon('copy')}</button></div></li>
         <li>Then enter the code. Your Rondo connects right away.</li>
       </ol>
@@ -929,24 +936,34 @@ async function disconnect() {
     await poll();
   } catch (e) { if (e.status !== 401) toast(`Not disconnected. ${reason(e)}`, 'err'); }
 }
-async function copyAddress(btn) {
-  let ok = false;
-  try { await navigator.clipboard.writeText(ORIGIN); ok = true; } catch {
-    // http on a LAN address: no Clipboard API outside secure contexts
-    const ta = Object.assign(document.createElement('textarea'), { value: ORIGIN });
+// to the clipboard; plain http on a LAN address has no Clipboard API, so the old way there
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
     ta.setAttribute('readonly', '');
     ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
     document.body.append(ta);
     ta.select();
+    let ok = false;
     try { ok = document.execCommand('copy'); } catch { ok = false; }
     ta.remove();
+    return ok;
   }
-  if (ok) {
-    $('use', btn).setAttribute('href', '#i-check');
-    setTimeout(() => $('use', btn)?.setAttribute('href', '#i-copy'), 1600);
-    toast('Address copied');
-  } else toast('Couldn’t copy. Select the address and copy it.', 'err');
 }
+async function copyWith(btn, text, what) {
+  if (!(await copyText(text))) return toast(`Couldn’t copy. Select the ${what.toLowerCase()} and copy it.`, 'err');
+  const use = $('use', btn);
+  if (use) {
+    use.setAttribute('href', '#i-check');
+    setTimeout(() => $('use', btn)?.setAttribute('href', '#i-copy'), 1600);
+  }
+  toast(`${what} copied`);
+}
+// a connect code the way it's shown and typed: 123 456
+const spacedCode = (code) => { const c = String(code).padStart(6, '0'); return `${c.slice(0, 3)} ${c.slice(3)}`; };
 
 // ---------- resolver ----------
 function renderResolver() {
@@ -963,7 +980,7 @@ function renderResolver() {
   else if (R.test) test = `<div class="rz-line bad">${icon('alert')}<span>Playback failed${R.test.error ? `: <b>${esc(R.test.error)}</b>` : '.'}</span></div>`;
   setHtml($('#resolverRows'), `
     <div class="row">${tileHtml('resolver', 'bolt')}
-      <div class="row-main"><div class="row-title">yt-dlp</div><div class="row-sub ver">Version ${esc(a.y.version || 'unknown')}</div></div>
+      <div class="row-main"><div class="row-title">yt-dlp</div><div class="row-sub ver">Version ${esc(a.y.version || 'unknown')}${st0().updates?.ytdlp ? ` · <b>${esc(st0().updates.ytdlp.version)}</b> is out` : ''}</div></div>
       ${pill(a.rz.level, a.rz.pill)}
     </div>
     <div class="row rz">${tileHtml('settings', 'refresh')}
@@ -1103,7 +1120,8 @@ const ACTIONS = {
   newCode: () => newCode(false),
   cancelCode,
   disconnect,
-  copy: (b) => copyAddress(b),
+  copy: (b) => copyWith(b, ORIGIN, 'Address'),
+  copyCode: (b) => S.pair && copyWith(b, spacedCode(S.pair.code), 'Code'),
   doneOk: () => { S.celebrate = false; renderDevice(); renderChrome(); },
   checkCookies,
   removeCookies,
@@ -1112,9 +1130,7 @@ const ACTIONS = {
   tvStart,
   tvCancel,
   tvSignOut,
-  tvCopy: async () => {
-    try { await navigator.clipboard.writeText(st0().tv?.pending?.code || ''); toast('Code copied'); } catch { toast('Couldn’t copy. Select the code instead.', 'err'); }
-  },
+  tvCopy: (b) => copyWith(b, st0().tv?.pending?.code || '', 'Code'),
 };
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');
