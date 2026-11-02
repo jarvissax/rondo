@@ -42,13 +42,16 @@ class QualityTrackSelection(
     checkpoints,
     Clock.DEFAULT,
 ) {
-    private fun indexForHeight(height: Int): Int? = (0 until length()).firstOrNull { getFormat(it).height == height }
+    // "360p" means the short side of the picture, so a vertical short (360x640) counts as 360p too
+    private fun side(i: Int): Int = getFormat(i).let { if (it.width > 0 && it.height > 0) minOf(it.width, it.height) else it.height }
+
+    private fun indexForHeight(height: Int): Int? = (0 until length()).firstOrNull { side(it) == height }
 
     // tracks are ordered by decreasing bitrate: the first one under the cap is the best allowed
     private fun autoIndex(): Int {
         val adaptive = super.getSelectedIndex()
-        if (getFormat(adaptive).height <= QualityPreference.AUTO_MAX_HEIGHT) return adaptive
-        return (0 until length()).firstOrNull { getFormat(it).height <= QualityPreference.AUTO_MAX_HEIGHT } ?: adaptive
+        if (side(adaptive) <= QualityPreference.AUTO_MAX_HEIGHT) return adaptive
+        return (0 until length()).firstOrNull { side(it) <= QualityPreference.AUTO_MAX_HEIGHT } ?: adaptive
     }
 
     override fun getSelectedIndex(): Int = QualityPreference.height?.let { indexForHeight(it) } ?: autoIndex()

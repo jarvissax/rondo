@@ -29,8 +29,12 @@ abstract class ShellListScreen(shell: ShellActivity, private val title: String) 
     protected lateinit var list: RowList
     private lateinit var status: ShellStatusBar
 
+    // a theme change rebuilds the screen: stay on the same row (false: render picks the row itself)
+    protected open val keepRowOnRebuild = true
+
     override fun build(): View {
         val c = context
+        val before = if (::list.isInitialized) list.selected else -1
         val root = LinearLayout(c).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Palette.shellBg)
@@ -40,6 +44,7 @@ abstract class ShellListScreen(shell: ShellActivity, private val title: String) 
         list = RowList(c, RowStyle.SHELL).apply { setPadding(0, c.dp(3), 0, 0) }
         root.addView(list, lp(MATCH, 0, 1f))
         render()
+        if (before >= 0 && keepRowOnRebuild) list.select(before)
         return root
     }
 
@@ -60,6 +65,7 @@ class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") 
                 Row.Entry("Dashboard", tile = Tiles.dashboard, chevron = true, onSelect = { shell.push(DashboardScreen(shell)) }),
                 Row.Entry("Wi-Fi", trailing = wifiName(c), tile = Tiles.wifi, chevron = true, onSelect = { shell.push(WifiScreen(shell)) }),
                 Row.Entry("Bluetooth", trailing = bluetoothState(), tile = Tiles.bluetooth, chevron = true, onSelect = { shell.push(BluetoothScreen(shell)) }),
+                Row.Entry("Theme", trailing = accentName(Config.theme.accent), tile = Tiles.theme, chevron = true, onSelect = { shell.push(ThemeScreen(shell)) }),
                 Row.Entry("Video quality", trailing = quality, tile = Tiles.quality, chevron = true, onSelect = { shell.push(QualityChoiceScreen(shell)) }),
                 Row.Entry("Brightness", trailing = "${brightnessPercent()}%", tile = Tiles.brightness, chevron = true, onSelect = { shell.push(BrightnessScreen(shell)) }),
                 Row.Entry("Screen off after", trailing = timeoutName(screenTimeout()), tile = Tiles.timer, chevron = true, onSelect = { shell.push(TimeoutScreen(shell)) }),
@@ -73,9 +79,11 @@ class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") 
                     setClickSound(c, !clickSound(c))
                     render()
                 }),
-                Row.Entry("Server", trailing = server, tile = Tiles.server, onSelect = { checkServer() }),
-                Row.Entry("About", trailing = "Rondo ${BuildConfig.VERSION_NAME}", tile = Tiles.about),
-            ),
+                Row.Entry("Server", trailing = server, tile = Tiles.server, chevron = true, onSelect = { shell.push(ServerScreen(shell)) }),
+                Row.Entry("About", trailing = "Rondo ${BuildConfig.VERSION_NAME}", tile = Tiles.about, chevron = true, onSelect = { shell.push(AboutScreen(shell)) }),
+            ) + if (com.jarvissax.rondo.Power.available(c)) listOf(
+                Row.Entry("Shut down", tile = Tiles.power, chevron = true, onSelect = { shell.push(PowerScreen(shell)) }),
+            ) else emptyList(),
             keepSelection = true,
         )
     }
@@ -190,8 +198,9 @@ class BrightnessScreen(shell: ShellActivity) : ChoiceScreen<Int>(shell, "Brightn
 
 fun onOff(on: Boolean) = if (on) "On" else "Off"
 
-// The tick on each wheel step is not ours: the Y1's system UI plays it for every app while Android's
-// "sound effects" setting is on (Rockbox's setup script turned it off; docs/device/README.md).
+// The tick on each wheel step: the Y1's system UI plays it for every app while Android's "sound
+// effects" setting is on (Rockbox's setup script turned it off; docs/device/README.md). The Rondo
+// firmware has no system UI, and Rondo plays it itself under the same setting (ShellActivity).
 fun clickSound(c: android.content.Context): Boolean =
     Settings.System.getInt(c.contentResolver, Settings.System.SOUND_EFFECTS_ENABLED, 1) != 0
 
@@ -247,4 +256,45 @@ class TimeoutScreen(shell: ShellActivity) : ChoiceScreen<Int>(shell, "Screen off
     override fun pick(value: Int) {
         Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, value)
     }
+}
+
+// Settings › About: what the dashboard's Overview shows about the device.
+class AboutScreen(shell: ShellActivity) : ShellListScreen(shell, "About") {
+    override fun render() {
+        val c = context
+        val battery = c.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val charging = (battery?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val wifi = (c.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager).connectionInfo
+        val ip = wifi?.ipAddress ?: 0
+        val rows = mutableListOf<Row>(
+            Row.Entry("Rondo", trailing = BuildConfig.VERSION_NAME, tile = Tiles.about),
+            Row.Entry("Model", trailing = "Innioasis Y1"),
+            Row.Entry("Battery", trailing = "${Math.round(com.jarvissax.rondo.ui.batteryLevel(c) * 100)}%" + if (charging) " · charging" else ""),
+        )
+        listOf("/storage/sdcard0" to "Card", "/storage/sdcard1" to "Internal storage").forEach { (path, name) ->
+            val stat = runCatching { android.os.StatFs(path) }.getOrNull() ?: return@forEach
+            @Suppress("DEPRECATION")
+            val total = stat.blockCount.toLong() * stat.blockSize
+            @Suppress("DEPRECATION")
+            val free = stat.availableBlocks.toLong() * stat.blockSize
+            if (total > 0) rows += Row.Entry(name, trailing = "${bytes(free)} free of ${bytes(total)}")
+        }
+        rows += Row.Entry("Wi-Fi", trailing = wifiName(c))
+        if (ip != 0) rows += Row.Entry("IP address", trailing = "${ip and 0xff}.${ip shr 8 and 0xff}.${ip shr 16 and 0xff}.${ip shr 24 and 0xff}")
+        rows += Row.Entry("Server", trailing = Api.base.removePrefix("https://").removePrefix("http://").ifEmpty { "Not set up" })
+        list.setRows(rows)
+    }
+
+    private var ticks = 0
+
+    override fun onTick() {
+        super.onTick()
+        if (++ticks % 20 == 0) render() // battery and Wi-Fi, every 10 s
+    }
+}
+
+fun bytes(n: Long): String = when {
+    n >= 1L shl 30 -> String.format("%.1f GB", n / (1L shl 30).toDouble())
+    n >= 1L shl 20 -> String.format("%.0f MB", n / (1L shl 20).toDouble())
+    else -> "${n / 1024} KB"
 }

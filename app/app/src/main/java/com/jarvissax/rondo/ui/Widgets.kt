@@ -120,7 +120,8 @@ class StatusIcons(context: Context, color: Int, private val showWifi: Boolean = 
 // YouTube services show their own logo on a white tile instead, like their app icons.
 enum class Brand { YOUTUBE, YOUTUBE_MUSIC }
 
-data class Tile(val kind: IconView.Kind, val top: Int, val bottom: Int, val brand: Brand? = null)
+// glyph = false: the colored tile alone (the accent color swatches in Settings › Theme)
+data class Tile(val kind: IconView.Kind, val top: Int, val bottom: Int, val brand: Brand? = null, val glyph: Boolean = true)
 
 object Tiles {
     // top/bottom of the brand tiles: the menu preview's dark backdrop (the YouTube sections are dark)
@@ -147,6 +148,16 @@ object Tiles {
     val wheel = Tile(IconView.Kind.DISC, Color.parseColor("#6a8cff"), Color.parseColor("#2c4fd6")) // as .t-wheel in the dashboard
     val videos = Tile(IconView.Kind.PLAY, Color.parseColor("#ff6b5a"), Color.parseColor("#e01e1e"))
     val shuffle = Tile(IconView.Kind.SHUFFLE, Color.parseColor("#7be07b"), Color.parseColor("#26a83b"))
+    val power = Tile(IconView.Kind.POWER, Color.parseColor("#ff7a7a"), Color.parseColor("#e0283c"))
+    val restart = Tile(IconView.Kind.REFRESH, Color.parseColor("#ffb04d"), Color.parseColor("#f07a12"))
+    val theme = Tile(IconView.Kind.THEME, Color.parseColor("#c58cff"), Color.parseColor("#7b3fe0"))
+    val playlists = Tile(IconView.Kind.PLAYLIST, Color.parseColor("#5fb7ff"), Color.parseColor("#1f73e0"))
+    val add = Tile(IconView.Kind.PLUS, Color.parseColor("#7be07b"), Color.parseColor("#26a83b"))
+    val search = Tile(IconView.Kind.SEARCH, Color.parseColor("#b8bcc4"), Color.parseColor("#6f747d"))
+    val recent = Tile(IconView.Kind.TIMER, Color.parseColor("#3fd0c9"), Color.parseColor("#0f8f96"))
+    val delete = Tile(IconView.Kind.TRASH, Color.parseColor("#ff7a7a"), Color.parseColor("#e0283c"))
+    val rescan = Tile(IconView.Kind.REFRESH, Color.parseColor("#b8bcc4"), Color.parseColor("#6f747d"))
+    val shorts = Tile(IconView.Kind.SHORTS, Color.parseColor("#ff6b5a"), Color.parseColor("#e01e1e"))
 }
 
 class IconTile(context: Context, tile: Tile) : FrameLayout(context) {
@@ -154,7 +165,7 @@ class IconTile(context: Context, tile: Tile) : FrameLayout(context) {
         when (tile.brand) {
             null -> {
                 background = gradient(tile.top, tile.bottom, context.dpf(7f))
-                addView(IconView(context, tile.kind, Color.WHITE), flp(context.dp(16), context.dp(16), Gravity.CENTER))
+                if (tile.glyph) addView(IconView(context, tile.kind, Color.WHITE), flp(context.dp(16), context.dp(16), Gravity.CENTER))
             }
             Brand.YOUTUBE -> {
                 background = rounded(Color.WHITE, context.dpf(7f), Color.argb(28, 0, 0, 0), 1)

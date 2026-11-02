@@ -29,7 +29,7 @@ needed). This page describes its API, for anyone working on the dashboard or scr
 ### Status and player
 - `GET /api/status` →
   ```json
-  {"device": {"name": "Rondo", "version": "1.0.0", "model": "Innioasis Y1"},
+  {"device": {"name": "Rondo", "version": "1.0.0", "model": "Innioasis Y1", "power": true},
    "battery": {"level": 87, "charging": false},
    "storage": {"freeBytes": 31234567890, "totalBytes": 62500000000},
    "wifi": {"ssid": "Home", "signal": 3, "ip": "192.168.1.118"},
@@ -38,9 +38,12 @@ needed). This page describes its API, for anyone working on the dashboard or scr
               "volume": 2, "maxVolume": 15} | null}
   ```
   `art` is a URL on the device for card songs, a `/api/thumb?u=` proxy URL for YouTube Music, or null.
+  `power`: the Rondo can shut down and restart (the Rondo firmware; an installed copy can't).
 - `POST /api/player` `{"action": "toggle" | "next" | "previous" | "seek" | "volume", "positionMs"?: n, "volume"?: n}` → the `player` object.
-- `POST /api/player/play` `{"path": "/storage/sdcard0/Music/x.flac"}` → plays that song with the
-  current library order as the queue → the `player` object.
+- `POST /api/player/play` `{"path": "/storage/sdcard0/Music/x.flac", "queue"?: ["…", …]}` → plays that song
+  with `queue` (a playlist's songs) or else the current library order as the queue → the `player` object.
+- `POST /api/power` `{"action": "shutdown" | "restart"}` → `{"ok": true}`; the Rondo shuts down or restarts about a second
+  later. `409 {"error": "firmware"}` when it can't (`power: false`).
 
 ### Offline library (microSD)
 - `GET /api/library` →
@@ -54,8 +57,22 @@ needed). This page describes its API, for anyone working on the dashboard or scr
   extensions: flac mp3 m4a aac ogg opus wav mp4 m4v mkv 3gp webm lrc. An existing file of that
   name gets ` (2)` added. The library picks it up on the next scan.
 - `DELETE /api/library?path=<file>` → `{"ok": true}` (only files inside the card folders above,
-  only media/lrc extensions).
+  only media/lrc extensions). The song also leaves every playlist.
 - `POST /api/library/rescan` → `{"ok": true}`; `GET /api/library` shows `scanning` meanwhile.
+
+### Playlists
+Songs on the card in a chosen order, kept as `.m3u8` files in the card's `Playlists` folder
+(`local/Playlists.kt`): songs relative to that folder (`../Music/x.flac`), so music players on a
+computer open them too, and they survive reflashing. The file name is the playlist's name (up to 60
+characters; FAT can't hold `/ \ : * ? " < > |`, which become spaces). The Rondo's Library › Playlists
+works on the same files.
+- `GET /api/playlists` → `{"playlists": [{"name", "paths": ["/storage/sdcard0/Music/x.flac", …], "missing": 1,
+  "durationSec": 2950}]}` sorted by name; `missing` counts songs no longer on the card (kept in the file).
+- `POST /api/playlists` `{"name": "Road trip", "paths"?: […]}` → the playlist; `409` when the name is taken.
+- `PUT /api/playlists?name=<name>` `{"name"?: "new name", "paths"?: […]}` → the playlist: a rename and/or the
+  whole new song list (reordered, added to, removed from). Only audio files on the card are kept.
+- `DELETE /api/playlists?name=<name>` → `{"ok": true}` (the songs stay on the card).
+- Errors are `{"error": "<a sentence to show>"}`.
 
 ### Settings
 - `GET /api/settings` →

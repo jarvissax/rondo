@@ -22,8 +22,8 @@ android {
         applicationId = "com.jarvissax.rondo"
         minSdk = 17
         targetSdk = 22
-        versionCode = 110
-        versionName = "1.1.0"
+        versionCode = 100
+        versionName = "1.0.0"
         multiDexEnabled = true
     }
 

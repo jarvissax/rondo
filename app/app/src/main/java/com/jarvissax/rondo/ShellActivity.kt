@@ -27,6 +27,7 @@ import com.jarvissax.rondo.ui.Screen
 import com.jarvissax.rondo.ui.VolumeOverlay
 import com.jarvissax.rondo.ui.flp
 import com.jarvissax.rondo.ui.screens.MainMenuScreen
+import com.jarvissax.rondo.ui.screens.PowerScreen
 
 // The whole app is one Activity hosting a back stack of Screens.
 class ShellActivity : AppCompatActivity() {
@@ -84,6 +85,7 @@ class ShellActivity : AppCompatActivity() {
             audio.loadSoundEffects()
             registerReceiver(batteryLowReceiver, IntentFilter(Intent.ACTION_BATTERY_LOW))
         }
+        if (Power.available(this)) registerReceiver(powerKeyReceiver, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
         dispatcher.acceleration = Config.behavior.wheelAcceleration
         haptics.level = Config.behavior.wheelVibration
         dispatcher.onPulse = { spin ->
@@ -104,6 +106,20 @@ class ShellActivity : AppCompatActivity() {
                 Thread { if (UsbDrive.enabled()) UsbDrive.setEnabled(context, false) }.start()
                 if (stack.lastOrNull() is UsbDriveScreen) pop()
             }
+        }
+    }
+
+    // Holding Power opens Android's power dialog, which comes up blank on this firmware and needs a
+    // touch screen anyway. It announces itself with CLOSE_SYSTEM_DIALOGS ("globalactions") just
+    // before it shows; any other reason closes it, so Rondo sends one (twice: it may not be up yet)
+    // and shows its own Power screen instead (firmware builds only).
+    private val powerKeyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getStringExtra("reason") != "globalactions") return
+            val close = Runnable { sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS).putExtra("reason", "rondo")) }
+            handler.post(close)
+            handler.postDelayed(close, 400)
+            if (stack.lastOrNull() !is PowerScreen) push(PowerScreen(this@ShellActivity))
         }
     }
 
@@ -159,6 +175,7 @@ class ShellActivity : AppCompatActivity() {
         unregisterReceiver(screenReceiver)
         unregisterReceiver(usbReceiver)
         if (noSystemUi) unregisterReceiver(batteryLowReceiver)
+        if (Power.available(this)) unregisterReceiver(powerKeyReceiver)
         unbindService(connection)
         super.onDestroy()
     }

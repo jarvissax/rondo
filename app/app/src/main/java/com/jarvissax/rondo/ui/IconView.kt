@@ -9,7 +9,7 @@ import android.view.View
 
 // The mockups' SVG icons, drawn in a 24-unit box. Android 4.2's fonts lack most symbol glyphs.
 class IconView(context: Context, var kind: Kind, var color: Int) : View(context) {
-    enum class Kind { CHEVRON, PLAY, PAUSE, BATTERY, WIFI, SEARCH, NOTE, SHUFFLE, REPEAT, VOLUME, CHECK, BLUETOOTH, GEAR, FOLDER, BARS, INFO, PERSON, DISC, SUN, TIMER, SCREEN, CLOUD, RADIO }
+    enum class Kind { CHEVRON, PLAY, PAUSE, BATTERY, WIFI, SEARCH, NOTE, SHUFFLE, REPEAT, VOLUME, CHECK, BLUETOOTH, GEAR, FOLDER, BARS, INFO, PERSON, DISC, SUN, TIMER, SCREEN, CLOUD, RADIO, POWER, THEME, PLAYLIST, PLUS, TRASH, REFRESH, SHORTS }
 
     var level = 0.8f // battery fill, 0..1
         set(value) {
@@ -196,6 +196,53 @@ class IconView(context: Context, var kind: Kind, var color: Int) : View(context)
                     )
                 }
                 stroke.strokeCap = Paint.Cap.ROUND
+            }
+            Kind.POWER -> {
+                stroke.strokeWidth = 2.4f
+                canvas.drawArc(RectF(4f, 4.5f, 20f, 20.5f), -55f, 290f, false, stroke)
+                canvas.drawLine(12f, 2.5f, 12f, 11.5f, stroke)
+            }
+            Kind.THEME -> {
+                // a circle half filled, as on the dashboard's Theme page
+                stroke.strokeWidth = 2.2f
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                canvas.drawArc(RectF(3.5f, 3.5f, 20.5f, 20.5f), -90f, 180f, true, fill)
+            }
+            Kind.PLAYLIST -> {
+                stroke.strokeWidth = 2.2f
+                canvas.drawLine(3f, 5.5f, 15f, 5.5f, stroke)
+                canvas.drawLine(3f, 10.5f, 15f, 10.5f, stroke)
+                canvas.drawLine(3f, 15.5f, 10f, 15.5f, stroke)
+                stroke.strokeWidth = 1.8f
+                canvas.drawLine(20f, 7f, 20f, 18f, stroke)
+                canvas.drawCircle(17f, 18f, 3f, fill)
+            }
+            Kind.PLUS -> {
+                stroke.strokeWidth = 2.6f
+                canvas.drawLine(12f, 4.5f, 12f, 19.5f, stroke)
+                canvas.drawLine(4.5f, 12f, 19.5f, 12f, stroke)
+            }
+            Kind.TRASH -> {
+                stroke.strokeWidth = 2f
+                canvas.drawLine(4f, 7f, 20f, 7f, stroke)
+                path.moveTo(9.5f, 7f); path.lineTo(9.5f, 4.5f); path.lineTo(14.5f, 4.5f); path.lineTo(14.5f, 7f)
+                path.moveTo(6.5f, 7f); path.lineTo(7.4f, 20f); path.lineTo(16.6f, 20f); path.lineTo(17.5f, 7f)
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(10.2f, 11f, 10.2f, 16.5f, stroke)
+                canvas.drawLine(13.8f, 11f, 13.8f, 16.5f, stroke)
+            }
+            Kind.REFRESH -> {
+                stroke.strokeWidth = 2.2f
+                canvas.drawArc(RectF(4f, 4f, 20f, 20f), -45f, 315f, false, stroke)
+                path.moveTo(20f, 3.8f); path.lineTo(20f, 8.5f); path.lineTo(15.3f, 8.5f)
+                canvas.drawPath(path, stroke)
+            }
+            Kind.SHORTS -> {
+                // a tall rounded screen with a play triangle: a short vertical video
+                stroke.strokeWidth = 2.2f
+                canvas.drawRoundRect(RectF(5.5f, 2f, 18.5f, 22f), 3.5f, 3.5f, stroke)
+                path.moveTo(10f, 8f); path.lineTo(10f, 16f); path.lineTo(16f, 12f); path.close()
+                canvas.drawPath(path, fill)
             }
         }
         canvas.restore()

@@ -20,6 +20,7 @@ import com.jarvissax.rondo.ui.MATCH
 import com.jarvissax.rondo.ui.Palette
 import com.jarvissax.rondo.ui.Row
 import com.jarvissax.rondo.ui.Screen
+import com.jarvissax.rondo.ui.Tiles
 import com.jarvissax.rondo.ui.WRAP
 import com.jarvissax.rondo.ui.dp
 import com.jarvissax.rondo.ui.dpf
@@ -320,7 +321,8 @@ class FmOptionsScreen(shell: ShellActivity) : ShellListScreen(shell, "FM Radio")
     override fun onHide() = FmRadio.unlisten(changed)
 }
 
-// Saved stations first, then what the last scan found; center tunes and goes back to the radio
+// Saved stations first, then what the last scan found; center tunes and goes back to the radio.
+// Hold center: rename, move or remove a saved station, or save a found one (like the dashboard).
 class FmStationsScreen(shell: ShellActivity) : ShellListScreen(shell, "Stations") {
     override fun render() {
         val r = Config.radio
@@ -332,14 +334,53 @@ class FmStationsScreen(shell: ShellActivity) : ShellListScreen(shell, "Stations"
         rows += Row.Header("Saved")
         if (r.presets.isEmpty()) rows += Row.Entry("No saved stations", subtitle = "Hold center on the radio, then Save", enabled = false)
         r.presets.forEach { p ->
-            rows += Row.Entry("${fmName(p.frequency)} MHz", subtitle = p.name.ifEmpty { r.names[p.frequency].orEmpty() }, trailing = if (p.frequency == FmRadio.state.frequency) "Playing" else "", onSelect = { pick(p.frequency) })
+            rows += Row.Entry("${fmName(p.frequency)} MHz", subtitle = p.name.ifEmpty { r.names[p.frequency].orEmpty() }, trailing = if (p.frequency == FmRadio.state.frequency) "Playing" else "", onSelect = { pick(p.frequency) }, onLongSelect = { shell.push(FmPresetScreen(shell, p.frequency)) })
         }
         val found = r.found.filter { f -> r.presets.none { it.frequency == f } }
         rows += Row.Header("Found")
         if (r.found.isEmpty()) rows += Row.Entry("Not scanned yet", subtitle = "Scan for stations in the radio's options", enabled = false)
         found.forEach { f ->
-            rows += Row.Entry("${fmName(f)} MHz", subtitle = r.names[f].orEmpty(), trailing = if (f == FmRadio.state.frequency) "Playing" else "", onSelect = { pick(f) })
+            rows += Row.Entry("${fmName(f)} MHz", subtitle = r.names[f].orEmpty(), trailing = if (f == FmRadio.state.frequency) "Playing" else "hold center: save", onSelect = { pick(f) }, onLongSelect = {
+                Config.update(Config.Change.RADIO) { d -> d.copy(radio = d.radio.copy(presets = d.radio.presets + Config.Preset(f, r.names[f].orEmpty().take(40)))) }
+                render()
+            })
         }
         list.setRows(rows, keepSelection = true)
     }
+
+    override fun onShow() = render()
+}
+
+// A saved station's options: the dashboard's rename, reorder and delete.
+class FmPresetScreen(shell: ShellActivity, private val frequency: Int) : ShellListScreen(shell, "${fmName(frequency)} MHz") {
+    override fun render() {
+        val presets = Config.radio.presets
+        val at = presets.indexOfFirst { it.frequency == frequency }
+        if (at < 0) return list.showMessage("Not saved any more")
+        val name = presets[at].name
+        list.setRows(listOf(
+            Row.Entry("Rename", subtitle = name.ifEmpty { "No name yet" }, chevron = true, onSelect = {
+                shell.push(TextEntryScreen(shell, "Name for ${fmName(frequency)} MHz", initial = name.ifEmpty { Config.radio.names[frequency].orEmpty() }, action = "Save", maxLength = 40, onDone = { typed ->
+                    change { list -> list.map { if (it.frequency == frequency) it.copy(name = typed) else it } }
+                    null
+                }))
+            }),
+            Row.Entry("Move up", enabled = at > 0, onSelect = { move(at, at - 1) }),
+            Row.Entry("Move down", enabled = at < presets.lastIndex, onSelect = { move(at, at + 1) }),
+            Row.Entry("Remove from saved", tile = Tiles.delete, onSelect = {
+                change { list -> list.filter { it.frequency != frequency } }
+                shell.pop()
+            }),
+        ), keepSelection = true)
+    }
+
+    override fun onShow() = render()
+
+    private fun move(from: Int, to: Int) {
+        change { list -> list.toMutableList().apply { add(to, removeAt(from)) } }
+        render()
+    }
+
+    private fun change(edit: (List<Config.Preset>) -> List<Config.Preset>) =
+        Config.update(Config.Change.RADIO) { d -> d.copy(radio = d.radio.copy(presets = edit(d.radio.presets))) }
 }

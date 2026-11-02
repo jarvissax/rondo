@@ -64,6 +64,7 @@ object Config {
     // the default main menu order: Now Playing, Library, YouTube, YouTube Music,
     // FM Radio, Settings
     val MENU_IDS = listOf("nowPlaying", "device", "videos", "music", "radio", "settings")
+    val MENU_LABELS = mapOf("music" to "YouTube Music", "videos" to "YouTube", "device" to "Library", "nowPlaying" to "Now Playing", "radio" to "FM Radio", "settings" to "Settings")
     val TEXT_SCALES = listOf(1.25f, 1.4f, 1.55f)
     val PRESETS = listOf(
         "iPod Blue" to "#1c5ccc",

@@ -55,6 +55,46 @@ object LocalLibrary {
     val songs: List<Track> get() = tracks.filter { !it.video }.sortedBy { it.title.lowercase() }
     val videos: List<Track> get() = tracks.filter { it.video }.sortedBy { it.title.lowercase() }
 
+    fun byPath(): Map<String, Track> = tracks.associateBy { it.path }
+
+    data class Found(val artists: List<Pair<String, List<Track>>>, val albums: List<Pair<String, List<Track>>>, val songs: List<Track>, val videos: List<Track>) {
+        val isEmpty get() = artists.isEmpty() && albums.isEmpty() && songs.isEmpty() && videos.isEmpty()
+    }
+
+    // The dashboard's search: every word has to be in the title, artist, album or file name,
+    // ignoring case and accents (fold() in assets/dashboard/app.js). Artists and albums match on
+    // their own name.
+    fun search(query: String): Found {
+        val words = fold(query).split(' ').filter { it.isNotEmpty() }
+        if (words.isEmpty()) return Found(emptyList(), emptyList(), emptyList(), emptyList())
+        val hit = { text: String -> fold(text).let { key -> words.all { key.contains(it) } } }
+        val all = tracks
+        return Found(
+            artists = artists().filter { hit(it.first) },
+            albums = albums().filter { hit(it.first) },
+            songs = all.filter { !it.video && hit("${it.title} ${it.artist} ${it.album} ${File(it.path).name}") }.sortedBy { it.title.lowercase() },
+            videos = all.filter { it.video && hit("${it.title} ${File(it.path).name}") }.sortedBy { it.title.lowercase() },
+        )
+    }
+
+    fun fold(s: String): String = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "").replace('ı', 'i').replace('ə', 'e')
+
+    // a song or video, and a .lrc next to it, off the card; playlists forget it too
+    suspend fun delete(context: Context, path: String): Boolean = withContext(Dispatchers.IO) {
+        val file = File(path)
+        if (!file.isFile || !file.delete()) return@withContext false
+        File(file.parentFile, file.nameWithoutExtension + ".lrc").takeIf { it.isFile }?.delete()
+        lock.withLock { tracks = tracks.filter { it.path != path } }
+        writeIndex(context, tracks)
+        runCatching { Playlists.forget(path) }
+        Log.i("Y1", "local: deleted ${file.name}")
+        true
+    }
+
+    // newest first, by the files' dates (the dashboard's "Recently added")
+    val recent: List<Track> get() = tracks.filter { !it.video }.sortedByDescending { it.modified }
+
     fun artists(): List<Pair<String, List<Track>>> = tracks.filter { !it.video }
         .groupBy { it.artist.ifEmpty { "Unknown artist" } }
         .toSortedMap(String.CASE_INSENSITIVE_ORDER)

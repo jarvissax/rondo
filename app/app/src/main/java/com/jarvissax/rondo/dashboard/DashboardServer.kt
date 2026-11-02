@@ -51,10 +51,12 @@ import kotlinx.serialization.json.put
 import okhttp3.Request
 import com.jarvissax.rondo.BuildConfig
 import com.jarvissax.rondo.Config
+import com.jarvissax.rondo.Power
 import com.jarvissax.rondo.Prefs
 import com.jarvissax.rondo.ShellActivity
 import com.jarvissax.rondo.input.WheelHaptics
 import com.jarvissax.rondo.local.LocalLibrary
+import com.jarvissax.rondo.local.Playlists
 import com.jarvissax.rondo.net.Api
 import com.jarvissax.rondo.net.HttpException
 import com.jarvissax.rondo.player.FmRadio
@@ -219,6 +221,16 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
             path == "/server" && method == Method.GET -> json(server())
             path == "/server" && method == Method.PUT -> putServer(b)
             path == "/server/test" && method == Method.POST -> json(testServer())
+            path == "/power" && method == Method.POST -> power(b)
+            path == "/playlists" && method == Method.GET -> json(playlists())
+            path == "/playlists" && method == Method.POST -> playlistChange { Playlists.create(b["name"]?.jsonPrimitive?.contentOrNull.orEmpty(), songPaths(b).orEmpty()) }
+            path == "/playlists" && method == Method.PUT -> playlistChange {
+                Playlists.update(s.parms["name"].orEmpty(), newName = b["name"]?.jsonPrimitive?.contentOrNull, paths = songPaths(b))
+            }
+            path == "/playlists" && method == Method.DELETE -> playlistChange {
+                Playlists.delete(s.parms["name"].orEmpty())
+                null
+            }
             else -> error(Response.Status.NOT_FOUND, "not found")
         }
     }
@@ -301,6 +313,23 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         return result!!.getOrThrow()
     }
 
+    // the answer goes out first: the Y1 starts shutting down a moment later
+    private fun power(b: JsonObject): Response {
+        if (!Power.available(context)) return error(Response.Status.CONFLICT, "firmware")
+        val action = b["action"]?.jsonPrimitive?.contentOrNull
+        val run: () -> Unit = when (action) {
+            "shutdown" -> { { Power.shutDown(context) } }
+            "restart" -> { { Power.restart(context) } }
+            else -> return error(Response.Status.BAD_REQUEST, "action")
+        }
+        Log.i("Y1", "dashboard: power $action")
+        main.postDelayed({
+            shell.player?.let { if (it.isPlaying()) it.togglePlay() }
+            run()
+        }, 800)
+        return ok()
+    }
+
     // --- status and player ---
 
     private fun status(): JsonObject {
@@ -314,6 +343,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
                 put("name", "Rondo")
                 put("version", BuildConfig.VERSION_NAME)
                 put("model", "Innioasis Y1")
+                put("power", Power.available(context)) // shut down and restart (firmware builds)
             })
             put("battery", buildJsonObject {
                 put("level", level)
@@ -369,9 +399,12 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         player()
     }
 
+    // `queue` (a playlist's songs): play those around the song; otherwise the whole library in its order
     private fun playPath(b: JsonObject): JsonElement {
         val path = b["path"]?.jsonPrimitive?.contentOrNull ?: return JsonNull
-        val songs = LocalLibrary.songs
+        val onCard = LocalLibrary.byPath()
+        val queue = runCatching { b["queue"]!!.jsonArray.map { it.jsonPrimitive.content } }.getOrNull()
+        val songs = queue?.mapNotNull { onCard[it] }?.filter { !it.video } ?: LocalLibrary.songs
         val index = songs.indexOfFirst { it.path == path }
         // songs only: a video would open the video player over Settings › Dashboard and stop it
         if (index < 0) return JsonNull
@@ -379,6 +412,33 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
             shell.player?.playQueue(songs.map(LocalLibrary::item), index)
             player()
         }
+    }
+
+    // --- playlists (local/Playlists.kt: .m3u8 files in the card's Playlists folder) ---
+
+    private fun playlistJson(p: Playlists.Playlist, onCard: Map<String, LocalLibrary.Track>) = buildJsonObject {
+        put("name", p.name)
+        put("paths", JsonArray(p.paths.map { JsonPrimitive(it) }))
+        put("missing", p.paths.count { it !in onCard }) // songs no longer on the card
+        put("durationSec", p.paths.sumOf { onCard[it]?.durationSec ?: 0 })
+    }
+
+    private fun playlists(): JsonObject {
+        val onCard = LocalLibrary.byPath()
+        return buildJsonObject { put("playlists", JsonArray(Playlists.all().map { playlistJson(it, onCard) })) }
+    }
+
+    // songs on the card only, in the order sent
+    private fun songPaths(b: JsonObject): List<String>? = runCatching {
+        b["paths"]!!.jsonArray.map { it.jsonPrimitive.content }
+            .filter { inside(it) && it.substringAfterLast('.', "").lowercase() in setOf("flac", "mp3", "m4a", "aac", "ogg", "opus", "wav") }
+            .distinct()
+    }.getOrNull()
+
+    private fun playlistChange(change: () -> Playlists.Playlist?): Response = try {
+        change()?.let { json(playlistJson(it, LocalLibrary.byPath())) } ?: ok()
+    } catch (e: Playlists.Problem) {
+        error(if (e.message.orEmpty().startsWith("There's already")) Response.Status.CONFLICT else Response.Status.BAD_REQUEST, e.message ?: "playlist")
     }
 
     // YouTube Music artwork through the music server (the Y1 never talks to Google)
@@ -537,6 +597,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         val file = File(path)
         if (!file.isFile) return error(Response.Status.NOT_FOUND, "not found")
         if (!file.delete()) return error(Response.Status.INTERNAL_ERROR, "cannot delete")
+        runCatching { Playlists.forget(path) }
         Log.i("Y1", "dashboard: deleted ${file.name}")
         scheduleRescan()
         return ok()
@@ -593,8 +654,6 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
 
     // --- theme ---
 
-    private val labels = mapOf("music" to "YouTube Music", "videos" to "YouTube", "device" to "Library", "nowPlaying" to "Now Playing", "radio" to "FM Radio", "settings" to "Settings")
-
     private fun theme(): JsonObject {
         val t = Config.theme
         return buildJsonObject {
@@ -605,7 +664,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
                 t.menu.forEach { m ->
                     add(buildJsonObject {
                         put("id", m.id)
-                        put("label", labels[m.id] ?: m.id)
+                        put("label", Config.MENU_LABELS[m.id] ?: m.id)
                         put("visible", m.visible)
                         if (m.id == "settings") put("locked", true)
                     })

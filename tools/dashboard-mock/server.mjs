@@ -101,6 +101,15 @@ if (!EMPTY) {
     { path: `${MOVIES}/Lessons/Guitar lesson 04.m4v`, title: 'Guitar lesson 04', durationSec: 812, size: 140_000_000, modified: NOW - 30 * 86400000 },
   ];
 }
+// two playlists to start with, one with a song that has left the card
+let playlists = EMPTY ? [] : [
+  { name: 'Road trip', paths: songs.filter((_, i) => i % 37 === 0).map((s) => s.path) },
+  { name: 'Late night', paths: songs.filter((_, i) => i % 53 === 5).map((s) => s.path).concat(`${MUSIC}/Old/Gone song.flac`) },
+];
+function playlistJson(p) {
+  const by = new Map(songs.map((s) => [s.path, s]));
+  return { name: p.name, paths: p.paths, missing: p.paths.filter((x) => !by.has(x)).length, durationSec: p.paths.reduce((n, x) => n + (by.get(x)?.durationSec || 0), 0) };
+}
 let pending = []; // uploaded files, picked up by the next scan
 let scanning = false;
 
@@ -348,7 +357,7 @@ async function api(req, res, url) {
   if (pathname === '/api/status' && method === 'GET') {
     const used = [...songs, ...videos].reduce((n, x) => n + x.size, 0) + 3_100_000_000;
     return send(res, 200, {
-      device: { name: 'Rondo', version: '1.0.0', model: 'Innioasis Y1' },
+      device: { name: 'Rondo', version: '1.0.0', model: 'Innioasis Y1', power: true },
       battery: { level: Math.max(4, 87 - Math.floor((Date.now() - BOOT) / 120000)), charging: false },
       storage: { freeBytes: 62_500_000_000 - used, totalBytes: 62_500_000_000 },
       wifi: wifi.current ? { ssid: wifi.current.ssid, signal: wifi.current.signal, ip: wifi.current.ip } : null,
@@ -376,11 +385,13 @@ async function api(req, res, url) {
   }
   if (pathname === '/api/player/play' && method === 'POST') {
     const body = await readJson(req);
-    const i = songs.findIndex((s) => s.path === body?.path);
+    // `queue`: a playlist's songs to play around this one
+    const list = Array.isArray(body?.queue) ? body.queue.map((p) => songs.find((s) => s.path === p)).filter(Boolean) : songs;
+    const i = list.findIndex((s) => s.path === body?.path);
     const v = videos.find((x) => x.path === body?.path);
     if (i < 0 && !v) return err(res, 404, 'not found');
     if (v) player.queue = [{ title: v.title, subtitle: 'Library', art: `/api/art?path=${encodeURIComponent(v.path)}&size=300`, durationMs: v.durationSec * 1000, source: 'device' }];
-    else player.queue = songs.map(songItem);
+    else player.queue = list.map(songItem);
     player.index = v ? 0 : i; player.playing = true; setPosition(0);
     return send(res, 200, playerJson());
   }
@@ -395,7 +406,45 @@ async function api(req, res, url) {
     const before = songs.length + videos.length;
     songs = songs.filter((s) => s.path !== p);
     videos = videos.filter((v) => v.path !== p);
+    for (const pl of playlists) pl.paths = pl.paths.filter((x) => x !== p);
     if (songs.length + videos.length === before) return err(res, 404, 'not found');
+    return send(res, 200, { ok: true });
+  }
+  // playlists: kept in memory here; .m3u8 files on the card on a real Rondo (local/Playlists.kt)
+  if (pathname === '/api/playlists') {
+    const name = url.searchParams.get('name') || '';
+    const find = (n) => playlists.find((p) => p.name.toLowerCase() === String(n).trim().toLowerCase());
+    const clean = (n) => String(n || '').replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const songPaths = (b) => (Array.isArray(b?.paths) ? [...new Set(b.paths)].filter((p) => insideCard(p) && AUDIO.includes(extOf(p))) : null);
+    if (method === 'GET') return send(res, 200, { playlists: playlists.map(playlistJson) });
+    if (method === 'DELETE') { playlists = playlists.filter((p) => p !== find(name)); return send(res, 200, { ok: true }); }
+    const body = await readJson(req);
+    if (method === 'POST') {
+      const n = clean(body?.name);
+      if (!n) return err(res, 400, 'Give it a name');
+      if (find(n)) return err(res, 409, `There's already a playlist called “${n}”`);
+      const p = { name: n, paths: songPaths(body) || [] };
+      playlists.push(p);
+      return send(res, 200, playlistJson(p));
+    }
+    if (method === 'PUT') {
+      const p = find(name);
+      if (!p) return err(res, 400, 'That playlist is gone');
+      if (body?.name != null) {
+        const n = clean(body.name);
+        if (!n) return err(res, 400, 'Give it a name');
+        if (find(n) && find(n) !== p) return err(res, 409, `There's already a playlist called “${n}”`);
+        p.name = n;
+      }
+      const paths = songPaths(body);
+      if (paths) p.paths = paths;
+      return send(res, 200, playlistJson(p));
+    }
+  }
+  if (pathname === '/api/power' && method === 'POST') {
+    const body = await readJson(req);
+    if (!['shutdown', 'restart'].includes(body?.action)) return err(res, 400, 'action');
+    console.log(`  power: ${body.action} (the mock keeps running)`);
     return send(res, 200, { ok: true });
   }
   if (pathname === '/api/library/rescan' && method === 'POST') {

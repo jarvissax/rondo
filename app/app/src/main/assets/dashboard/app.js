@@ -572,8 +572,25 @@ function renderDevice() {
     <div class="row">
       <span class="tile t-rondo">${markTile}</span>
       <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}</div></div>
+      ${d.power ? `<div class="bt-actions"><button class="btn btn-sm" type="button" data-power="restart">Restart</button><button class="btn btn-sm btn-red-text" type="button" data-power="shutdown">${icon('power')}<span>Shut down</span></button></div>` : ''}
     </div>`;
 }
+// shut down or restart (firmware builds only: status.device.power)
+$('#deviceRows').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-power]');
+  if (!b) return;
+  const off = b.dataset.power === 'shutdown';
+  const ok = await confirmSheet({
+    title: off ? 'Shut down your Rondo?' : 'Restart your Rondo?',
+    text: off ? 'Music stops and this page disconnects. Press the Power button on the Y1 to turn it on again.' : 'Music stops and this page disconnects. Open Settings › Dashboard on the Y1 again once it’s back.',
+    action: off ? 'Shut down' : 'Restart',
+  });
+  if (!ok) return;
+  try {
+    await api('POST', '/api/power', { action: b.dataset.power });
+    toast(off ? 'Your Rondo is shutting down' : 'Your Rondo is restarting');
+  } catch (e2) { if (e2.status !== 401) toast(`Couldn’t do that. ${reason(e2)}`, 'err'); }
+});
 
 // ---------- library ----------
 const AUDIO = ['flac', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav'];
@@ -611,6 +628,7 @@ function renderLibrarySummary() {
   if (!L) return;
   const el = $('#libSummary');
   if (L.scanning) { el.innerHTML = `<span class="scan-note">${spinner()}Scanning the card…</span>`; return; }
+  if (S.libKind === 'playlists') return;
   const list = S.libKind === 'songs' ? L.songs : L.videos;
   const bytes = list.reduce((n, x) => n + (x.size || 0), 0);
   el.textContent = list.length
@@ -661,6 +679,15 @@ function renderLibrary() {
   const videos = S.libKind === 'videos';
   libEl.classList.toggle('is-videos', videos);
   $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
+  const pls = S.libKind === 'playlists';
+  libEl.classList.toggle('is-playlists', pls);
+  $('#libSortWrap').hidden = pls;
+  if (pls) {
+    $('#libSearch').placeholder = 'Search playlists';
+    libList.setAttribute('aria-label', 'Playlists');
+    $('#view-library').classList.remove('is-empty');
+    return renderPlaylists();
+  }
   const sel = $('#libSort');
   for (const o of sel.options) o.hidden = videos && (o.value === 'artist' || o.value === 'album');
   sel.value = sortKey();
@@ -762,6 +789,7 @@ function loadArtInto(el, size, counted = false) {
 }
 
 libList.addEventListener('click', (e) => {
+  if (S.libKind === 'playlists') return onPlaylistClick(e);
   if (e.target.closest('[data-act="retry"]')) return loadLibrary();
   if (e.target.closest('[data-act="upload"]')) return $('#fileInput').click();
   const row = e.target.closest('.song');
@@ -775,7 +803,9 @@ $('#libKind').addEventListener('click', (e) => {
   const b = e.target.closest('[data-kind]');
   if (!b || b.dataset.kind === S.libKind) return;
   S.libKind = b.dataset.kind;
+  S.openPlaylist = null;
   renderLibrary();
+  if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
 });
 let searchTimer = 0;
 $('#libSearch').addEventListener('input', (e) => {
@@ -827,7 +857,7 @@ function openItem(it) {
     openSheet(`<div class="song-sheet${video ? ' is-video' : ''}"><span class="art"${video || it.art ? ` data-art="${esc(it.path)}"` : ''}>${icon(video ? 'film' : 'note')}</span>
       <div><h2>${esc(title)}</h2><p>${esc(video ? 'Video on the card' : [it.artist, it.album].filter(Boolean).join(' · ') || 'On the card')}</p></div></div>
       <dl class="facts">${facts.filter((f) => f[1] !== '' && f[1] != null).map(([k, v, c]) => `<dt>${k}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>
-      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>Delete</span></button>${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>Play on Rondo</span></button>`}</div>`);
+      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>Delete</span></button>${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>Add to playlist</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>Play on Rondo</span></button>`}</div>`);
     const art = $('.art[data-art]', sheet);
     if (art) loadArtInto(art, 240);
     ($('[data-act="play"]', sheet) || $('[data-act="delete"]', sheet)).focus();
@@ -843,6 +873,7 @@ function openItem(it) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'play') { b.disabled = true; if (await playItem(it)) sheet.close(); else b.disabled = false; }
+    if (act === 'playlist') { sheet.removeEventListener('click', onClick); return addToPlaylistSheet(it); }
     if (act === 'delete') confirm();
     if (act === 'back') detail();
     if (act === 'really') {
@@ -864,6 +895,7 @@ function openItem(it) {
 }
 function removeFromLibrary(it) {
   const L = S.library;
+  S.playlists = null; // the Rondo took it out of every playlist too
   L.songs = L.songs.filter((s) => s !== it);
   L.videos = L.videos.filter((v) => v !== it);
   S.libByPath.delete(it.path);
@@ -885,6 +917,210 @@ function removeFromLibrary(it) {
   }
   renderLibrarySummary();
   if (!(S.libKind === 'songs' ? L.songs : L.videos).length) renderLibrary();
+}
+
+// ---------- playlists (.m3u8 files in the card's Playlists folder; local/Playlists.kt) ----------
+const plTime = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.round(sec / 60)} min`);
+const plSub = (p) => [plural(p.paths.length - p.missing, 'song'), p.durationSec ? plTime(p.durationSec) : '', p.missing ? `${p.missing} not on the card` : ''].filter(Boolean).join(' · ');
+async function loadPlaylists() {
+  try {
+    S.playlists = (await api('GET', '/api/playlists')).playlists;
+  } catch (e) {
+    if (e.status !== 401) toast(`Couldn’t read the playlists. ${reason(e)}`, 'err');
+    S.playlists = S.playlists || [];
+  }
+  return S.playlists;
+}
+function keepPlaylist(p, oldName = p.name) {
+  const i = S.playlists.findIndex((x) => x.name === oldName);
+  if (i >= 0) S.playlists[i] = p; else S.playlists.push(p);
+  S.playlists.sort((a, b) => collator.compare(a.name, b.name));
+}
+async function savePlaylist(name, change) {
+  try {
+    const p = await api('PUT', `/api/playlists?name=${encodeURIComponent(name)}`, change);
+    keepPlaylist(p, name);
+    return p;
+  } catch (e) {
+    if (e.status !== 401) toast(`Couldn’t save it. ${reason(e)}`, 'err');
+    return null;
+  }
+}
+// a one-line question in the sheet; resolves to the text, or null on Cancel
+function promptSheet({ title, text = '', value = '', action, placeholder = '' }) {
+  return new Promise((resolve) => {
+    openSheet(`<h2>${esc(title)}</h2>${text ? `<p>${text}</p>` : ''}<form class="sheet-form"><input type="text" maxlength="60" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}" autocomplete="off"><div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`);
+    const input = $('input', sheet), form = $('form', sheet);
+    input.focus();
+    input.select();
+    const finish = (v) => { sheet.removeEventListener('close', onClose); form.removeEventListener('submit', onSubmit); if (sheet.open) sheet.close(); resolve(v); };
+    const onSubmit = (e) => { e.preventDefault(); if (input.value.trim()) finish(input.value.trim()); else input.classList.add('is-invalid'); };
+    const onClose = () => finish(null);
+    form.addEventListener('submit', onSubmit);
+    $('[data-r="0"]', sheet).addEventListener('click', () => finish(null));
+    sheet.addEventListener('close', onClose);
+  });
+}
+async function newPlaylist(paths = []) {
+  const name = await promptSheet({ title: 'New playlist', action: 'Create', placeholder: 'Name' });
+  if (!name) return null;
+  try {
+    const p = await api('POST', '/api/playlists', { name, paths });
+    keepPlaylist(p);
+    toast(paths.length ? `Added to “${p.name}”` : `Made “${p.name}”`);
+    return p;
+  } catch (e) {
+    if (e.status !== 401) toast(`Couldn’t make it. ${reason(e)}`, 'err');
+    return null;
+  }
+}
+function renderPlaylists() {
+  const all = S.playlists;
+  if (!all) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(3); return; }
+  if (S.openPlaylist) return renderPlaylist();
+  const q = fold(S.libQuery.trim());
+  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.name).includes(w))) : all;
+  $('#libSummary').textContent = all.length ? `${plural(all.length, 'playlist')}, made here or on your Rondo. They’re saved on the card.` : 'Playlists of songs on the card. They’re saved on the card, so they survive a reflash.';
+  libList.innerHTML = `<div class="song pl-row pl-new" role="listitem" data-act="pl-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New playlist</span></span></div>` +
+    (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art">${icon('playlist')}</span>
+      <span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span>
+      <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.name)}">${icon('chevron')}</button></span></div>`).join('')
+      : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '');
+}
+function renderPlaylist() {
+  const p = S.playlists.find((x) => x.name === S.openPlaylist);
+  if (!p) { S.openPlaylist = null; return renderPlaylists(); }
+  $('#libSummary').textContent = 'A playlist on the card.';
+  const rows = p.paths.map((path, i) => {
+    const s = S.libByPath.get(path);
+    const up = `<button class="ib ib-sm" type="button" data-act="pl-up" data-i="${i}" aria-label="Move up"${i ? '' : ' disabled'}>${icon('up')}</button>`;
+    const down = `<button class="ib ib-sm" type="button" data-act="pl-down" data-i="${i}" aria-label="Move down"${i < p.paths.length - 1 ? '' : ' disabled'}>${icon('down')}</button>`;
+    const rm = `<button class="ib ib-sm" type="button" data-act="pl-remove" data-i="${i}" aria-label="Remove from the playlist">${icon('close')}</button>`;
+    if (!s) return `<div class="song pl-song is-missing" role="listitem"><span class="art">${icon('note')}</span><span class="s-main"><span class="s-title">${esc(fileName(path))}</span><span class="s-sub">Not on the card any more</span></span><span class="s-acts">${up}${down}${rm}</span></div>`;
+    return `<div class="song pl-song${isPlaying(s) ? ' is-playing' : ''}" role="listitem" data-path="${esc(path)}" data-i="${i}">
+      <span class="art"${s.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
+      <span class="s-main"><span class="s-title">${esc(s.title || fileName(path))}</span><span class="s-sub">${esc([s.artist, s.album].filter(Boolean).join(' · '))}</span></span>
+      <span class="s-time">${fmtDur(s.durationSec)}</span><span class="s-acts">${up}${down}${rm}</span></div>`;
+  }).join('');
+  const playable = p.paths.length > p.missing;
+  libList.innerHTML = `<div class="pl-head">
+      <button class="btn btn-sm btn-quiet" type="button" data-act="pl-back">${icon('chevron', 'i flip')}<span>Playlists</span></button>
+      <h2>${esc(p.name)}</h2><p>${esc(plSub(p))}</p>
+      <div class="pl-acts">
+        <button class="btn btn-primary btn-sm" type="button" data-act="pl-play"${playable ? '' : ' disabled'}>${icon('play')}<span>Play on Rondo</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>Add songs</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-rename">Rename</button>
+        <button class="btn btn-sm btn-red-text" type="button" data-act="pl-delete">${icon('trash')}<span>Delete</span></button>
+      </div></div>` + (rows || '<div class="lib-empty"><h3>No songs yet</h3><p>Use Add songs, or Add to playlist in a song’s details.</p></div>');
+  $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
+}
+async function playPlaylist(p, path) {
+  const onCard = p.paths.filter((x) => S.libByPath.has(x));
+  if (!onCard.length) return;
+  try {
+    const st = await api('POST', '/api/player/play', { path: path || onCard[0], queue: onCard });
+    if (S.status) { S.status.player = st; S.statusAt = performance.now(); }
+    renderMini();
+    toast(`Playing “${p.name}” on your Rondo`);
+  } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
+}
+async function onPlaylistClick(e) {
+  const b = e.target.closest('[data-act]'), row = e.target.closest('.song');
+  const act = b?.dataset.act || (row?.dataset.pl ? 'pl-open' : row?.dataset.path ? 'pl-song' : '');
+  const name = row?.dataset.pl || S.openPlaylist;
+  const p = S.playlists?.find((x) => x.name === name);
+  if (act === 'pl-new') { const made = await newPlaylist(); if (made) { S.openPlaylist = made.name; renderPlaylists(); } return; }
+  if (act === 'pl-back') { S.openPlaylist = null; return renderPlaylists(); }
+  if (!p) return;
+  if (act === 'pl-open') { S.openPlaylist = p.name; window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) }); return renderPlaylists(); }
+  if (act === 'pl-play') return playPlaylist(p);
+  if (act === 'pl-song') return playPlaylist(p, row.dataset.path);
+  if (act === 'pl-add') return addSongsSheet(p.name);
+  if (act === 'pl-rename') {
+    const next = await promptSheet({ title: 'Rename playlist', value: p.name, action: 'Rename' });
+    if (!next || next === p.name) return;
+    const saved = await savePlaylist(p.name, { name: next });
+    if (saved) { S.openPlaylist = saved.name; renderPlaylists(); }
+    return;
+  }
+  if (act === 'pl-delete') {
+    if (!(await confirmSheet({ title: `Delete “${p.name}”?`, text: 'The playlist goes; its songs stay on the card.', action: 'Delete' }))) return;
+    try {
+      await api('DELETE', `/api/playlists?name=${encodeURIComponent(p.name)}`);
+      S.playlists = S.playlists.filter((x) => x !== p);
+      S.openPlaylist = null;
+      renderPlaylists();
+      toast(`Deleted “${p.name}”`);
+    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t delete it. ${reason(e2)}`, 'err'); }
+    return;
+  }
+  const i = Number(b?.dataset.i);
+  if (!Number.isInteger(i)) return;
+  const paths = p.paths.slice();
+  if (act === 'pl-remove') paths.splice(i, 1);
+  else if (act === 'pl-up' && i > 0) [paths[i - 1], paths[i]] = [paths[i], paths[i - 1]];
+  else if (act === 'pl-down' && i < paths.length - 1) [paths[i + 1], paths[i]] = [paths[i], paths[i + 1]];
+  else return;
+  if (await savePlaylist(p.name, { paths })) renderPlaylists();
+}
+// pick songs for a playlist: search the card's songs, Add puts one at the end
+function addSongsSheet(name) {
+  let q = '';
+  const draw = () => {
+    const p = S.playlists.find((x) => x.name === name);
+    if (!p) return sheet.close();
+    const words = fold(q.trim()).split(/\s+/).filter(Boolean);
+    const songs = (S.library?.songs || []).filter((s) => words.every((w) => s._key.includes(w))).slice(0, 60);
+    $('.pick-list', sheet).innerHTML = songs.length ? songs.map((s) => {
+      const has = p.paths.includes(s.path);
+      return `<div class="pick" data-path="${esc(s.path)}"><span class="s-main"><span class="s-title">${esc(s.title || fileName(s.path))}</span><span class="s-sub">${esc([s.artist, s.album].filter(Boolean).join(' · '))}</span></span>
+        <button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? 'Added' : 'Add'}</button></div>`;
+    }).join('') : `<p class="pick-none">${q.trim() ? 'No songs match.' : 'No songs on the card.'}</p>`;
+  };
+  openSheet(`<h2>Add to “${esc(name)}”</h2><label class="search pick-search">${icon('search')}<input type="search" placeholder="Search songs, artists, albums" autocomplete="off" aria-label="Search songs"></label><div class="pick-list"></div><div class="sheet-actions"><button class="btn" type="button" data-act="done">Done</button></div>`);
+  const input = $('input', sheet);
+  input.addEventListener('input', () => { q = input.value; draw(); });
+  input.focus();
+  const onClick = async (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'done') return sheet.close();
+    const path = b.closest('.pick')?.dataset.path;
+    const p = S.playlists.find((x) => x.name === name);
+    if (!path || !p) return;
+    b.disabled = true;
+    b.textContent = 'Adding…';
+    if (await savePlaylist(name, { paths: [...p.paths, path] })) draw(); else { b.disabled = false; b.textContent = 'Add'; }
+  };
+  sheet.addEventListener('click', onClick);
+  sheet.addEventListener('close', () => { sheet.removeEventListener('click', onClick); if (S.libKind === 'playlists') renderPlaylists(); }, { once: true });
+  draw();
+}
+// from a song's details: pick a playlist, or start a new one with it
+async function addToPlaylistSheet(it) {
+  const all = await loadPlaylists();
+  openSheet(`<h2>Add to a playlist</h2><p>“${esc(it.title || fileName(it.path))}”</p><div class="pick-list">${all.map((p) => {
+    const has = p.paths.includes(it.path);
+    return `<div class="pick" data-pl="${esc(p.name)}"><span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span><button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? 'Added' : 'Add'}</button></div>`;
+  }).join('')}</div><div class="sheet-actions"><button class="btn" type="button" data-act="done">Done</button><button class="btn btn-primary" type="button" data-act="new">${icon('plus')}<span>New playlist</span></button></div>`);
+  const onClick = async (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'done') return sheet.close();
+    if (b.dataset.act === 'new') { sheet.removeEventListener('click', onClick); await newPlaylist([it.path]); return; }
+    const p = S.playlists.find((x) => x.name === b.closest('.pick')?.dataset.pl);
+    if (!p) return;
+    b.disabled = true;
+    const saved = await savePlaylist(p.name, { paths: [...p.paths, it.path] });
+    if (saved) {
+      b.textContent = 'Added';
+      b.classList.remove('btn-primary');
+      $('.s-sub', b.closest('.pick')).textContent = plSub(saved);
+      toast(`Added to “${p.name}”`);
+    } else b.disabled = false;
+  };
+  sheet.addEventListener('click', onClick);
+  sheet.addEventListener('close', () => sheet.removeEventListener('click', onClick), { once: true });
 }
 
 // ---------- rescan ----------

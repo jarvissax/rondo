@@ -181,12 +181,13 @@ private object RowViews {
     const val MUSIC_ART = 34
     const val VIDEO_W = 104
     const val VIDEO_H = 58
+    private const val TILE = "tile"
 
     class ShellTag(
         val title: TextView, val subtitle: TextView, val trailing: TextView, val chevron: IconView,
         val tileBox: FrameLayout, val art: RoundedImageView, val line: View,
     )
-    class MediaTag(val card: LinearLayout, val title: TextView, val subtitle: TextView, val trailing: TextView, val art: RoundedImageView, val chevron: IconView)
+    class MediaTag(val card: LinearLayout, val title: TextView, val subtitle: TextView, val trailing: TextView, val art: RoundedImageView, val chevron: IconView, val artFrame: FrameLayout)
 
     fun header(c: Context, style: RowStyle): View {
         val shell = style == RowStyle.SHELL
@@ -260,7 +261,7 @@ private object RowViews {
         val chevron = IconView(c, IconView.Kind.CHEVRON, Palette.darkFaint)
         card.addView(chevron, lp(c.dp(7), c.dp(11)).apply { leftMargin = c.dp(5) })
         frame.addView(card, flp(MATCH, MATCH).apply { setMargins(c.dp(5), c.dp(2), c.dp(5), c.dp(2)) })
-        frame.tag = MediaTag(card, title, subtitle, trailing, art, chevron)
+        frame.tag = MediaTag(card, title, subtitle, trailing, art, chevron, artFrame)
         return frame
     }
 
@@ -308,7 +309,12 @@ private object RowViews {
                 if (style == RowStyle.MUSIC) t.trailing.setTextColor(if (isSelected) Palette.focusMuted else Palette.darkMuted)
                 t.chevron.color = if (isSelected) Palette.focusMuted else Palette.darkFaint
                 t.chevron.invalidate()
-                if (style == RowStyle.VIDEO) {
+                // a colored tile instead of artwork (YouTube Home's Shorts row), under the length badge
+                t.artFrame.findViewWithTag<View>(TILE)?.let { t.artFrame.removeView(it) }
+                if (row.tile != null) {
+                    t.artFrame.addView(IconTile(c, row.tile).apply { tag = TILE }, 1, flp(MATCH, MATCH))
+                    ImageLoader.load(t.art, null, 0)
+                } else if (style == RowStyle.VIDEO) {
                     ImageLoader.load(t.art, row.thumb, c.dp(VIDEO_W), c.dp(VIDEO_H))
                 } else {
                     ImageLoader.load(t.art, row.thumb, c.dp(MUSIC_ART), c.dp(MUSIC_ART))

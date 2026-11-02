@@ -3,27 +3,33 @@ package com.jarvissax.rondo.ui.screens
 import com.jarvissax.rondo.ShellActivity
 import com.jarvissax.rondo.input.WheelAction
 import com.jarvissax.rondo.local.LocalLibrary
+import com.jarvissax.rondo.local.Playlists
 import com.jarvissax.rondo.ui.Row
 import com.jarvissax.rondo.ui.Tiles
 
-// Music and videos on the microSD card, in the iPod's own words (Songs, Artists, Albums). Works
-// with no network at all. Lists come from LocalLibrary; tags fill in while the menu is open.
+// Music and videos on the microSD card, in the iPod's own words (Songs, Artists, Albums), plus
+// search and playlists. Works with no network at all. Lists come from LocalLibrary; tags fill in
+// while the menu is open.
 class DeviceScreen(shell: ShellActivity) : ShellListScreen(shell, "Library") {
     private var loaded = false
+    private var scanning = false
 
     override fun render() {
         if (!loaded) return list.showMessage("Looking at the card…")
         val songs = LocalLibrary.songs
         val videos = LocalLibrary.videos
-        if (songs.isEmpty() && videos.isEmpty()) return list.showMessage("No music or videos on the card.\nCopy files to the card over USB.")
+        if (songs.isEmpty() && videos.isEmpty() && !scanning) return list.showMessage("No music or videos on the card.\nCopy files to the card over USB.")
         val artists = LocalLibrary.artists()
         val albums = LocalLibrary.albums()
+        val playlists = runCatching { Playlists.all().size }.getOrDefault(0)
         list.setRows(
             listOf(
                 Row.Entry("Shuffle songs", trailing = "${songs.size}", tile = Tiles.shuffle, enabled = songs.isNotEmpty(), onSelect = {
                     player?.playQueue(songs.shuffled().map(LocalLibrary::item), 0)
                     shell.push(NowPlayingScreen(shell))
                 }),
+                Row.Entry("Search", tile = Tiles.search, chevron = true, onSelect = { shell.push(LibrarySearchScreen(shell)) }),
+                Row.Entry("Playlists", trailing = if (playlists > 0) "$playlists" else "", tile = Tiles.playlists, chevron = true, onSelect = { shell.push(PlaylistsScreen(shell)) }),
                 Row.Entry("Songs", trailing = "${songs.size}", tile = Tiles.songs, chevron = true, enabled = songs.isNotEmpty(), onSelect = {
                     shell.push(LocalSongsScreen(shell, "Songs", songs, alphabetical = true))
                 }),
@@ -33,9 +39,13 @@ class DeviceScreen(shell: ShellActivity) : ShellListScreen(shell, "Library") {
                 Row.Entry("Albums", trailing = if (albums.isEmpty()) "reading tags…" else "${albums.size}", tile = Tiles.albums, chevron = true, enabled = albums.isNotEmpty(), onSelect = {
                     shell.push(LocalGroupsScreen(shell, "Albums", albums))
                 }),
+                Row.Entry("Recently added", tile = Tiles.recent, chevron = true, enabled = songs.isNotEmpty(), onSelect = {
+                    shell.push(LocalSongsScreen(shell, "Recently added", LocalLibrary.recent, alphabetical = false, showArtist = true))
+                }),
                 Row.Entry("Videos", trailing = "${videos.size}", tile = Tiles.videos, chevron = true, enabled = videos.isNotEmpty(), onSelect = {
                     shell.push(LocalVideosScreen(shell, videos))
                 }),
+                Row.Entry("Rescan the card", subtitle = "After copying files to it", trailing = if (scanning) "Scanning…" else "", tile = Tiles.rescan, onSelect = { rescan() }),
             ),
             keepSelection = true,
         )
@@ -46,6 +56,20 @@ class DeviceScreen(shell: ShellActivity) : ShellListScreen(shell, "Library") {
         launch {
             LocalLibrary.load(context)
             loaded = true
+            render()
+            LocalLibrary.readTags(context)
+        }
+    }
+
+    // the row stays selectable while it scans: a disabled row would send the highlight to the top
+    private fun rescan() {
+        if (scanning) return
+        scanning = true
+        render()
+        LocalLibrary.invalidate()
+        launch {
+            LocalLibrary.load(context)
+            scanning = false
             render()
             LocalLibrary.readTags(context)
         }
@@ -82,26 +106,35 @@ class LocalSongsScreen(
     title: String,
     private val tracks: List<LocalLibrary.Track>,
     private val alphabetical: Boolean,
+    private val showArtist: Boolean = alphabetical, // false: an artist's songs show only the album
 ) : LetterListScreen(shell, title) {
     override fun render() {
-        val items = tracks.map(LocalLibrary::item)
+        val onCard = LocalLibrary.byPath() // a song deleted meanwhile drops out
+        val items = tracks.filter { it.path in onCard }.map(LocalLibrary::item)
         val songs = items.mapIndexed { i, item ->
             Row.Entry(
                 title = item.title,
-                subtitle = if (alphabetical) item.subtitle else item.subtitle.substringAfter(" · ", ""),
+                subtitle = if (showArtist) item.subtitle else item.subtitle.substringAfter(" · ", ""),
                 trailing = durationText(item),
                 thumb = item.thumb,
                 onSelect = {
                     player?.playQueue(items, i)
                     shell.push(NowPlayingScreen(shell))
                 },
-                onLongSelect = { shell.push(SongMenuScreen(shell, item)) },
+                onLongSelect = { shell.push(LocalSongMenuScreen(shell, item)) },
             )
         }
         val head = Row.Header(if (alphabetical && songs.size > 30) "${songs.size} songs · Next/Prev jump A–Z" else "${songs.size} songs")
         val rows = listOf(head) + songs
-        list.setRows(rows)
+        list.setRows(rows, keepSelection = true)
         if (alphabetical) indexLetters(rows)
+    }
+
+    // back from a song's options (it may be gone); the first show was already drawn by build()
+    private var shown = false
+
+    override fun onShow() {
+        if (shown) render() else shown = true
     }
 }
 

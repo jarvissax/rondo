@@ -20,6 +20,7 @@ import com.jarvissax.rondo.ui.MATCH
 import com.jarvissax.rondo.ui.Palette
 import com.jarvissax.rondo.ui.Pill
 import com.jarvissax.rondo.ui.ProgressBarView
+import com.jarvissax.rondo.ui.Row
 import com.jarvissax.rondo.ui.RowList
 import com.jarvissax.rondo.ui.RowStyle
 import com.jarvissax.rondo.ui.Screen
@@ -108,7 +109,9 @@ class VideoScreen(shell: ShellActivity) : Screen(shell) {
         launch {
             try {
                 val page = Api.videoFeed(feeds[tab])
-                list.setRows(videoRows(shell, page.items))
+                // Home starts with Shorts, like the app's Shorts shelf (the header has no room for a tab)
+                val shorts = if (tab == 0) listOf(Row.Entry("Shorts", subtitle = "Short videos, one after another", tile = com.jarvissax.rondo.ui.Tiles.shorts, onSelect = { shell.push(ShortsScreen(shell)) })) else emptyList()
+                list.setRows(shorts + videoRows(shell, page.items))
                 pager.reset(page.next)
             } catch (e: Exception) {
                 list.showMessage(context.offlineOr("Couldn't load ${tabs[tab]}: ${e.message}"))

@@ -11,7 +11,9 @@ import com.jarvissax.rondo.input.WheelAction
 // is open: Next/Prev = right/left, Play = down, Menu = up (Menu on the top row closes it). The
 // wheel walks the keys in reading order; center types the highlighted key.
 // Three layouts so Wi-Fi passwords can be typed: lower case, upper case (ABC) and symbols (#+=).
-class TvKeyboard(context: Context, private val actionLabel: String = "Search") : View(context) {
+// shell = true: the light (or dark) iPod-style look of the shell screens, with the action key in
+// the accent color; otherwise YouTube's dark look.
+class TvKeyboard(context: Context, private val actionLabel: String = "Search", private val shell: Boolean = false) : View(context) {
     data class Key(val label: String, val value: String, val row: Int, val col: Int, val span: Int = 1)
 
     private enum class Layout { LOWER, UPPER, SYMBOLS }
@@ -107,13 +109,17 @@ class TvKeyboard(context: Context, private val actionLabel: String = "Search") :
             val on = i == cursor
             val special = k.value.length > 1 || k.value == DELETE || k.value == SEARCH
             bg.color = when {
-                on -> Palette.white
-                k.value == SEARCH -> Palette.red
-                special -> Palette.darkPanelSelected
-                else -> Palette.darkRaised
+                on -> if (shell) Palette.shellText else Palette.white
+                k.value == SEARCH -> if (shell) Palette.accent else Palette.red
+                special -> if (shell) mix(Palette.shellHeader, Palette.shellText, 0.12f) else Palette.darkPanelSelected
+                else -> if (shell) Palette.shellHeader else Palette.darkRaised
             }
             canvas.drawRoundRect(rect, radius, radius, bg)
-            label.color = if (on) Palette.dark else Palette.white
+            label.color = when {
+                on -> if (shell) Palette.shellBg else Palette.dark
+                shell && k.value != SEARCH -> Palette.shellText
+                else -> Palette.white
+            }
             label.textSize = context.dp(if (k.label.length > 1) 12 else 15).toFloat()
             label.font(bold = on)
             canvas.drawText(k.label, rect.centerX(), rect.centerY() - (label.descent() + label.ascent()) / 2, label)

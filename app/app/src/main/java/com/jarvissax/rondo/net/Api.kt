@@ -26,6 +26,10 @@ data class HealthAccount(val music: Boolean = true, val videos: Boolean = true)
 @Serializable
 data class ServerTime(val epochMs: Long)
 
+// GET /video/short/:id
+@Serializable
+data class ShortInfo(val id: String, val title: String = "", val channel: String = "", val subtitle: String = "", val durationSec: Int? = null)
+
 @Serializable
 data class Section(val title: String = "", val items: List<Item> = emptyList())
 
@@ -84,7 +88,7 @@ object Api {
             .build()
     }
 
-    const val NOT_SET_UP = "No music server yet.\nConnect one in Settings › Dashboard › Server."
+    const val NOT_SET_UP = "No music server yet.\nConnect one in Settings › Server."
 
     val USER_AGENT = "Rondo/${BuildConfig.VERSION_NAME} (Innioasis Y1; Android 4.2)"
 
@@ -155,6 +159,14 @@ object Api {
 
     // /video/home, /video/subscriptions, /video/history, /video/related/<id>
     suspend fun videoFeed(path: String) = json.decodeFromString(ItemsPage.serializer(), cached(path))
+
+    // a short's title, channel and views (the Shorts chain names only the video); cached a while
+    suspend fun shortInfo(id: String) = json.decodeFromString(ShortInfo.serializer(), cached("/video/short/" + enc(id), 600_000))
+
+    // asks the server for a video's manifest now, so it has the stream ready when it's played
+    suspend fun warm(id: String) {
+        get("/mpd/" + enc(id))
+    }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 

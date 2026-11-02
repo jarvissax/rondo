@@ -53,13 +53,13 @@ class UsbDriveScreen(shell: ShellActivity) : ShellListScreen(shell, "USB drive")
             when {
                 switching -> listOf(Row.Entry(if (on) "Turning off…" else "Turning on…", tile = Tiles.device, enabled = false))
                 on -> listOf(
-                    Row.Entry("USB drive is on", subtitle = "Copy music on your computer", tile = Tiles.device, enabled = false),
+                    Row.Entry("USB drive is on", subtitle = "Copy files on your computer", tile = Tiles.device, enabled = false),
                     Row.Entry("Turn off USB drive", subtitle = "Eject it on the computer first", onSelect = { switch(false) }),
                     Row.Header("While it's on"),
                     Row.Entry("Music on the card is paused", subtitle = "It comes back when the drive is off", enabled = false),
                 )
                 else -> listOf(
-                    Row.Entry("Use as USB drive", subtitle = "Copy music from your computer", tile = Tiles.device, onSelect = { switch(true) }),
+                    Row.Entry("Use as USB drive", subtitle = "Copy files from your computer", tile = Tiles.device, onSelect = { switch(true) }),
                     Row.Entry("Not now", subtitle = "Keep listening while it charges", onSelect = { shell.pop() }),
                 )
             },
