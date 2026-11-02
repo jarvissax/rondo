@@ -5,17 +5,21 @@ import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
 import com.google.android.exoplayer2.ui.StyledPlayerView
 import com.jarvissax.rondo.ShellActivity
 import com.jarvissax.rondo.input.WheelAction
 import com.jarvissax.rondo.net.Api
+import com.jarvissax.rondo.net.HttpException
 import com.jarvissax.rondo.net.Item
 import com.jarvissax.rondo.net.ShortInfo
 import com.jarvissax.rondo.ui.IconView
+import com.jarvissax.rondo.ui.ImageLoader
 import com.jarvissax.rondo.ui.MATCH
 import com.jarvissax.rondo.ui.Palette
 import com.jarvissax.rondo.ui.ProgressBarView
@@ -40,8 +44,11 @@ class ShortsScreen(shell: ShellActivity) : Screen(shell) {
     private var index = -1
     private var savedRepeat: Int? = null
     private var skippedAt = -1
+    private val warmed = HashSet<String>() // asked the server to resolve; it keeps the stream ready
+    private val ready = HashSet<String>() // the server has resolved these: they start in about a second
 
     private lateinit var playerView: StyledPlayerView
+    private lateinit var still: ImageView // the short's first frame, until its video draws
     private lateinit var progress: ProgressBarView
     private lateinit var paused: IconView
     private lateinit var waiting: TextView
@@ -72,6 +79,8 @@ class ShortsScreen(shell: ShellActivity) : Screen(shell) {
             isFocusable = false
         }
         box.addView(playerView, flp(MATCH, MATCH))
+        still = ImageView(c).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        box.addView(still, flp(MATCH, MATCH))
         waiting = c.text(12, Palette.darkMuted).apply { text = "Loading…" }
         box.addView(waiting, flp(WRAP, WRAP, Gravity.CENTER))
         paused = IconView(c, IconView.Kind.PAUSE, Color.argb(220, 255, 255, 255))
@@ -146,22 +155,75 @@ class ShortsScreen(shell: ShellActivity) : Screen(shell) {
         }
     }
 
-    private fun play(i: Int) {
+    // the first frame drawn: the still goes; a short that won't play (removed, age-restricted, a
+    // format the server can't stream): on to the next one in the same direction
+    private val events = object : Player.Listener {
+        override fun onRenderedFirstFrame() = still.visible(false)
+
+        override fun onPlayerError(error: PlaybackException) {
+            if (skippedAt == index) return
+            skippedAt = index
+            shell.window.decorView.post { play(index + step, step) }
+        }
+    }
+    private var listening = false
+    private var step = 1
+
+    private fun play(i: Int, direction: Int = 1) {
         val p = player ?: return
         if (i !in items.indices) return
         index = i
+        step = direction
         val item = items[i]
         if (savedRepeat == null) savedRepeat = p.repeat
+        if (!listening) {
+            p.player.addListener(events)
+            listening = true
+        }
         playerView.player = p.player
+        still.visible(true)
+        ImageLoader.load(still, item.thumb, still.width.coerceAtLeast(1), still.height.coerceAtLeast(1))
         p.playVideo(item)
         p.repeat = Player.REPEAT_MODE_ONE // shorts loop, as in the app
         render()
         describe(item)
-        items.getOrNull(i + 1)?.let { n ->
+        warmAhead()
+        if (items.size - i <= 5) more()
+    }
+
+    // The next three: their details, their first frames, and the server resolving their streams
+    // (2-7 s each with yt-dlp), so Next starts them in about a second. One the server can't stream
+    // leaves the list before anyone gets to it.
+    private fun warmAhead() {
+        for (n in items.drop(index + 1).take(3)) {
             describe(n)
-            launch { runCatching { Api.warm(n.id) } }
+            ImageLoader.preload(n.thumb, still.width.coerceAtLeast(1), still.height.coerceAtLeast(1))
+            if (!warmed.add(n.id)) continue
+            launch {
+                try {
+                    Api.warm(n.id)
+                    ready += n.id
+                } catch (e: HttpException) {
+                    if (e.code == 404 || e.code == 400) {
+                        val at = items.indexOfFirst { it.id == n.id }
+                        if (at > index) items.removeAt(at)
+                        render()
+                    }
+                } catch (e: Exception) {
+                    warmed.remove(n.id) // the network: try again with the next short
+                }
+            }
         }
-        if (items.size - i <= 4) more()
+    }
+
+    // The next short, unless the server is still resolving it (5-8 s with yt-dlp) and one of the two
+    // after it is ready: that one moves up and plays first. Order hardly matters in Shorts; waiting does.
+    private fun nextReady(): Int {
+        val i = index + 1
+        if (i >= items.size || items[i].id in ready) return i
+        val j = (i + 1..minOf(i + 2, items.lastIndex)).firstOrNull { items[it].id in ready } ?: return i
+        items.add(i, items.removeAt(j))
+        return i
     }
 
     private fun describe(item: Item) {
@@ -190,8 +252,8 @@ class ShortsScreen(shell: ShellActivity) : Screen(shell) {
         val p = player
         when (action) {
             WheelAction.Up, WheelAction.Down -> shell.changeVolume(if (action == WheelAction.Down) 1 else -1)
-            WheelAction.Next -> play(index + 1)
-            WheelAction.Prev -> play(index - 1)
+            WheelAction.Next -> play(nextReady(), 1)
+            WheelAction.Prev -> play(index - 1, -1)
             WheelAction.Select, WheelAction.PlayPause -> p?.togglePlay()
             WheelAction.Back -> return false
             else -> Unit
@@ -206,18 +268,14 @@ class ShortsScreen(shell: ShellActivity) : Screen(shell) {
         val d = p.durationMs()
         progress.fraction = if (d > 0) p.positionMs() / d.toFloat() else 0f
         val started = p.player.videoSize.width > 0
-        waiting.visible(!started || (p.isBuffering() && p.positionMs() == 0L))
+        waiting.visible(still.visibility == View.VISIBLE && (!started || p.isBuffering()))
         paused.visible(started && !p.isPlaying() && !p.isBuffering())
-        // a short that won't play (removed, age-restricted): on to the next one, once
-        if (p.player.playerError != null && skippedAt != index) {
-            skippedAt = index
-            play(index + 1)
-        }
     }
 
     override fun onDestroy() {
         playerView.player = null
         player?.let { p ->
+            p.player.removeListener(events)
             savedRepeat?.let { p.repeat = it }
             p.stopVideo()
         }

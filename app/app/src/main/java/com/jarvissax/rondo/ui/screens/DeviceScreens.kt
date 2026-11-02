@@ -34,10 +34,10 @@ class DeviceScreen(shell: ShellActivity) : ShellListScreen(shell, "Library") {
                     shell.push(LocalSongsScreen(shell, "Songs", songs, alphabetical = true))
                 }),
                 Row.Entry("Artists", trailing = "${artists.size}", tile = Tiles.artists, chevron = true, enabled = artists.isNotEmpty(), onSelect = {
-                    shell.push(LocalGroupsScreen(shell, "Artists", artists))
+                    shell.push(LocalGroupsScreen(shell, "Artists", artists, SearchScope.ARTISTS))
                 }),
                 Row.Entry("Albums", trailing = if (albums.isEmpty()) "reading tags…" else "${albums.size}", tile = Tiles.albums, chevron = true, enabled = albums.isNotEmpty(), onSelect = {
-                    shell.push(LocalGroupsScreen(shell, "Albums", albums))
+                    shell.push(LocalGroupsScreen(shell, "Albums", albums, SearchScope.ALBUMS))
                 }),
                 Row.Entry("Recently added", tile = Tiles.recent, chevron = true, enabled = songs.isNotEmpty(), onSelect = {
                     shell.push(LocalSongsScreen(shell, "Recently added", LocalLibrary.recent, alphabetical = false, showArtist = true))
@@ -86,7 +86,7 @@ abstract class LetterListScreen(shell: ShellActivity, title: String) : ShellList
     protected var letters: List<Pair<Int, Char>> = emptyList() // row index of each letter's first row
 
     protected fun indexLetters(rows: List<Row>) {
-        letters = rows.mapIndexedNotNull { i, r -> (r as? Row.Entry)?.title?.firstOrNull()?.uppercaseChar()?.let { i to (if (it.isLetter()) it else '#') } }
+        letters = rows.mapIndexedNotNull { i, r -> (r as? Row.Entry)?.takeIf { it.tile != Tiles.search }?.title?.firstOrNull()?.uppercaseChar()?.let { i to (if (it.isLetter()) it else '#') } }
             .distinctBy { it.second }
     }
 
@@ -125,7 +125,7 @@ class LocalSongsScreen(
             )
         }
         val head = Row.Header(if (alphabetical && songs.size > 30) "${songs.size} songs · Next/Prev jump A–Z" else "${songs.size} songs")
-        val rows = listOf(head) + songs
+        val rows = (if (alphabetical) listOf(searchRow(shell, SearchScope.SONGS)) else emptyList()) + listOf(head) + songs
         list.setRows(rows, keepSelection = true)
         if (alphabetical) indexLetters(rows)
     }
@@ -138,9 +138,9 @@ class LocalSongsScreen(
     }
 }
 
-class LocalGroupsScreen(shell: ShellActivity, title: String, private val groups: List<Pair<String, List<LocalLibrary.Track>>>) : LetterListScreen(shell, title) {
+class LocalGroupsScreen(shell: ShellActivity, title: String, private val groups: List<Pair<String, List<LocalLibrary.Track>>>, private val scope: SearchScope) : LetterListScreen(shell, title) {
     override fun render() {
-        val rows = groups.map { (name, tracks) ->
+        val rows = listOf(searchRow(shell, scope)) + groups.map { (name, tracks) ->
             Row.Entry(
                 title = name,
                 trailing = "${tracks.size}",
@@ -157,7 +157,7 @@ class LocalGroupsScreen(shell: ShellActivity, title: String, private val groups:
 class LocalVideosScreen(shell: ShellActivity, private val videos: List<LocalLibrary.Track>) : ShellListScreen(shell, "Videos") {
     override fun render() {
         list.setRows(
-            videos.map { t ->
+            listOf(searchRow(shell, SearchScope.VIDEOS)) + videos.map { t ->
                 val item = LocalLibrary.item(t)
                 Row.Entry(
                     title = item.title,
@@ -170,3 +170,7 @@ class LocalVideosScreen(shell: ShellActivity, private val videos: List<LocalLibr
         )
     }
 }
+
+// the first row of a long list: search just that list
+fun searchRow(shell: ShellActivity, scope: SearchScope): Row.Entry =
+    Row.Entry(scope.title, tile = Tiles.search, chevron = true, onSelect = { shell.push(LibrarySearchScreen(shell, scope = scope)) })

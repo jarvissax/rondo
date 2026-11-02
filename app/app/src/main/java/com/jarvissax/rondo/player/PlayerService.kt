@@ -380,6 +380,9 @@ class PlayerService : Service() {
     // server re-resolves expired upstream URLs (502), or the network came back. At most 3 a minute.
     private fun recover(error: PlaybackException) {
         if (player.mediaItemCount == 0) return
+        // the server can't stream this video at all (404 no_dash): another try ends the same way
+        val status = (error.cause as? com.google.android.exoplayer2.upstream.HttpDataSource.InvalidResponseCodeException)?.responseCode
+        if (status == 404 || status == 400) return
         val now = SystemClock.elapsedRealtime()
         while (recoveries.isNotEmpty() && now - recoveries.first() > 60_000) recoveries.removeFirst()
         if (recoveries.size >= 3) {

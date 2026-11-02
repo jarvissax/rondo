@@ -111,6 +111,9 @@ class VideoScreen(shell: ShellActivity) : Screen(shell) {
                 val page = Api.videoFeed(feeds[tab])
                 // Home starts with Shorts, like the app's Shorts shelf (the header has no room for a tab)
                 val shorts = if (tab == 0) listOf(Row.Entry("Shorts", subtitle = "Short videos, one after another", tile = com.jarvissax.rondo.ui.Tiles.shorts, onSelect = { shell.push(ShortsScreen(shell)) })) else emptyList()
+                // the Shorts list now (kept 2 minutes): the server starts resolving its first shorts, so
+                // they play at once when Shorts is opened instead of after 5-8 s of yt-dlp
+                if (tab == 0) launch { runCatching { Api.videoFeed("/video/shorts") } }
                 list.setRows(shorts + videoRows(shell, page.items))
                 pager.reset(page.next)
             } catch (e: Exception) {

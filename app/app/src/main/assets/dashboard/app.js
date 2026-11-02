@@ -293,6 +293,7 @@ async function boot() {
   renderMini();
   route();
   startPolling();
+  checkForUpdate();
 }
 $('#offlineRetry').addEventListener('click', () => {
   $('#offlineNote').textContent = 'Trying…';
@@ -573,8 +574,44 @@ function renderDevice() {
       <span class="tile t-rondo">${markTile}</span>
       <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}</div></div>
       ${d.power ? `<div class="bt-actions"><button class="btn btn-sm" type="button" data-power="restart">Restart</button><button class="btn btn-sm btn-red-text" type="button" data-power="shutdown">${icon('power')}<span>Shut down</span></button></div>` : ''}
-    </div>`;
+    </div>${newest && isNewer(newest.version, d.version) ? `
+    <div class="row update-row">
+      <span class="tile t-rondo">${icon('upload')}</span>
+      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">You have ${esc(d.version || '')}. Install it on the Y1 with Innioasis Updater.</div></div>
+      <a class="btn btn-sm btn-primary" href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a>
+    </div>` : ''}`;
 }
+// ---------- a newer Rondo ----------
+// Asked of GitHub by this browser, not by the Rondo (which talks only to its music server), at most
+// every 6 hours; nothing shows when GitHub can't be reached from here.
+const RELEASES = 'https://api.github.com/repos/jarvissax/rondo/releases/latest';
+let newest = null; // { version, url, at }
+async function checkForUpdate() {
+  try {
+    const kept = JSON.parse(store.get('rondo_latest') || 'null');
+    if (kept && Date.now() - kept.at < 6 * 3600000) newest = kept;
+    else {
+      const r = await fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } });
+      if (!r.ok) return;
+      const j = await r.json();
+      newest = { version: String(j.tag_name || '').replace(/^v/, ''), url: j.html_url, at: Date.now() };
+      store.set('rondo_latest', JSON.stringify(newest));
+    }
+    renderDevice();
+  } catch { /* offline, or GitHub blocked here */ }
+}
+// "1.0.10" is newer than "1.0.9" (the server's updates.ts compares the same way)
+function isNewer(latest, current) {
+  if (!latest || !current) return false;
+  const a = latest.split(/[.-]/), b = current.split(/[.-]/);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = Number(a[i] ?? 0), y = Number(b[i] ?? 0);
+    if (Number.isNaN(x) || Number.isNaN(y)) return latest !== current;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
 // shut down or restart (firmware builds only: status.device.power)
 $('#deviceRows').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-power]');
@@ -2080,7 +2117,7 @@ function renderServer() {
         <div class="field-row"><input type="url" id="srvUrl" value="${esc(s.url || '')}" placeholder="https://music.example.com or http://192.168.1.10:3000" inputmode="url" autocapitalize="off" autocomplete="url" spellcheck="false"></div>
         <p class="row-sub srv-warn" id="urlWarn" ${insecure(s.url) ? '' : 'hidden'}>Plain http isn’t encrypted: use it only on your home network.</p>
         <label class="field-label" for="srvCode" style="margin-top:12px">Connect code</label>
-        <div class="field-row"><input type="text" id="srvCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" spellcheck="false"></div>
+        <div class="field-row"><input type="text" id="srvCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" spellcheck="false"></div>
         <p class="field-err" id="urlErr" hidden></p>
         <div class="join-actions" style="margin-top:12px"><button class="btn" type="button" id="urlOnly">Save address only</button><button class="btn btn-primary" type="submit" id="connectBtn">Connect</button></div>
       </form>
@@ -2113,8 +2150,22 @@ serverBody.addEventListener('input', (e) => {
     $('#urlErr').hidden = true;
     $('#urlWarn').hidden = !insecure(e.target.value.trim());
   }
-  if (e.target.id === 'srvCode') { e.target.classList.remove('is-invalid'); $('#urlErr').hidden = true; }
+  if (e.target.id === 'srvCode') {
+    e.target.classList.remove('is-invalid');
+    $('#urlErr').hidden = true;
+    spaceCode(e.target);
+  }
 });
+// a connect code as 123 456, the way the admin page shows it, however it was typed or pasted
+// ("123456", "123-456", "Code: 123 456")
+function spaceCode(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 6);
+  const shown = digits.length > 3 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
+  if (el.value === shown) return;
+  const atEnd = el.selectionStart === el.value.length;
+  el.value = shown;
+  if (atEnd) el.setSelectionRange(shown.length, shown.length);
+}
 // the address typed in, or null after showing why it isn't one
 function serverUrl() {
   const input = $('#srvUrl'), err = $('#urlErr');

@@ -33,7 +33,18 @@ import com.jarvissax.rondo.ui.visible
 // Library › Search: the card's songs, videos, artists and albums, matched as you type (like the
 // dashboard's search box). Show lists them; Menu goes back to the keyboard. With `addTo`, it picks
 // songs for that playlist instead: center adds the song (or a whole artist or album).
-class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = null) : Screen(shell) {
+// What a search looks through: the whole library, or one list (the Search row at the top of Songs,
+// Artists, Albums, Videos and Playlists).
+enum class SearchScope(val title: String, val hint: String) {
+    ALL("Search", "Songs, artists, albums, videos and playlists"),
+    SONGS("Search songs", "Songs by title, artist or album"),
+    ARTISTS("Search artists", "The artists on the card"),
+    ALBUMS("Search albums", "The albums on the card"),
+    VIDEOS("Search videos", "The videos on the card"),
+    PLAYLISTS("Search playlists", "Your playlists"),
+}
+
+class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = null, private val scope: SearchScope = SearchScope.ALL) : Screen(shell) {
     private val query = StringBuilder()
     private lateinit var field: TextView
     private lateinit var summary: TextView
@@ -41,7 +52,9 @@ class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = nul
     private lateinit var hint: TextView
     private lateinit var results: RowList
     private var showing = false
-    private var found = LocalLibrary.search("")
+    private var allPlaylists: List<Playlists.Playlist> = emptyList()
+    private var playlists: List<Playlists.Playlist> = emptyList() // the ones matching (not while adding to one)
+    private var found = search("")
     private val added = HashSet<String>()
     private val adding = HashSet<String>() // writing to the card takes a second or two
 
@@ -51,7 +64,7 @@ class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = nul
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Palette.shellBg)
         }
-        root.addView(ShellStatusBar(c, if (addTo != null) "Add to $addTo" else "Search"), lp(MATCH, c.dp(22)))
+        root.addView(ShellStatusBar(c, if (addTo != null) "Add to $addTo" else scope.title), lp(MATCH, c.dp(22)))
         val bar = LinearLayout(c).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(c.dp(10), 0, c.dp(10), 0)
@@ -86,22 +99,40 @@ class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = nul
     override fun onShow() {
         launch {
             LocalLibrary.load(context)
-            found = LocalLibrary.search(query.toString())
-            if (showing && found.isEmpty) showKeyboard() else if (showing) showResults()
+            if (addTo == null && (scope == SearchScope.ALL || scope == SearchScope.PLAYLISTS)) allPlaylists = runCatching { Playlists.all() }.getOrDefault(emptyList())
+            found = search(query.toString())
+            if (showing && nothingFound()) showKeyboard() else if (showing) showResults()
             render()
         }
     }
+
+    // the library's search, cut down to the scope (playlists are matched on their names)
+    private fun search(q: String): LocalLibrary.Found {
+        val f = LocalLibrary.search(q)
+        val words = LocalLibrary.fold(q).split(' ').filter { it.isNotEmpty() }
+        playlists = if (words.isEmpty()) emptyList() else allPlaylists.filter { p -> LocalLibrary.fold(p.name).let { n -> words.all { n.contains(it) } } }
+        return when (scope) {
+            SearchScope.ALL -> f
+            SearchScope.SONGS -> f.copy(artists = emptyList(), albums = emptyList(), videos = emptyList())
+            SearchScope.ARTISTS -> f.copy(albums = emptyList(), songs = emptyList(), videos = emptyList())
+            SearchScope.ALBUMS -> f.copy(artists = emptyList(), songs = emptyList(), videos = emptyList())
+            SearchScope.VIDEOS -> f.copy(artists = emptyList(), albums = emptyList(), songs = emptyList())
+            SearchScope.PLAYLISTS -> LocalLibrary.Found(emptyList(), emptyList(), emptyList(), emptyList())
+        }
+    }
+
+    private fun nothingFound() = found.isEmpty && playlists.isEmpty()
 
     private fun onKey(key: String) {
         when (key) {
             TvKeyboard.DELETE -> if (query.isNotEmpty()) query.setLength(query.length - 1)
             TvKeyboard.SEARCH -> {
-                if (!found.isEmpty) showResults()
+                if (!nothingFound()) showResults()
                 return
             }
             else -> if (query.length < 40) query.append(key)
         }
-        found = LocalLibrary.search(query.toString())
+        found = search(query.toString())
         render()
     }
 
@@ -109,10 +140,10 @@ class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = nul
         field.text = if (showing) query.toString() else "$query|"
         val f = found
         val parts = if (addTo != null) listOf(f.artists.size to "artist", f.albums.size to "album", f.songs.size to "song")
-        else listOf(f.artists.size to "artist", f.albums.size to "album", f.songs.size to "song", f.videos.size to "video")
+        else listOf(f.artists.size to "artist", f.albums.size to "album", f.songs.size to "song", f.videos.size to "video", playlists.size to "playlist")
         summary.text = when {
-            query.isBlank() -> if (addTo != null) "Find songs to add, then press Show" else "Songs, artists, albums and videos on the card"
-            f.isEmpty -> "Nothing on the card matches"
+            query.isBlank() -> if (addTo != null) "Find songs to add, then press Show" else scope.hint
+            nothingFound() -> "Nothing on the card matches"
             else -> parts.filter { it.first > 0 }.joinToString(" · ") { (n, word) -> "$n $word" + if (n == 1) "" else "s" } + if (showing) " · Menu: back to typing" else " · Show to see them"
         }
     }
@@ -160,6 +191,11 @@ class LibrarySearchScreen(shell: ShellActivity, private val addTo: String? = nul
             f.videos.map(LocalLibrary::item).forEach { item ->
                 rows += Row.Entry(item.title, trailing = durationText(item), thumb = item.thumb, onSelect = { shell.push(VideoPlayerScreen(shell, item)) })
             }
+        }
+        if (playlists.isNotEmpty()) rows += Row.Header("Playlists")
+        playlists.forEach { p ->
+            rows += Row.Entry(p.name, trailing = "${p.paths.size}", tile = Tiles.playlists, chevron = true,
+                onSelect = { shell.push(PlaylistScreen(shell, p.name)) }, onLongSelect = { shell.push(PlaylistMenuScreen(shell, p.name)) })
         }
         return rows
     }
@@ -211,6 +247,7 @@ class PlaylistsScreen(shell: ShellActivity) : ShellListScreen(shell, "Playlists"
                     then = { name -> shell.push(PlaylistScreen(shell, Playlists.clean(name))) }))
             }),
         )
+        if (all.size > 1) rows += searchRow(shell, SearchScope.PLAYLISTS)
         if (all.isEmpty()) rows += Row.Header("No playlists yet")
         all.forEach { p ->
             rows += Row.Entry(p.name, trailing = "${p.paths.size}", tile = Tiles.playlists, chevron = true,

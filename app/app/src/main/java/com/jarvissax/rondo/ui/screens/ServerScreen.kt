@@ -69,6 +69,7 @@ class ServerScreen(shell: ShellActivity) : ShellListScreen(shell, "Server") {
     private fun askCode(url: String) {
         shell.push(TextEntryScreen(
             shell, "Connect code", action = "Connect", note = "On the server's admin page: Device › Connect a Rondo", maxLength = 6,
+            shown = { typed -> typed.filter { it.isDigit() }.let { d -> if (d.length > 3) d.take(3) + " " + d.drop(3) else d } },
             onDone = { typed ->
                 val code = typed.filter { it.isDigit() }
                 if (code.length != 6) return@TextEntryScreen "The code has 6 digits"

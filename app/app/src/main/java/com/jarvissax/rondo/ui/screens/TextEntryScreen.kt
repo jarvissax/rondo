@@ -29,6 +29,7 @@ class TextEntryScreen(
     private val action: String = "Done",
     private val note: String = "",
     private val maxLength: Int = 60,
+    private val shown: (String) -> String = { it }, // how the typed text is displayed (a code as 123 456)
     private val onDone: suspend (String) -> String?,
     private val then: ((String) -> Unit)? = null,
 ) : Screen(shell) {
@@ -97,7 +98,7 @@ class TextEntryScreen(
     }
 
     private fun render(line: String) {
-        field.text = "$value|"
+        field.text = shown(value.toString()) + "|"
         message.text = line
         message.setTextColor(if (line == note || working) Palette.shellMuted else Palette.accent)
     }

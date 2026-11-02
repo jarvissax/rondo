@@ -27,6 +27,9 @@ needed). This page describes its API, for anyone working on the dashboard or scr
 ## API (JSON unless noted; errors are `{"error": "<short reason>"}` with 4xx/5xx)
 
 ### Status and player
+- **Newer Rondo:** the page itself (the browser, not the Rondo) asks GitHub's releases API for the
+  latest Rondo at most every 6 hours (kept in `localStorage`) and shows it under Overview › Device when it
+  is newer than `device.version`.
 - `GET /api/status` →
   ```json
   {"device": {"name": "Rondo", "version": "1.0.0", "model": "Innioasis Y1", "power": true},

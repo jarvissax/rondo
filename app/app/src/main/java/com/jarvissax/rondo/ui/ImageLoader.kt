@@ -67,6 +67,14 @@ object ImageLoader {
         })
     }
 
+    // fetched into the cache now, so a later load() shows it at once (the next short's first frame)
+    fun preload(thumb: String?, widthPx: Int, heightPx: Int? = null) {
+        if (thumb == null || thumb.startsWith(LOCAL)) return
+        val key = key(thumb, widthPx, heightPx)
+        if (cache.get(key) != null) return
+        scope.launch { runCatching { withContext(io) { fetch(key) } }.getOrNull()?.let { cache.put(key, it) } }
+    }
+
     private fun fetch(url: String): Bitmap? =
         Api.client.newCall(Request.Builder().url(url).build()).execute().use { res ->
             if (!res.isSuccessful) return@use null

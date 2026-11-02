@@ -1,6 +1,8 @@
 package com.jarvissax.rondo.net
 
+import com.google.android.exoplayer2.C
 import com.google.android.exoplayer2.upstream.DefaultLoadErrorHandlingPolicy
+import com.google.android.exoplayer2.upstream.HttpDataSource
 import com.google.android.exoplayer2.upstream.LoadErrorHandlingPolicy
 import java.io.IOException
 import java.net.SocketException
@@ -17,8 +19,12 @@ private const val CONNECT_RETRIES = 20
 fun Throwable.isConnectFailure(): Boolean = generateSequence(this) { it.cause }.any { it is SocketException }
 
 class FastRetryLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(CONNECT_RETRIES) {
-    override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-        if (info.exception.isConnectFailure()) FAST_RETRY_MS else super.getRetryDelayMsFor(info)
+    override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long = when {
+        info.exception.isConnectFailure() -> FAST_RETRY_MS
+        // the server can't stream this video (404 no_dash, 400 bad id): asking again won't change that
+        (info.exception as? HttpDataSource.InvalidResponseCodeException)?.responseCode.let { it == 404 || it == 400 } -> C.TIME_UNSET
+        else -> super.getRetryDelayMsFor(info)
+    }
 }
 
 class ConnectRetryInterceptor : Interceptor {

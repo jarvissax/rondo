@@ -918,3 +918,7 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   .lib .song.pl-song { grid-template-columns: 44px minmax(0, 1fr) 52px auto; }
   .lib .song.pl-row .s-sub, .lib .song.pl-song .s-sub { display: block; }
 }
+
+/* a newer Rondo is out (Overview › Device) */
+.update-row .row-title { color: var(--accent-hi); font-weight: 600; }
+.update-row .tile .i { transform: rotate(180deg); } /* the upload arrow, pointing down */
