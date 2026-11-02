@@ -106,7 +106,8 @@ the system and data images in place with debugfs, so nothing is mounted and no r
 It checks both file systems afterwards and stops if anything is off. Install the result with
 Innioasis Updater CE: **Settings › Install from a file…**. The Updater keeps an unpacked copy of
 each package and reuses it for a file of the same name, so give each build its own name (or delete
-the copy, see [docs/device](device/README.md#the-rondo-firmware)).
+the copy, see [docs/device](device/README.md#the-rondo-firmware)). It also deletes the zip once it has
+unpacked it, so install a copy of a build you mean to publish.
 
 The firmware has no SystemUI, so Rondo does its visible jobs: the click on each wheel step, the low
 battery warning, the wallpaper Android waits for before it ends the boot animation, and a power

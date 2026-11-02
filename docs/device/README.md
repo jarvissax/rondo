@@ -112,7 +112,8 @@ default). The panel refreshes at 36.43 fps. Sources: `dumpsys-display.txt`, `lcd
   `~/Library/Application Support/Innioasis Updater/downloads/.<zip name>_extracted` and reuses that
   folder the next time a zip of the same name is installed (its `.extract_complete` marker holds
   just `ok`), so a rebuilt `rom.zip` flashes the old images. Give each build its own file name,
-  or delete that folder first.
+  or delete that folder first. It also deletes the zip it was given once it has unpacked it
+  (updater-ce-neo's `flash_service.py`), so keep a copy of a build you want to publish.
 
 ### The Rondo firmware
 

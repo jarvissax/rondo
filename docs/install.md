@@ -36,6 +36,8 @@ The same thing, with the file downloaded by hand:
    `rom.zip` you downloaded.
 3. Press **Install / Restore** and follow steps 4 and 5 above.
 
+The Updater deletes the `rom.zip` once it has unpacked it, so download it again if you need it later.
+
 ## First start
 
 1. **Wi-Fi:** Settings › Wi-Fi. Turn the wheel to pick your network and type the password on the
