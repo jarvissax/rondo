@@ -72,7 +72,8 @@ export async function buildApp(
   await registerAuth(app, (t) => admin.isDeviceToken(t), (req) => admin.seen(req));
   registerStreamRoutes(app, { config, resolver, health, timing: opts.upstreamTiming });
   app.get("/time", async () => ({ epochMs: Date.now() })); // clock sync for the device
-  const routes = registerBrowseRoutes(app, { config, tv });
+  // the first shorts of a Shorts list start resolving at once (their streams are asked for next)
+  const routes = registerBrowseRoutes(app, { config, tv, prepare: (ids) => ids.forEach((id) => void resolver.resolve(id).catch(() => undefined)) });
   browse = routes;
   tv.onChange = () => routes.forget();
   const lyrics = new LyricsService({

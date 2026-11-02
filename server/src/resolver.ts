@@ -153,7 +153,8 @@ export class Resolver {
   }
 
   private async runAndStore(id: string): Promise<ResolvedVideo> {
-    const args = ["-J", "--no-playlist", "--no-warnings"];
+    // HLS and DASH manifests are never used (plain https formats only): skipping them saves ~1.5 s
+    const args = ["-J", "--no-playlist", "--no-warnings", "--extractor-args", "youtube:skip=hls,dash,translated_subs"];
     if (this.config.ytdlpUseCookies && (await access(this.config.cookiesFile).then(() => true, () => false))) {
       args.push("--cookies", this.config.cookiesFile);
     }

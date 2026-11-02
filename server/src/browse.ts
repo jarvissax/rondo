@@ -500,6 +500,8 @@ export class Browse {
   private cookieMtime = -1;
   private readonly cache = new TtlCache<unknown>(CACHE_TTL_MS);
   private readonly pager = new Pager();
+  // videos about to be played (the first shorts): the stream routes start resolving them
+  prepare: (ids: string[]) => void = () => undefined;
 
   constructor(
     private readonly config: Config,
@@ -809,6 +811,7 @@ export class Browse {
       }
       if (!seeds.length) seeds = uniqueById(findShorts((await yt.search("shorts", { type: "shorts" })).results).map(shortItem));
       const chains = this.tv?.signedIn ? seeds.slice(0, 8) : seeds.slice(0, 5).sort(() => Math.random() - 0.5).slice(0, 1);
+      this.prepare(seeds.slice(0, 4).map((s) => s.id)); // yt-dlp takes 5-8 s a short: start now
       return { items: seeds, more: chainFrom(yt, chains, 0) };
     }, byId);
   }
@@ -854,8 +857,9 @@ export class Browse {
 }
 
 // returns the Browse instance so /lyrics can share its Innertube session
-export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Config; tv?: TvAccount }): Browse {
+export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Config; tv?: TvAccount; prepare?: (ids: string[]) => void }): Browse {
   const browse = new Browse(deps.config, app.log, deps.tv);
+  if (deps.prepare) browse.prepare = deps.prepare;
 
   // one retry: a lone "fetch failed" between the VPS and YouTube is common (seen 2026-10-30)
   const run = async (reply: FastifyReply, load: () => Promise<unknown>) => {
