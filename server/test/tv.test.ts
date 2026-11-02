@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { interleave } from "../src/browse.js";
 import { loadConfig } from "../src/config.js";
-import { clockSeconds, TvAccount, tvChunk, tvContinuation, tvItems } from "../src/tv.js";
+import { clockSeconds, TvAccount, tvChunk, tvContinuation, tvItems, tvShorts } from "../src/tv.js";
 
 // TV page pieces in the shapes YouTube's TV app gets (2026-10-31), trimmed to what tv.ts reads
 const thumbs = (id: string) => ({ thumbnails: [{ url: `https://i.ytimg.com/vi/${id}/default.jpg`, width: 120 }, { url: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, width: 480 }] });
@@ -202,5 +202,24 @@ describe("sign in with a code", () => {
     expect(tv.signedIn).toBe(false);
     expect(youtube.sessions[0]!.signedOut).toBe(true);
     expect(existsSync(join(dir, "tv.json"))).toBe(false);
+  });
+});
+
+describe("tvShorts", () => {
+  const short = (id: string, title?: string) => ({
+    tileRenderer: {
+      contentType: "TILE_CONTENT_TYPE_VIDEO",
+      onSelectCommand: { reelWatchEndpoint: { videoId: id } },
+      header: { tileHeaderRenderer: { thumbnail: { thumbnails: [{ url: `https://i.ytimg.com/vi/${id}/oardefault.jpg`, width: 405 }] } } },
+      ...(title ? { metadata: { tileMetadataRenderer: { title: { simpleText: title } } } } : {}),
+    },
+  });
+  it("finds the Shorts shelf's tiles, which tvItems leaves out", () => {
+    const page = { contents: [{ shelfRenderer: { content: { horizontalListRenderer: { items: [short("LolNRjKG8Xs", "Fötr şapka"), short("ej3m_-QUnIQ"), short("LolNRjKG8Xs")] } } } }] };
+    expect(tvShorts(page)).toEqual([
+      { kind: "video", id: "LolNRjKG8Xs", title: "Fötr şapka", subtitle: "", thumbUrl: "https://i.ytimg.com/vi/LolNRjKG8Xs/oardefault.jpg" },
+      { kind: "video", id: "ej3m_-QUnIQ", title: "", subtitle: "", thumbUrl: "https://i.ytimg.com/vi/ej3m_-QUnIQ/oardefault.jpg" },
+    ]);
+    expect(tvItems(page)).toEqual([]);
   });
 });

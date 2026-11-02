@@ -54,6 +54,7 @@ interface YtdlpFormat {
   asr?: number | null;
   tbr?: number | null;
   filesize?: number | null;
+  language_preference?: number | null;
   http_headers?: Record<string, string>;
 }
 
@@ -82,13 +83,23 @@ function toFormat(f: YtdlpFormat, itag: number): StreamFormat | undefined {
 
 export function parseYtdlp(id: string, json: { duration?: number; formats?: YtdlpFormat[] }): ResolvedVideo {
   const formats = new Map<number, StreamFormat>();
+  // A video YouTube has dubbed has one audio track per language under the same itag ("140-0" …
+  // "140-9"): the original is the one with the highest language_preference. "140-drc" is a
+  // dynamic-range-compressed copy, taken only when nothing else is there. Plain https only: it
+  // gives byte ranges (HLS variants are skipped).
+  const rank = (f: YtdlpFormat): number => (f.language_preference ?? 0) * 2 - (/-drc$/.test(f.format_id ?? "") ? 1 : 0);
   const pick = (wanted: Set<number>) => {
+    const best = new Map<number, YtdlpFormat>();
     for (const f of json.formats ?? []) {
-      const itag = Number(f.format_id);
-      // exact ids only ("140-drc" and HLS variants are skipped); plain https gives byte ranges
-      if (!wanted.has(itag) || String(itag) !== f.format_id || f.protocol !== "https") continue;
+      const m = /^(\d+)(?:-\w+)?$/.exec(f.format_id ?? "");
+      const itag = Number(m?.[1]);
+      if (!m || !wanted.has(itag) || f.protocol !== "https" || formats.has(itag)) continue;
+      const held = best.get(itag);
+      if (!held || rank(f) > rank(held)) best.set(itag, f);
+    }
+    for (const [itag, f] of best) {
       const format = toFormat(f, itag);
-      if (format && !formats.has(itag)) formats.set(itag, format);
+      if (format) formats.set(itag, format);
     }
   };
   pick(WANTED);

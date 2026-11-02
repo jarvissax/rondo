@@ -30,6 +30,16 @@ describe("parseYtdlp", () => {
     expect([...parseYtdlp("dQw4w9WgXcQ", only18).formats.keys()]).toEqual([18]);
   });
 
+  it("takes a dubbed video's original audio track, not a dub or the DRC copy", () => {
+    const f140 = fixture.formats.find((f: { format_id: string }) => f.format_id === "140");
+    const track = (format_id: string, language_preference: number, n: string) => ({ ...f140, format_id, language_preference, url: f140.url + "&n=" + n });
+    const dubbed = { ...fixture, formats: [...fixture.formats.filter((f: { format_id: string }) => f.format_id !== "140"),
+      track("140-drc", 10, "drc"), track("140-0", -1, "de"), track("140-9", 10, "original"), track("140-1", -1, "es")] };
+    expect(parseYtdlp("dQw4w9WgXcQ", dubbed).formats.get(140)?.url).toMatch(/n=original$/);
+    const onlyDrc = { ...fixture, formats: [...fixture.formats.filter((f: { format_id: string }) => f.format_id !== "140"), track("140-drc", 10, "drc")] };
+    expect(parseYtdlp("dQw4w9WgXcQ", onlyDrc).formats.get(140)?.url).toMatch(/n=drc$/);
+  });
+
   it("throws when nothing usable is there", () => {
     expect(() => parseYtdlp("dQw4w9WgXcQ", { formats: [] })).toThrow();
   });

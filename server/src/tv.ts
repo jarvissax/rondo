@@ -145,6 +145,29 @@ export function tvItems(data: unknown): TvItem[] {
   return out;
 }
 
+// the shorts a TV page shows: tiles that open the Shorts player, which tvItems leaves out (the TV
+// home has a Shorts shelf picked for the account)
+export function tvShorts(data: unknown): TvItem[] {
+  const out: TvItem[] = [];
+  const seen = new Set<string>();
+  const walk = (o: unknown): void => {
+    if (!o || typeof o !== "object") return;
+    const t = (o as Raw).tileRenderer;
+    const id = t?.onSelectCommand?.reelWatchEndpoint?.videoId;
+    if (typeof id === "string" && VIDEO_ID.test(id)) {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const menu = t.onLongPressCommand?.showMenuCommand;
+      const title = (rawText(t.metadata?.tileMetadataRenderer?.title) || rawText(menu?.title)).trim();
+      out.push({ kind: "video", id, title, subtitle: "", thumbUrl: biggest(t.header?.tileHeaderRenderer?.thumbnail?.thumbnails) });
+      return;
+    }
+    for (const v of Object.values(o as Raw)) walk(v);
+  };
+  walk(data);
+  return out;
+}
+
 // the token for more of the page itself: section lists and grids, not one shelf's sideways list
 export function tvContinuation(data: unknown): string | undefined {
   let found: string | undefined;

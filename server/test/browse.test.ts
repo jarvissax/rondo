@@ -19,6 +19,7 @@ import {
   playlistChunk,
   playlistPage,
   relatedChunk,
+  chainFrom,
   findShorts,
   sequenceChunk,
   shortItem,
@@ -463,5 +464,24 @@ describe("shorts", () => {
     const second = await first.more!();
     expect(second.items.map((i) => i?.id)).toEqual(["bbbbbbbbbbb"]);
     expect(second.more).toBeUndefined();
+  });
+});
+
+describe("chainFrom", () => {
+  it("takes a page of the chain from each seed, then follows the last one", async () => {
+    const step = (id: string) => ({ payload: { videoId: id } });
+    const chains: Record<string, string[]> = { aaaaaaaaaaa: ["ccccccccccc"], bbbbbbbbbbb: ["ddddddddddd"] };
+    const yt = {
+      async getShortsVideoInfo(id: string) {
+        return { watch_next_feed: chains[id]!.map(step), wn_has_continuation: id === "bbbbbbbbbbb", async getWatchNextContinuation() { return { watch_next_feed: [step("eeeeeeeeeee")] }; } };
+      },
+    };
+    const seeds = ["aaaaaaaaaaa", "bbbbbbbbbbb"].map((id) => ({ kind: "video" as const, id, title: "", subtitle: "" }));
+    const first = await chainFrom(yt, seeds, 0)!();
+    expect(first.items.map((i) => i?.id)).toEqual(["ccccccccccc"]);
+    const second = await first.more!();
+    expect(second.items.map((i) => i?.id)).toEqual(["ddddddddddd"]);
+    expect((await second.more!()).items.map((i) => i?.id)).toEqual(["eeeeeeeeeee"]);
+    expect(chainFrom(yt, [], 0)).toBeUndefined();
   });
 });

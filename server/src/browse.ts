@@ -12,7 +12,7 @@ import type { LyricLine } from "./lyrics.js";
 import { type Chunk, type Page, Pager } from "./paging.js";
 import { DEFAULT_THUMB_PX, isThumbHost, sizedThumbUrl, thumbPx } from "./thumb.js";
 import { TtlCache } from "./ttl.js";
-import { type TvAccount, type TvItem, tvChunk, tvItems } from "./tv.js";
+import { type TvAccount, type TvItem, tvChunk, tvItems, tvShorts } from "./tv.js";
 import { dispatcher } from "./upstream.js";
 
 export interface Item {
@@ -310,7 +310,7 @@ export function shortItem(n: Node): Item | undefined {
   let item: Item | undefined;
   if (n?.type === "ShortsLockupView") {
     const id = n.on_tap_endpoint?.payload?.videoId;
-    item = { kind: "video", id, title: text(n.overlay_metadata?.primary_text), subtitle: text(n.overlay_metadata?.secondary_text), thumb: thumbLink(pickThumb(n.thumbnail)) };
+    item = { kind: "video", id, title: text(n.overlay_metadata?.primary_text), subtitle: text(n.overlay_metadata?.secondary_text), thumb: thumbLink(pickThumb(n.thumbnail)) ?? firstFrame(id) };
   } else if (n?.type === "ReelItem") {
     item = { kind: "video", id: n.id, title: text(n.title), subtitle: text(n.views), thumb: thumbLink(pickThumb(n.thumbnails)) };
   } else if (n?.payload?.videoId) {
@@ -318,6 +318,9 @@ export function shortItem(n: Node): Item | undefined {
   }
   return item && isVideoId(item.id) ? item : undefined;
 }
+
+// a short's first frame, full size and upright: what the Rondo shows while the short loads
+const firstFrame = (id: unknown): string | undefined => (isVideoId(id) ? thumbLink(`https://i.ytimg.com/vi/${id}/frame0.jpg`) : undefined);
 
 // the shorts anywhere in a parsed response (search puts them in shelves inside sections)
 export function findShorts(n: unknown, depth = 0, out: Node[] = []): Node[] {
@@ -337,6 +340,16 @@ export const sequenceChunk = (info: any): Chunk<Item> => ({
   items: (info.watch_next_feed ?? []).map(shortItem),
   more: info.wn_has_continuation ? async () => sequenceChunk(await info.getWatchNextContinuation()) : undefined,
 });
+
+// a page of the chain from each seed in turn, then the last seed's chain on and on
+export function chainFrom(yt: { getShortsVideoInfo(id: string): Promise<unknown> }, seeds: Item[], i: number): (() => Promise<Chunk<Item>>) | undefined {
+  const seed = seeds[i];
+  if (!seed) return undefined;
+  return async () => {
+    const chunk = sequenceChunk(await yt.getShortsVideoInfo(seed.id));
+    return { items: chunk.items, more: i + 1 < seeds.length ? chainFrom(yt, seeds, i + 1) : chunk.more };
+  };
+}
 
 const compact = (n: number): string =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
@@ -779,15 +792,24 @@ export class Browse {
     return this.pager.page("video/home", () => this.popularChunk(), byId);
   }
 
-  // Shorts, like the app's Shorts tab: popular shorts first (titled, from a Shorts search), then
-  // YouTube's own "watch next" chain from one of them, which goes on for as long as anyone scrolls.
-  // With cookies.txt the chain follows the account's taste.
+  // Shorts, like the app's Shorts tab. With the code sign-in, the account's own: the Shorts shelf of
+  // its TV home. Without one, popular shorts from a Shorts search. Then YouTube's "watch next" chain
+  // from each of those in turn, a page each, so the account's interests all come up; the last chain
+  // goes on for as long as anyone scrolls. (The TV client can't fetch that chain itself, but a
+  // chain only follows the short it starts from.)
   async videoShorts(): Promise<Page<Item>> {
     const yt = await this.yt();
     return this.pager.page("video/shorts", async () => {
-      const seeds = uniqueById(findShorts((await yt.search("shorts", { type: "shorts" })).results).map(shortItem));
-      const start = seeds[Math.floor(Math.random() * Math.min(5, seeds.length))];
-      return { items: seeds, more: start ? async () => sequenceChunk(await yt.getShortsVideoInfo(start.id)) : undefined };
+      let seeds: Item[] = [];
+      if (this.tv?.signedIn) {
+        seeds = uniqueById(tvShorts(await this.tvBrowse({ browseId: "FEwhat_to_watch" })).map((t) => {
+          const item = tvItem(t);
+          return item.thumb ? item : { ...item, thumb: firstFrame(item.id) };
+        }));
+      }
+      if (!seeds.length) seeds = uniqueById(findShorts((await yt.search("shorts", { type: "shorts" })).results).map(shortItem));
+      const chains = this.tv?.signedIn ? seeds.slice(0, 8) : seeds.slice(0, 5).sort(() => Math.random() - 0.5).slice(0, 1);
+      return { items: seeds, more: chainFrom(yt, chains, 0) };
     }, byId);
   }
 
