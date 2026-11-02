@@ -3,6 +3,7 @@
 // follows (infra/entrypoint.sh). Asked of GitHub at most every 6 hours, in the background (it
 // allows 60 unauthenticated requests an hour); the admin page shows the last answer.
 
+import type { FastifyInstance } from "fastify";
 import { request } from "undici";
 import { dispatcher } from "./upstream.js";
 
@@ -10,6 +11,7 @@ export interface Release {
   version: string; // "1.0.1", "2026.11.01.233542"
   url: string; // the release page
   publishedAt: number | null;
+  apk?: { url: string; size: number }; // a Rondo release's rondo-<version>.apk: the update the Y1 installs
 }
 
 export interface UpdateState {
@@ -38,10 +40,17 @@ export async function githubJson(url: string): Promise<unknown> {
   return res.body.json();
 }
 
+type GithubAsset = { name?: unknown; browser_download_url?: unknown; size?: unknown };
+
 function toRelease(j: unknown): Release | null {
-  const r = j as { tag_name?: unknown; html_url?: unknown; published_at?: unknown };
+  const r = j as { tag_name?: unknown; html_url?: unknown; published_at?: unknown; assets?: GithubAsset[] };
   if (typeof r?.tag_name !== "string" || typeof r.html_url !== "string") return null;
-  return { version: r.tag_name.replace(/^v/, ""), url: r.html_url, publishedAt: Date.parse(String(r.published_at)) || null };
+  const release: Release = { version: r.tag_name.replace(/^v/, ""), url: r.html_url, publishedAt: Date.parse(String(r.published_at)) || null };
+  const apk = (r.assets ?? []).find((a) => typeof a?.name === "string" && /^rondo-[\w.-]+\.apk$/.test(a.name));
+  if (apk && typeof apk.browser_download_url === "string" && typeof apk.size === "number") {
+    release.apk = { url: apk.browser_download_url, size: apk.size };
+  }
+  return release;
 }
 
 // "1.0.10" is newer than "1.0.9", part by part; yt-dlp's "2026.11.01.233542" compares the same way
@@ -65,6 +74,13 @@ export class Updates {
   // null: never ask (tests, and servers started with UPDATE_CHECK=0)
   constructor(private readonly fetchJson: FetchJson | null = githubJson) {}
 
+  // the latest Rondo release, after a first check if none has been made yet
+  async latest(): Promise<Release | null> {
+    this.get();
+    if (!this.state.checkedAt && this.running) await this.running;
+    return this.state.rondo;
+  }
+
   // the last answer; an old one starts a new check for next time
   get(): UpdateState {
     const stale = !this.state.checkedAt || Date.now() - this.state.checkedAt > EVERY_MS;
@@ -80,4 +96,35 @@ export class Updates {
     // a failed check keeps what the last one found
     this.state = { rondo: rondo ?? this.state.rondo, ytdlp: ytdlp ?? this.state.ytdlp, checkedAt: Date.now() };
   }
+}
+
+// Settings › Software update on the Rondo (device token, like every route after the auth hook).
+// GET /update names the newest Rondo that has an update APK; GET /update/rondo.apk passes that APK
+// through from GitHub as it downloads, so the Y1 talks only to its server. Android installs it only
+// when it's signed with the same key as the firmware's copy.
+export function registerUpdateRoutes(app: FastifyInstance, updates: Updates | undefined): void {
+  app.get("/update", async () => {
+    const r = await updates?.latest();
+    return r?.apk ? { version: r.version, size: r.apk.size, notes: r.url } : { version: null };
+  });
+
+  app.get("/update/rondo.apk", async (_req, reply) => {
+    const r = await updates?.latest();
+    if (!r?.apk) return reply.code(404).send({ error: "none" });
+    const res = await request(r.apk.url, {
+      dispatcher, // follows GitHub's redirect to its download host
+      headers: { "user-agent": "rondo-server" },
+      headersTimeout: 15_000,
+      bodyTimeout: 60_000,
+    });
+    if (res.statusCode !== 200) {
+      await res.body.dump();
+      return reply.code(502).send({ error: "github" });
+    }
+    return reply
+      .type("application/vnd.android.package-archive")
+      .header("content-length", String(res.headers["content-length"] ?? r.apk.size))
+      .header("cache-control", "no-store")
+      .send(res.body);
+  });
 }

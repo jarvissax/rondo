@@ -10,7 +10,7 @@ import { registerCors } from "./cors.js";
 import { Health } from "./health.js";
 import { type LyricsDeps, LyricsService, lrclibGet, registerLyricsRoutes } from "./lyrics.js";
 import { execRunner, Resolver, type YtdlpRunner } from "./resolver.js";
-import type { Updates } from "./updates.js";
+import { registerUpdateRoutes, type Updates } from "./updates.js";
 import { registerStreamRoutes, type UpstreamTiming } from "./stream.js";
 import { Store } from "./store.js";
 
@@ -74,6 +74,7 @@ export async function buildApp(
   await registerAuth(app, (t) => admin.isDeviceToken(t), (req) => admin.seen(req));
   registerStreamRoutes(app, { config, resolver, health, timing: opts.upstreamTiming });
   app.get("/time", async () => ({ epochMs: Date.now() })); // clock sync for the device
+  registerUpdateRoutes(app, opts.updates); // Settings › Software update
   // the first shorts of a Shorts list start resolving at once (their streams are asked for next)
   const routes = registerBrowseRoutes(app, { config, tv, prepare: (ids) => ids.forEach((id) => void resolver.resolve(id).catch(() => undefined)) });
   browse = routes;
