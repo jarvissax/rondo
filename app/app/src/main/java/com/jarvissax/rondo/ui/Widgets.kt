@@ -133,7 +133,6 @@ object Tiles {
     val bluetooth = Tile(IconView.Kind.BLUETOOTH, Color.parseColor("#6a8cff"), Color.parseColor("#2c4fd6"))
     val quality = Tile(IconView.Kind.PLAY, Color.parseColor("#ffb04d"), Color.parseColor("#f07a12"))
     val server = Tile(IconView.Kind.CLOUD, Color.parseColor("#7be07b"), Color.parseColor("#26a83b"))
-    val stock = Tile(IconView.Kind.NOTE, Color.parseColor("#c9c9c9"), Color.parseColor("#8d8d8d"))
     val about = Tile(IconView.Kind.INFO, Color.parseColor("#b8bcc4"), Color.parseColor("#6f747d"))
     val songs = Tile(IconView.Kind.NOTE, Color.parseColor("#ff5e7e"), Color.parseColor("#e0144c"))
     val artists = Tile(IconView.Kind.PERSON, Color.parseColor("#c58cff"), Color.parseColor("#7b3fe0"))

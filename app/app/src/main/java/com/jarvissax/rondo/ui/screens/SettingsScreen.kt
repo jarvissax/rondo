@@ -74,9 +74,6 @@ class SettingsScreen(shell: ShellActivity) : ShellListScreen(shell, "Settings") 
                     render()
                 }),
                 Row.Entry("Server", trailing = server, tile = Tiles.server, onSelect = { checkServer() }),
-            ) + (if (OtherLaunchersScreen.homes(c).isEmpty()) emptyList() else listOf(
-                Row.Entry("Other launchers", tile = Tiles.stock, chevron = true, onSelect = { shell.push(OtherLaunchersScreen(shell)) }),
-            )) + listOf(
                 Row.Entry("About", trailing = "Rondo ${BuildConfig.VERSION_NAME}", tile = Tiles.about),
             ),
             keepSelection = true,
@@ -249,40 +246,5 @@ class TimeoutScreen(shell: ShellActivity) : ChoiceScreen<Int>(shell, "Screen off
     override fun note(value: Int) = if (value <= 30_000) "saves battery" else ""
     override fun pick(value: Int) {
         Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, value)
-    }
-}
-
-// The other home-screen apps on the Y1: the stock player, Rockbox, other launchers. Rondo stays the
-// home screen; one of them opens from here. The stock UI is a home screen itself (MAIN + HOME, no
-// LAUNCHER entry) and Menu does nothing at its top, so the way back is a restart: this screen says
-// so before switching. Disabled apps aren't listed (they can't be opened).
-class OtherLaunchersScreen(shell: ShellActivity) : ShellListScreen(shell, "Other launchers") {
-    override fun render() {
-        val pm = context.packageManager
-        val homes = homes(context)
-        val rows = mutableListOf<Row>()
-        if (homes.isEmpty()) rows += Row.Entry("No other launcher installed", enabled = false)
-        homes.forEach { home ->
-            rows += Row.Entry(home.loadLabel(pm).toString(), tile = Tiles.stock, onSelect = { open(home.activityInfo.packageName, home.activityInfo.name) })
-        }
-        rows += Row.Header("To come back")
-        rows += Row.Entry("Restart the Y1", subtitle = "Hold Power, then switch it on again", enabled = false)
-        rows += Row.Entry("Rondo opens on every start", subtitle = "It stays the home screen", enabled = false)
-        list.setRows(rows)
-    }
-
-    companion object {
-        // every other home screen on the Y1 (none on the Rondo firmware, so Settings hides the row)
-        fun homes(context: android.content.Context) = context.packageManager
-            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
-            .filter { it.activityInfo.packageName != context.packageName }
-            .sortedBy { it.loadLabel(context.packageManager).toString().lowercase() }
-    }
-
-    private fun open(pkg: String, activity: String) {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            .setComponent(android.content.ComponentName(pkg, activity))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }.onFailure { list.showMessage("That launcher couldn't be opened") }
     }
 }
