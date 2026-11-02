@@ -17,11 +17,11 @@ takes a minute.
 Rondo needs the Y1's Android 4.2 firmware with USB debugging switched on. The community
 publishes exactly that as **"Android 4.2 (Dev)"**, and their Innioasis Updater installs it for you.
 
-1. Download **Innioasis Updater** for your computer from its
-   [releases page](https://github.com/y1-community/Innioasis-Updater/releases/latest).
+1. Download **Innioasis Updater CE** for your computer from its
+   [releases page](https://www.innioasis.app/guide.html).
    On Windows, let it install its drivers and restart the computer once before the first flash.
-2. Open it and choose the **Y1** (and your wheel type, if it asks).
-3. In the software list, choose **Android 4.2 (Dev)**. That's the version Rondo is tested on,
+2. Open it and choose the **Y1** (and where your device was bought between 2024-2025 or came with an OS earlier than 2.0 please select **Type B**).
+3. In the software list, choose **Rondo**. That's the version Rondo is tested on,
    and the one with USB debugging switched on, which the install needs.
 4. Follow the Updater's instructions to connect the Y1 and flash it. Don't unplug anything until
    it says it's done.
