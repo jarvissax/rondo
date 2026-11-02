@@ -35,7 +35,8 @@ a touchscreen.
 
 ## What you need
 
-- An **Innioasis Y1, Type A** (one that shipped with software 2.0.0 or later).
+- An **Innioasis Y1, Type A** (one that shipped with software 2.0.0 or later). Not sure which type
+  yours is? See [Before you start](docs/install.md#before-you-start).
 - A **computer** (macOS, Windows or Linux) with **Innioasis Updater CE**, and a USB-C data cable,
   for the install.
 - For YouTube Music and YouTube: a **Rondo server**. That's a computer at home that stays on

@@ -17,10 +17,11 @@ It doesn't switch itself on after an install. Press the Power button. The first 
 couple of minutes; after the Rondo logo you'll see a spinning click wheel until the main menu
 appears.
 
-### Rondo isn't in the Updater's list
+### Rondo isn't in the Updater's list, or has nothing to install
 
-Rondo is for the **Y1, Type A**. Check that the Updater is set to Y1 and Type A. Type B isn't
-supported yet. You can also [install from a file](install.md#from-a-file).
+Rondo is for the **Y1, Type A**. Check that the Updater is set to Y1 and Type A, or
+[install from a file](install.md#from-a-file). Rondo isn't built for the Type B, so with Type B
+there's nothing to install.
 
 ### Software update says "Couldn't check"
 

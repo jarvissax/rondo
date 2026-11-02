@@ -7,7 +7,9 @@ After that, updates take a minute and keep everything (see [Updating](#updating-
 ## Before you start
 
 - **Your Y1 has to be a Type A.** That's a Y1 that shipped with software 2.0.0 or later; the
-  Updater asks which type yours is. Type B isn't supported yet.
+  Updater asks which type yours is. If yours came with software older than 2.0, or you bought it
+  between 2024 and May 2025, treat it as a **Type B**: Rondo isn't for it yet, and a Type A
+  firmware can leave a Type B unable to start.
 - **Installing replaces everything on the Y1 itself**: the original player, Rockbox, settings.
   **Your microSD card isn't touched**, so your music stays where it is.
 - **Charge the Y1** to at least half.
@@ -16,10 +18,11 @@ After that, updates take a minute and keep everything (see [Updating](#updating-
 
 ## Install with Innioasis Updater CE
 
-1. Download **Innioasis Updater CE** for your computer from [innioasis.app](https://innioasis.app)
-   (or its [GitHub releases](https://github.com/y1-community/Innioasis-Updater/releases/latest)).
-   On Windows, let it install its drivers and restart the computer once before the first install.
-2. Open it, choose **Y1** and **Type A**.
+1. Download **Innioasis Updater CE** for your computer from its
+   [guide page](https://www.innioasis.app/guide.html), which shows the download and drivers for
+   your system. On Windows, let it install its drivers and restart the computer once before the
+   first install.
+2. Open it, choose **Y1** and **Type A** (not sure? see [Before you start](#before-you-start)).
 3. In the software list, choose **Rondo**, then **Install**.
 4. Do what the Updater asks: switch the Y1 completely off, then plug it in. The Updater installs
    Rondo by itself in about 7 minutes. Don't unplug anything until it says it's done.
