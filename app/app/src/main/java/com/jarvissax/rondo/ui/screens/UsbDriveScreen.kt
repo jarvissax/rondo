@@ -1,10 +1,11 @@
 package com.jarvissax.rondo.ui.screens
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.jarvissax.rondo.ShellActivity
 import com.jarvissax.rondo.local.LocalLibrary
@@ -26,29 +27,19 @@ object UsbDrive {
     fun available(context: Context): Boolean =
         context.checkCallingOrSelfPermission("android.permission.MOUNT_UNMOUNT_FILESYSTEMS") == PackageManager.PERMISSION_GRANTED
 
-    // a computer is on the other end of the cable and can take the card
-    fun connected(context: Context): Boolean = runCatching { call(context, "isUsbMassStorageConnected") as Boolean }.getOrDefault(false)
+    // Android's own isUsbMassStorageEnabled asks vold about the wrong volume on the Y1's MediaTek
+    // build and always says no; the card's state, "shared" while a computer has it, is reliable
+    fun enabled(): Boolean = Environment.getExternalStorageState() == Environment.MEDIA_SHARED
 
-    fun enabled(context: Context): Boolean = runCatching { call(context, "isUsbMassStorageEnabled") as Boolean }.getOrDefault(false)
-
-    // blocks while Android unmounts or mounts the card: call off the main thread
+    // blocks while Android unmounts or mounts the card: call off the main thread. Android returns
+    // before the card has changed hands, so this waits for it (a few seconds at most)
     fun setEnabled(context: Context, on: Boolean) {
         runCatching { call(context, if (on) "enableUsbMassStorage" else "disableUsbMassStorage") }
             .onFailure { Log.w(TAG, "usb drive: switching ${if (on) "on" else "off"} failed: $it") }
+        val until = SystemClock.elapsedRealtime() + 15_000
+        while (enabled() != on && SystemClock.elapsedRealtime() < until) SystemClock.sleep(250)
         if (!on) LocalLibrary.invalidate()
-        Log.i(TAG, "usb drive: ${if (enabled(context)) "on" else "off"}")
-    }
-
-    // SystemUI opens its own "USB connected" screen when the cable goes in, which the wheel can't
-    // use; Rondo shows this one instead (CHANGE_COMPONENT_ENABLED_STATE, also built-in apps only)
-    fun silenceSystemScreen(context: Context) {
-        val systemScreen = ComponentName("com.android.systemui", "com.android.systemui.usb.UsbStorageActivity")
-        runCatching {
-            val pm = context.packageManager
-            if (pm.getComponentEnabledSetting(systemScreen) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                pm.setComponentEnabledSetting(systemScreen, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
-            }
-        }
+        Log.i(TAG, "usb drive: ${if (enabled()) "on" else "off"}")
     }
 }
 
@@ -57,7 +48,7 @@ class UsbDriveScreen(shell: ShellActivity) : ShellListScreen(shell, "USB drive")
     private var switching = false
 
     override fun render() {
-        val on = UsbDrive.enabled(context)
+        val on = UsbDrive.enabled()
         list.setRows(
             when {
                 switching -> listOf(Row.Entry(if (on) "Turning off…" else "Turning on…", tile = Tiles.device, enabled = false))

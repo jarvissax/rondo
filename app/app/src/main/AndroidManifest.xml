@@ -23,7 +23,8 @@
     <!-- the USB drive (ui/screens/UsbDriveScreen.kt): granted only when Rondo is built into the
          firmware (/system/app), ignored for an installed copy -->
     <uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS" />
-    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
+    <!-- the wallpaper the firmware boots with (ui/BlackWallpaper.kt), also built-in apps only -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER_COMPONENT" />
 
     <application
         android:name=".Y1App"
@@ -54,6 +55,16 @@
             android:launchMode="singleTop"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="stateAlwaysHidden" />
+
+        <service
+            android:name=".ui.BlackWallpaper"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper" />
+        </service>
 
         <service
             android:name=".player.PlayerService"

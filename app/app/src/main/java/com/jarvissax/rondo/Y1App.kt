@@ -12,5 +12,8 @@ class Y1App : MultiDexApplication() {
         com.jarvissax.rondo.player.FmRadio.init(this)
         Tls.install(this)
         com.jarvissax.rondo.ui.Fonts.init(this)
+        // without SystemUI (the Rondo firmware), Rondo supplies the wallpaper Android waits for
+        val systemUi = runCatching { packageManager.getPackageInfo("com.android.systemui", 0) }.isSuccess
+        if (!systemUi) com.jarvissax.rondo.ui.BlackWallpaper.ensure(this)
     }
 }

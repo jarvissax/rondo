@@ -25,9 +25,11 @@ BASE_URL="https://github.com/y1-community/y1-ata-rom/releases/download/0.1/rom.z
 BASE_SHA256="d3b79ca460a3d3ec2c41ba57893127a0f9a90278e374dd33cdb5de5bb46e367e"
 
 # Android's own background services, kept because the system or Rondo relies on them. Everything
-# else in /system/app goes.
+# else in /system/app goes, SystemUI included: on this firmware it opens its own touch-only "USB
+# connected" screen whenever a computer is plugged in, and Rondo does its other visible jobs (the
+# wheel's click, the low battery warning, the wallpaper Android waits for before it ends the boot
+# animation) itself.
 KEEP_APPS=(
-  SystemUI                # status bar service: USB, volume and battery notices, the wheel's click sound
   SettingsProvider        # where Android keeps its settings
   DefaultContainerService # installs and updates apps (Rondo updates over USB)
   MtkBt                   # MediaTek's Bluetooth stack

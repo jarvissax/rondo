@@ -35,6 +35,10 @@ class ShellActivity : AppCompatActivity() {
     private lateinit var volumeOverlay: VolumeOverlay
     private val dispatcher = WheelInputDispatcher { action, steps -> onWheel(action, steps) }
     private val haptics by lazy { WheelHaptics(this) }
+    // The Rondo firmware has no SystemUI, which played the wheel's click and warned about low
+    // battery on the stock firmware; Rondo does both itself there (and stays quiet elsewhere)
+    private val noSystemUi by lazy { runCatching { packageManager.getPackageInfo("com.android.systemui", 0) }.isFailure }
+    private val audio by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     private val handler = Handler(Looper.getMainLooper())
 
     var player: PlayerService? = null
@@ -76,10 +80,16 @@ class ShellActivity : AppCompatActivity() {
         push(MainMenuScreen(this))
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_SCREEN_ON) })
         registerReceiver(usbReceiver, IntentFilter(Intent.ACTION_UMS_CONNECTED).apply { addAction(Intent.ACTION_UMS_DISCONNECTED) })
-        if (UsbDrive.available(this)) UsbDrive.silenceSystemScreen(this)
+        if (noSystemUi) {
+            audio.loadSoundEffects()
+            registerReceiver(batteryLowReceiver, IntentFilter(Intent.ACTION_BATTERY_LOW))
+        }
         dispatcher.acceleration = Config.behavior.wheelAcceleration
         haptics.level = Config.behavior.wheelVibration
-        dispatcher.onPulse = { spin -> haptics.tick(spin) }
+        dispatcher.onPulse = { spin ->
+            haptics.tick(spin)
+            if (noSystemUi) audio.playSoundEffect(AudioManager.FX_KEY_CLICK) // silent when Click sound is off
+        }
         Config.listen(configChanged)
     }
 
@@ -91,9 +101,15 @@ class ShellActivity : AppCompatActivity() {
             if (intent.action == Intent.ACTION_UMS_CONNECTED) {
                 if (stack.lastOrNull() !is UsbDriveScreen) push(UsbDriveScreen(this@ShellActivity))
             } else {
-                Thread { if (UsbDrive.enabled(context)) UsbDrive.setEnabled(context, false) }.start()
+                Thread { if (UsbDrive.enabled()) UsbDrive.setEnabled(context, false) }.start()
                 if (stack.lastOrNull() is UsbDriveScreen) pop()
             }
+        }
+    }
+
+    private val batteryLowReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            android.widget.Toast.makeText(context, "Battery low. Plug in to charge.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -142,6 +158,7 @@ class ShellActivity : AppCompatActivity() {
         Config.unlisten(configChanged)
         unregisterReceiver(screenReceiver)
         unregisterReceiver(usbReceiver)
+        if (noSystemUi) unregisterReceiver(batteryLowReceiver)
         unbindService(connection)
         super.onDestroy()
     }
