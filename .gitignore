@@ -28,3 +28,7 @@ CLAUDE.md
 # web installer
 web-installer/node_modules/
 web-installer/dist/
+
+# firmware builds (large downloads and images)
+firmware/work/
+firmware/out/

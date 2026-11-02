@@ -1,5 +1,7 @@
 package com.jarvissax.rondo
 
+import com.jarvissax.rondo.ui.screens.UsbDriveScreen
+import com.jarvissax.rondo.ui.screens.UsbDrive
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
@@ -73,10 +75,26 @@ class ShellActivity : AppCompatActivity() {
         bindService(intent, connection, Context.BIND_AUTO_CREATE)
         push(MainMenuScreen(this))
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_SCREEN_ON) })
+        registerReceiver(usbReceiver, IntentFilter(Intent.ACTION_UMS_CONNECTED).apply { addAction(Intent.ACTION_UMS_DISCONNECTED) })
+        if (UsbDrive.available(this)) UsbDrive.silenceSystemScreen(this)
         dispatcher.acceleration = Config.behavior.wheelAcceleration
         haptics.level = Config.behavior.wheelVibration
         dispatcher.onPulse = { spin -> haptics.tick(spin) }
         Config.listen(configChanged)
+    }
+
+    // A computer on the cable offers the USB drive screen (firmware builds only); pulling the cable
+    // gives the card back to the Y1 and closes it
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!UsbDrive.available(context)) return
+            if (intent.action == Intent.ACTION_UMS_CONNECTED) {
+                if (stack.lastOrNull() !is UsbDriveScreen) push(UsbDriveScreen(this@ShellActivity))
+            } else {
+                Thread { if (UsbDrive.enabled(context)) UsbDrive.setEnabled(context, false) }.start()
+                if (stack.lastOrNull() is UsbDriveScreen) pop()
+            }
+        }
     }
 
     // the dashboard changed something: a new theme redraws every screen in the stack in place
@@ -123,6 +141,7 @@ class ShellActivity : AppCompatActivity() {
         stack.forEach { it.onDestroy() }
         Config.unlisten(configChanged)
         unregisterReceiver(screenReceiver)
+        unregisterReceiver(usbReceiver)
         unbindService(connection)
         super.onDestroy()
     }
