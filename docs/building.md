@@ -175,8 +175,9 @@ Run `adb kill-server` first; the browser can't claim the Y1 while adb holds it. 
 about Android 4.2: its adb only has the old `shell:` service, not the `exec:` one Tango's
 subprocess helpers use (that arrived in Android 5), so `updater.js` opens `shell:` sockets itself.
 
-The page is published by `.github/workflows/pages.yml` whenever a release is published, with
-that release's APK next to it as `rondo.apk` and `latest.json`. The dashboard's **Install** button
+The page is published by `.github/workflows/release.yml` whenever a release is published, with
+that release's APK next to it as `rondo.apk` and `latest.json` (version, size, firmware number,
+release notes). The dashboard's **Install** button
 downloads updates from there too, because GitHub Pages lets any page fetch its files and GitHub's
 release downloads don't. In the repository's settings, Pages must be set to **GitHub Actions**.
 
@@ -188,17 +189,28 @@ Android 4.2 gives built-in apps. Android stops Rondo, swaps it and starts it aga
 screen, in about 10 seconds.
 
 - **Settings › Software update** asks the server (`GET /update`, `GET /update/rondo.apk`; the
-  server finds the release's APK on GitHub and passes it through).
+  server reads the update page's `latest.json` and passes the APK through).
 - **The dashboard** sends the APK the browser downloaded, or a file, to `PUT /api/update`.
 - **The update page** copies it over USB and runs `pm install -r` itself.
 
-An update is just the APK, so it can't change the firmware around Rondo; a release that does ships
-a new `rom.zip` as well.
+All three learn of a release from `latest.json`, which appears only once the release's `rom.zip`
+is built, so they agree with each other and with Innioasis Updater CE.
+
+An update is just the APK, so it can't change the firmware around Rondo. A release that does
+raises the **firmware number**, `firmwareLevel` in `app/app/build.gradle.kts` (1 so far):
+`firmware/build.sh` writes it into the firmware as `ro.rondo.firmware`, and the APK names it in its
+manifest (`rondo.firmware`). A Y1 whose firmware is older than a release needs is told to install
+that release with Innioasis Updater CE instead (with Keep Data, where the Updater offers it, to
+keep its settings): Settings › Software update and the dashboard show no Install button, the
+update page won't start, and `SoftwareUpdate.kt` refuses the APK however it arrives. The first
+Rondo firmware (1.0.0) has no number and counts as 1.
 
 ## Making a release
 
-1. Raise `versionCode` and `versionName` in `app/app/build.gradle.kts`, and `version` in
-   `server/package.json`. `versionCode` has to go up every time, or the update won't install.
+1. Set the version everywhere at once: `tools/set-version.sh 1.0.2` (the app's `versionName` and
+   `versionCode`, the server's and the update page's `package.json`). If the release changes the
+   firmware around Rondo (a new built-in permission, a change to `firmware/build.sh`), raise
+   `firmwareLevel` in `app/app/build.gradle.kts` too.
 2. Build the release APK with the signing key. `RONDO_SIGNING` points at a `keystore.properties`
    kept outside the repo (with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`):
 
@@ -208,20 +220,21 @@ a new `rom.zip` as well.
    apksigner verify --min-sdk-version 17 app/build/outputs/apk/release/app-release.apk
    ```
 
-3. Build the firmware with it: `firmware/build.sh app/app/build/outputs/apk/release/app-release.apk`.
-4. Install `firmware/out/rom.zip` on a Y1 with Innioasis Updater CE and check it starts, then
-   update it from the previous release to check updating.
-5. Publish a GitHub release tagged `v<version>` with three assets:
-   - **`rom.zip`**: the firmware. The name matters: Innioasis Updater CE reads it as Y1 Type A.
-   - **`rondo-<version>.apk`**: the update. Settings › Software update and the update page find it
-     by this name.
-   - **`updater.png`** (`firmware/updater.png`): the picture the Updater shows for the release.
-
-   Say in the notes that it's for the **Y1, Type A**, and whether it changes the firmware around
-   Rondo (then updating needs the Updater). Publishing republishes the update page with the new APK.
+3. Try it on a Y1: `adb install -r` the APK over the previous release to check updating. When the
+   firmware changes, also build it (`firmware/build.sh app/app/build/outputs/apk/release/app-release.apk`)
+   and install `firmware/out/rom.zip` with Innioasis Updater CE.
+4. Add the release to `CHANGELOG.md`, in words a Y1 owner understands. Commit, tag `v<version>`,
+   push both, and publish a GitHub release for the tag with one asset:
+   **`rondo-<version>.apk`** (the APK from step 2, renamed). Say in the notes that it's for the
+   **Y1, Type A**, and whether it needs Innioasis Updater CE (a new firmware number).
+5. Publishing starts `.github/workflows/release.yml`, which checks that the tag, the versions and
+   the APK agree, builds the firmware from that APK and attaches **`rom.zip`** (the name Innioasis
+   Updater CE reads as Y1 Type A) and **`updater.png`** (its picture for the release), then
+   republishes the update page with the new `latest.json`. It takes about 10 minutes; if it
+   fails, fix the cause and run it again from the Actions tab (it redoes the latest release).
 
 Innioasis Updater CE lists every release of this repository that has a `rom.zip`, so a new one
-shows up there by itself. Every APK has to be signed with the same key, or it won't install over
+shows up there by itself (the Updater keeps its list for up to a day). Every APK has to be signed with the same key, or it won't install over
 the previous Rondo. Keep the key backed up somewhere safe.
 
 GitHub Actions builds the app and the update page and runs the server tests on every push

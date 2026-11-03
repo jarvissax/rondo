@@ -23,6 +23,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// the server's version, as the real admin page shows it (tools/set-version.sh)
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'server/package.json'), 'utf8')).version;
 const WEB = path.join(ROOT, 'server/admin');
 const FONT = path.join(ROOT, 'app/app/src/main/assets/fonts/Roboto-Regular.ttf');
 const PORT = Number(process.env.PORT) || 8095;
@@ -56,7 +58,7 @@ const S = {
     : { signedIn: true, account: { name: 'Alex', handle: '@alex' }, checkedAt: NOW - 3 * 60000 },
   device: FRESH || ENV ? null : { pairedAt: NOW - 2 * 86400000 - 3 * 3600000, name: 'Rondo' },
   apiToken: ENV,
-  lastSeen: FRESH ? null : { at: NOW - 95 * 1000, ip: '192.168.1.118', userAgent: 'Rondo/1.0.0 (Linux; Android 4.2.2; Innioasis Y1) ExoPlayerLib/2.19.1' },
+  lastSeen: FRESH ? null : { at: NOW - 95 * 1000, ip: '192.168.1.118', userAgent: `Rondo/${VERSION} (Linux; Android 4.2.2; Innioasis Y1) ExoPlayerLib/2.19.1` },
   pairing: null,
   ytdlp: { version: BROKEN ? '2026.09.14.232015' : '2026.10.29.232701', lastResolveOk: FRESH ? null : !BROKEN },
   logs: FRESH ? [] : [
@@ -122,7 +124,7 @@ function status() {
   const p = S.pairing && S.pairing.expiresAt > Date.now() ? S.pairing : null;
   if (!p) S.pairing = null;
   return {
-    server: { version: '1.0.0', uptimeSec: Math.floor((Date.now() - BOOT) / 1000), https: HTTPS },
+    server: { version: VERSION, uptimeSec: Math.floor((Date.now() - BOOT) / 1000), https: HTTPS },
     ytdlp: { ...S.ytdlp },
     cookies: { present: !!S.cookies, signedIn: S.cookies ? S.cookies.signedIn : null, account: S.cookies?.account ?? null, checkedAt: S.cookies?.checkedAt ?? null },
     device: {
@@ -139,7 +141,7 @@ function status() {
 function pairDevice(name = 'Rondo') {
   S.device = { pairedAt: Date.now(), name };
   S.pairing = null;
-  S.lastSeen = { at: Date.now(), ip: `192.168.1.${20 + crypto.randomInt(0, 180)}`, userAgent: 'Rondo/1.0.0 (Linux; Android 4.2.2; Innioasis Y1) ExoPlayerLib/2.19.1' };
+  S.lastSeen = { at: Date.now(), ip: `192.168.1.${20 + crypto.randomInt(0, 180)}`, userAgent: `Rondo/${VERSION} (Linux; Android 4.2.2; Innioasis Y1) ExoPlayerLib/2.19.1` };
   console.log(`  device paired (${name})`);
 }
 function isCookiesFile(text) {

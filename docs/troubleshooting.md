@@ -23,6 +23,12 @@ Rondo is for the **Y1, Type A**. Check that the Updater is set to Y1 and Type A,
 [install from a file](install.md#from-a-file). Rondo isn't built for the Type B, so with Type B
 there's nothing to install.
 
+### Software update says Rondo "needs a new firmware"
+
+That release changes the firmware around Rondo, not just Rondo, so it can't install over Wi-Fi or
+USB. Install it with Innioasis Updater CE, [the same way as the first time](install.md#install-with-innioasis-updater-ce).
+If the Updater offers **Keep Data**, choose it to keep your settings, Wi-Fi and server connection.
+
 ### Software update says "Couldn't check"
 
 The Y1 asks your Rondo server, so it needs Wi-Fi and a connected server (Settings › Server).

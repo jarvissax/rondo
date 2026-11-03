@@ -4,7 +4,10 @@ The dashboard is a web page served by the Y1 itself. Use it from a phone or comp
 music, change settings and look after the Y1 without turning the wheel through every menu. It
 needs no internet and no server, only the same Wi-Fi as the Y1.
 
-<p align="center"><img src="images/dashboard.png" width="720" alt="The dashboard's Overview page"></p>
+<p align="center">
+  <img src="images/dashboard.png" width="560" alt="The dashboard's Overview page on a computer">
+  <img src="images/dashboard-phone.png" width="180" alt="The dashboard on a phone">
+</p>
 
 ## Opening it
 
@@ -40,6 +43,8 @@ date added.
   They're the same playlists as in the Y1's Library: `.m3u8` files in the card's `Playlists` folder.
 
 ## Theme
+
+<p align="center"><img src="images/dashboard-theme.png" width="640" alt="The dashboard's Theme page, with a preview of the Y1's menu"></p>
 
 The Y1 redraws while you change things here.
 

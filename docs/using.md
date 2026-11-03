@@ -25,6 +25,11 @@ work without looking, like an iPod.
 right side shows what's highlighted, or what's playing. **Settings › Theme › Main menu** changes
 the order and which entries show up.
 
+<p align="center">
+  <img src="images/main-menu.png" width="360" alt="The main menu in the dark look">
+  <img src="images/main-menu-light.png" width="360" alt="The main menu in the light look with the Mint accent">
+</p>
+
 ## Library: music and videos on the card
 
 Rondo looks through the whole microSD card (and the Y1's internal storage) for music and videos.
@@ -74,12 +79,19 @@ moving on takes about a second.
 
 ## Now Playing
 
+<p align="center">
+  <img src="images/now-playing.png" width="360" alt="Now Playing with the cover">
+  <img src="images/lyrics.png" width="360" alt="Now Playing with the lyrics">
+</p>
+
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
 - **Hold center** for options: scrub through the song, see what's up next, and repeat.
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
   Menu cancels.
 
 ## Watching a video
+
+<p align="center"><img src="images/video.png" width="360" alt="A video, scrubbing with the wheel"></p>
 
 - **Wheel:** volume. **Center:** scrub. **Next / Previous:** 10 seconds forward or back.
 - **Hold center** on a YouTube video to change its quality.
@@ -101,6 +113,11 @@ turns the radio off.
 
 ## Settings
 
+<p align="center">
+  <img src="images/settings.png" width="360" alt="Settings">
+  <img src="images/accent-colors.png" width="360" alt="Choosing an accent color">
+</p>
+
 | Setting | |
 | --- | --- |
 | **Dashboard** | Starts the dashboard; see below. |
@@ -114,7 +131,7 @@ turns the radio off.
 | **Wheel vibration** | A small buzz on every wheel step: off, light, normal or strong. |
 | **Click sound** | A tick on every wheel step. |
 | **Server** | Whether the server answers, a connection test, and connecting to a server with its address and code. |
-| **Software update** | Installs a newer Rondo over Wi-Fi, keeping everything ([more](install.md#updating-rondo)). |
+| **Software update** | Installs a newer Rondo over Wi-Fi, keeping everything, or says when a release needs Innioasis Updater CE ([more](install.md#updating-rondo)). |
 | **About** | Rondo's version, the battery, free space, Wi-Fi and the server. |
 | **Shut down** | Shut down or restart. Holding the Power button opens the same choices. |
 

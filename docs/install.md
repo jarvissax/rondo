@@ -60,6 +60,8 @@ A new Rondo comes as a small update you install over the one you have, without f
 again. Your settings, Wi-Fi, server connection, playlists and music all stay. Use whichever is
 handiest:
 
+<p align="center"><img src="images/software-update.png" width="360" alt="Settings › Software update, up to date"></p>
+
 - **On the Y1, over Wi-Fi:** **Settings › Software update** shows when a newer Rondo is out.
   Choose **Install now**; Rondo downloads it (through your server), installs it and restarts by
   itself. This needs a [Rondo server](server.md).
@@ -71,10 +73,14 @@ handiest:
   computer. With adb, it's `adb install -r rondo-<version>.apk`.
 
 Only Rondo's own releases install this way: Android checks that an update is signed with the same
-key as the Rondo in the firmware. Now and then a release also changes the firmware around Rondo
-(the boot screen or Android's settings, for example); its notes say so, and that one is
-installed with Innioasis Updater CE again. If the Updater offers **Keep Data**, your settings stay
-then too.
+key as the Rondo in the firmware.
+
+Now and then a release also changes the firmware around Rondo (a new permission, the boot screen
+or Android's settings, for example). The Y1, the dashboard and the update page recognize such a
+release: instead of **Install**, they say it needs a new firmware. Install it with Innioasis
+Updater CE, [the same way as the first time](#install-with-innioasis-updater-ce). If the Updater
+offers **Keep Data**, choose it and your settings, Wi-Fi and server connection stay too; without
+it they're reset (your music on the card is never touched).
 
 ## Going back
 

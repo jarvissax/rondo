@@ -13,6 +13,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// the app's version, as the real dashboard reports it (tools/set-version.sh)
+const VERSION = fs.readFileSync(path.join(ROOT, 'app/app/build.gradle.kts'), 'utf8').match(/versionName = "([^"]+)"/)[1];
 const WEB = path.join(ROOT, 'app/app/src/main/assets/dashboard');
 const FONTS = path.join(ROOT, 'app/app/src/main/assets/fonts');
 const PORT = Number(process.env.PORT) || 8090;
@@ -357,7 +359,7 @@ async function api(req, res, url) {
   if (pathname === '/api/status' && method === 'GET') {
     const used = [...songs, ...videos].reduce((n, x) => n + x.size, 0) + 3_100_000_000;
     return send(res, 200, {
-      device: { name: 'Rondo', version: '1.0.0', model: 'Innioasis Y1', power: true, canUpdate: true },
+      device: { name: 'Rondo', version: VERSION, model: 'Innioasis Y1', power: true, canUpdate: true, firmware: 1 },
       battery: { level: Math.max(4, 87 - Math.floor((Date.now() - BOOT) / 120000)), charging: false },
       storage: { freeBytes: 62_500_000_000 - used, totalBytes: 62_500_000_000 },
       wifi: wifi.current ? { ssid: wifi.current.ssid, signal: wifi.current.signal, ip: wifi.current.ip } : null,
