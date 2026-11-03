@@ -1,6 +1,6 @@
 {
   "name": "rondo-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "YouTube resolver, DASH manifest builder and range proxy for the Innioasis Y1 app",
   "type": "module",
