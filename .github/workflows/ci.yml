@@ -6,6 +6,13 @@ on:
   pull_request:
 
 jobs:
+  # the app, the server and the update page share one version (tools/set-version.sh)
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/set-version.sh --check
+
   server:
     runs-on: ubuntu-latest
     defaults:
