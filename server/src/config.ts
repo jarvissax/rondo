@@ -14,6 +14,10 @@ export interface Config {
   tvTokensFile: string;
   // ask GitHub (every 6 hours) whether a newer Rondo or yt-dlp is out; UPDATE_CHECK=0 turns it off
   updateCheck: boolean;
+  // the updater container beside this server (serverUpdate.ts): its address, and the token file
+  // the two share through a small volume
+  updaterUrl: string;
+  updaterTokenFile: string;
   ytdlpBin: string;
   port: number;
   logLevel: string;
@@ -36,6 +40,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // the admin page's "Sign in with a code" (tv.ts)
     tvTokensFile: env.TV_TOKENS_FILE ?? "/data/secrets/tv-oauth.json",
     updateCheck: env.UPDATE_CHECK !== "0",
+    updaterUrl: env.UPDATER_URL ?? "http://rondo-updater:8080",
+    updaterTokenFile: env.UPDATER_TOKEN_FILE ?? "/run/updater/token",
     ytdlpBin: env.YTDLP_BIN ?? "yt-dlp",
     port: Number(env.PORT ?? 3000),
     logLevel: env.LOG_LEVEL ?? "info",

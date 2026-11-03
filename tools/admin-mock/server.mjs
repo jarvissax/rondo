@@ -11,7 +11,9 @@
 //   node tools/admin-mock/server.mjs --no-autopair  codes wait for a real POST /device/pair
 //   node tools/admin-mock/server.mjs --slow       answers take 0.4-1.2 s
 //   node tools/admin-mock/server.mjs --tv         signed in with a code (otherwise "Get a code" approves itself after 8 s)
-//   node tools/admin-mock/server.mjs --updates    a newer Rondo and yt-dlp are out (updates.ts)
+//   node tools/admin-mock/server.mjs --updates    a newer Rondo and yt-dlp are out (updates.ts); Update on the
+//                                                 Overview runs a pretend server update (download, restart)
+//   node tools/admin-mock/server.mjs --no-updater no updater container: "How to update" instead of Update
 //   PORT=9000 CODE_SECONDS=40 node tools/admin-mock/server.mjs
 //
 // Cookies upload: any file with a line containing youtube.com is accepted; put "signedout" in it to
@@ -38,6 +40,11 @@ const HTTPS = argv.has('--https');
 const AUTOPAIR = !argv.has('--no-autopair');
 const SLOW = argv.has('--slow');
 const UPDATES = argv.has('--updates');
+const UPDATER = !argv.has('--no-updater');
+// the pretend server update: the version it runs, the next one, and the updater's state
+let version = VERSION;
+const NEXT = VERSION.replace(/(\d+)$/, (n) => String(Number(n) + 1));
+const updater = { state: 'idle', message: '', at: Date.now(), downUntil: 0 };
 const PASSWORD = 'rondo-admin-pass';
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
@@ -124,7 +131,7 @@ function status() {
   const p = S.pairing && S.pairing.expiresAt > Date.now() ? S.pairing : null;
   if (!p) S.pairing = null;
   return {
-    server: { version: VERSION, uptimeSec: Math.floor((Date.now() - BOOT) / 1000), https: HTTPS },
+    server: { version, uptimeSec: Math.floor((Date.now() - BOOT) / 1000), https: HTTPS },
     ytdlp: { ...S.ytdlp },
     cookies: { present: !!S.cookies, signedIn: S.cookies ? S.cookies.signedIn : null, account: S.cookies?.account ?? null, checkedAt: S.cookies?.checkedAt ?? null },
     device: {
@@ -134,7 +141,7 @@ function status() {
     pairing: p ? { code: p.code, expiresAt: p.expiresAt } : null,
     tv: { ...S.tv, pending: S.tv.pending && S.tv.pending.expiresAt > Date.now() ? S.tv.pending : null },
     updates: UPDATES
-      ? { server: { version: '1.0.1', url: 'https://github.com/jarvissax/rondo/releases/tag/v1.0.1', publishedAt: NOW - 86400000 }, ytdlp: S.ytdlp.version < '2026.11.01' ? { version: '2026.11.01.233542', url: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases', publishedAt: NOW - 3600000 } : null, checkedAt: NOW }
+      ? { server: version === NEXT ? null : { version: NEXT, url: `https://github.com/jarvissax/rondo/releases/tag/v${NEXT}`, publishedAt: NOW - 86400000 }, ytdlp: S.ytdlp.version < '2026.11.01' ? { version: '2026.11.01.233542', url: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases', publishedAt: NOW - 3600000 } : null, checkedAt: NOW }
       : { server: null, ytdlp: null, checkedAt: NOW },
   };
 }
@@ -164,7 +171,7 @@ async function api(req, res, url) {
     return send(res, 200, { token: crypto.randomBytes(32).toString('hex') });
   }
 
-  if (pathname === '/admin/api/state' && method === 'GET') return send(res, 200, { setup: !S.password, signedIn: signedIn(req), https: HTTPS });
+  if (pathname === '/admin/api/state' && method === 'GET') return send(res, 200, { setup: !S.password, signedIn: signedIn(req), https: HTTPS, version });
 
   if (pathname === '/admin/api/setup' && method === 'POST') {
     if (S.password) return err(res, 409, 'done');
@@ -204,6 +211,22 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true });
   }
   if (pathname === '/admin/api/status' && method === 'GET') return send(res, 200, status());
+  // updating this server (serverUpdate.ts): download for 6 s, restart (away for 8 s), back as NEXT
+  // with everyone signed out, as the real server is after a restart
+  if (pathname === '/admin/api/server/update' && method === 'GET') return send(res, 200, UPDATER ? { available: true, ...updater, downUntil: undefined } : { available: false });
+  if (pathname === '/admin/api/server/update' && method === 'POST') {
+    if (!UPDATER) return err(res, 503, 'unavailable');
+    if (updater.state === 'pulling' || updater.state === 'restarting') return err(res, 409, 'busy');
+    const step = (state, message) => Object.assign(updater, { state, message, at: Date.now() });
+    step('pulling', `Downloading ghcr.io/jarvissax/rondo-server:latest`);
+    setTimeout(() => {
+      step('restarting', 'Restarting rondo on the new image');
+      updater.downUntil = Date.now() + 8000;
+      setTimeout(() => { version = NEXT; S.sessions.clear(); step('updated', 'Updated'); console.log(`  server update: now ${version}`); }, 8000);
+    }, 6000);
+    console.log('  server update: started');
+    return send(res, 200, { ok: true });
+  }
 
   if (pathname === '/admin/api/cookies' && method === 'POST') {
     const text = await readBody(req);
@@ -283,6 +306,7 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname.startsWith('/admin/api/') || url.pathname === '/device/pair') {
+      if (Date.now() < updater.downUntil) return req.socket.destroy(); // restarting: nobody answers
       await delay();
       return await api(req, res, url);
     }

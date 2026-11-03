@@ -602,6 +602,7 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
 .sheet-grab { width: 36px; height: 5px; border-radius: 3px; background: #3a3a40; margin: -10px auto 16px; }
 .sheet h2 { font-size: 19px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
 .sheet p { color: var(--text-2); margin-top: 8px; overflow-wrap: anywhere; }
+.sheet p.muted { color: var(--text-3); font-size: 13.5px; }
 .sheet-actions { display: flex; gap: 10px; margin-top: 22px; }
 .sheet-actions .btn { flex: 1; height: 44px; font-size: 15px; }
 

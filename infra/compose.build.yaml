@@ -1,0 +1,15 @@
+# Builds the server from this checkout instead of downloading its image (docs/building.md). Add it
+# after compose.home.yaml or compose.vps.yaml:
+#
+#   docker compose -f infra/compose.home.yaml -f infra/compose.build.yaml up -d --build
+#
+# A server built here updates the same way: git pull, then the command above. The updater stays
+# off, since there's no published image to move it to; the admin page shows those steps instead.
+services:
+  rondo:
+    image: rondo-server:local
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+  updater:
+    profiles: ["off"]

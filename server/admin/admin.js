@@ -386,7 +386,7 @@ function schedulePoll(ms = pollEvery()) {
   pollTimer = setTimeout(poll, ms);
 }
 async function poll() {
-  if (polling) return;
+  if (polling || S.updatingServer) return;
   polling = true;
   try { applyStatus(await api('GET', '/status')); } catch { /* banner or sign-in handles it */ } finally {
     polling = false;
@@ -399,6 +399,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function applyStatus(st, render = true) {
+  if (st.updates?.server && Date.now() - (S.serverUpdateAt || 0) > 60000) loadServerUpdate();
   if (S.status?.tv?.pending && st.tv?.signedIn && !S.status.tv.signedIn) toast('Signed in to YouTube');
   S.status = st;
   S.statusAt = Date.now();
@@ -517,7 +518,10 @@ function renderOverview() {
   // newer releases (updates.ts on the server, asked of GitHub every 6 hours)
   const news = st0().updates || {};
   if (news.ytdlp) todo.push(['info', `yt-dlp ${news.ytdlp.version} is out. Updating keeps playback working when YouTube changes.`, '#resolver', 'Update']);
-  if (news.server) todo.push(['info', `Rondo ${news.server.version} is out. This server runs ${a.s.version}.`, UPDATE_HELP, 'How to update']);
+  if (news.server) {
+    const text = `Rondo ${news.server.version} is out. This server runs ${a.s.version}.`;
+    todo.push(S.serverUpdate?.available ? ['info', text, '#server-update', 'Update'] : ['info', text, UPDATE_HELP, 'How to update']);
+  }
   const problems = todo.filter((t) => t[0] !== 'info').length;
   // a fresh server with nothing broken: the two setup steps
   const fresh = !a.c.present && !a.d.source && problems === 2;
@@ -1152,6 +1156,69 @@ function confirmSheet({ title, text, action, danger = true }) {
     sheet.addEventListener('click', onClick);
     sheet.addEventListener('close', onClose);
   });
+}
+
+// ---------- updating this server ----------
+// With the updater container beside the server (docs/server.md), Update downloads the new server
+// image and restarts the server on it (server/src/serverUpdate.ts, server/src/updater/). The
+// restart signs everyone out, so the page watches /state, which answers without signing in, until
+// the server comes back with a new version, then reloads.
+async function loadServerUpdate() {
+  S.serverUpdateAt = Date.now();
+  try { S.serverUpdate = await api('GET', '/server/update', undefined, { timeout: 6000 }); } catch { S.serverUpdate = null; }
+  if (S.route === 'overview') renderOverview();
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('a[href="#server-update"]')) return;
+  e.preventDefault();
+  startServerUpdate();
+});
+async function startServerUpdate() {
+  const next = st0().updates?.server?.version;
+  const before = st0().server?.version;
+  if (!next) return;
+  const ok = await confirmSheet({
+    title: `Update the server to Rondo ${next}?`,
+    text: 'The server downloads the new version and restarts on it, which takes a minute or two. Your Rondo can’t stream until it’s back. Your settings, YouTube account and connected Rondo stay; you sign in here again afterwards.',
+    action: 'Update',
+    danger: false,
+  });
+  if (!ok) return;
+  try { await api('POST', '/server/update', undefined, { auth: false }); } catch (e) {
+    return toast(e.status === 409 ? 'An update is already running.' : `Couldn’t start the update. ${reason(e)}`, 'err');
+  }
+  S.updatingServer = true;
+  clearTimeout(pollTimer);
+  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>Updating to Rondo ${esc(next)}</h2>
+    <p id="suText">Downloading the new version…</p><p class="muted">This page carries on by itself. On a Raspberry Pi it can take a few minutes.</p></div>`;
+  if (!sheet.open) sheet.showModal();
+  const started = Date.now();
+  const finish = (ok, msg) => {
+    S.updatingServer = false;
+    if (ok) { if (sheet.open) sheet.close(); toast(`The server runs Rondo ${next}`); setTimeout(() => location.reload(), 1200); return; }
+    sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>The update didn’t finish</h2><p>${esc(msg)}</p>
+      <p class="muted">The server keeps running the version it had.</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">OK</button></div></div>`;
+    $('[data-r="ok"]', sheet).addEventListener('click', () => sheet.close(), { once: true });
+    poll();
+  };
+  const tick = async () => {
+    const line = $('#suText', sheet);
+    try {
+      const su = await api('GET', '/server/update', undefined, { auth: false, timeout: 5000 });
+      if (su.state === 'failed') return finish(false, su.message || 'The updater gave up.');
+      if (su.state === 'current') return finish(false, 'The server already runs the newest image. Try again in a few minutes: the new one may still be on its way.');
+      if (line) line.textContent = su.state === 'restarting' ? 'Restarting the server…' : 'Downloading the new version…';
+    } catch {
+      if (line) line.textContent = 'Restarting the server…';
+    }
+    try {
+      const st = await api('GET', '/state', undefined, { auth: false, timeout: 5000 });
+      if (st.version && st.version !== before) return finish(true);
+    } catch { /* still restarting */ }
+    if (Date.now() - started > 10 * 60000) return finish(false, 'It’s taking much longer than it should. On the server, docker logs rondo-updater says why.');
+    setTimeout(tick, 3000);
+  };
+  setTimeout(tick, 3000);
 }
 
 // ---------- toast ----------

@@ -10,6 +10,7 @@ import { registerCors } from "./cors.js";
 import { Health } from "./health.js";
 import { type LyricsDeps, LyricsService, lrclibGet, registerLyricsRoutes } from "./lyrics.js";
 import { execRunner, Resolver, type YtdlpRunner } from "./resolver.js";
+import type { ServerUpdate } from "./serverUpdate.js";
 import { registerUpdateRoutes, type Updates } from "./updates.js";
 import { registerStreamRoutes, type UpstreamTiming } from "./stream.js";
 import { Store } from "./store.js";
@@ -24,7 +25,7 @@ export interface App {
 
 export async function buildApp(
   config: Config,
-  opts: { ytdlpRunner?: YtdlpRunner; upstreamTiming?: UpstreamTiming; lyrics?: Partial<LyricsDeps>; newCode?: () => string; tv?: TvAccount; updates?: Updates } = {},
+  opts: { ytdlpRunner?: YtdlpRunner; upstreamTiming?: UpstreamTiming; lyrics?: Partial<LyricsDeps>; newCode?: () => string; tv?: TvAccount; updates?: Updates; serverUpdate?: ServerUpdate } = {},
 ): Promise<App> {
   const logs = new LogRing();
   const app = Fastify({
@@ -65,6 +66,7 @@ export async function buildApp(
     newCode: opts.newCode,
     tv,
     updates: opts.updates,
+    serverUpdate: opts.serverUpdate,
   });
   // account: which account feeds exist (the Rondo hides the others and runs signed out)
   app.get("/healthz", async () => ({ ...health.state(), account: admin.accountFeatures() }));

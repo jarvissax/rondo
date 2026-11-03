@@ -1,14 +1,16 @@
 # Rondo's server at home (docs/server.md): reached directly by IP over plain HTTP, e.g.
 # http://192.168.1.10:3000, with no domain and no Caddy. Fine on your own Wi-Fi only; anything
-# farther needs HTTPS (compose.vps.yaml). After the first start, open
-# http://<this-machine>:3000/admin and enter the setup code from `docker logs rondo`.
+# farther needs HTTPS (compose.vps.yaml). Start it with
+#
+#   docker compose -f infra/compose.home.yaml up -d
+#
+# then open http://<this-machine>:3000/admin and enter the setup code from `docker logs rondo`.
+# To build the server from this checkout instead of downloading it, add -f infra/compose.build.yaml.
 name: rondo
 
 services:
   rondo:
-    build:
-      context: ..
-      dockerfile: infra/Dockerfile
+    image: ghcr.io/jarvissax/rondo-server:latest
     container_name: rondo
     restart: unless-stopped
     ports:
@@ -20,11 +22,25 @@ services:
       - TRUST_PROXY=0           # no proxy in front: don't trust X-Forwarded-* from the network
     volumes:
       - rondo-data:/data        # yt-dlp, cookies.txt, config.json (admin password and device token hashes)
+      - rondo-updater:/run/updater:ro   # the token the updater shares with the server
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
       interval: 15m
       timeout: 20s
       retries: 3
 
+  # Update on the admin page: downloads the newest server image and restarts the server on it,
+  # keeping its settings. It needs Docker's socket, and only touches the container named in TARGET.
+  updater:
+    image: ghcr.io/jarvissax/rondo-updater:latest
+    container_name: rondo-updater
+    restart: unless-stopped
+    environment:
+      - TARGET=rondo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - rondo-updater:/run/updater
+
 volumes:
   rondo-data:
+  rondo-updater:

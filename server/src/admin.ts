@@ -15,6 +15,7 @@ import type { Health } from "./health.js";
 import type { Resolver } from "./resolver.js";
 import type { TvAccount } from "./tv.js";
 import { hashPassword, sha256, type Store, verifyPassword } from "./store.js";
+import type { ServerUpdate } from "./serverUpdate.js";
 import { isNewer, type Updates } from "./updates.js";
 
 const run = promisify(execFile);
@@ -60,6 +61,8 @@ export interface AdminDeps {
   tv?: TvAccount;
   // newer Rondo and yt-dlp releases (updates.ts); none when left out
   updates?: Updates;
+  // updating this server from the admin page (serverUpdate.ts); none when left out
+  serverUpdate?: ServerUpdate;
 }
 
 const randomCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -87,6 +90,14 @@ export class Admin {
 
   get tv(): TvAccount | undefined {
     return this.deps.tv;
+  }
+
+  get serverUpdate(): ServerUpdate | undefined {
+    return this.deps.serverUpdate;
+  }
+
+  note(msg: string): void {
+    this.deps.log.info(msg);
   }
 
   warn(msg: string, err: unknown): void {
@@ -459,7 +470,8 @@ export function registerAdminRoutes(app: FastifyInstance, admin: Admin): void {
   });
 
   // the API
-  app.get("/admin/api/state", async (req) => ({ setup: admin.needsSetup, signedIn: admin.signedIn(req), https: req.protocol === "https" }));
+  // the version, too: the admin page watches it come back new while the server updates itself
+  app.get("/admin/api/state", async (req) => ({ setup: admin.needsSetup, signedIn: admin.signedIn(req), https: req.protocol === "https", version: VERSION }));
   app.post<{ Body: { code?: unknown; password?: unknown } }>("/admin/api/setup", async (req, reply) =>
     admin.setup(req, reply, str(req.body?.code), str(req.body?.password)),
   );
@@ -483,6 +495,14 @@ export function registerAdminRoutes(app: FastifyInstance, admin: Admin): void {
     });
     scope.post("/admin/api/cookies/check", async () => admin.checkAccount());
     scope.post("/admin/api/ytdlp/update", async () => admin.updateYtdlp());
+    // this server's own update, through the updater container (serverUpdate.ts)
+    scope.get("/admin/api/server/update", async () => (await admin.serverUpdate?.status()) ?? { available: false });
+    scope.post("/admin/api/server/update", async (_req, reply) => {
+      const r = (await admin.serverUpdate?.start()) ?? { error: "unavailable" as const };
+      if ("error" in r) return reply.code(r.error === "busy" ? 409 : 503).send(r);
+      admin.note("server update started from the admin page");
+      return r;
+    });
     scope.post("/admin/api/ytdlp/test", async () => admin.testYtdlp());
     scope.post("/admin/api/device/code", async () => admin.createCode());
     scope.delete("/admin/api/device/code", async () => {

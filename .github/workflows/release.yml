@@ -4,10 +4,13 @@
 #    agree, the APK's firmware number included;
 # 2. builds the firmware from that APK with firmware/build.sh and attaches it as rom.zip, the file
 #    Innioasis Updater CE installs, with updater.png, its picture;
-# 3. publishes the update page (web-updater/) on GitHub Pages with the APK as rondo.apk and
+# 3. builds the server's image and its updater's (infra/Dockerfile, infra/updater.Dockerfile) for
+#    x86-64 and 64-bit ARM and publishes them on GitHub's registry as <version> and latest, which
+#    the compose files run and the admin page's Update installs;
+# 4. publishes the update page (web-updater/) on GitHub Pages with the APK as rondo.apk and
 #    latest.json, which the Rondo (through its server), the dashboard and the update page read.
 #
-# So a release reaches Rondos only once its rom.zip is out. The APK is built and signed on the
+# So a release reaches Rondos and servers only once its rom.zip and images are out. The APK is built and signed on the
 # developer's machine and attached by hand (docs/building.md): the signing key never comes here.
 # Pages must be set to "GitHub Actions" (Settings > Pages > Source), and the github-pages
 # environment must allow tags v* (release runs use the tag).
@@ -79,8 +82,69 @@ jobs:
           cp firmware/updater.png release/updater.png
           gh release upload "$TAG" release/rom.zip release/updater.png --repo "$GITHUB_REPOSITORY" --clobber
 
-  pages:
+  server-images:
     needs: firmware
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ needs.firmware.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.firmware.outputs.tag }}
+      - name: Names and version
+        id: names
+        run: |
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: The server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.registry }}/rondo-server:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.registry }}/rondo-server:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.names.outputs.version }}
+            org.opencontainers.image.title=Rondo server
+            org.opencontainers.image.description=Streams YouTube Music and YouTube to a Rondo on the Innioasis Y1
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+      - name: The updater
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/updater.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.registry }}/rondo-updater:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.registry }}/rondo-updater:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.names.outputs.version }}
+            org.opencontainers.image.title=Rondo updater
+            org.opencontainers.image.description=Updates a Rondo server container from its admin page
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=updater
+          cache-to: type=gha,scope=updater,mode=max
+
+  pages:
+    needs: [firmware, server-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
