@@ -14,6 +14,13 @@ val signing: Pair<Properties, File>? = System.getenv("RONDO_SIGNING")?.takeIf { 
     Properties().apply { f.inputStream().use { load(it) } } to f.absoluteFile.parentFile
 }
 
+// The firmware this Rondo needs. Raise it when a release changes the firmware itself (a new
+// built-in permission, something firmware/build.sh does), not only Rondo: firmware/build.sh writes
+// it into the firmware (ro.rondo.firmware), and over-the-air updates (Wi-Fi, the dashboard, the
+// update page) install only on a firmware at least this new. The rest goes through Innioasis
+// Updater CE. Versions are set with tools/set-version.sh.
+val firmwareLevel = 1
+
 android {
     namespace = "com.jarvissax.rondo"
     compileSdk = 34
@@ -22,9 +29,11 @@ android {
         applicationId = "com.jarvissax.rondo"
         minSdk = 17
         targetSdk = 22
-        versionCode = 100
-        versionName = "1.0.0"
+        versionCode = 10001
+        versionName = "1.0.1"
         multiDexEnabled = true
+        buildConfigField("int", "FIRMWARE", "$firmwareLevel")
+        manifestPlaceholders["firmware"] = "$firmwareLevel"
     }
 
     signingConfigs {

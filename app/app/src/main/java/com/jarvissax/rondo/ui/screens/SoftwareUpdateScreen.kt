@@ -14,7 +14,8 @@ import com.jarvissax.rondo.ui.Tiles
 // Settings › Software update: a newer Rondo over Wi-Fi, without flashing the firmware again. The
 // server says which release is newest and passes its APK through from GitHub (the Y1 talks only to
 // its server); SoftwareUpdate installs it, and Rondo restarts by itself with everything kept. The
-// dashboard and the update page (jarvissax.github.io/rondo) do the same without a server.
+// dashboard and the update page (jarvissax.github.io/rondo) do the same without a server. A release
+// that needs a newer firmware (SoftwareUpdate.firmware()) installs only with Innioasis Updater CE.
 class SoftwareUpdateScreen(shell: ShellActivity) : ShellListScreen(shell, "Software update") {
     private sealed class State {
         object Checking : State()
@@ -22,6 +23,7 @@ class SoftwareUpdateScreen(shell: ShellActivity) : ShellListScreen(shell, "Softw
         class Failed(val why: String) : State()
         object UpToDate : State()
         class Available(val info: UpdateInfo) : State()
+        class NeedsFirmware(val info: UpdateInfo) : State()
         class Downloading(val percent: Int) : State()
         object Installing : State()
     }
@@ -46,6 +48,12 @@ class SoftwareUpdateScreen(shell: ShellActivity) : ShellListScreen(shell, "Softw
                 Row.Entry(now, subtitle = "This is the newest Rondo", trailing = "Up to date", tile = Tiles.update),
                 Row.Entry("Check again", onSelect = { check() }),
             )
+            is State.NeedsFirmware -> listOf(
+                Row.Entry("Rondo ${s.info.version} is out", subtitle = "It needs a new firmware · you have ${BuildConfig.VERSION_NAME}", tile = Tiles.update),
+                Row.Header("Install it with Innioasis Updater CE"),
+                Row.Entry("On a computer", subtitle = "Choose Y1, Type A, then Rondo"),
+                Row.Entry("Your settings", subtitle = "Choose Keep Data, if the Updater offers it, to keep them"),
+            )
             is State.Available -> listOf(
                 Row.Entry("Rondo ${s.info.version} is out", subtitle = "You have ${BuildConfig.VERSION_NAME} · ${bytes(s.info.size)}", tile = Tiles.update),
                 Row.Entry("Install now", subtitle = "Rondo restarts by itself; settings, Wi-Fi and music stay", onSelect = { install(s.info) }),
@@ -53,7 +61,9 @@ class SoftwareUpdateScreen(shell: ShellActivity) : ShellListScreen(shell, "Softw
             is State.Downloading -> listOf(Row.Entry("Downloading… ${s.percent}%", subtitle = "Keep the Y1 on Wi-Fi", tile = Tiles.update, enabled = false))
             State.Installing -> listOf(Row.Entry("Installing…", subtitle = "Rondo restarts by itself in a few seconds", tile = Tiles.update, enabled = false))
         }
-        list.setRows(rows)
+        // a Rondo installed past these checks (over adb) on a firmware older than it needs
+        val stale = BuildConfig.FIRMWARE > SoftwareUpdate.firmware()
+        list.setRows(if (stale) listOf(Row.Entry("This Rondo needs a newer firmware", subtitle = "Install Rondo with Innioasis Updater CE", tile = Tiles.update)) + rows else rows)
     }
 
     override fun onShow() {
@@ -70,7 +80,11 @@ class SoftwareUpdateScreen(shell: ShellActivity) : ShellListScreen(shell, "Softw
         launch {
             state = try {
                 val info = Api.updateInfo()
-                if (info.version != null && isNewerVersion(info.version, BuildConfig.VERSION_NAME)) State.Available(info) else State.UpToDate
+                when {
+                    info.version == null || !isNewerVersion(info.version, BuildConfig.VERSION_NAME) -> State.UpToDate
+                    info.firmware > SoftwareUpdate.firmware() -> State.NeedsFirmware(info)
+                    else -> State.Available(info)
+                }
             } catch (e: Exception) {
                 State.Failed(if (com.jarvissax.rondo.ui.isOnline(context)) "The server didn't answer" else "No Wi-Fi connection")
             }

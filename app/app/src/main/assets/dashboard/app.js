@@ -577,15 +577,18 @@ function renderDevice() {
     </div>${newest && isNewer(newest.version, d.version) ? `
     <div class="row update-row">
       <span class="tile t-rondo">${icon('upload')}</span>
-      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">You have ${esc(d.version || '')}. <a href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a></div></div>
-      ${d.canUpdate ? `<button class="btn btn-sm btn-primary" type="button" data-update="install">Install</button>` : ''}
+      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">${needsFirmware(d) ? `It needs a new firmware: install it with <a href="${UPDATER_GUIDE}" target="_blank" rel="noopener">Innioasis Updater CE</a>.` : `You have ${esc(d.version || '')}.`} <a href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a></div></div>
+      ${d.canUpdate && !needsFirmware(d) ? `<button class="btn btn-sm btn-primary" type="button" data-update="install">Install</button>` : ''}
     </div>` : ''}`;
 }
 // ---------- installing an update (SoftwareUpdate.kt on the Rondo) ----------
 // The browser downloads rondo.apk from the update page's site (GitHub Pages lets any page fetch its
 // files; GitHub release downloads don't) and sends it to the Rondo, which installs it over itself
-// and restarts with everything kept. The dashboard stops with it.
+// and restarts with everything kept. The dashboard stops with it. A release that needs a newer
+// firmware than the Rondo's installs only with Innioasis Updater CE (the Rondo refuses it too).
 const UPDATE_SITE = 'https://jarvissax.github.io/rondo/';
+const UPDATER_GUIDE = 'https://github.com/jarvissax/rondo/blob/main/docs/install.md#updating-rondo';
+const needsFirmware = (d) => !!newest && newest.firmware > (d.firmware ?? 1);
 $('#deviceRows').addEventListener('click', (e) => {
   const b = e.target.closest('[data-update]');
   if (!b) return;
@@ -604,6 +607,7 @@ async function installUpdate(btn) {
     btn.textContent = 'Downloading…';
     const info = await (await fetch(UPDATE_SITE + 'latest.json', { cache: 'no-store' })).json();
     if (newest && info.version !== newest.version) throw new Error(`The download page still has Rondo ${info.version}. Try again in a few minutes.`);
+    if ((Number(info.firmware) || 1) > (S.status?.device?.firmware ?? 1)) throw new Error(`Rondo ${info.version} needs a new firmware: install it with Innioasis Updater CE.`);
     const res = await fetch(UPDATE_SITE + (info.file || 'rondo.apk'), { cache: 'no-store' });
     if (!res.ok) throw new Error(`The download failed (${res.status}).`);
     await sendUpdate(await res.blob(), btn);
@@ -634,23 +638,20 @@ function sendUpdate(blob, btn) {
   });
 }
 // ---------- a newer Rondo ----------
-// Asked of GitHub by this browser, not by the Rondo (which talks only to its music server), at most
-// every 6 hours; nothing shows when GitHub can't be reached from here.
-const RELEASES = 'https://api.github.com/repos/jarvissax/rondo/releases/latest';
-let newest = null; // { version, url, at }
+// Asked by this browser, not by the Rondo (which talks only to its music server), of the update
+// page's site: latest.json names the newest release and the firmware it needs, once its rom.zip is
+// out (.github/workflows/release.yml), the same answer the Rondo and the update page get. Nothing
+// shows when the site can't be reached from here.
+let newest = null; // { version, firmware, url }
 async function checkForUpdate() {
   try {
-    const kept = JSON.parse(store.get('rondo_latest') || 'null');
-    if (kept && Date.now() - kept.at < 6 * 3600000) newest = kept;
-    else {
-      const r = await fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } });
-      if (!r.ok) return;
-      const j = await r.json();
-      newest = { version: String(j.tag_name || '').replace(/^v/, ''), url: j.html_url, at: Date.now() };
-      store.set('rondo_latest', JSON.stringify(newest));
-    }
+    const r = await fetch(UPDATE_SITE + 'latest.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.version) return;
+    newest = { version: String(j.version), firmware: Number(j.firmware) || 1, url: j.notes || 'https://github.com/jarvissax/rondo/releases' };
     renderDevice();
-  } catch { /* offline, or GitHub blocked here */ }
+  } catch { /* offline */ }
 }
 // "1.0.10" is newer than "1.0.9" (the server's updates.ts compares the same way)
 function isNewer(latest, current) {

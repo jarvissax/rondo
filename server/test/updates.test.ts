@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
-import { isNewer, registerUpdateRoutes, RONDO_RELEASES, Updates, YTDLP_RELEASES } from "../src/updates.js";
+import { isNewer, registerUpdateRoutes, RONDO_LATEST, Updates, YTDLP_RELEASES } from "../src/updates.js";
 
 describe("isNewer", () => {
   it("compares versions part by part", () => {
@@ -19,25 +19,45 @@ describe("isNewer", () => {
   });
 });
 
+// the update page's latest.json (.github/workflows/release.yml)
+const latest = (version: string, more: Record<string, unknown> = {}) => ({
+  version,
+  file: "rondo.apk",
+  size: 6413645,
+  firmware: 1,
+  notes: `https://github.com/jarvissax/rondo/releases/tag/v${version}`,
+  published: "2026-11-02T10:00:00Z",
+  ...more,
+});
+
 describe("Updates", () => {
   const release = (tag: string) => ({ tag_name: tag, html_url: `https://github.com/x/releases/tag/${tag}`, published_at: "2026-11-02T10:00:00Z" });
 
-  it("asks GitHub for both releases and keeps the answer", async () => {
+  it("asks the update page for Rondo and GitHub for yt-dlp, and keeps the answers", async () => {
     const asked: string[] = [];
     const u = new Updates(async (url) => {
       asked.push(url);
-      return url === RONDO_RELEASES ? release("v1.0.1") : release("2026.11.01.233542");
+      return url === RONDO_LATEST ? latest("1.0.1") : release("2026.11.01.233542");
     });
     await u.check();
-    expect(asked.sort()).toEqual([RONDO_RELEASES, YTDLP_RELEASES].sort());
-    expect(u.get()).toMatchObject({ rondo: { version: "1.0.1", publishedAt: Date.parse("2026-11-02T10:00:00Z") }, ytdlp: { version: "2026.11.01.233542" } });
+    expect(asked.sort()).toEqual([RONDO_LATEST, YTDLP_RELEASES].sort());
+    expect(u.get()).toMatchObject({
+      rondo: { version: "1.0.1", firmware: 1, publishedAt: Date.parse("2026-11-02T10:00:00Z"), apk: { url: "https://jarvissax.github.io/rondo/rondo.apk", size: 6413645 } },
+      ytdlp: { version: "2026.11.01.233542" },
+    });
   });
 
-  it("keeps the last answer when GitHub fails", async () => {
+  it("reads a latest.json from before firmware numbers as the first firmware", async () => {
+    const u = new Updates(async (url) => (url === RONDO_LATEST ? { version: "1.0.0", file: "rondo.apk", size: 6421197 } : null));
+    await u.check();
+    expect(u.get().rondo).toMatchObject({ version: "1.0.0", firmware: 1, url: "https://github.com/jarvissax/rondo/releases/tag/v1.0.0" });
+  });
+
+  it("keeps the last answer when a check fails", async () => {
     let fail = false;
     const u = new Updates(async () => {
       if (fail) throw new Error("rate limited");
-      return release("v1.0.1");
+      return latest("1.0.1");
     });
     await u.check();
     fail = true;
@@ -53,15 +73,7 @@ describe("Updates", () => {
 });
 
 describe("update routes", () => {
-  const withApk = {
-    tag_name: "v1.0.1",
-    html_url: "https://github.com/jarvissax/rondo/releases/tag/v1.0.1",
-    published_at: "2026-11-02T10:00:00Z",
-    assets: [
-      { name: "rom.zip", browser_download_url: "https://github.com/x/rom.zip", size: 537000000 },
-      { name: "rondo-1.0.1.apk", browser_download_url: "https://github.com/x/rondo-1.0.1.apk", size: 6413645 },
-    ],
-  };
+  const withApk = latest("1.0.1");
   const appWith = async (updates?: Updates) => {
     const app = Fastify();
     registerUpdateRoutes(app, updates);
@@ -69,14 +81,27 @@ describe("update routes", () => {
     return app;
   };
 
-  it("names the newest Rondo with an update APK, checking GitHub first if it hasn't yet", async () => {
+  it("names the newest Rondo with an update APK, checking first if it hasn't yet", async () => {
     const app = await appWith(new Updates(async () => withApk));
-    const res = await app.inject({ url: "/update" });
-    expect(res.json()).toEqual({ version: "1.0.1", size: 6413645, notes: "https://github.com/jarvissax/rondo/releases/tag/v1.0.1" });
+    const res = await app.inject({ url: "/update?firmware=1" });
+    expect(res.json()).toEqual({ version: "1.0.1", size: 6413645, notes: "https://github.com/jarvissax/rondo/releases/tag/v1.0.1", firmware: 1 });
   });
 
-  it("says there's nothing when the release has no APK, or nobody asks GitHub", async () => {
-    const noApk = await appWith(new Updates(async () => ({ ...withApk, assets: [withApk.assets[0]] })));
+  it("names a release for a newer firmware with its number, so the Rondo can point to Innioasis Updater CE", async () => {
+    const app = await appWith(new Updates(async () => latest("2.0.0", { firmware: 2 })));
+    expect((await app.inject({ url: "/update?firmware=1" })).json()).toMatchObject({ version: "2.0.0", firmware: 2 });
+    expect((await app.inject({ url: "/update?firmware=2" })).json()).toMatchObject({ version: "2.0.0", firmware: 2 });
+  });
+
+  it("keeps a Rondo from before firmware numbers (1.0.0) to first-firmware releases", async () => {
+    const first = await appWith(new Updates(async () => withApk));
+    expect((await first.inject({ url: "/update" })).json()).toMatchObject({ version: "1.0.1" });
+    const second = await appWith(new Updates(async () => latest("2.0.0", { firmware: 2 })));
+    expect((await second.inject({ url: "/update" })).json()).toEqual({ version: null });
+  });
+
+  it("says there's nothing when the release has no APK, or nobody asks", async () => {
+    const noApk = await appWith(new Updates(async () => ({ version: "1.0.1" })));
     expect((await noApk.inject({ url: "/update" })).json()).toEqual({ version: null });
     const off = await appWith(undefined);
     expect((await off.inject({ url: "/update" })).json()).toEqual({ version: null });

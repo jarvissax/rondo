@@ -19,6 +19,9 @@ ROOT="$(cd "$HERE/.." && pwd)"
 OUT="${2:-$HERE/out/rom.zip}"
 # shown as the build name; defaults to the app's version in app/app/build.gradle.kts
 RONDO_VERSION="${RONDO_VERSION:-$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' "$ROOT/app/app/build.gradle.kts")}"
+# this firmware's number (firmwareLevel in the same file): updates over Wi-Fi, the dashboard or the
+# update page install only on a firmware at least as new as the release needs (SoftwareUpdate.kt)
+FIRMWARE_LEVEL="$(sed -n 's/^val firmwareLevel = \([0-9][0-9]*\).*/\1/p' "$ROOT/app/app/build.gradle.kts")"
 WORK="$HERE/work"
 
 BASE_URL="https://github.com/y1-community/y1-ata-rom/releases/download/0.1/rom.zip"
@@ -48,6 +51,7 @@ say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ -n "$APK" && -f "$APK" ]] || fail "Usage: firmware/build.sh path/to/rondo.apk [out.zip]"
+[[ -n "$FIRMWARE_LEVEL" ]] || fail "No firmwareLevel in app/app/build.gradle.kts"
 for p in /opt/homebrew/opt/e2fsprogs/sbin /usr/local/opt/e2fsprogs/sbin /sbin /usr/sbin; do
   [[ -x "$p/debugfs" ]] && { PATH="$p:$PATH"; break; }
 done
@@ -122,9 +126,10 @@ echo "Rondo's logo and boot animation are in."
 
 say "5/7  System properties"
 debugfs -R "dump /build.prop $WORK/build.prop" "$SYS" 2>/dev/null
-sed -i.bak -e "s/^ro.build.display.id=.*/ro.build.display.id=Rondo${RONDO_VERSION:+ $RONDO_VERSION}/" "$WORK/build.prop"
+sed -i.bak -e "s/^ro.build.display.id=.*/ro.build.display.id=Rondo${RONDO_VERSION:+ $RONDO_VERSION}/" -e '/^ro.rondo.firmware=/d' "$WORK/build.prop"
+echo "ro.rondo.firmware=$FIRMWARE_LEVEL" >> "$WORK/build.prop"
 put "$SYS" "$WORK/build.prop" /build.prop
-echo "Build name: $(grep ro.build.display.id "$WORK/build.prop")"
+echo "Build name: $(grep ro.build.display.id "$WORK/build.prop"), firmware $FIRMWARE_LEVEL"
 
 say "6/7  Checking"
 for img in "$SYS" "$DATA"; do

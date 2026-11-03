@@ -1,7 +1,9 @@
 // What is newer than what this server runs: the latest Rondo release (the server and the device
 // firmware share a version) and yt-dlp's latest nightly build, the channel the container's yt-dlp
-// follows (infra/entrypoint.sh). Asked of GitHub at most every 6 hours, in the background (it
-// allows 60 unauthenticated requests an hour); the admin page shows the last answer.
+// follows (infra/entrypoint.sh). Asked at most every 6 hours, in the background (GitHub allows 60
+// unauthenticated requests an hour); the admin page shows the last answer. Rondo's comes from the
+// update page's latest.json, the same answer the dashboard and the update page get, which appears
+// only once a release's rom.zip is out (.github/workflows/release.yml).
 
 import type { FastifyInstance } from "fastify";
 import { request } from "undici";
@@ -11,7 +13,8 @@ export interface Release {
   version: string; // "1.0.1", "2026.11.01.233542"
   url: string; // the release page
   publishedAt: number | null;
-  apk?: { url: string; size: number }; // a Rondo release's rondo-<version>.apk: the update the Y1 installs
+  apk?: { url: string; size: number }; // a Rondo release's APK: the update the Y1 installs
+  firmware?: number; // Rondo: the firmware the release needs (firmwareLevel in app/app/build.gradle.kts)
 }
 
 export interface UpdateState {
@@ -20,7 +23,7 @@ export interface UpdateState {
   checkedAt: number | null;
 }
 
-export const RONDO_RELEASES = "https://api.github.com/repos/jarvissax/rondo/releases/latest";
+export const RONDO_LATEST = "https://jarvissax.github.io/rondo/latest.json";
 export const YTDLP_RELEASES = "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest";
 const EVERY_MS = 6 * 60 * 60 * 1000;
 
@@ -50,6 +53,20 @@ function toRelease(j: unknown): Release | null {
   if (apk && typeof apk.browser_download_url === "string" && typeof apk.size === "number") {
     release.apk = { url: apk.browser_download_url, size: apk.size };
   }
+  return release;
+}
+
+// latest.json: {"version", "file" (next to it), "size", "firmware", "notes" (the release page), "published"}
+function toRondo(j: unknown): Release | null {
+  const r = j as { version?: unknown; file?: unknown; size?: unknown; firmware?: unknown; notes?: unknown; published?: unknown };
+  if (typeof r?.version !== "string" || !r.version) return null;
+  const release: Release = {
+    version: r.version,
+    url: typeof r.notes === "string" ? r.notes : `https://github.com/jarvissax/rondo/releases/tag/v${r.version}`,
+    publishedAt: Date.parse(String(r.published)) || null,
+    firmware: Number(r.firmware) || 1,
+  };
+  if (typeof r.file === "string" && typeof r.size === "number") release.apk = { url: new URL(r.file, RONDO_LATEST).href, size: r.size };
   return release;
 }
 
@@ -91,8 +108,10 @@ export class Updates {
   async check(): Promise<void> {
     const fetchJson = this.fetchJson;
     if (!fetchJson) return;
-    const one = (url: string) => fetchJson(url).then(toRelease, () => null);
-    const [rondo, ytdlp] = await Promise.all([one(RONDO_RELEASES), one(YTDLP_RELEASES)]);
+    const [rondo, ytdlp] = await Promise.all([
+      fetchJson(RONDO_LATEST).then(toRondo, () => null),
+      fetchJson(YTDLP_RELEASES).then(toRelease, () => null),
+    ]);
     // a failed check keeps what the last one found
     this.state = { rondo: rondo ?? this.state.rondo, ytdlp: ytdlp ?? this.state.ytdlp, checkedAt: Date.now() };
   }
@@ -100,19 +119,24 @@ export class Updates {
 
 // Settings › Software update on the Rondo (device token, like every route after the auth hook).
 // GET /update names the newest Rondo that has an update APK; GET /update/rondo.apk passes that APK
-// through from GitHub as it downloads, so the Y1 talks only to its server. Android installs it only
-// when it's signed with the same key as the firmware's copy.
+// through as it downloads, so the Y1 talks only to its server. Android installs it only when it's
+// signed with the same key as the firmware's copy. ?firmware=N is the Rondo's firmware: a release
+// that needs a newer one comes with its firmware number, and the Rondo points to Innioasis Updater
+// CE instead of installing it. A Rondo that doesn't say (1.0.0) hears only of first-firmware ones.
 export function registerUpdateRoutes(app: FastifyInstance, updates: Updates | undefined): void {
-  app.get("/update", async () => {
+  app.get<{ Querystring: { firmware?: string } }>("/update", async (req) => {
     const r = await updates?.latest();
-    return r?.apk ? { version: r.version, size: r.apk.size, notes: r.url } : { version: null };
+    if (!r?.apk) return { version: null };
+    const firmware = r.firmware ?? 1;
+    if (!Number(req.query.firmware) && firmware > 1) return { version: null };
+    return { version: r.version, size: r.apk.size, notes: r.url, firmware };
   });
 
   app.get("/update/rondo.apk", async (_req, reply) => {
     const r = await updates?.latest();
     if (!r?.apk) return reply.code(404).send({ error: "none" });
     const res = await request(r.apk.url, {
-      dispatcher, // follows GitHub's redirect to its download host
+      dispatcher, // follows a redirect, if the site sends one
       headers: { "user-agent": "rondo-server" },
       headersTimeout: 15_000,
       bodyTimeout: 60_000,

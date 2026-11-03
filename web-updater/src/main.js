@@ -1,6 +1,6 @@
 // The update page: connects to the Y1 over WebUSB with Tango, then runs the steps in updater.js.
 // The APK comes from this site (rondo.apk and latest.json, put next to the page when a release is
-// published, see .github/workflows/pages.yml), or from a file the user picks.
+// published, see .github/workflows/release.yml), or from a file the user picks.
 import { Adb, AdbDaemonTransport } from "@yume-chan/adb";
 import AdbWebCredentialStore from "@yume-chan/adb-credential-web";
 import { AdbDaemonWebUsbDeviceManager } from "@yume-chan/adb-daemon-webusb";
@@ -13,8 +13,9 @@ const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
 const credentialStore = new AdbWebCredentialStore("Rondo updater");
 
 let adb = null;
-let device = null; // { installed }
-let apk = null; // { bytes, label, version }
+let device = null; // { installed, firmware }
+let apk = null; // { bytes, label, version, firmware }
+const UPDATER_GUIDE = "https://github.com/jarvissax/rondo/blob/main/docs/install.md#updating-rondo";
 let busy = false;
 
 function status(id, text, kind = "") {
@@ -35,9 +36,15 @@ function setStep(active) {
 }
 
 function refreshUpdate() {
-  $("updateBtn").disabled = busy || !adb || !apk;
+  // a release for a newer firmware than this Y1's (a file of unknown origin can't be told apart)
+  const needsFirmware = !!device && !!apk?.firmware && apk.firmware > device.firmware;
+  $("updateBtn").disabled = busy || !adb || !apk || needsFirmware;
   $("connectBtn").disabled = busy || !manager;
   if (!apk) return;
+  if (needsFirmware) {
+    $("apkLine").innerHTML = `<b>${apk.label}</b> needs a new firmware, so it installs with <a href="${UPDATER_GUIDE}">Innioasis Updater CE</a> instead. Rondo on this Y1 stays as it is.`;
+    return;
+  }
   const same = device?.installed && apk.version && device.installed === apk.version;
   $("updateBtn").textContent = same ? "Install again" : "Update";
   let line = `Ready: <b>${apk.label}</b>.`;
@@ -52,7 +59,7 @@ async function loadBundledApk() {
     const info = await (await fetch("latest.json", { cache: "no-store" })).json();
     const res = await fetch(info.file || "rondo.apk", { cache: "no-store" });
     if (!res.ok) throw new Error(String(res.status));
-    apk = { bytes: new Uint8Array(await res.arrayBuffer()), label: `Rondo ${info.version}`, version: info.version };
+    apk = { bytes: new Uint8Array(await res.arrayBuffer()), label: `Rondo ${info.version}`, version: info.version, firmware: Number(info.firmware) || 1 };
   } catch {
     $("apkLine").textContent = "Couldn't load Rondo from this page. Download rondo-<version>.apk from GitHub's Releases page and choose it with \"Use an APK file\".";
   }

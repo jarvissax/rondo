@@ -36,6 +36,10 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.Y1">
 
+        <!-- the firmware this build needs (firmwareLevel in build.gradle.kts), read from an update's
+             APK before it installs (SoftwareUpdate.kt) -->
+        <meta-data android:name="rondo.firmware" android:value="${firmware}" />
+
         <!-- the iPod-style shell, and the home screen: the Y1 boots into it (the only one in the
              Rondo firmware) -->
         <activity

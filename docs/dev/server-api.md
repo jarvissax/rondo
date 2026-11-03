@@ -78,7 +78,8 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
                "ytdlp": {"version": "2026.11.01.233542", "url": "…", "publishedAt": …} | null, "checkedAt": … | null}}
   ```
   `updates` names only releases newer than what runs (`server/src/updates.ts`): the latest Rondo release
-  and yt-dlp's latest nightly, asked of GitHub at most every 6 hours in the background.
+  (from the update page's `latest.json`) and yt-dlp's latest nightly (from GitHub), asked at most every
+  6 hours in the background.
   `UPDATE_CHECK=0` in the environment turns that off.  `signedIn` is null when not checked yet; the server checks after a cookies upload and every
   15 minutes.
 - `POST /admin/api/cookies` with the cookies.txt **text as the body** (`Content-Type: text/plain`,
@@ -109,9 +110,13 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 
 ## Software updates for the Rondo (device token)
 
-- `GET /update` → `{"version": "1.0.1", "size": 6413645, "notes": "<release page>"}` for the newest
-  Rondo release that has a `rondo-<version>.apk` asset, or `{"version": null}`. The device compares it
-  with its own version (Settings › Software update).
-- `GET /update/rondo.apk` → that APK, passed through from GitHub as it downloads
+- `GET /update?firmware=1` → `{"version": "1.0.1", "size": 6413645, "notes": "<release page>", "firmware": 1}`
+  for the newest Rondo release on the update page (`jarvissax.github.io/rondo/latest.json`, out once
+  the release's `rom.zip` is built), or `{"version": null}`. The device compares it with its own version
+  (Settings › Software update). `firmware` in the query is the device's firmware number
+  (`ro.rondo.firmware`); a release whose `firmware` is higher installs only with Innioasis Updater CE,
+  and the device says so instead of offering it. Without the query (Rondo 1.0.0, from before
+  firmware numbers) only releases for firmware 1 are named.
+- `GET /update/rondo.apk` → that APK (the update page's `rondo.apk`), passed through as it downloads
   (`application/vnd.android.package-archive`), so the Y1 never talks to anyone but its server.
   Android on the Y1 installs it only when it's signed with the same key as the firmware's Rondo.

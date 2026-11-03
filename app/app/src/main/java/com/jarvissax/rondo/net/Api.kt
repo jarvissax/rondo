@@ -26,9 +26,9 @@ data class HealthAccount(val music: Boolean = true, val videos: Boolean = true)
 @Serializable
 data class ServerTime(val epochMs: Long)
 
-// GET /update
+// GET /update; firmware: the firmware that release needs (SoftwareUpdate.firmware())
 @Serializable
-data class UpdateInfo(val version: String? = null, val size: Long = 0, val notes: String? = null)
+data class UpdateInfo(val version: String? = null, val size: Long = 0, val notes: String? = null, val firmware: Int = 1)
 
 // GET /video/short/:id
 @Serializable
@@ -172,8 +172,9 @@ object Api {
         get("/mpd/" + enc(id))
     }
 
-    // the newest Rondo with an update APK (GET /update; version null when there's none)
-    suspend fun updateInfo() = json.decodeFromString(UpdateInfo.serializer(), get("/update"))
+    // the newest Rondo with an update APK (GET /update; version null when there's none). Sending
+    // this firmware's number lets the server name a release that needs a newer one, too
+    suspend fun updateInfo() = json.decodeFromString(UpdateInfo.serializer(), get("/update?firmware=${com.jarvissax.rondo.SoftwareUpdate.firmware()}"))
 
     // the update APK, through the server, into `to`; progress from 0 to 1 as it arrives
     suspend fun downloadUpdate(to: java.io.File, size: Long, progress: (Float) -> Unit) = withContext(Dispatchers.IO) {

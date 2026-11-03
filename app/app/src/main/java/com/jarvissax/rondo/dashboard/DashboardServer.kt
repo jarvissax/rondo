@@ -365,6 +365,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
         when {
             build == null -> return error(Response.Status.BAD_REQUEST, "That isn't an update for Rondo").also { apk.delete() }
             build.code < installed.code -> return error(Response.Status.CONFLICT, "That's an older Rondo (${build.version})").also { apk.delete() }
+            SoftwareUpdate.needsFirmware(build) != null -> return error(Response.Status.CONFLICT, SoftwareUpdate.needsFirmware(build)!!).also { apk.delete() }
         }
         Log.i("Y1", "dashboard: update ${build!!.version} arrived")
         main.postDelayed({
@@ -384,6 +385,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
     private fun updateState(): JsonObject = buildJsonObject {
         put("version", BuildConfig.VERSION_NAME)
         put("canInstall", SoftwareUpdate.available(context))
+        put("firmware", SoftwareUpdate.firmware())
         put("problem", updateProblem)
     }
 
@@ -402,6 +404,7 @@ class DashboardServer(private val shell: ShellActivity) : NanoHTTPD(PORT) {
                 put("model", "Innioasis Y1")
                 put("power", Power.available(context)) // shut down and restart (firmware builds)
                 put("canUpdate", SoftwareUpdate.available(context)) // install an update from the page
+                put("firmware", SoftwareUpdate.firmware()) // updates for a newer firmware need Innioasis Updater CE
             })
             put("battery", buildJsonObject {
                 put("level", level)

@@ -46,6 +46,13 @@ pulses per felt detent. On the same device, Menu sends `KEY_BACK` (158 → `BACK
   `Settings.System.SOUND_EFFECTS_ENABLED` is 1; setting it to 0 silences it at once. Rondo's
   **Click sound** setting writes this switch. The Rondo firmware has no SystemUI, so Rondo plays
   the tick itself there (see "The Rondo firmware" below).
+- **MediaTek's sound profiles put it back at every boot.** The `audioprofile` service
+  (`com.mediatek.audioprofile.AudioProfileManager`, profiles General, Silent, Meeting and Outdoor;
+  `mtk_audioprofile_active` is `mtk_audioprofile_general`) keeps its own "sound effects" value per
+  profile, defaulting to on for General, and copies it into `SOUND_EFFECTS_ENABLED` when the Y1
+  starts. Writing the setting alone lasts until the next restart; Rondo also calls
+  `setSoundEffectEnabled(getActiveProfileKey(), on)` on the manager
+  (`context.getSystemService("audioprofile")`, by reflection).
 - **What Android thinks the wheel is:** `dumpsys input` lists `mtk-tpd` with classes `0x15`,
   keyboard plus multi-touch screen, and a 480×360 touch axis that never fires. `mtk-tpd-kpd`
   (event3) declares the same keys but stays silent. `ACCDET` (event1) is headset-jack detection
@@ -141,6 +148,11 @@ came out of running it on the Y1:
   (not new ones). Android stops Rondo for the swap and starts it again as the home screen; it's
   back on screen about 10 s after `pm` starts. Only an APK signed with the firmware copy's key is
   accepted. adb's `install -r` does the same.
+- **The firmware's number.** `firmware/build.sh` adds `ro.rondo.firmware=<n>` to `/system/build.prop`
+  (`firmwareLevel` in `app/app/build.gradle.kts`), and every Rondo APK names the number it needs
+  (`rondo.firmware` in its manifest). Updates over Wi-Fi, the dashboard and the update page install
+  only when the firmware is at least that new. The first Rondo firmware, 1.0.0, has no property and
+  counts as 1.
 - **The Y1 doesn't start by itself after a flash.** Press Power once the Updater says it's done;
   the first boot is slower (Android optimizes every app), later ones take about 30 s.
 

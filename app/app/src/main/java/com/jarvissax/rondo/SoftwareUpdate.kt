@@ -10,11 +10,27 @@ import java.io.File
 // same built-in permissions. Android accepts only an APK signed with the same key as the firmware's
 // copy, so nothing but Rondo's own releases can replace it. Installing needs INSTALL_PACKAGES,
 // which Android 4.2 grants to built-in apps. Android stops Rondo while it swaps it, then starts it
-// again as the home screen. (A change to the firmware itself, outside Rondo, still needs a flash.)
+// again as the home screen. A change to the firmware itself, outside Rondo, still needs Innioasis
+// Updater CE: each firmware has a number (ro.rondo.firmware, written by firmware/build.sh) and each
+// build names the one it needs (firmwareLevel in build.gradle.kts), so an update for a newer
+// firmware is refused here, whichever way it arrived.
 object SoftwareUpdate {
     private const val TAG = "Y1"
 
-    data class Build(val version: String, val code: Int)
+    data class Build(val version: String, val code: Int, val firmware: Int = 1)
+
+    // this Y1's firmware: its number, else 1 for the first Rondo firmware (1.0.0 had none), else 0
+    fun firmware(): Int {
+        val prop = { key: String ->
+            runCatching { Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String }.getOrNull().orEmpty()
+        }
+        prop("ro.rondo.firmware").toIntOrNull()?.let { return it }
+        return if (prop("ro.build.display.id").startsWith("Rondo")) 1 else 0
+    }
+
+    // why a build can't run fully on this firmware, or null
+    fun needsFirmware(build: Build): String? =
+        if (build.firmware > firmware()) "Rondo ${build.version} needs a newer firmware: install it with Innioasis Updater CE" else null
 
     fun available(context: Context): Boolean =
         context.checkCallingOrSelfPermission("android.permission.INSTALL_PACKAGES") == PackageManager.PERMISSION_GRANTED
@@ -27,9 +43,12 @@ object SoftwareUpdate {
 
     // what an APK holds, or null when it isn't a build of Rondo
     fun inspect(context: Context, apk: File): Build? =
-        context.packageManager.getPackageArchiveInfo(apk.path, 0)
+        context.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_META_DATA)
             ?.takeIf { it.packageName == context.packageName }
-            ?.let { Build(it.versionName ?: "", it.versionCode) }
+            ?.let { info ->
+                val firmware = info.applicationInfo?.metaData?.get("rondo.firmware")?.toString()?.toIntOrNull() ?: 1
+                Build(info.versionName ?: "", info.versionCode, firmware)
+            }
 
     // Hands the APK to Android's package manager (`pm install -r`, which runs as Rondo and so has its
     // permission). Blocks until Android answers; for a good update that answer usually never arrives
@@ -37,6 +56,7 @@ object SoftwareUpdate {
     fun install(context: Context, apk: File): String? {
         val build = inspect(context, apk) ?: return "That isn't an update for Rondo"
         if (build.code < installed(context).code) return "That's an older Rondo (${build.version})"
+        needsFirmware(build)?.let { return it }
         apk.setReadable(true, false)
         apk.parentFile?.setExecutable(true, false)
         Log.i(TAG, "update: installing ${build.version} (${build.code})")
