@@ -212,6 +212,19 @@ fun clickSound(c: android.content.Context): Boolean =
 
 fun setClickSound(c: android.content.Context, on: Boolean) {
     Settings.System.putInt(c.contentResolver, Settings.System.SOUND_EFFECTS_ENABLED, if (on) 1 else 0)
+    setProfileSoundEffects(c, on)
+}
+
+// MediaTek's sound profiles (General, Silent…) keep their own copy of "sound effects" and copy it
+// back into the setting above at every boot, so the change goes to the active profile too
+// (com.mediatek.audioprofile.AudioProfileManager, hidden; docs/device/README.md)
+private fun setProfileSoundEffects(c: android.content.Context, on: Boolean) {
+    runCatching {
+        val manager = c.getSystemService("audioprofile") ?: return
+        val key = manager.javaClass.getMethod("getActiveProfileKey").invoke(manager) as? String ?: return
+        manager.javaClass.getMethod("setSoundEffectEnabled", String::class.java, Boolean::class.javaPrimitiveType)
+            .invoke(manager, key, on)
+    }.onFailure { android.util.Log.w("Y1", "audio profile: sound effects not saved", it) }
 }
 
 fun accelerationName(level: String): String = when (level) {
