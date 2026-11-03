@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   firmware:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     outputs:
@@ -43,7 +43,7 @@ jobs:
           tag="${EVENT_TAG:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Release $tag"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.tag }}
       - name: The release's APK
@@ -65,7 +65,7 @@ jobs:
           level="$(sed -n 's/^val firmwareLevel = \([0-9][0-9]*\).*/\1/p' app/app/build.gradle.kts)"
           [ -n "$needs" ] && [ "$((16#$needs))" = "$level" ] || { echo "::error::The APK names firmware '$needs', build.gradle.kts $level"; exit 1; }
           echo "Rondo $version, firmware $level"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
@@ -84,14 +84,14 @@ jobs:
 
   server-images:
     needs: firmware
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
     env:
       TAG: ${{ needs.firmware.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.firmware.outputs.tag }}
       - name: Names and version
@@ -99,15 +99,15 @@ jobs:
         run: |
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: The server
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/Dockerfile
@@ -125,7 +125,7 @@ jobs:
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
       - name: The updater
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/updater.Dockerfile
@@ -145,7 +145,7 @@ jobs:
 
   pages:
     needs: [firmware, server-images]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       pages: write
@@ -160,10 +160,10 @@ jobs:
       run:
         working-directory: web-updater
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.firmware.outputs.tag }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -182,8 +182,8 @@ jobs:
           export PUBLISHED="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json publishedAt --jq .publishedAt)"
           node -e 'const e = process.env; console.log(JSON.stringify({ version: e.VERSION, file: "rondo.apk", size: Number(e.SIZE), firmware: Number(e.FIRMWARE), notes: e.NOTES, published: e.PUBLISHED }))' > dist/latest.json
           cat dist/latest.json
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: web-updater/dist
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
