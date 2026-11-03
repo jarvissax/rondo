@@ -30,10 +30,12 @@ Install Docker, then in a terminal:
 ```bash
 git clone https://github.com/jarvissax/rondo.git
 cd rondo
-docker compose -f infra/compose.home.yaml up -d --build
+docker compose -f infra/compose.home.yaml up -d
 ```
 
-The first build takes a few minutes. When it's done, get the one-time setup code:
+Docker downloads the ready-made server (for regular PCs and 64-bit ARM like a Raspberry Pi 4 or 5)
+and starts it, with a small companion that installs its updates later. When it's running, get the
+one-time setup code:
 
 ```bash
 docker logs rondo | grep "Rondo setup"
@@ -59,7 +61,7 @@ You need:
 git clone https://github.com/jarvissax/rondo.git
 cd rondo
 echo "RONDO_DOMAIN=music.example.com" > infra/.env
-docker compose -f infra/compose.vps.yaml up -d --build
+docker compose -f infra/compose.vps.yaml up -d
 docker logs rondo | grep "Rondo setup"
 ```
 
@@ -151,15 +153,22 @@ session:
 
 - **yt-dlp updates itself** every day. When YouTube changes something and playback stops, press
   **Update now** on the admin page's **Resolver** page.
-- **Updating the server:**
+- **Updating the server:** when a newer Rondo is out, the admin page's Overview says so. Press
+  **Update**: the server downloads the new version and restarts on it, in a minute or two. Your
+  admin password, account and connected Y1 stay; sign in to the admin page again afterwards. This
+  is the job of the `rondo-updater` container next to the server, which needs Docker's socket and
+  only ever touches the `rondo` container. If you'd rather update by hand:
 
   ```bash
   cd rondo
   git pull
-  docker compose -f infra/compose.home.yaml up -d --build    # or compose.vps.yaml
+  docker compose -f infra/compose.home.yaml pull           # or compose.vps.yaml
+  docker compose -f infra/compose.home.yaml up -d
   ```
 
-  Your admin password, account and connected Y1 are kept on a Docker volume and survive updates.
+  A server set up before 1.0.2 built itself and has no updater yet; those four lines move it to the
+  ready-made images, with **Update** from then on. Your admin password, account and connected Y1
+  are kept on a Docker volume and survive updates either way.
 - **Updating the Y1:** the server also hands the Y1 its updates. **Settings › Software update** on
   the Y1 shows a newer Rondo and installs it; the server fetches it from Rondo's update page and
   passes it on. When a release needs a new firmware, the Y1 says so and points to Innioasis

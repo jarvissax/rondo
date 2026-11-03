@@ -149,8 +149,9 @@ and installs with Innioasis Updater CE instead.
 The Y1 is too old to talk to YouTube directly: Android 4.2 can't handle today's YouTube pages,
 video formats or encryption. So a small server does that part. You run it with Docker at home or
 on a VPS, set it up from its admin page in the browser, connect your Y1 with a six-digit code, and
-optionally sign it in to your YouTube account. It keeps yt-dlp up to date by itself, and its admin
-page tells you when something needs attention. One server serves one Y1. See
+optionally sign it in to your YouTube account. It keeps yt-dlp up to date by itself, its admin
+page tells you when something needs attention, and a new version of the server installs with one
+click there. One server serves one Y1. See
 [Setting up a Rondo server](docs/server.md).
 
 ## How it works

@@ -56,7 +56,8 @@ how it works and its API; for setting a server up, see [docs/server.md](../serve
 Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the admin session
 (`401 {"error": "signin"}` otherwise → the page shows sign-in).
 
-- `GET /admin/api/state` → `{"setup": true | false, "signedIn": true | false, "https": bool}`
+- `GET /admin/api/state` → `{"setup": true | false, "signedIn": true | false, "https": bool, "version": "1.0.2"}`
+  (no sign-in needed; the page watches `version` change while the server updates itself)
   (`setup: true` = no admin password yet).
 - `POST /admin/api/setup` `{"code": "482913", "password": "…"}` → `{"ok": true}` and signs in.
   `403 {"error": "code"}`, `400 {"error": "password"}` (too short), `409` if already set up.
@@ -88,6 +89,13 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 - `DELETE /admin/api/cookies` → `{"ok": true}` (YouTube Music home/library/history stop working).
 - `POST /admin/api/cookies/check` → `{"signedIn": bool, "account": {…} | null}`
 - `POST /admin/api/ytdlp/update` → `{"ok": true, "before": "…", "after": "…"}` (up to ~2 min).
+- `GET /admin/api/server/update` → `{"available": true, "state": "idle" | "pulling" | "restarting" | "updated" | "current" | "failed", "message": "…", "at": ms}`,
+  or `{"available": false}` without the updater container (`src/serverUpdate.ts`). `POST` the same path to
+  start an update: `{"ok": true}`, `409 {"error": "busy"}` while one runs, `503 {"error": "unavailable"}` without
+  the updater. The server then restarts on the new image and everyone signs in again.
+- The updater itself (`src/updater/main.ts`, reachable only on the compose network, every call with
+  `Authorization: Bearer <the token in /run/updater/token>`): `GET /v1/status` → `{state, message, at, target}`,
+  `POST /v1/update` → `202 {"started": true}` or `409` while busy.
 - `POST /admin/api/ytdlp/test` → `{"ok": true, "ms": 1840}` or `{"ok": false, "error": "…"}`
   (resolves a known video).
 - `POST /admin/api/device/code` → `{"code": "123456", "expiresAt": …}` (replaces an unused one).

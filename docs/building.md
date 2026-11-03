@@ -135,6 +135,20 @@ Then `npm run dev` starts it on port 3000 and reloads on changes. Its log prints
 for `http://localhost:3000/admin`. yt-dlp also needs [deno](https://deno.com) on the PATH for
 YouTube's challenges. The Docker image (`infra/Dockerfile`) brings yt-dlp, deno and ffmpeg along.
 
+To run your own build in Docker instead of the published image, add the build override to either
+compose file: `docker compose -f infra/compose.home.yaml -f infra/compose.build.yaml up -d --build`.
+It also leaves the updater off.
+
+**The updater** (`src/updater/`, built into its own small image by `infra/updater.Dockerfile`)
+runs next to the server with Docker's socket. When the admin page's **Update** asks (through
+`src/serverUpdate.ts`, with a token the two share on a small volume), it pulls the image the
+`rondo` container runs, and if it's new, recreates the container on it the way `docker compose`
+would: same name, volumes, ports, networks and environment, with only the image's own defaults
+taken from the new image. The old container waits, stopped, until the new one answers
+`/healthz`, and comes back if it doesn't. It speaks Docker's API from 1.40 up (Docker 29 refuses
+older clients) and touches no other container. `test/updater.test.ts` covers it with a pretend
+Docker.
+
 Two rules the server keeps:
 
 - **youtubei.js for browsing, yt-dlp for streams.** Everything the user sees (home pages, search,
@@ -229,9 +243,13 @@ Rondo firmware (1.0.0) has no number and counts as 1.
    **Y1, Type A**, and whether it needs Innioasis Updater CE (a new firmware number).
 5. Publishing starts `.github/workflows/release.yml`, which checks that the tag, the versions and
    the APK agree, builds the firmware from that APK and attaches **`rom.zip`** (the name Innioasis
-   Updater CE reads as Y1 Type A) and **`updater.png`** (its picture for the release), then
-   republishes the update page with the new `latest.json`. It takes about 10 minutes; if it
+   Updater CE reads as Y1 Type A) and **`updater.png`** (its picture for the release), builds the
+   server and updater images for x86-64 and 64-bit ARM and publishes them as
+   `ghcr.io/jarvissax/rondo-server` and `rondo-updater` (`<version>` and `latest`), then
+   republishes the update page with the new `latest.json`. It takes about 20 minutes; if it
    fails, fix the cause and run it again from the Actions tab (it redoes the latest release).
+   The first time the images are published, set both packages to **Public** on GitHub (your
+   profile › Packages › the package › Package settings), or servers can't download them.
 
 Innioasis Updater CE lists every release of this repository that has a `rom.zip`, so a new one
 shows up there by itself (the Updater keeps its list for up to a day). Every APK has to be signed with the same key, or it won't install over

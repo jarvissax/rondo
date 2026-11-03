@@ -4,6 +4,23 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
+## 1.0.2 (November 3, 2026)
+
+Nothing changes on the Y1 itself; this release is about the server.
+
+### Server
+
+- **Update with one click.** When a newer Rondo is out, the server's admin page offers **Update**:
+  the server downloads the new version and restarts on it in a minute or two, keeping your
+  settings, YouTube account and connected Y1. A small companion container, `rondo-updater`, does
+  the work; it only ever touches the Rondo server's own container.
+- **Ready-made server images.** Installing the server now downloads it instead of building it, for
+  regular PCs and 64-bit ARM (Raspberry Pi 4 and 5, many NAS boxes), which makes the first start
+  much quicker on small machines.
+- **Moving an older server over:** a server set up before 1.0.2 built itself and has no updater
+  yet. Update it by hand once ([how](docs/server.md#keeping-it-running)); after that, **Update** on
+  the admin page does it.
+
 ## 1.0.1 (November 3, 2026)
 
 An update over Wi-Fi, the dashboard or USB: no reinstall needed, and everything on your Y1 stays.
