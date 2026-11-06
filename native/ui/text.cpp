@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -13,6 +14,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_SIZES_H
+#include FT_OUTLINE_H
 #include <hb.h>
 
 namespace rondo::ui {
@@ -109,7 +111,8 @@ int Text::font(Weight weight, float px) {
   Size s;
   s.weight = weight;
   s.px = px;
-  s.face = weight == Weight::Bold ? bold_ : regular_;
+  s.face = regular_;
+  s.bold = weight == Weight::Bold;
   s.hb.assign(faces_.size(), nullptr);
   s.ft.assign(faces_.size(), nullptr);
   sizes_.push_back(s);
@@ -118,6 +121,12 @@ int Text::font(Weight weight, float px) {
   hb_font_get_h_extents(hbFont(id, s.face), &ext);
   sizes_[id].ascent = ext.ascender / 64.0f;
   sizes_[id].descent = -ext.descender / 64.0f;
+  {  // Skia: face->ascender/descender scaled, then SkScalarRound in getFontMetricsInt()
+    FT_Face f = faces_[s.face].ft;
+    float k = px / float(f->units_per_EM);
+    sizes_[id].ascentInt = int(floorf(f->ascender * k + 0.5f));
+    sizes_[id].descentInt = int(floorf(-f->descender * k + 0.5f));
+  }
   return id;
 }
 
@@ -168,7 +177,17 @@ bool Text::rasterize(Slot& s) {
   FT_Face f = faces_[s.face].ft;
   FT_Activate_Size(ftSize(s.size, s.face));
   // light hinting: crisp horizontal stems, advances untouched (they come from HarfBuzz anyway)
-  if (FT_Load_Glyph(f, s.glyph, FT_LOAD_TARGET_LIGHT | FT_LOAD_RENDER) != 0) {
+  const Size& sz = sizes_[s.size];
+  bool ok = FT_Load_Glyph(f, s.glyph, FT_LOAD_TARGET_LIGHT | (sz.bold ? FT_LOAD_NO_BITMAP : FT_LOAD_RENDER)) == 0;
+  if (ok && sz.bold) {
+    if (f->glyph->format == FT_GLYPH_FORMAT_OUTLINE) {
+      static float factor = getenv("RONDO_BOLD") ? float(atof(getenv("RONDO_BOLD"))) : 0.07f;  // matched to 1.0.x on the Y1 (N1 log)
+      FT_Pos w = FT_Pos(lroundf(sz.px * factor * 64));  // grows by w/2 on each side, as a stroke of w does
+      FT_Outline_EmboldenXY(&f->glyph->outline, w, w);
+    }
+    ok = FT_Render_Glyph(f->glyph, FT_RENDER_MODE_LIGHT) == 0;
+  }
+  if (!ok) {
     s.ready = true;
     s.w = s.h = 0;
     return false;
@@ -260,7 +279,10 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
     hb_buffer_clear_contents(buffer_);
     hb_buffer_add_utf8(buffer_, s.data(), int(s.size()), it.start, int(it.len));
     hb_buffer_guess_segment_properties(buffer_);
-    hb_shape(hbFont(font, it.face), buffer_, nullptr, 0);
+    // Android 4.2 forms no ligatures (fi, ff measure as their two letters there)
+    static const hb_feature_t kNoLigatures[] = {{HB_TAG('l', 'i', 'g', 'a'), 0, 0, ~0u}, {HB_TAG('c', 'l', 'i', 'g'), 0, 0, ~0u}};
+    hb_shape(hbFont(font, it.face), buffer_, kNoLigatures, 2);
+    const float* table = it.face == regular_ ? advancesFor(sz.px) : nullptr;
     unsigned n = 0;
     hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buffer_, &n);
     hb_glyph_position_t* pos = hb_buffer_get_glyph_positions(buffer_, &n);
@@ -270,7 +292,18 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
       g.y = int16_t(-((pos[i].y_offset + 32) >> 6));
       g.slot = slotFor(font, it.face, info[i].codepoint);
       out.glyphs.push_back(g);
-      pen += pos[i].x_advance;
+      // Whole pixels, as Android 4.2 lays text out: each character's own hinted advance (measured on the
+      // Y1, tools/parity/advances) plus the pair kerning rounded to the nearest pixel.
+      hb_position_t plain = hb_font_get_glyph_h_advance(hbFont(font, it.face), info[i].codepoint);
+      hb_position_t kern = pos[i].x_advance - plain;
+      int32_t base = ((plain + 32) >> 6) << 6;
+      if (table) {
+        const char* cp = s.data() + info[i].cluster;
+        float a = lookup(table, decodeUtf8(cp, end));
+        if (a >= 0) base = int32_t(lroundf(a)) << 6;
+      }
+      int32_t k = kern >= 0 ? ((kern + 32) >> 6) << 6 : -(((-kern + 32) >> 6) << 6);
+      pen += base + k;
     }
   }
   out.width = pen / 64.0f;
@@ -370,6 +403,60 @@ bool Text::warm(const std::vector<int>& fonts, std::string_view chars, int64_t b
   }
   rasterizedFrame_ = done;
   return true;
+}
+
+}  // namespace rondo::ui
+
+namespace rondo::ui {
+
+namespace {
+uint32_t be32(const uint8_t* p) { return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3]; }
+float beFloat(const uint8_t* p) {
+  uint32_t u = be32(p);
+  float f;
+  memcpy(&f, &u, 4);
+  return f;
+}
+}  // namespace
+
+bool Text::loadAdvances(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) return false;
+  std::vector<uint8_t> b;
+  uint8_t chunk[65536];
+  size_t n;
+  while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) b.insert(b.end(), chunk, chunk + n);
+  fclose(f);
+  if (b.size() < 16 || memcmp(b.data(), "RADV", 4) != 0) return false;
+  uint32_t sizes = be32(&b[8]), ranges = be32(&b[12]);
+  size_t at = 16;
+  Advances a;
+  for (uint32_t i = 0; i < ranges && at + 8 <= b.size(); i++, at += 8) {
+    a.ranges.push_back({be32(&b[at]), be32(&b[at + 4])});
+    a.per += be32(&b[at + 4]) - be32(&b[at]) + 1;
+  }
+  for (uint32_t i = 0; i < sizes && at + 4 <= b.size(); i++, at += 4) a.sizes.push_back(beFloat(&b[at]));
+  if (at + a.sizes.size() * a.per * 4 > b.size()) return false;
+  a.adv.resize(a.sizes.size() * a.per);
+  for (size_t i = 0; i < a.adv.size(); i++, at += 4) a.adv[i] = beFloat(&b[at]);
+  advances_ = std::move(a);
+  runs_.clear();  // lines shaped before were laid out without it
+  return true;
+}
+
+const float* Text::advancesFor(float px) const {
+  for (size_t i = 0; i < advances_.sizes.size(); i++)
+    if (fabsf(advances_.sizes[i] - px) < 0.01f) return &advances_.adv[i * advances_.per];
+  return nullptr;
+}
+
+float Text::lookup(const float* row, uint32_t cp) const {
+  size_t base = 0;
+  for (const auto& r : advances_.ranges) {
+    if (cp >= r.first && cp <= r.second) return row[base + (cp - r.first)];
+    base += r.second - r.first + 1;
+  }
+  return -1;
 }
 
 }  // namespace rondo::ui

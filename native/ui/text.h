@@ -23,6 +23,8 @@ typedef struct hb_buffer_t hb_buffer_t;
 
 namespace rondo::ui {
 
+// Bold is Regular emboldened by 6 % of the size, glyph advances unchanged: what 1.0.x draws (Fonts.kt:
+// FILL_AND_STROKE with a stroke of 0.06 x the text size), so 2.0 lays out and looks the same.
 enum class Weight : uint8_t { Regular, Bold };
 
 struct TextRun {
@@ -42,6 +44,11 @@ class Text {
   int font(Weight weight, float px);
   float ascent(int font) const { return sizes_[font].ascent; }
   float descent(int font) const { return sizes_[font].descent; }
+  // Android 4.2's Paint.getFontMetricsInt(): the rounded ascent (positive here) and descent. A single-line
+  // TextView without font padding is descent + ascent tall, with its baseline `ascent` below its top.
+  int ascentInt(int font) const { return sizes_[font].ascentInt; }
+  int descentInt(int font) const { return sizes_[font].descentInt; }
+  int lineHeight(int font) const { return sizes_[font].ascentInt + sizes_[font].descentInt; }
   // The line, shaped and cut with an ellipsis to fit maxWidth (0: no limit). Cached; the reference
   // stays valid until the next call that misses the cache.
   const TextRun& run(int font, std::string_view utf8, float maxWidth = 0);
@@ -55,6 +62,9 @@ class Text {
   // Rasterizes the glyphs of `chars` for each font in `fonts`, for at most budgetNs; true when all are
   // done. Run while idle, so a screen's first frame does not pay for its glyphs.
   bool warm(const std::vector<int>& fonts, std::string_view chars, int64_t budgetNs);
+  // The advance table measured from Android 4.2 on the Y1 (tools/parity/advances). Without it, advances
+  // are HarfBuzz's rounded to whole pixels.
+  bool loadAdvances(const char* path);
   int glyphsRasterizedLastFrame() const { return rasterizedFrame_; }
   void frameDone() { rasterizedFrame_ = 0; }
 
@@ -71,6 +81,8 @@ class Text {
     Weight weight;
     float px;
     float ascent, descent;
+    int ascentInt, descentInt;
+    bool bold;  // Regular with a 6 % outline, as 1.0.x (Fonts.kt) draws bold
     // per face: a HarfBuzz font and a FreeType size at px, created on first use
     std::vector<hb_font_t*> hb;
     std::vector<FT_Size> ft;
@@ -117,6 +129,14 @@ class Text {
   int dirtyY0_ = kAtlas, dirtyY1_ = 0;
   int rasterizedFrame_ = 0;
   size_t warmFont_ = 0, warmChar_ = 0;
+  struct Advances {
+    std::vector<float> sizes;
+    std::vector<std::pair<uint32_t, uint32_t>> ranges;
+    size_t per = 0;
+    std::vector<float> adv;  // sizes x per
+  } advances_;
+  const float* advancesFor(float px) const;
+  float lookup(const float* row, uint32_t cp) const;
 };
 
 }  // namespace rondo::ui

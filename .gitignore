@@ -37,3 +37,4 @@ firmware/out/
 native/sysroot/
 native/build/
 native/third_party/
+tools/parity/.compare

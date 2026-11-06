@@ -331,6 +331,14 @@ inline void local(Vertex* v, float hw, float hh, float pad, float radius) {
 
 void Canvas::fill(Rect r, Color c) { fillGradient(r, c, c); }
 
+void Canvas::fillCorners(Rect r, Color tl, Color tr, Color bl, Color br) {
+  if (r.w <= 0 || r.h <= 0) return;
+  Vertex* v = quad(kFill, 0);
+  float x = r.x + offX_.back(), y = r.y + offY_.back();
+  corners(v, x, y, x + r.w, y + r.h);
+  v[0].rgba = color(tl), v[1].rgba = color(tr), v[2].rgba = color(bl), v[3].rgba = color(br);
+}
+
 void Canvas::fillGradient(Rect r, Color top, Color bottom) {
   if (r.w <= 0 || r.h <= 0) return;
   Vertex* v = quad(kFill, 0);

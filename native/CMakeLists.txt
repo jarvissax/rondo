@@ -46,7 +46,7 @@ add_executable(libtest apps/libtest/main.cpp)
 target_link_libraries(libtest PRIVATE rondo_core)
 
 # The UI engine (N1): portable C++ over GLES2
-add_library(rondo_ui STATIC ui/gfx.cpp ui/text.cpp ui/image.cpp ui/frame_log.cpp ui/theme.cpp ui/keyboard.cpp core/cover.cpp)
+add_library(rondo_ui STATIC ui/gfx.cpp ui/text.cpp ui/image.cpp ui/frame_log.cpp ui/theme.cpp ui/keyboard.cpp ui/icons.cpp ui/covers.cpp core/cover.cpp)
 target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/freetype2 ${TP}/include/harfbuzz)
 target_link_libraries(rondo_ui PUBLIC rondo_core tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
 
@@ -76,3 +76,10 @@ if(EXISTS ${TP}/lib/libcurl.a)
   add_executable(apitest apps/apitest/main.cpp)
   target_link_libraries(apitest PRIVATE rondo_net)
 endif()
+
+# Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
+add_library(rondo_shell STATIC shell/kit.cpp)
+target_link_libraries(rondo_shell PUBLIC rondo_ui)
+add_executable(rondo apps/rondo/main.cpp)
+target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
+target_link_options(rondo PRIVATE -Wl,-rpath-link,${Y1_LIB})

@@ -72,6 +72,8 @@ class Canvas {
   // A flat rectangle with hard edges: backgrounds and pixel-aligned lines.
   void fill(Rect r, Color c);
   void fillGradient(Rect r, Color top, Color bottom);
+  // A flat rectangle with a color per corner, interpolated (diagonal gradients are built from these).
+  void fillCorners(Rect r, Color topLeft, Color topRight, Color bottomLeft, Color bottomRight);
   // A rectangle with antialiased edges and rounded corners (radius 0: square), top-to-bottom gradient.
   void shape(Rect r, float radius, Color top, Color bottom);
   void shape(Rect r, float radius, Color c) { shape(r, radius, c, c); }
