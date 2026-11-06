@@ -392,6 +392,15 @@ void Canvas::glyph(const Texture& atlas, Rect dst, Rect uv, Color c) {
   uvs(v, uv.x, uv.y, uv.x + uv.w, uv.y + uv.h);
   uint32_t col = color(c);
   for (int i = 0; i < 4; i++) v[i].rgba = col;
+  if (fade_) {
+    for (int i = 0; i < 4; i++) {
+      float f = std::min((v[i].y - fadeTop_) / fadeEdge_, (fadeBottom_ - v[i].y) / fadeEdge_);
+      f = f < 0 ? 0 : f > 1 ? 1 : f;
+      uint32_t o = 0;
+      for (int k = 0; k < 32; k += 8) o |= uint32_t(((col >> k) & 0xff) * f + 0.5f) << k;
+      v[i].rgba = o;
+    }
+  }
 }
 
 bool saveScreenshot(const char* path, int w, int h) {

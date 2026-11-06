@@ -354,13 +354,16 @@ void RowList::draw(Env& e, float x, float y) {
 
 namespace rondo::shell {
 
-std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines) {
-  std::vector<Label> lines;
+std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines) {
+  std::vector<WrappedLine> lines;
+  int font = e.font(sp, bold);
+  auto width = [&](size_t from, size_t to) { return e.text.run(font, std::string_view(s).substr(from, to - from)).width; };
   size_t at = 0;
   while (at < s.size() && int(lines.size()) < maxLines) {
     while (at < s.size() && s[at] == ' ') at++;
+    if (at >= s.size()) break;
     if (int(lines.size()) == maxLines - 1) {  // the last line takes the rest, ellipsized
-      lines.push_back(label(e, s.substr(at), sp, bold, maxW));
+      lines.push_back({s.substr(at), true});
       break;
     }
     // as many words as fit
@@ -368,20 +371,25 @@ std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float
     for (;;) {
       size_t next = s.find(' ', end + 1);
       size_t cut = next == std::string::npos ? s.size() : next;
-      Label l = label(e, s.substr(at, cut - at), sp, bold);
-      if (l.w > maxW) break;
+      if (width(at, cut) > maxW) break;
       best = cut;
       if (next == std::string::npos) break;
       end = next;
     }
     if (best == std::string::npos) {  // one word wider than the line: it is cut, ellipsized
-      lines.push_back(label(e, s.substr(at), sp, bold, maxW));
+      lines.push_back({s.substr(at), true});
       break;
     }
-    lines.push_back(label(e, s.substr(at, best - at), sp, bold));
+    lines.push_back({s.substr(at, best - at), false});
     at = best;
   }
   return lines;
+}
+
+std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines) {
+  std::vector<Label> out;
+  for (const WrappedLine& l : wrapText(e, s, sp, bold, maxW, maxLines)) out.push_back(label(e, l.text, sp, bold, l.ellipsize ? maxW : 0));
+  return out;
 }
 
 }  // namespace rondo::shell

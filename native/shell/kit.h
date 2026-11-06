@@ -47,6 +47,13 @@ inline float centerText(float left, float width, int textW) {
   return float((int(left) * 2 + int(width) - (textW & ~1)) >> 1);
 }
 
+// Word wrap as StaticLayout does it for plain text: the lines of up to maxLines (the last one takes the
+// rest and is ellipsized), as text.
+struct WrappedLine {
+  std::string text;
+  bool ellipsize = false;
+};
+std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines);
 // A TextView of up to maxLines lines (word wrap, the last line ellipsized): its lines, top to bottom.
 std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines);
 

@@ -174,6 +174,7 @@ void Engine::publish() {
   if (playing_ && lastCallbackNs_ && !ended_) played += std::min<int64_t>((monoNs() - lastCallbackNs_) / 1000000, 46);
   s.positionMs = std::max<int64_t>(0, std::min(played, heardDuration_ > 0 ? heardDuration_ : played));
   s.durationMs = heardDuration_;
+  s.publishedNs = monoNs();
   s.volume = volume_;
   s.volumeMax = volumeMax_;
   s.ended = ended_;

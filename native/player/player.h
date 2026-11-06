@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,7 @@ struct PlayerState {
   int32_t count;  // queue items
   int32_t shuffle, repeat;  // repeat: 0 off, 1 all, 2 one
   int64_t positionMs, durationMs;
+  int64_t publishedNs;  // CLOCK_MONOTONIC when this was written
   int32_t volume, volumeMax;  // STREAM_MUSIC on the current output
   uint32_t trackSerial;  // changes whenever the track does
   int32_t ended;         // the queue played to its end
@@ -60,6 +62,13 @@ class PlayerHost {
   void setShuffle(bool on);
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
+
+  // The position now: positionMs moved on by the time since it was written, while sound comes out.
+  static int64_t positionAt(const PlayerState& s, int64_t nowNs) {
+    int64_t p = s.positionMs;
+    if (s.playing && !s.buffering && !s.ended && s.publishedNs && nowNs > s.publishedNs) p += std::min<int64_t>((nowNs - s.publishedNs) / 1000000, 250);
+    return s.durationMs > 0 && p > s.durationMs ? s.durationMs : p;
+  }
 
   bool active() const;  // something is in the queue
   const std::vector<std::string>& queue() const { return queue_; }  // as sent (indexes match state.index)

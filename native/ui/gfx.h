@@ -82,6 +82,12 @@ class Canvas {
   void image(const Texture& t, Rect dst, Rect uv, float radius = 0, Color tint = 0xffffffff);
   // A glyph from an A8 atlas; uv in 0..1.
   void glyph(const Texture& atlas, Rect dst, Rect uv, Color c);
+  // Glyphs drawn until clearFade() fade out toward a band's edges (current coordinates): opaque from
+  // top + edge to bottom - edge, transparent at top and bottom (a gradient mask, per vertex).
+  void setFade(float top, float bottom, float edge) {
+    fade_ = true, fadeTop_ = top + offY_.back(), fadeBottom_ = bottom + offY_.back(), fadeEdge_ = edge;
+  }
+  void clearFade() { fade_ = false; }
 
   // Draw statistics of the last end().
   int drawCalls() const { return draws_; }
@@ -111,6 +117,8 @@ class Canvas {
   int w_ = 0, h_ = 0;
   int layer_ = 0;
   Layer layers_[kLayers];
+  bool fade_ = false;
+  float fadeTop_ = 0, fadeBottom_ = 0, fadeEdge_ = 1;
   std::vector<float> offX_, offY_, alpha_;
   std::vector<Clip> clip_;
   GLuint programs_[kPipes] = {};

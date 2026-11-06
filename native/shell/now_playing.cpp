@@ -10,7 +10,9 @@
 
 #include <unordered_map>
 
+#include "../core/lyrics.h"
 #include "app.h"
+#include "lyrics_view.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -213,6 +215,8 @@ class Scrubber {
 
 class NowPlayingScreen : public Screen {
  public:
+  // "Open lyrics automatically" (dashboard) applies when Now Playing opens; the page stays for the next visit
+  NowPlayingScreen() { showLyrics(lyricsOn() || g_config.behavior.lyricsOnOpen); }
   std::string title() const override { return "Now Playing"; }
   bool statusBar() const override { return false; }
 
@@ -235,12 +239,14 @@ class NowPlayingScreen : public Screen {
       case Action::Down: {
         int dir = a == Action::Down ? 1 : -1;
         if (scrubbing) scrub_.turn(dir, steps);
+        else if (lyricsOn() && lyrics_.scrollable()) lyrics_.scrollBy(dir * steps);
         else g_app->changeVolume(dir);
         return true;
       }
       case Action::Select:
+        // center: Now Playing <-> lyrics (or, while scrubbing, jump)
         if (scrubbing) scrub_.commit();
-        // the lyrics page comes with the lyrics port
+        else showLyrics(!lyricsOn());
         return true;
       case Action::LongSelect:
         scrub_.cancel();
@@ -250,6 +256,10 @@ class NowPlayingScreen : public Screen {
       case Action::Back:
         if (scrubbing) {
           scrub_.cancel();
+          return true;
+        }
+        if (lyricsOn()) {
+          showLyrics(false);
           return true;
         }
         return false;
@@ -269,13 +279,35 @@ class NowPlayingScreen : public Screen {
   }
 
   bool tick(int64_t now) override {
+    now_ = now;
     bool changed = scrub_.tick(now);
     PlayerState s = g_player.state();
     Shown v = shownOf(s);
     if (!(v == shown_)) changed = true;
+    if (lyricsOn()) {
+      std::string path = s.index >= 0 ? std::string(s.path) : std::string();
+      if (path != lyricsFor_) loadLyrics(path), changed = true;  // the next song
+      if (loadPending_) {
+        loadPending_ = false;
+        lyrics_.show(lyricsCached(lyricsFor_));
+        changed = true;
+      }
+      changed |= lyrics_.update(PlayerHost::positionAt(s, now), s.durationMs, now);
+    }
     return changed;
   }
-  int64_t wakeAt() const override { return scrub_.deadline(); }
+  bool step(float) override { return lyricsOn() && lyrics_.animating(now_); }
+  int64_t wakeAt() const override {
+    int64_t t = scrub_.deadline();
+    auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
+    if (lyricsOn()) {
+      if (loadPending_) sooner(now_ns());
+      PlayerState s = g_player.state();
+      int64_t now = now_ns();
+      if (s.playing) sooner(lyrics_.wakeAt(PlayerHost::positionAt(s, now), now));
+    }
+    return t;
+  }
 
   void draw(Env& e, float w, float h) override {
     PlayerState s = g_player.state();
@@ -291,6 +323,13 @@ class NowPlayingScreen : public Screen {
       if (const Texture* t = e.covers.get(path, 6, 6, -art, e.now, &a)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
     }
     e.c.fill({0, 0, w, h}, dim);
+    if (lyricsOn()) {
+      drawLyricsPage(e, w, h, s, path);
+      if (scrub_.active) drawBubble(e, w, h, scrub_.target, scrub_.from);
+      if (options_) drawOptions(e, w, h, s);
+      e.c.layer(0);
+      return;
+    }
 
     // ---- header: NOW PLAYING, "3 of 12", the status icons ----
     int headH = e.dp(24);
@@ -402,6 +441,77 @@ class NowPlayingScreen : public Screen {
   }
 
  private:
+  static bool& lyricsOn() {
+    static bool on = false;  // the lyrics page stays open for the next visit to Now Playing
+    return on;
+  }
+  void showLyrics(bool on) {
+    lyricsOn() = on;
+    if (on) {
+      PlayerState s = g_player.state();
+      loadLyrics(s.index >= 0 ? std::string(s.path) : std::string());
+    }
+  }
+  void loadLyrics(const std::string& path) {
+    if (path.empty()) {
+      lyricsFor_.clear();
+      loadPending_ = false;
+      lyrics_.showMessage("Nothing playing");
+      return;
+    }
+    if (path == lyricsFor_) return;
+    lyricsFor_ = path;
+    lyrics_.showMessage("Finding lyrics\xe2\x80\xa6");
+    loadPending_ = true;  // read on the next idle look, not in the frame that shows the page
+  }
+  // LyricsSource's cache: the last 24 songs
+  static Lyrics lyricsCached(const std::string& path) {
+    static std::vector<std::pair<std::string, Lyrics>> cache;
+    for (size_t i = 0; i < cache.size(); i++)
+      if (cache[i].first == path) {
+        auto hit = cache[i];
+        cache.erase(cache.begin() + long(i));
+        cache.push_back(hit);
+        return hit.second;
+      }
+    Lyrics l = lyricsForFile(path);
+    cache.push_back({path, l});
+    if (cache.size() > 24) cache.erase(cache.begin());
+    return l;
+  }
+
+  // the lyrics page: a slim header with the song, the lyrics, a thin progress line
+  void drawLyricsPage(Env& e, float w, float h, const PlayerState& s, const std::string& path) {
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, 0x5a000000);  // extra dimming: lyrics must read on any artwork
+    int headH = e.dp(32), art = e.dp(22);
+    float ax = float(e.dp(12));
+    Rect ar{ax, float((headH - art) / 2), float(art), float(art)};
+    e.c.layer(5);
+    e.c.shape(ar, e.dpf(3), whiteA(70));
+    if (!path.empty()) {
+      float a = 0;
+      if (const Texture* t = e.covers.get(path, art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
+    }
+    e.c.layer(6);
+    Label tag = label(e, "LYRICS", 9, true);
+    float tagX = w - e.dp(10) - tag.w;
+    drawLabel(e, tag, tagX, float((headH - tag.h) / 2), whiteA(150));
+    float nx = ax + art + e.dp(8), nw = tagX - e.dp(8) - nx;
+    SongInfo song = path.empty() ? SongInfo{} : songInfo(path);
+    Label t = label(e, song.title, 12, true, nw), a = label(e, firstAndRest(song.subtitle).first, 10, false, nw);
+    float ny = float((headH - t.h - a.h) / 2);
+    drawLabel(e, t, nx, ny, white);
+    drawLabel(e, a, nx, ny + t.h, whiteA(170));
+    int progH = e.dp(10), progB = e.dp(4), side = e.dp(6);
+    Rect lr{0, float(headH), w, h - headH - progH - progB};
+    int64_t pos = PlayerHost::positionAt(s, e.now);
+    lyrics_.draw(e, lr, pos, s.durationMs);
+    e.c.layer(5);
+    progressBar(e, {float(side), lr.bottom(), w - 2 * side, float(progH)}, whiteA(60), white,
+                s.durationMs > 0 ? float(s.positionMs) / s.durationMs : 0, 0, 2, scrub_.fraction(s.durationMs));
+  }
+
   // what draw() shows, to tell whether a tick changed it
   struct Shown {
     std::string path;
@@ -505,6 +615,10 @@ class NowPlayingScreen : public Screen {
   }
 
   Scrubber scrub_;
+  LyricsView lyrics_;
+  std::string lyricsFor_;
+  bool loadPending_ = false;
+  int64_t now_ = 0;
   bool options_ = false;
   int cursor_ = 0;
   int shuffleShown_ = -1, repeatShown_ = -1;

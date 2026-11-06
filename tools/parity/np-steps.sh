@@ -14,6 +14,8 @@ I key center; sleep 1.8
 I wheel 1 300; sleep 0.8           # the first song
 I key center; sleep 2.5            # plays it: Now Playing
 SETTLE=1.5 $T np-paused key play >/dev/null
+SETTLE=1.5 $T np-lyrics key center >/dev/null       # the lyrics page
+I key center; sleep 0.8            # back to Now Playing
 SETTLE=1.2 $T np-options key center 900 >/dev/null
 I wheel 2 300; sleep 0.8           # the options' cursor: Shuffle
 $T np-options-shuffle >/dev/null
