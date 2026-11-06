@@ -5,6 +5,10 @@ motion is designed for that rate: every frame is computed for the moment it appe
 keeps steps even whatever a frame costs to draw. The engine draws a frame in about 1 ms, so every
 refresh gets one.
 
+Rondo 2 keeps every screen exactly as Rondo 1.0 lays it out: the same sizes, colors, text and
+behavior. Motion is what changes: everything that moves, moves at the panel's full rate, and screen
+changes slide.
+
 ## Principles
 
 - **Answer at once.** A wheel pulse moves the selection in the very next frame; the bar and the list
