@@ -33,6 +33,10 @@
 #include "../../ui/list.h"
 #include "../../ui/motion.h"
 #include "../../ui/text.h"
+#include "../../ui/keyboard.h"
+#include "../../ui/theme.h"
+#include "../../core/config.h"
+#include "../../core/library.h"
 
 using namespace rondo;
 using namespace rondo::ui;
@@ -40,6 +44,9 @@ using namespace rondo::ui;
 namespace {
 
 volatile sig_atomic_t g_stop = 0, g_shot = 0;
+rondo::Config g_config;
+rondo::Library g_library;
+std::unordered_map<std::string, int> g_songIndex;  // path -> index in the songs (for covers)
 
 // ---- the card library, from today's Rondo index (a JSON array of flat objects) ----
 
@@ -317,6 +324,8 @@ class Screen {
   virtual std::string title() const = 0;
   virtual bool dark() const { return false; }
   virtual void key(Key k, App& app) = 0;
+  // true: Menu goes to the screen (the keyboard uses it), not straight to going back
+  virtual bool ownsMenu() const { return false; }
   virtual bool step(float dt) = 0;  // true while moving
   virtual void draw(Ctx& x) = 0;
 };
@@ -340,7 +349,7 @@ class App {
   }
   void key(Key k, int64_t now) {
     now_ = now;
-    if (k == Key::Menu) {
+    if (k == Key::Menu && !stack_.back()->ownsMenu()) {
       pop(now);
       return;
     }
@@ -455,8 +464,8 @@ class ShellList : public Screen {
   ShellList(std::string title, std::vector<Item> items) : title_(std::move(title)), items_(std::move(items)) {}
   std::string title() const override { return title_; }
   void key(Key k, App& app) override {
-    if (k == Key::WheelCw) list_.move(1);
-    else if (k == Key::WheelCcw) list_.move(-1);
+    if (k == Key::WheelCw || k == Key::WheelCcw)
+      list_.move(spin_.pulse(k == Key::WheelCw ? 1 : -1, app.now(), g_config.behavior.wheelAcceleration));
     else if (k == Key::Center && items_[list_.selected()].open)
       app.push(items_[list_.selected()].open(app, list_.selected()), app.now());
   }
@@ -522,6 +531,7 @@ class ShellList : public Screen {
   std::string title_;
   std::vector<Item> items_;
   WheelList list_;
+  WheelSpin spin_;
   float viewH_ = 0;
 };
 
@@ -574,6 +584,7 @@ class DarkList : public Screen {
  private:
   int count_;
   WheelList list_;
+  WheelSpin spin_;
   float viewH_ = 0;
 };
 
@@ -663,8 +674,8 @@ class NowPlaying : public Screen {
 };
 
 void DarkList::key(Key k, App& app) {
-  if (k == Key::WheelCw) list_.move(1);
-  else if (k == Key::WheelCcw) list_.move(-1);
+  if (k == Key::WheelCw || k == Key::WheelCcw)
+    list_.move(spin_.pulse(k == Key::WheelCw ? 1 : -1, app.now(), g_config.behavior.wheelAcceleration));
   else if (k == Key::Center)
     app.push(std::unique_ptr<Screen>(new NowPlaying(list_.selected() % int(app.songs().size()))), app.now());
 }
@@ -683,22 +694,101 @@ std::unique_ptr<Screen> songsScreen(App& app, int) {
   return std::unique_ptr<Screen>(new ShellList("Songs", std::move(items)));
 }
 
-std::unique_ptr<Screen> mainMenu(App& app) {
+// Search: the keyboard under the query; every keystroke searches the library (about 1-4 ms), and the
+// action key opens the songs found.
+class SearchScreen : public Screen {
+ public:
+  SearchScreen() : kb_("Search", true) {}
+  std::string title() const override { return "Search"; }
+  bool ownsMenu() const override { return true; }
+  void key(Key k, App& app) override {
+    Keyboard::Result r = kb_.handle(k);
+    if (r == Keyboard::Result::Close) {
+      app.pop(app.now());
+    } else if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) {
+      found_ = g_library.search(kb_.typed());
+    } else if (r == Keyboard::Result::Action && !found_.songs.empty()) {
+      std::vector<ShellList::Item> items;
+      for (const Track* t : found_.songs) {
+        ShellList::Item it;
+        it.label = t->title;
+        it.detail = t->artist;
+        auto at = g_songIndex.find(t->path);
+        it.song = at == g_songIndex.end() ? -1 : at->second;
+        it.open = [](App& a, int index) { return std::unique_ptr<Screen>(new NowPlaying(0)); };
+        items.push_back(std::move(it));
+      }
+      app.push(std::unique_ptr<Screen>(new ShellList("\xe2\x80\x9c" + kb_.typed() + "\xe2\x80\x9d", std::move(items))), app.now());
+    }
+  }
+  bool step(float dt) override { return kb_.step(dt); }
+  void draw(Ctx& x) override {
+    const Look& L = x.look;
+    x.c.layer(0);
+    x.c.fill({0, 0, x.w, x.h}, L.shellBg);
+    float m = roundf(L.u(10)), fieldH = roundf(L.u(26));
+    x.c.shape({m, m, x.w - 2 * m, fieldH}, L.u(6), L.rowLine);
+    x.c.layer(4);
+    const std::string& q = kb_.typed();
+    const TextRun& t = x.text.run(L.title, q.empty() ? "Songs, artists, albums" : q, x.w - 4 * m);
+    float base = m + roundf((fieldH + x.text.ascent(L.title) * 0.7f) / 2);
+    x.text.draw(x.c, t, 2 * m, base, q.empty() ? L.muted : L.text);
+    if (!q.empty()) x.c.fill({2 * m + t.width + 1, m + roundf(L.u(5)), 2, fieldH - roundf(L.u(10))}, L.accent);
+    char line[128];
+    snprintf(line, sizeof(line), "%zu songs \xc2\xb7 %zu artists \xc2\xb7 %zu albums", found_.songs.size(),
+             found_.artists.size(), found_.albums.size());
+    const TextRun& c = x.text.run(L.subtitle, q.empty() ? "" : line, x.w - 2 * m);
+    x.text.draw(x.c, c, 2 * m, m + fieldH + roundf(L.u(16)), L.muted);
+    // the first results, one line each
+    float y = m + fieldH + roundf(L.u(22));
+    for (size_t i = 0; i < found_.songs.size() && i < 2; i++) {
+      const Track* s = found_.songs[i];
+      const TextRun& r = x.text.run(L.small, s->title + " \xe2\x80\x94 " + s->artist, x.w - 4 * m);
+      x.text.draw(x.c, r, 2 * m, y + roundf(L.u(14)), L.text);
+      y += roundf(L.u(18));
+    }
+    float kh = roundf(L.u(5 * 24));
+    x.c.layer(1);
+    kb_.draw(x.c, x.text, palette_, {roundf(L.u(4)), x.h - kh - roundf(L.u(4)), x.w - roundf(L.u(8)), kh}, L.title, L.subtitle);
+  }
+  static Palette palette_;
+
+ private:
+  Keyboard kb_;
+  Library::Found found_;
+};
+Palette SearchScreen::palette_;
+
+std::unique_ptr<Screen> libraryMenu(App& app, int) {
   std::vector<ShellList::Item> items;
-  auto add = [&](const char* label, std::unique_ptr<Screen> (*open)(App&, int)) {
+  ShellList::Item songs;
+  songs.label = "Songs";
+  songs.open = songsScreen;
+  items.push_back(std::move(songs));
+  ShellList::Item search;
+  search.label = "Search";
+  search.open = [](App& a, int) { return std::unique_ptr<Screen>(new SearchScreen()); };
+  items.push_back(std::move(search));
+  for (const char* label : {"Artists", "Albums", "Videos", "Playlists"}) {
     ShellList::Item it;
     it.label = label;
-    it.open = open;
     items.push_back(std::move(it));
-  };
-  add("Songs", songsScreen);
-  add("Your mixes", [](App& a, int) { return std::unique_ptr<Screen>(new DarkList(120)); });
-  add("Now Playing", [](App& a, int) { return std::unique_ptr<Screen>(new NowPlaying(0)); });
-  add("Albums", nullptr);
-  add("Artists", nullptr);
-  add("Podcasts", nullptr);
-  add("FM Radio", nullptr);
-  add("Settings", nullptr);
+  }
+  return std::unique_ptr<Screen>(new ShellList("Library", std::move(items)));
+}
+
+// The main menu in the settings' order, without the hidden entries.
+std::unique_ptr<Screen> mainMenu(App& app) {
+  std::vector<ShellList::Item> items;
+  for (const MenuEntry& e : g_config.theme.menu) {
+    if (!e.visible) continue;
+    ShellList::Item it;
+    it.label = menuLabel(e.id);
+    if (e.id == "nowPlaying") it.open = [](App& a, int) { return std::unique_ptr<Screen>(new NowPlaying(0)); };
+    else if (e.id == "device") it.open = libraryMenu;
+    else if (e.id == "music") it.open = [](App& a, int) { return std::unique_ptr<Screen>(new DarkList(120)); };
+    items.push_back(std::move(it));
+  }
   return std::unique_ptr<Screen>(new ShellList("Rondo", std::move(items)));
 }
 
@@ -725,6 +815,9 @@ int main(int argc, char** argv) {
   const char* regular = "/data/local/tmp/rondo/fonts/Roboto-Regular.ttf";
   const char* csv = nullptr;
   const char* thumbs = "/data/local/tmp/rondo/thumbs";
+  const char* configPath = "/data/data/com.jarvissax.rondo/files/config.json";
+  const char* libraryDb = "/data/local/tmp/rondo/library.db";
+  float scale = 0;
   double seconds = 0;
   int loaders = 2;
   int trace = 0;  // print frames whose build takes longer (ms)
@@ -736,7 +829,9 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--seconds")) seconds = atof(argv[i + 1]);
     else if (!strcmp(argv[i], "--csv")) csv = argv[i + 1];
     else if (!strcmp(argv[i], "--thumbs")) thumbs = strcmp(argv[i + 1], "none") ? argv[i + 1] : nullptr;
-    else if (!strcmp(argv[i], "--scale")) look.s = float(atof(argv[i + 1]));
+    else if (!strcmp(argv[i], "--scale")) scale = float(atof(argv[i + 1]));
+    else if (!strcmp(argv[i], "--config")) configPath = argv[i + 1];
+    else if (!strcmp(argv[i], "--library")) libraryDb = argv[i + 1];
     else if (!strcmp(argv[i], "--loaders")) loaders = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--trace")) trace = atoi(argv[i + 1]);
   }
@@ -755,7 +850,23 @@ int main(int argc, char** argv) {
   ImageLoader loader;
   if (!loader.start(loaders, thumbs)) return 1;
   int64_t t0 = now_ns();
-  std::vector<Song> songs = loadSongs(index);
+  // the settings: 1.0.x's config.json, theme and menu included
+  g_config = loadConfig(configPath);
+  if (scale > 0) g_config.theme.textScale = scale;
+  Palette pal = paletteFor(g_config.theme);
+  SearchScreen::palette_ = pal;
+  look.s = pal.scale;
+  look.accent = pal.accent, look.accentTop = pal.accentTop;
+  look.shellBg = pal.shellBg, look.barTop = pal.barTop, look.barBottom = pal.barBottom, look.barLine = pal.barLine;
+  look.rowLine = pal.rowLine, look.text = pal.text, look.muted = pal.muted, look.chevron = pal.chevron;
+  // the songs: N2's library index when there is one, else 1.0.x's index
+  std::vector<Song> songs;
+  if (g_library.open(libraryDb) && !g_library.tracks().empty()) {
+    for (const Track* t : g_library.songs()) songs.push_back({t->path, t->title, t->artist});
+  } else {
+    songs = loadSongs(index);
+  }
+  for (size_t i = 0; i < songs.size(); i++) g_songIndex[songs[i].path] = int(i);
   if (songs.empty()) {
     fprintf(stderr, "uitest: no songs in %s\n", index);
     return 1;

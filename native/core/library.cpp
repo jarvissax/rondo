@@ -40,7 +40,10 @@ std::string trim(const std::string& s) {
 
 std::string baseName(const std::string& path) { return path.substr(path.rfind('/') + 1); }
 
-void setKey(Track& t) { t.key = fold(t.title + " " + t.artist + " " + t.album + " " + baseName(t.path)); }
+// what search matches: a song's title, artist, album and file name; a video's title and file name
+void setKey(Track& t) {
+  t.key = t.video ? fold(t.title + " " + baseName(t.path)) : fold(t.title + " " + t.artist + " " + t.album + " " + baseName(t.path));
+}
 
 // "Artist - Title.flac"; a "01 " track prefix is dropped (LocalLibrary.fromName()).
 Track fromName(const std::string& path, int64_t size, int64_t modified, bool video) {
@@ -183,6 +186,7 @@ void Library::scan(const std::vector<std::string>& roots) {
   for (const Track& t : old)
     if (!now.count(t.path)) removed_.push_back(t.path);
   tracks_ = std::move(found);
+  indexed_ = false;
 }
 
 int Library::readTags(int max) {
@@ -202,6 +206,7 @@ int Library::readTags(int max) {
     setKey(t);
     done++;
   }
+  if (done) indexed_ = false;
   return done;
 }
 
@@ -301,8 +306,25 @@ std::vector<Library::Group> group(const std::vector<Track>& tracks, bool album) 
 }
 }  // namespace
 
-std::vector<Library::Group> Library::artists() const { return group(tracks_, false); }
-std::vector<Library::Group> Library::albums() const { return group(tracks_, true); }
+void Library::index() const {
+  if (indexed_) return;
+  artists_ = group(tracks_, false);
+  albums_ = group(tracks_, true);
+  artistKeys_.clear();
+  albumKeys_.clear();
+  for (auto& g : artists_) artistKeys_.push_back(fold(g.first));
+  for (auto& g : albums_) albumKeys_.push_back(fold(g.first));
+  indexed_ = true;
+}
+
+std::vector<Library::Group> Library::artists() const {
+  index();
+  return artists_;
+}
+std::vector<Library::Group> Library::albums() const {
+  index();
+  return albums_;
+}
 
 Library::Found Library::search(const std::string& query) const {
   Found f;
@@ -322,12 +344,13 @@ Library::Found Library::search(const std::string& query) const {
       if (key.find(x) == std::string::npos) return false;
     return true;
   };
-  for (auto& g : artists())
-    if (hit(fold(g.first))) f.artists.push_back(g);
-  for (auto& g : albums())
-    if (hit(fold(g.first))) f.albums.push_back(g);
+  index();
+  for (size_t i = 0; i < artists_.size(); i++)
+    if (hit(artistKeys_[i])) f.artists.push_back(artists_[i]);
+  for (size_t i = 0; i < albums_.size(); i++)
+    if (hit(albumKeys_[i])) f.albums.push_back(albums_[i]);
   for (const Track& t : tracks_) {
-    if (t.video ? hit(fold(t.title + " " + baseName(t.path))) : hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
+    if (hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
   }
   byTitle(f.songs);
   byTitle(f.videos);

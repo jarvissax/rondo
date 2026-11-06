@@ -55,7 +55,11 @@ class Library {
 
  private:
   void walk(const std::string& dir, int depth, std::vector<Track>& out);
+  void index() const;  // the groups and their folded names, rebuilt after a change
   sqlite3* db_ = nullptr;
+  mutable bool indexed_ = false;
+  mutable std::vector<Group> artists_, albums_;
+  mutable std::vector<std::string> artistKeys_, albumKeys_;
   std::vector<Track> tracks_;
   std::vector<std::string> removed_;
 };
