@@ -6,6 +6,7 @@
 // slide like the iPod's (push and pop, 250 ms). Every frame goes into the frame log.
 //
 //   uitest [--index path] [--fonts dir] [--regular ttf] [--seconds n] [--csv path] [--scale 1.4]
+//          [--thumbs dir|none] [--loaders n] [--trace ms]
 //
 // SIGUSR1 saves a screenshot (/data/local/tmp/rondo/shot.png); SIGINT or SIGTERM prints the frame
 // report and exits.
@@ -181,15 +182,24 @@ class Covers {
     uint64_t key = (uint64_t(i) << 32) | (uint64_t(w) << 20) | (uint64_t(h) << 8) | uint64_t(blurRadius);
     Entry& e = map_[key];
     e.used = ++clock_;
-    if (e.state == kNone) {
-      e.state = kLoading;
-      loader_.request({key, songs_[i].path, w, h, blurRadius});
-    }
+    if (e.state == kNone && loader_.request({key, songs_[i].path, w, h, blurRadius})) e.state = kLoading;
     if (e.state != kReady) return nullptr;
     float a = clamp01(float(now - e.readyAt) / (150 * kMs));
     if (a < 1) fading_ = true;
     if (alpha) *alpha = a;
     return &e.tex;
+  }
+
+  // Queues song i at this size for the thumbnail cache, filled while the UI is still.
+  void prefetch(int i, int w, int h, int blurRadius) { prefetch_.push_back({i, w, h, blurRadius}); }
+  // Hands queued prefetches to the helper as its queue has room; true while some are left.
+  bool sendPrefetches() {
+    for (int n = 0; n < 64 && sent_ < prefetch_.size(); n++, sent_++) {
+      const Ask& a = prefetch_[sent_];
+      uint64_t key = (uint64_t(a.i) << 32) | (uint64_t(a.w) << 20) | (uint64_t(a.h) << 8) | uint64_t(a.blur);
+      if (!loader_.prefetch({key, songs_[a.i].path, a.w, a.h, a.blur})) break;
+    }
+    return sent_ < prefetch_.size();
   }
 
   // Uploads up to `max` decoded covers; returns true when more are waiting or fading.
@@ -273,6 +283,11 @@ class Covers {
     return t;
   }
   std::unordered_map<uint32_t, std::vector<Texture>> pool_;
+  struct Ask {
+    int i, w, h, blur;
+  };
+  std::vector<Ask> prefetch_;
+  size_t sent_ = 0;
   int created_ = 0;
   ImageLoader& loader_;
   const std::vector<Song>& songs_;
@@ -585,6 +600,15 @@ class NowPlaying : public Screen {
     now_ = x.now;
     const Look& L = x.look;
     float p = fade_.at(x.now);
+    float art = roundf(L.u(130));
+    if (prefetched_ != song_) {  // the neighbors' pictures, decoded while nothing moves
+      prefetched_ = song_;
+      int n = int(x.songs.size());
+      for (int d : {1, -1}) {
+        x.covers.prefetch((song_ + d + n) % n, int(art), int(art), 0);
+        x.covers.prefetch((song_ + d + n) % n, 48, 36, 3);
+      }
+    }
     waiting_ = false;
     x.c.layer(0);
     x.c.fill({0, 0, x.w, x.h}, rgb(0x101010));
@@ -599,7 +623,6 @@ class NowPlaying : public Screen {
     };
     if (p < 1) backdrop(prev_, 1 - p);
     backdrop(song_, p);
-    float art = roundf(L.u(130));
     float ax = roundf(L.u(18)), ay = roundf((x.h - art) / 2 - L.u(6));
     x.c.layer(2);
     auto cover = [&](int song, float alpha) {
@@ -633,7 +656,7 @@ class NowPlaying : public Screen {
   }
 
  private:
-  int song_, prev_;
+  int song_, prev_, prefetched_ = -1;
   Tween fade_;
   int64_t now_ = 0;
   bool waiting_ = true;
@@ -701,6 +724,7 @@ int main(int argc, char** argv) {
   const char* fonts = "/system/fonts";
   const char* regular = "/data/local/tmp/rondo/fonts/Roboto-Regular.ttf";
   const char* csv = nullptr;
+  const char* thumbs = "/data/local/tmp/rondo/thumbs";
   double seconds = 0;
   int loaders = 2;
   int trace = 0;  // print frames whose build takes longer (ms)
@@ -711,6 +735,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--regular")) regular = argv[i + 1];
     else if (!strcmp(argv[i], "--seconds")) seconds = atof(argv[i + 1]);
     else if (!strcmp(argv[i], "--csv")) csv = argv[i + 1];
+    else if (!strcmp(argv[i], "--thumbs")) thumbs = strcmp(argv[i + 1], "none") ? argv[i + 1] : nullptr;
     else if (!strcmp(argv[i], "--scale")) look.s = float(atof(argv[i + 1]));
     else if (!strcmp(argv[i], "--loaders")) loaders = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--trace")) trace = atoi(argv[i + 1]);
@@ -728,7 +753,7 @@ int main(int argc, char** argv) {
 
   // first, while this is the only thread: it forks the decoding process
   ImageLoader loader;
-  if (!loader.start(loaders)) return 1;
+  if (!loader.start(loaders, thumbs)) return 1;
   int64_t t0 = now_ns();
   std::vector<Song> songs = loadSongs(index);
   if (songs.empty()) {
@@ -761,6 +786,11 @@ int main(int argc, char** argv) {
     covers.reserve(d, d, 64);
     covers.reserve(np, np, 24);
     covers.reserve(48, 36, 24);
+    // every list thumbnail, decoded once into the cache while nothing moves
+    for (size_t i = 0; i < songs.size(); i++) {
+      covers.prefetch(int(i), t, t, 0);
+      covers.prefetch(int(i), d, d, 0);
+    }
   }
   App app(look, songs);
   app.battery_ = readBattery();
@@ -791,7 +821,9 @@ int main(int argc, char** argv) {
         text.flush();  // up to the GPU now, not in the next frame
         if (poll(p, 2, 0) == 0) continue;
       }
-      int r = poll(p, 2, 1000);
+      // the cache prefetches go out as the helper's queue (10 datagrams) has room
+      bool prefetching = covers.sendPrefetches();
+      int r = poll(p, 2, prefetching ? 50 : 1000);
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
         if (now_ns() - lastBattery > 60 * kSec) {
@@ -851,6 +883,7 @@ int main(int argc, char** argv) {
     frames++;
     lastPresent = present;
     moving = anim || more;
+    if (moving) loader.active(present);
     wasMoving = moving;
   }
   printf("uitest: covers on the GPU %.1f MB, %d textures created after startup\n", covers.bytes() / 1048576.0,

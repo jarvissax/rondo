@@ -146,6 +146,12 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
     another process.
   - So decoding runs in a helper process with its own address space (`ImageLoader` forks it at
     startup), and pixels come back through shared memory mapped and touched once.
+- **Full-size decodes happen before they are needed.** A large cover decoded on demand can still cost
+  one refresh. Covers are decoded once into a thumbnail cache at the sizes the screens use, by
+  prefetches that run only after 1.5 s without movement. With the cache full, a full-speed spin
+  through 821 songs misses no refresh.
+- **Datagram queues are short:** AF_UNIX `SOCK_DGRAM` holds 10 messages (`max_dgram_qlen`). Send in
+  batches as room appears.
 - **Background work runs at `SCHED_IDLE`.** At nice 10 the helper still delayed the display about once
   a minute (a frame's first GL call waited a whole refresh for its buffer). `SCHED_IDLE` lets the
   kernel's display and GPU threads always go first.

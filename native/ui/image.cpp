@@ -9,6 +9,8 @@
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <signal.h>
 #include <pthread.h>
 #include <deque>
@@ -142,8 +144,9 @@ namespace {
 
 constexpr int kSlots = 32;
 constexpr size_t kSlotBytes = 160 << 10;
+constexpr size_t kControlBytes = 4096;  // the shared block before the slots
 
-enum MsgType : uint32_t { kRequest = 1, kCancel, kRelease, kResult };
+enum MsgType : uint32_t { kRequest = 1, kCancel, kRelease, kResult, kPrefetch };
 
 struct Msg {
   uint32_t type;
@@ -154,14 +157,47 @@ struct Msg {
   char path[512];
 };
 
+// Written by the UI process, read by the helper.
+struct Control {
+  volatile int64_t lastActivity;  // CLOCK_MONOTONIC ns of the last frame that moved
+};
+
+int64_t monoNs() {
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return int64_t(t.tv_sec) * 1000000000LL + t.tv_nsec;
+}
+
+uint64_t fnv64(const char* s) {
+  uint64_t h = 1469598103934665603ULL;
+  for (; *s; s++) h = (h ^ uint8_t(*s)) * 1099511628211ULL;
+  return h;
+}
+
+// A cached thumbnail: this header, then w * h * 4 bytes of RGBA. w = h = 0 records a file with no
+// picture, so it is not read again.
+struct CacheHeader {
+  char magic[4];  // "RTH1"
+  int32_t w, h, blur;
+  int64_t mtime, size;  // of the source file, to notice a changed file
+};
+
 // The decoding process: a receiver thread queues requests, workers decode into free shared slots.
+// Prefetches only fill the thumbnail cache, and only while the UI has been still for a while, so a
+// full-size decode never competes with interaction.
 struct Worker {
   int sock;
   uint8_t* shm;
+  const Control* control;
+  std::string cacheDir;
   pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
   pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
-  std::deque<Msg> queue;
+  std::deque<Msg> queue, prefetch;
   std::vector<int> freeSlots;
+
+  static constexpr int64_t kQuietNs = 1500000000LL;  // still this long before prefetching
+
+  uint8_t* slot(int i) { return shm + kControlBytes + size_t(i) * kSlotBytes; }
 
   void reply(const Msg& req, bool ok, bool dropped, int slot, int w, int h) {
     Msg m = {};
@@ -175,40 +211,122 @@ struct Worker {
     send(sock, &m, offsetof(Msg, path), 0);
   }
 
+  std::string cachePath(const Msg& r) {
+    char name[64];
+    snprintf(name, sizeof(name), "/%016llx-%dx%d-%d.rgba", (unsigned long long)fnv64(r.path), r.w, r.h, r.blur);
+    return cacheDir + name;
+  }
+
+  // From the cache into dst (null: only check it is there). -1: not cached, 0: cached as missing, 1: ok.
+  int fromCache(const Msg& r, const struct stat& st, uint8_t* dst) {
+    if (cacheDir.empty()) return -1;
+    int fd = open(cachePath(r).c_str(), O_RDONLY);
+    if (fd < 0) return -1;
+    CacheHeader h;
+    int result = -1;
+    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && !memcmp(h.magic, "RTH1", 4) && h.mtime == int64_t(st.st_mtime) &&
+        h.size == int64_t(st.st_size)) {
+      if (h.w == 0) {
+        result = 0;
+      } else if (h.w == r.w && h.h == r.h) {
+        size_t n = size_t(h.w) * h.h * 4;
+        result = !dst || read(fd, dst, n) == ssize_t(n) ? 1 : -1;
+      }
+    }
+    close(fd);
+    return result;
+  }
+
+  void toCache(const Msg& r, const struct stat& st, const Pixels* px) {
+    if (cacheDir.empty()) return;
+    std::string path = cachePath(r), tmp = path + ".part";
+    int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return;
+    CacheHeader h = {{'R', 'T', 'H', '1'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
+    bool ok = write(fd, &h, sizeof(h)) == ssize_t(sizeof(h));
+    if (ok && px) ok = write(fd, px->rgba.data(), px->rgba.size()) == ssize_t(px->rgba.size());
+    close(fd);
+    if (ok) rename(tmp.c_str(), path.c_str());
+    else unlink(tmp.c_str());
+  }
+
+  bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px) {
+    bytes.clear();
+    std::string path = r.path;
+    bool file = path.size() > 4 && (path.compare(path.size() - 4, 4, ".jpg") == 0 ||
+                                    path.compare(path.size() - 4, 4, ".png") == 0);
+    if (file) {
+      if (FILE* f = fopen(path.c_str(), "rb")) {
+        fseek(f, 0, SEEK_END);
+        bytes.resize(size_t(ftell(f)));
+        fseek(f, 0, SEEK_SET);
+        if (fread(bytes.data(), 1, bytes.size(), f) != bytes.size()) bytes.clear();
+        fclose(f);
+      }
+    } else {
+      rondo::readCover(path.c_str(), bytes);
+    }
+    bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes && decodeImage(bytes.data(), bytes.size(), r.w, r.h, px);
+    if (ok && r.blur > 0) blur(px, r.blur, 3);
+    return ok;
+  }
+
+  bool quiet() const { return monoNs() - control->lastActivity > kQuietNs; }
+
   void decodeLoop() {
     std::vector<uint8_t> bytes;
     for (;;) {
       pthread_mutex_lock(&mu);
-      while (queue.empty() || freeSlots.empty()) pthread_cond_wait(&cv, &mu);
-      Msg r = queue.back();  // newest first
-      queue.pop_back();
-      int slot = freeSlots.back();
-      freeSlots.pop_back();
-      pthread_mutex_unlock(&mu);
-      bytes.clear();
-      std::string path = r.path;
-      bool file = path.size() > 4 && (path.compare(path.size() - 4, 4, ".jpg") == 0 ||
-                                      path.compare(path.size() - 4, 4, ".png") == 0);
-      if (file) {
-        if (FILE* f = fopen(path.c_str(), "rb")) {
-          fseek(f, 0, SEEK_END);
-          bytes.resize(size_t(ftell(f)));
-          fseek(f, 0, SEEK_SET);
-          if (fread(bytes.data(), 1, bytes.size(), f) != bytes.size()) bytes.clear();
-          fclose(f);
+      Msg r;
+      int s = -1;
+      for (;;) {
+        if (!queue.empty() && !freeSlots.empty()) {
+          r = queue.back();  // newest first
+          queue.pop_back();
+          s = freeSlots.back();
+          freeSlots.pop_back();
+          break;
         }
-      } else {
-        rondo::readCover(path.c_str(), bytes);
+        if (!prefetch.empty() && quiet()) {
+          r = prefetch.front();
+          prefetch.pop_front();
+          break;
+        }
+        if (prefetch.empty()) {
+          pthread_cond_wait(&cv, &mu);
+        } else {  // check again for quiet in a while
+          timespec until;
+          clock_gettime(CLOCK_REALTIME, &until);
+          until.tv_nsec += 200000000;
+          if (until.tv_nsec >= 1000000000) until.tv_sec++, until.tv_nsec -= 1000000000;
+          pthread_cond_timedwait(&cv, &mu, &until);
+        }
+      }
+      pthread_mutex_unlock(&mu);
+      struct stat st;
+      bool exists = stat(r.path, &st) == 0;
+      if (r.type == kPrefetch) {
+        if (exists && fromCache(r, st, nullptr) < 0) {
+          Pixels px;
+          bool ok = decode(r, bytes, px);
+          toCache(r, st, ok ? &px : nullptr);
+        }
+        continue;
+      }
+      int cached = exists ? fromCache(r, st, slot(s)) : 0;
+      if (cached == 1) {
+        reply(r, true, false, s, r.w, r.h);
+        continue;
       }
       Pixels px;
-      bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes && decodeImage(bytes.data(), bytes.size(), r.w, r.h, px);
-      if (ok && r.blur > 0) blur(px, r.blur, 3);
-      if (ok) memcpy(shm + size_t(slot) * kSlotBytes, px.rgba.data(), px.rgba.size());
+      bool ok = cached < 0 && exists && decode(r, bytes, px);
+      if (exists && cached < 0) toCache(r, st, ok ? &px : nullptr);
       if (ok) {
-        reply(r, true, false, slot, px.w, px.h);
+        memcpy(slot(s), px.rgba.data(), px.rgba.size());
+        reply(r, true, false, s, px.w, px.h);
       } else {
         pthread_mutex_lock(&mu);
-        freeSlots.push_back(slot);
+        freeSlots.push_back(s);
         pthread_mutex_unlock(&mu);
         reply(r, false, false, -1, 0, 0);
       }
@@ -236,16 +354,17 @@ struct Worker {
     for (;;) {
       ssize_t n = recv(sock, &m, sizeof(m), 0);
       if (n <= 0) _exit(0);  // the render process is gone
-      if (getenv("RONDO_MEDIA_DEBUG")) fprintf(stderr, "media: msg %u slot %d id %llx (%zd bytes)\n", m.type, m.slot, (unsigned long long)m.id, n);
       pthread_mutex_lock(&mu);
+      m.path[sizeof(m.path) - 1] = 0;
       if (m.type == kRequest) {
-        m.path[sizeof(m.path) - 1] = 0;
         // a fast spin asks for more than the workers decode: the oldest asks are rows long gone
         while (queue.size() >= 48) {
           reply(queue.front(), false, true, -1, 0, 0);
           queue.pop_front();
         }
         queue.push_back(m);
+      } else if (m.type == kPrefetch) {
+        prefetch.push_back(m);
       } else if (m.type == kCancel) {
         for (const Msg& q : queue) reply(q, false, true, -1, 0, 0);
         queue.clear();
@@ -260,12 +379,13 @@ struct Worker {
 
 }  // namespace
 
-bool ImageLoader::start(int threads) {
-  size_t bytes = size_t(kSlots) * kSlotBytes;
+bool ImageLoader::start(int threads, const char* cacheDir) {
+  size_t bytes = kControlBytes + size_t(kSlots) * kSlotBytes;
   void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   if (p == MAP_FAILED) return false;
   shm_ = static_cast<uint8_t*>(p);
   memset(shm_, 0, bytes);  // fault every page in now, never during a frame
+  if (cacheDir) mkdir(cacheDir, 0700);
   int sv[2];
   if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) != 0) return false;
   int buf = 256 << 10;
@@ -278,6 +398,8 @@ bool ImageLoader::start(int threads) {
     Worker* w = new Worker;
     w->sock = sv[1];
     w->shm = shm_;
+    w->control = reinterpret_cast<const Control*>(shm_);
+    if (cacheDir) w->cacheDir = cacheDir;
     w->main(threads);
   }
   close(sv[1]);
@@ -286,9 +408,12 @@ bool ImageLoader::start(int threads) {
   return true;
 }
 
-void ImageLoader::request(const Request& r) {
+void ImageLoader::active(int64_t now) { reinterpret_cast<Control*>(shm_)->lastActivity = now; }
+
+namespace {
+bool sendRequest(int sock, uint32_t type, const ImageLoader::Request& r) {
   Msg m = {};
-  m.type = kRequest;
+  m.type = type;
   m.id = r.id;
   m.w = r.w;
   m.h = r.h;
@@ -296,8 +421,17 @@ void ImageLoader::request(const Request& r) {
   m.slot = -1;
   strncpy(m.path, r.path.c_str(), sizeof(m.path) - 1);
   size_t len = offsetof(Msg, path) + strlen(m.path) + 1;
-  if (send(sock_, &m, len, MSG_DONTWAIT) == ssize_t(len)) pending_++;
+  return send(sock, &m, len, MSG_DONTWAIT) == ssize_t(len);
 }
+}  // namespace
+
+bool ImageLoader::request(const Request& r) {
+  if (!sendRequest(sock_, kRequest, r)) return false;
+  pending_++;
+  return true;
+}
+
+bool ImageLoader::prefetch(const Request& r) { return sendRequest(sock_, kPrefetch, r); }
 
 void ImageLoader::cancelAll() {
   Msg m = {};
@@ -316,7 +450,7 @@ bool ImageLoader::poll(Result& out) {
   out.w = m.w;
   out.h = m.h;
   out.slot = m.slot;
-  out.rgba = m.slot >= 0 ? shm_ + size_t(m.slot) * kSlotBytes : nullptr;
+  out.rgba = m.slot >= 0 ? shm_ + kControlBytes + size_t(m.slot) * kSlotBytes : nullptr;
   return true;
 }
 

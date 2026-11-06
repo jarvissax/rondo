@@ -43,9 +43,15 @@ class ImageLoader {
     const uint8_t* rgba;  // in shared memory, valid until release()
   };
 
-  // Forks the decoding process: call before any other thread exists.
-  bool start(int threads = 2);
-  void request(const Request& r);
+  // Forks the decoding process: call before any other thread exists. cacheDir holds the thumbnail cache
+  // (null: none).
+  bool start(int threads, const char* cacheDir);
+  // False when the helper's queue is full right now: ask again later.
+  bool request(const Request& r);
+  // Decodes into the cache only, at low priority and only while the UI is still (no reply).
+  bool prefetch(const Request& r);
+  // Tells the helper the UI moved at `now`: prefetching waits until it has been still 1.5 s.
+  void active(int64_t now);
   void cancelAll();
   bool poll(Result& out);
   void release(const Result& r);
