@@ -88,7 +88,7 @@ use only standard `KeyEvent`s; neither reads `/dev/input` or uses motion events.
 
 480 × 360 px at density 160, so the `mdpi` bucket with 1 dp = 1 px, but the panel is about
 250 ppi, so mdpi sizes come out tiny. Rondo scales everything sized with `dp()` (1.4× by
-default). The panel refreshes at 36.43 fps. Sources: `dumpsys-display.txt`, `lcd-density.txt`.
+default). Android reports 36.43 fps, but the panel's hardware vsync comes every 23.73 ms, so it really refreshes at 42.14 Hz ([native code on the Y1](native.md)). Sources: `dumpsys-display.txt`, `lcd-density.txt`.
 `wm` doesn't exist on 4.2 (`wm-size.txt`, `wm-density.txt`).
 
 ## Software
@@ -274,6 +274,7 @@ be replaced without touching the system partition (see `tools/bootscreen`).
 | `keylayout-Generic.kl` | The active key layout (identical to the stock `Stock.kl`). |
 | `keylayout-mtk-kpd.kl` | The unused keypad layout (Center would be `DPAD_CENTER` here). |
 | `keylayout-ls.txt` | The key layout files on the device. |
-| `dumpsys-display.txt`, `lcd-density.txt` | 480×360, density 160, 36.43 fps. |
+| `dumpsys-display.txt`, `lcd-density.txt` | 480×360, density 160, 36.43 fps as Android reports it (the panel runs at 42.14 Hz). |
+| `native.md` | Native programs with the Java layer stopped: display, vsync, latency, sound, building against the firmware's libraries. |
 | `wm-size.txt`, `wm-density.txt` | `wm` is missing on 4.2. |
 | `proc-cpuinfo.txt`, `proc-meminfo.txt`, `proc-version.txt` | CPU, RAM, kernel. |
