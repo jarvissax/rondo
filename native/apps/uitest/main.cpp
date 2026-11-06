@@ -6,7 +6,9 @@
 // slide like the iPod's (push and pop, 250 ms). Every frame goes into the frame log.
 //
 //   uitest [--index path] [--fonts dir] [--regular ttf] [--seconds n] [--csv path] [--scale 1.4]
-//          [--thumbs dir|none] [--loaders n] [--trace ms]
+//          [--thumbs dir|none] [--loaders n] [--trace ms] [--config path] [--library db] [--restore-android 1]
+//
+// Holding Menu for 2 s quits; with --restore-android 1 it then starts SurfaceFlinger and the Java layer.
 //
 // SIGUSR1 saves a screenshot (/data/local/tmp/rondo/shot.png); SIGINT or SIGTERM prints the frame
 // report and exits.
@@ -818,6 +820,8 @@ int main(int argc, char** argv) {
   const char* configPath = "/data/data/com.jarvissax.rondo/files/config.json";
   const char* libraryDb = "/data/local/tmp/rondo/library.db";
   float scale = 0;
+  bool restoreAndroid = false;
+  int64_t menuDown = 0;
   double seconds = 0;
   int loaders = 2;
   int trace = 0;  // print frames whose build takes longer (ms)
@@ -832,6 +836,7 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[i], "--scale")) scale = float(atof(argv[i + 1]));
     else if (!strcmp(argv[i], "--config")) configPath = argv[i + 1];
     else if (!strcmp(argv[i], "--library")) libraryDb = argv[i + 1];
+    else if (!strcmp(argv[i], "--restore-android")) restoreAndroid = atoi(argv[i + 1]) != 0;
     else if (!strcmp(argv[i], "--loaders")) loaders = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--trace")) trace = atoi(argv[i + 1]);
   }
@@ -954,6 +959,11 @@ int main(int argc, char** argv) {
     while (input->poll(ev)) {
       if (oldest < 0) oldest = vs - ev.time;
       if (ev.down) app.key(ev.key, present);
+      // Menu held 2 s: leave (with --restore-android, today's Rondo comes back)
+      if (ev.key == Key::Menu) {
+        if (ev.down) menuDown = ev.time;
+        else if (menuDown && ev.time - menuDown >= 2 * kSec) g_stop = 1;
+      }
     }
     float dt = wasMoving && lastPresent ? float(present - lastPresent) / 1e9f : float(period) / 1e9f;
     dt = std::min(dt, 0.1f);
@@ -1000,5 +1010,11 @@ int main(int argc, char** argv) {
   printf("uitest: covers on the GPU %.1f MB, %d textures created after startup\n", covers.bytes() / 1048576.0,
          covers.created());
   log.report(stdout, csv);
+  if (restoreAndroid) {  // give the screen back to SurfaceFlinger and start the Java layer again
+    display.reset();
+    system("start surfaceflinger; sleep 1; start zygote");
+  }
+  fflush(stdout);
+  _exit(0);  // the GL driver's exit handlers can hang after eglTerminate: nothing is left to clean up
   return 0;
 }
