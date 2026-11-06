@@ -90,3 +90,33 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   blocks until late resume allows drawing again.
 - **Waking takes 0.6 s,** because the display driver's late resume (`mtkfb_late_resume`) takes about
   540 ms. Keys on `/dev/input/event0` (Power, Center) still arrive during early suspend.
+
+## Bluetooth
+
+- **The stack:** MediaTek's own (not BlueZ or Bluedroid). The `mtkbt` daemon takes "ILM" messages
+  (0x81c-byte buffers, ID at +4, payload from +0x20) as datagrams on `/dev/socket/bt.int.adp`, and
+  sends replies and events to the abstract datagram socket `bt.ext.adp`, which a native program binds
+  once Android's Bluetooth service is gone.
+- **The messages verified from a native program:**
+  - power on 0x64, answered by 0x91;
+  - own address 0x6f, answered by 0x9d;
+  - discovery 0x67, with results as 0x93 and the end as 0x95; cancel 0x68, answered by 0x96;
+  - bond 0x7e, ending in 0xab with result 0;
+  - PIN request 0xa3, answered with 0x75; SSP confirmation request 0xa4, answered with 0x76.
+- **Where they come from:** the layouts are read from `libandroid_runtime.so`, which holds MediaTek's
+  Bluetooth service and event loop in C.
+
+## FM radio
+
+- **Tuner:** `libfmjni.so` exports MediaTek's `FMR_*` functions, callable directly (power-up and tune
+  take MHz × 10, seek MHz × 100).
+- **Audio is digital** on this Y1 (`fm_use_analog_input = 0` in `libaudiosetting.so`). Enable it with
+  the audio parameter `AudioSetFmDigitalEnable=1`, record from audio source 99 at 44.1 kHz stereo, and
+  play that PCM.
+
+## System services a native program must provide
+
+- **"permission":** with system_server gone, AudioFlinger waits forever on `setParameters` while it
+  checks `MODIFY_AUDIO_SETTINGS` through the "permission" service. A native program can publish one
+  (a BBinder answering `CHECK_PERMISSION_TRANSACTION` with granted). See
+  `native/platform/permission_service.h`.
