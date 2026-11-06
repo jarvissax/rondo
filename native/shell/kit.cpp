@@ -351,3 +351,37 @@ void RowList::draw(Env& e, float x, float y) {
 }
 
 }  // namespace rondo::shell
+
+namespace rondo::shell {
+
+std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines) {
+  std::vector<Label> lines;
+  size_t at = 0;
+  while (at < s.size() && int(lines.size()) < maxLines) {
+    while (at < s.size() && s[at] == ' ') at++;
+    if (int(lines.size()) == maxLines - 1) {  // the last line takes the rest, ellipsized
+      lines.push_back(label(e, s.substr(at), sp, bold, maxW));
+      break;
+    }
+    // as many words as fit
+    size_t end = at, best = std::string::npos;
+    for (;;) {
+      size_t next = s.find(' ', end + 1);
+      size_t cut = next == std::string::npos ? s.size() : next;
+      Label l = label(e, s.substr(at, cut - at), sp, bold);
+      if (l.w > maxW) break;
+      best = cut;
+      if (next == std::string::npos) break;
+      end = next;
+    }
+    if (best == std::string::npos) {  // one word wider than the line: it is cut, ellipsized
+      lines.push_back(label(e, s.substr(at), sp, bold, maxW));
+      break;
+    }
+    lines.push_back(label(e, s.substr(at, best - at), sp, bold));
+    at = best;
+  }
+  return lines;
+}
+
+}  // namespace rondo::shell

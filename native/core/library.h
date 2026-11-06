@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -52,6 +53,8 @@ class Library {
   };
   // Every word must be in the title, artist, album or file name, ignoring case and accents.
   Found search(const std::string& query) const;
+  // The track at a path (null: not in the library).
+  const Track* find(const std::string& path) const;
 
  private:
   void walk(const std::string& dir, int depth, std::vector<Track>& out);
@@ -61,6 +64,7 @@ class Library {
   mutable std::vector<Group> artists_, albums_;
   mutable std::vector<const Track*> songs_, videos_;
   mutable std::vector<std::string> artistKeys_, albumKeys_;
+  mutable std::unordered_map<std::string, const Track*> byPath_;
   std::vector<Track> tracks_;
   std::vector<std::string> removed_;
 };

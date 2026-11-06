@@ -27,6 +27,18 @@ const Texture* Covers::get(const std::string& path, int w, int h, int blur, int6
   return &e.tex;
 }
 
+const uint8_t* Covers::pixels(const std::string& path, int w, int h, int blur) {
+  if (w * h > 256) return nullptr;
+  uint64_t key = keyOf(path, w, h, blur);
+  Entry& e = map_[key];
+  e.used = ++clock_;
+  if (e.state == kNone) {
+    e.path = path, e.w = w, e.h = h, e.blur = blur, e.cpuOnly = true;
+    if (loader_.request({key, path, w, h, blur})) e.state = kLoading;
+  }
+  return e.state == kReady && e.cpuOnly ? e.cpu.data() : nullptr;
+}
+
 void Covers::prefetch(const std::string& path, int w, int h, int blur) { prefetch_.push_back({path, w, h, blur}); }
 
 bool Covers::sendPrefetches() {
@@ -68,6 +80,13 @@ bool Covers::pump(int64_t now, int max) {
       e.state = kMissing;
       continue;
     }
+    if (e.cpuOnly) {
+      e.cpu.assign(r.rgba, r.rgba + size_t(r.w) * r.h * 4);
+      loader_.release(r);
+      e.state = kReady;
+      fading_ = true;  // drawn again with it
+      continue;
+    }
     e.tex = take(r.w, r.h);
     glBindTexture(GL_TEXTURE_2D, e.tex.id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -91,7 +110,7 @@ void Covers::evict() {
   while (bytes_ > kBudget) {
     auto oldest = map_.end();
     for (auto it = map_.begin(); it != map_.end(); ++it)
-      if (it->second.state == kReady && (oldest == map_.end() || it->second.used < oldest->second.used)) oldest = it;
+      if (it->second.state == kReady && !it->second.cpuOnly && (oldest == map_.end() || it->second.used < oldest->second.used)) oldest = it;
     if (oldest == map_.end()) break;
     bytes_ -= oldest->second.bytes;
     pool_[uint32_t(oldest->second.tex.w) << 16 | uint32_t(oldest->second.tex.h)].push_back(oldest->second.tex);

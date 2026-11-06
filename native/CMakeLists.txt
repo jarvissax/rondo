@@ -38,7 +38,7 @@ foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson)
 endforeach()
 
 # The core (N2): settings, the card library, later the server client
-add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp)
+add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp)
 target_include_directories(rondo_core SYSTEM PUBLIC ${TP}/include)
 target_link_libraries(rondo_core PUBLIC tp_sqlite3 tp_yyjson dl)
 
@@ -78,8 +78,19 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
 target_link_options(rondo PRIVATE -Wl,-rpath-link,${Y1_LIB})
+
+# The player (N3): rondo-player, FFmpeg's decoders (LGPL, shared) to OpenSL ES
+foreach(lib avformat avcodec avutil swresample)
+  add_library(ff_${lib} SHARED IMPORTED)
+  set_target_properties(ff_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.so)
+endforeach()
+add_library(rondo_player STATIC player/engine.cpp player/host.cpp)
+y1_private(rondo_player)
+target_include_directories(rondo_player SYSTEM PRIVATE ${TP}/include)
+target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_media y1_binder y1_utils)
+target_link_libraries(rondo PRIVATE rondo_player)

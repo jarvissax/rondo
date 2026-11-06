@@ -20,6 +20,8 @@ class Covers {
   // The picture at w x h (blurRadius > 0: blurred), or null while it loads (or the file has none).
   // alpha: its fade-in.
   const Texture* get(const std::string& path, int w, int h, int blurRadius, int64_t now, float* alpha);
+  // A small picture kept on the CPU instead (w * h <= 256: a color sample), RGBA, or null while it loads.
+  const uint8_t* pixels(const std::string& path, int w, int h, int blurRadius);
   // Queues the picture for the thumbnail cache, filled while the UI is still.
   void prefetch(const std::string& path, int w, int h, int blurRadius);
   // Hands queued prefetches to the helper as its queue has room; true while some are left.
@@ -41,6 +43,8 @@ class Covers {
     int64_t readyAt = 0;
     uint32_t used = 0;
     size_t bytes = 0;
+    bool cpuOnly = false;
+    std::vector<uint8_t> cpu;
   };
   struct Ask {
     std::string path;

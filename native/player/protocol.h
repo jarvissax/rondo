@@ -1,0 +1,48 @@
+// The messages between the UI and rondo-player: a 32-bit length, a 32-bit type, then the payload.
+#pragma once
+#include <stdint.h>
+#include <unistd.h>
+
+namespace rondo {
+
+enum PlayerCommand : uint32_t {
+  kPlayQueue = 1,  // u32 start, then the paths, each ending in a zero byte
+  kToggle,
+  kPlay,
+  kPause,
+  kNext,
+  kPrevious,
+  kSeekTo,  // i64 ms
+  kSeekBy,  // i64 ms
+  kJumpTo,  // i64 queue index
+  kInsertNext,  // the path
+  kAppend,      // the path
+  kShuffle,     // u8
+  kRepeat,      // u8: 0 off, 1 all, 2 one
+  kVolume,      // i64 steps
+};
+
+inline bool readFully(int fd, void* buf, size_t n) {
+  uint8_t* p = static_cast<uint8_t*>(buf);
+  while (n) {
+    ssize_t r = read(fd, p, n);
+    if (r <= 0) return false;
+    p += r, n -= size_t(r);
+  }
+  return true;
+}
+
+inline bool writeFully(int fd, const void* buf, size_t n) {
+  const uint8_t* p = static_cast<const uint8_t*>(buf);
+  while (n) {
+    ssize_t r = write(fd, p, n);
+    if (r <= 0) return false;
+    p += r, n -= size_t(r);
+  }
+  return true;
+}
+
+struct PlayerState;
+[[noreturn]] void runPlayer(int sock, PlayerState* shm);
+
+}  // namespace rondo

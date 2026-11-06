@@ -30,6 +30,7 @@ LIBS=(
   "openssl 3.5.4 https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz"
   "nghttp2 1.67.1 https://github.com/nghttp2/nghttp2/releases/download/v1.67.1/nghttp2-1.67.1.tar.xz"
   "curl 8.16.0 https://curl.se/download/curl-8.16.0.tar.xz"
+  "ffmpeg 7.1.2 https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz"
 )
 BIN=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
 
@@ -113,6 +114,18 @@ for spec in "${LIBS[@]}"; do
             -DNGHTTP2_INCLUDE_DIR="$OUT/include" -DNGHTTP2_LIBRARY="$OUT/lib/libnghttp2.a" -DCURL_USE_LIBPSL=OFF \
             -DCURL_USE_LIBSSH2=OFF -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DUSE_LIBIDN2=OFF -DCURL_DISABLE_LDAP=ON \
             -DENABLE_UNIX_SOCKETS=ON -DBUILD_TESTING=OFF -DCURL_CA_BUNDLE=none -DCURL_CA_PATH=none ;;
+    ffmpeg)  # LGPL, shared libraries (relinkable), audio decoders and the demuxers the card and server use
+      (cd "$dir" && ./configure --prefix="$OUT" --target-os=android --arch=arm --cpu=cortex-a7 --enable-cross-compile \
+        --cc="$BIN/armv7a-linux-androideabi17-clang" --cxx="$BIN/armv7a-linux-androideabi17-clang++" \
+        --ar="$BIN/llvm-ar" --ranlib="$BIN/llvm-ranlib" --nm="$BIN/llvm-nm" --strip="$BIN/llvm-strip" \
+        --enable-shared --disable-static --enable-pic --enable-neon --disable-programs --disable-doc \
+        --disable-avdevice --disable-swscale --disable-postproc --disable-avfilter --disable-network \
+        --disable-everything --enable-swresample --enable-protocol=file \
+        --enable-demuxer=flac,mp3,mov,ogg,wav,aac,matroska \
+        --enable-decoder=flac,mp3,mp3float,aac,aac_latm,vorbis,opus,alac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
+        --enable-parser=flac,mpegaudio,aac,vorbis,opus,h264 --enable-bsf=h264_mp4toannexb \
+        --extra-cflags="-O2" >/dev/null && make -j8 >/dev/null 2>&1 && make install >/dev/null)
+      echo "deps: ffmpeg built" ;;
     harfbuzz) build harfbuzz "$dir" -DHB_HAVE_FREETYPE=ON -DHB_BUILD_SUBSET=OFF -DHB_BUILD_UTILS=OFF \
               -DFREETYPE_INCLUDE_DIRS="$OUT/include/freetype2" -DFREETYPE_LIBRARY="$OUT/lib/libfreetype.a" ;;
   esac

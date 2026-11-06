@@ -250,6 +250,25 @@ struct Worker {
     else unlink(tmp.c_str());
   }
 
+  // blur < 0: 1.0.x's backdrop (ArtColor.blurred): the picture decoded at -blur pixels, then scaled to w x h
+  // with bilinear filtering, as Bitmap.createScaledBitmap(bitmap, 6, 6, true) does
+  static void bilinearDown(const Pixels& src, int w, int h, Pixels& out) {
+    out.w = w, out.h = h;
+    out.rgba.assign(size_t(w) * h * 4, 0);
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) {
+        float sx = (x + 0.5f) * src.w / w - 0.5f, sy = (y + 0.5f) * src.h / h - 0.5f;
+        int x0 = std::max(0, int(sx)), y0 = std::max(0, int(sy));
+        int x1 = std::min(src.w - 1, x0 + 1), y1 = std::min(src.h - 1, y0 + 1);
+        float fx = sx - x0, fy = sy - y0;
+        for (int c = 0; c < 4; c++) {
+          auto at = [&](int px, int py) { return float(src.rgba[(size_t(py) * src.w + px) * 4 + c]); };
+          float v = (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+          out.rgba[(size_t(y) * w + x) * 4 + c] = uint8_t(std::min(255.f, v + 0.5f));
+        }
+      }
+  }
+
   bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px) {
     bytes.clear();
     std::string path = r.path;
@@ -265,6 +284,12 @@ struct Worker {
       }
     } else {
       rondo::readCover(path.c_str(), bytes);
+    }
+    if (r.blur < 0) {
+      Pixels big;
+      if (bytes.empty() || !decodeImage(bytes.data(), bytes.size(), -r.blur, -r.blur, big)) return false;
+      bilinearDown(big, r.w, r.h, px);
+      return true;
     }
     bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes && decodeImage(bytes.data(), bytes.size(), r.w, r.h, px);
     if (ok && r.blur > 0) blur(px, r.blur, 3);

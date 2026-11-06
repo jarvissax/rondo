@@ -47,6 +47,9 @@ inline float centerText(float left, float width, int textW) {
   return float((int(left) * 2 + int(width) - (textW & ~1)) >> 1);
 }
 
+// A TextView of up to maxLines lines (word wrap, the last line ellipsized): its lines, top to bottom.
+std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines);
+
 // A colored rounded tile with a white glyph (Tiles in Widgets.kt); the YouTube services show their
 // logo on a white tile.
 struct Tile {

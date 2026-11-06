@@ -1,0 +1,99 @@
+// The UI's side of player.h.
+#include <stddef.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "player.h"
+#include "protocol.h"
+
+namespace rondo {
+
+bool PlayerHost::start() {
+  void* p = mmap(nullptr, sizeof(PlayerState), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (p == MAP_FAILED) return false;
+  shm_ = static_cast<PlayerState*>(p);
+  memset(shm_, 0, sizeof(PlayerState));  // every page touched now, never in a frame
+  shm_->index = shm_->pos = -1;
+  int sv[2];
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) return false;
+  child_ = fork();
+  if (child_ < 0) return false;
+  if (child_ == 0) {
+    close(sv[0]);
+    runPlayer(sv[1], shm_);
+  }
+  close(sv[1]);
+  sock_ = sv[0];
+  return true;
+}
+
+PlayerState PlayerHost::state(bool withOrder) const {
+  PlayerState s;
+  if (!shm_) {
+    memset(&s, 0, sizeof(s));
+    s.index = s.nextIndex = -1;
+    return s;
+  }
+  size_t n = withOrder ? sizeof(s) : offsetof(PlayerState, order);
+  for (int tries = 0; tries < 100; tries++) {  // the sequence lock: an even, unchanged count
+    uint32_t a = __atomic_load_n(&shm_->seq, __ATOMIC_ACQUIRE);
+    if (a & 1) continue;
+    memcpy(&s, shm_, n);
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    if (__atomic_load_n(&shm_->seq, __ATOMIC_ACQUIRE) == a) return s;
+  }
+  memcpy(&s, shm_, n);
+  return s;
+}
+
+void PlayerHost::send(uint32_t type, const void* payload, uint32_t len) {
+  uint32_t head[2] = {4 + len, type};
+  writeFully(sock_, head, sizeof(head));
+  if (len) writeFully(sock_, payload, len);
+}
+
+void PlayerHost::playQueue(const std::vector<std::string>& paths, int start) {
+  queue_ = paths;
+  std::string b(4, '\0');
+  uint32_t s = uint32_t(start);
+  memcpy(&b[0], &s, 4);
+  for (const auto& p : paths) b += p, b += '\0';
+  send(kPlayQueue, b.data(), uint32_t(b.size()));
+}
+
+void PlayerHost::togglePlay() { send(kToggle); }
+void PlayerHost::play() { send(kPlay); }
+void PlayerHost::pause() { send(kPause); }
+void PlayerHost::next() { send(kNext); }
+void PlayerHost::previous() { send(kPrevious); }
+void PlayerHost::seekTo(int64_t ms) { send(kSeekTo, &ms, 8); }
+void PlayerHost::seekBy(int64_t ms) { send(kSeekBy, &ms, 8); }
+void PlayerHost::jumpTo(int index) {
+  int64_t i = index;
+  send(kJumpTo, &i, 8);
+}
+void PlayerHost::insertNext(const std::string& path) {
+  queue_.push_back(path);
+  send(kInsertNext, path.data(), uint32_t(path.size()));
+}
+void PlayerHost::append(const std::string& path) {
+  queue_.push_back(path);
+  send(kAppend, path.data(), uint32_t(path.size()));
+}
+void PlayerHost::setShuffle(bool on) {
+  uint8_t v = on;
+  send(kShuffle, &v, 1);
+}
+void PlayerHost::setRepeat(int mode) {
+  uint8_t v = uint8_t(mode);
+  send(kRepeat, &v, 1);
+}
+void PlayerHost::changeVolume(int delta) {
+  int64_t d = delta;
+  send(kVolume, &d, 8);
+}
+bool PlayerHost::active() const { return !queue_.empty(); }
+
+}  // namespace rondo

@@ -319,11 +319,19 @@ void Library::index() const {
   byTitle(videos_);
   artists_ = group(tracks_, false);
   albums_ = group(tracks_, true);
+  byPath_.clear();
+  for (const Track& t : tracks_) byPath_[t.path] = &t;
   artistKeys_.clear();
   albumKeys_.clear();
   for (auto& g : artists_) artistKeys_.push_back(fold(g.first));
   for (auto& g : albums_) albumKeys_.push_back(fold(g.first));
   indexed_ = true;
+}
+
+const Track* Library::find(const std::string& path) const {
+  index();
+  auto it = byPath_.find(path);
+  return it == byPath_.end() ? nullptr : it->second;
 }
 
 std::vector<Library::Group> Library::artists() const {
