@@ -6,7 +6,7 @@
 // and at the end: refreshes seen, frames drawn, refreshes missed, draw and swap time, and how long a
 // wheel pulse takes to reach this process and to reach a finished frame.
 //
-//   s1 [seconds] [alpha]   default 60 s; "alpha": layer 99 % opaque; "buffers2": two buffers
+//   s1 [seconds] [alpha]   default 60 s; "alpha": layer 99 % opaque; "buffers2": two buffers; "sparse": every 6th refresh
 //
 // Written against Android 4.2.2's libgui as the Y1 ships it (native/sysroot, tools/native/sysroot.sh).
 
@@ -50,6 +50,8 @@ int main(int argc, char** argv) {
   const bool alphaLayer = argc > 2 && !strcmp(argv[2], "alpha");
   // "buffers2": a two-buffer queue instead of the default three, for less latency
   const bool twoBuffers = argc > 2 && !strcmp(argv[2], "buffers2");
+  // "sparse": draw only every 6th refresh, so no queue can build up (measures the bare latency)
+  const bool sparse = argc > 2 && !strcmp(argv[2], "sparse");
 
   sp<ProcessState> proc = ProcessState::self();
   proc->startThreadPool();
@@ -218,6 +220,10 @@ int main(int argc, char** argv) {
     if (count > 1) {  // more than one refresh went by before we woke up: those got no new frame
       missed += count - 1;
       secMissed += count - 1;
+    }
+    if (sparse && (lastCount % 6) != 0) {
+      lastVsync = vsyncAt;
+      continue;
     }
     if (lastVsync) vsyncGapNs.push_back(vsyncAt - lastVsync);
     double dt = lastVsync ? (vsyncAt - lastVsync) / 1e9 : 1.0 / 36.42;

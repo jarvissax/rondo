@@ -47,3 +47,18 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   first (`tools/native/sysroot.sh` fetches it).
 - **`adb pull /system/lib`** stops at a dangling symlink, `modules/wlan.ko`. Pull `hw/` and `egl/`
   separately.
+
+## Video
+
+- **Decoding:** the native `NuMediaExtractor` and `MediaCodec` in `libstagefright` (what Java's
+  MediaExtractor and MediaCodec wrap) decode H.264 in MediaTek's hardware decoder from a native
+  process. Call `DataSource::RegisterDefaultSniffers()` before opening a file.
+- **Output:** 640×360 30 fps plays at full rate. The decoder outputs MediaTek's own color format
+  (`0x7f000200`).
+- **Timestamps:** every output frame comes back with timestamp 0. Take presentation times from the
+  queued samples, smallest first, and tell new frames apart by the latched buffer.
+- **Drawing:** a `SurfaceTexture` makes the frames GPU textures with no copy; the Mali-400 samples
+  MediaTek's format through `samplerExternalOES`.
+- **Without SurfaceFlinger:** a `BufferQueue` built with SurfaceFlinger's `GraphicBufferAlloc` (exported
+  by `libsurfaceflinger.so`) allocates the buffers in-process. Decoding and drawing straight to the
+  framebuffer then needs no SurfaceFlinger service at all.

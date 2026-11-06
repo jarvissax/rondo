@@ -10,3 +10,7 @@ target_link_libraries(s1fb PRIVATE y1_ui y1_utils y1_cutils EGL GLESv2)
 
 add_executable(s5 s5-audio/s5.cpp)
 target_link_libraries(s5 PRIVATE OpenSLES)
+
+add_executable(s2 s2-video/s2.cpp)
+y1_private(s2)
+target_link_libraries(s2 PRIVATE y1_stagefright y1_stagefright_foundation y1_surfaceflinger y1_gui y1_ui y1_binder y1_utils y1_cutils EGL GLESv2)
