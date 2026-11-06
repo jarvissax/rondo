@@ -59,6 +59,7 @@ class Library {
   sqlite3* db_ = nullptr;
   mutable bool indexed_ = false;
   mutable std::vector<Group> artists_, albums_;
+  mutable std::vector<const Track*> songs_, videos_;
   mutable std::vector<std::string> artistKeys_, albumKeys_;
   std::vector<Track> tracks_;
   std::vector<std::string> removed_;

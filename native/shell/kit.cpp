@@ -65,14 +65,14 @@ void drawTile(Env& e, const Tile& t, Rect r, float alpha) {
   if (!t.brand) {
     e.c.shape(r, radius, t.top, t.bottom);
     int g = e.dp(16);
-    e.c.layer(layer + 1);
+    e.c.layer(layer + 2);  // with the text: icons are in the glyph atlas
     e.icons.draw(e.c, t.kind, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
                  rgb(0xffffff));
   } else {
     // the stroke lies over the white fill: an 11 % black edge on white is #e3e3e3
     e.c.shape(r, radius, rgb(0xe3e3e3));
     e.c.shape({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, radius - 1, rgb(0xffffff));
-    e.c.layer(layer + 1);
+    e.c.layer(layer + 2);
     int w = e.dp(19), h = t.brand == 1 ? e.dp(14) : e.dp(19);
     Rect lr{r.x + float((int(r.w) - w) / 2), r.y + float((int(r.h) - h) / 2), float(w), float(h)};
     if (t.brand == 1) e.icons.videoLogo(e.c, lr);
@@ -276,7 +276,7 @@ void RowList::draw(Env& e, float x, float y) {
   if (rows_.empty()) {
     c.layer(3);
     Label l = label(e, message_, 15, false, w_ - 2 * e.dp(20));
-    drawLabel(e, l, x + float((int(w_) - l.w) / 2), y + float((int(h_) - l.h) / 2), p.muted);
+    drawLabel(e, l, centerText(x, w_, l.w), y + float((int(h_) - l.h) / 2), p.muted);
     c.popClip();
     return;
   }
@@ -289,7 +289,12 @@ void RowList::draw(Env& e, float x, float y) {
   for (int i = 0; i < int(rows_.size()); i++) {
     float top = y + top_[i] - scroll;
     if (top + rowH(i) < y || top > y + h_) continue;
-    const Row& r = rows_[i];
+    Row lazy;
+    if (fill && !rows_[i].header) {
+      lazy = rows_[i];
+      fill(i, lazy);
+    }
+    const Row& r = fill && !rows_[i].header ? lazy : rows_[i];
     if (r.header) {
       c.layer(0);
       c.fill({x, top, w_, headerH_}, p.header);

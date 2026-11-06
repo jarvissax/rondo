@@ -69,37 +69,44 @@ void Keyboard::vertical(int dir) {
   }
 }
 
+void Keyboard::nextKey() { cursor_ = (cursor_ + 1) % int(keys_.size()); }
+void Keyboard::prevKey() { cursor_ = (cursor_ - 1 + int(keys_.size())) % int(keys_.size()); }
+
+bool Keyboard::up() {
+  if (keys_[cursor_].row == 0) return false;
+  vertical(-1);
+  return true;
+}
+
+Keyboard::Result Keyboard::press() {
+  const std::string& v = keys_[cursor_].value;
+  if (v == kLower) switchTo(Layout::Lower);
+  else if (v == kUpper) switchTo(Layout::Upper);
+  else if (v == kSymbols) switchTo(Layout::Symbols);
+  else if (v == kDelete) {
+    // one UTF-8 character
+    while (!typed_.empty() && (uint8_t(typed_.back()) & 0xc0) == 0x80) typed_.pop_back();
+    if (!typed_.empty()) typed_.pop_back();
+    return Result::Delete;
+  } else if (v == kAction) {
+    return Result::Action;
+  } else {
+    typed_ += v;
+    return Result::Typed;
+  }
+  return Result::None;
+}
+
 Keyboard::Result Keyboard::handle(Key key) {
-  int n = int(keys_.size());
   switch (key) {
-    case Key::WheelCw: cursor_ = (cursor_ + 1) % n; break;
-    case Key::WheelCcw: cursor_ = (cursor_ - 1 + n) % n; break;
-    case Key::Next: horizontal(1); break;
-    case Key::Prev: horizontal(-1); break;
-    case Key::Play: vertical(1); break;
-    case Key::Menu:
-      if (keys_[cursor_].row == 0) return Result::Close;
-      vertical(-1);
-      break;
-    case Key::Center: {
-      const std::string& v = keys_[cursor_].value;
-      if (v == kLower) switchTo(Layout::Lower);
-      else if (v == kUpper) switchTo(Layout::Upper);
-      else if (v == kSymbols) switchTo(Layout::Symbols);
-      else if (v == kDelete) {
-        // one UTF-8 character
-        while (!typed_.empty() && (uint8_t(typed_.back()) & 0xc0) == 0x80) typed_.pop_back();
-        if (!typed_.empty()) typed_.pop_back();
-        return Result::Delete;
-      } else if (v == kAction) {
-        return Result::Action;
-      } else {
-        typed_ += v;
-        return Result::Typed;
-      }
-      break;
-    }
-    default: return Result::None;
+    case Key::WheelCw: nextKey(); break;
+    case Key::WheelCcw: prevKey(); break;
+    case Key::Next: right(); break;
+    case Key::Prev: left(); break;
+    case Key::Play: down(); break;
+    case Key::Menu: return up() ? Result::None : Result::Close;
+    case Key::Center: return press();
+    default: break;
   }
   return Result::None;
 }
@@ -114,35 +121,46 @@ bool Keyboard::step(float dt) {
   return a || b || c;
 }
 
-void Keyboard::draw(Canvas& c, Text& text, const Palette& p, Rect area, int labelFont, int smallFont) {
-  float cw = area.w / 10, rh = area.h / 5, gap = roundf(p.u(2)), radius = p.u(4);
+// TvKeyboard.onDraw(): ten columns and five rows over the view, each key inset by 2 units on every side
+// with 4-unit corners. The highlighted key is the shell's text color with its label in the background
+// color and bold; here it glides between keys, labels changing color as it passes.
+void Keyboard::draw(Canvas& c, Text& text, const Palette& p, Rect area, int bigPx, int smallPx) {
+  float cw = area.w / 10, rh = area.h / 5;
+  float gap = float(int(floorf(2 * p.scale + 0.5f))), radius = float(int(floorf(4 * p.scale + 0.5f)));
   auto cell = [&](float col, float row, float span) {
-    return Rect{area.x + col * cw + gap / 2, area.y + row * rh + gap / 2, span * cw - gap, rh - gap};
+    return Rect{area.x + col * cw + gap, area.y + row * rh + gap, span * cw - 2 * gap, rh - 2 * gap};
   };
   int layer = c.currentLayer();
+  const K& at = keys_[cursor_];
+  bool settled = fabsf(hx_.x - at.col) < 0.02f && fabsf(hy_.x - at.row) < 0.02f && fabsf(hw_.x - at.span) < 0.02f;
   for (const K& k : keys_) {
-    bool special = k.value[0] == '\001' || k.value == " ";
+    // the highlighted key is drawn once, in the highlight's color (no fringe of its own color around it)
+    if (settled && &k == &at) continue;
+    bool special = k.value[0] == '\001';
     Color fill = k.value == kAction ? (shell_ ? p.accent : p.red)
                  : special          ? (shell_ ? mix(p.header, p.text, 0.12f) : p.darkPanelSelected)
                                     : (shell_ ? p.header : p.raised);
     c.layer(layer);
     c.shape(cell(float(k.col), float(k.row), float(k.span)), radius, fill);
   }
-  // the highlight glides between keys; labels under it switch color with it
-  Rect h = cell(hx_.x, hy_.x, hw_.x);
   c.layer(layer + 1);
-  c.shape(h, radius, shell_ ? p.text : p.white);
+  c.shape(cell(hx_.x, hy_.x, hw_.x), radius, shell_ ? p.text : p.white);
   for (size_t i = 0; i < keys_.size(); i++) {
     const K& k = keys_[i];
     Rect r = cell(float(k.col), float(k.row), float(k.span));
-    float overlap = fmaxf(0, 1 - fabsf(hx_.x - k.col) - fabsf(hy_.x - k.row));
-    Color ink = k.value == kAction || !shell_ ? p.white : p.text;
-    Color on = shell_ ? p.shellBg : p.dark;
-    int font = k.label.size() > 1 ? smallFont : labelFont;
-    const TextRun& run = text.run(font, k.label, r.w);
+    // how much of this key the highlight covers
+    float on = fmaxf(0, 1 - fabsf(hx_.x - k.col) - fabsf(hy_.x - k.row) - fabsf(hw_.x - k.span));
+    if (int(i) != cursor_) on = fminf(on, 0.999f);
+    Color base = shell_ && k.value != kAction ? p.text : p.white;
+    Color onColor = shell_ ? p.shellBg : p.dark;
+    float px = float(k.label.size() > 1 ? smallPx : bigPx);
+    int font = text.font(on > 0.5f ? Weight::Bold : Weight::Regular, px);
+    const TextRun& run = text.run(font, k.label);
+    // Paint.Align.CENTER at the key's center; the baseline where ascent and descent balance
+    float x = roundf(r.x + r.w / 2 - run.width / 2);
+    float baseline = roundf(r.y + r.h / 2 + (text.ascent(font) - text.descent(font)) / 2);
     c.layer(layer + 2);
-    text.draw(c, run, roundf(r.x + (r.w - run.width) / 2), roundf(r.y + (r.h + text.ascent(font) * 0.7f) / 2),
-              mix(ink, on, int(i) == cursor_ ? fminf(1, overlap * 1.5f) : 0));
+    text.draw(c, run, x, baseline, mix(base, onColor, on));
   }
   c.layer(layer);
 }

@@ -751,7 +751,7 @@ class SearchScreen : public Screen {
     }
     float kh = roundf(L.u(5 * 24));
     x.c.layer(1);
-    kb_.draw(x.c, x.text, palette_, {roundf(L.u(4)), x.h - kh - roundf(L.u(4)), x.w - roundf(L.u(8)), kh}, L.title, L.subtitle);
+    kb_.draw(x.c, x.text, palette_, {roundf(L.u(4)), x.h - kh - roundf(L.u(4)), x.w - roundf(L.u(8)), kh}, int(L.u(15) + 0.5f), int(L.u(12) + 0.5f));
   }
   static Palette palette_;
 

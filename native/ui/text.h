@@ -68,6 +68,15 @@ class Text {
   bool loadAdvances(const char* path);
   // The pairs Android 4.2 kerns (measured the same way): only these get HarfBuzz's kerning, rounded.
   bool loadKerning(const char* path);
+  // An alpha mask (w x h, rows packed) placed in the glyph atlas, so it draws in the same batch as text
+  // (the icons). Invalid once atlasGeneration() changes (the atlas was full and cleared).
+  struct Mask {
+    float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+    bool ok = false;
+  };
+  Mask addMask(int w, int h, const uint8_t* a8);
+  const Texture& atlas() const { return atlas_; }
+  uint32_t atlasGeneration() const { return generation_; }
   int glyphsRasterizedLastFrame() const { return rasterizedFrame_; }
   void frameDone() { rasterizedFrame_ = 0; }
 
@@ -127,6 +136,7 @@ class Text {
 
   static constexpr int kAtlas = 1024;
   Texture atlas_;
+  uint32_t generation_ = 0;
   std::vector<uint8_t> pixels_;  // the atlas, kept on the CPU: new glyphs go up as one update
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
   int dirtyY0_ = kAtlas, dirtyY1_ = 0;

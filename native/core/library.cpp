@@ -259,19 +259,13 @@ void byTitle(std::vector<const Track*>& v) {
 }  // namespace
 
 std::vector<const Track*> Library::songs() const {
-  std::vector<const Track*> v;
-  for (const Track& t : tracks_)
-    if (!t.video) v.push_back(&t);
-  byTitle(v);
-  return v;
+  index();
+  return songs_;
 }
 
 std::vector<const Track*> Library::videos() const {
-  std::vector<const Track*> v;
-  for (const Track& t : tracks_)
-    if (t.video) v.push_back(&t);
-  byTitle(v);
-  return v;
+  index();
+  return videos_;
 }
 
 namespace {
@@ -280,6 +274,7 @@ namespace {
 std::vector<Library::Group> group(const std::vector<Track>& tracks, bool album) {
   std::vector<Library::Group> out;
   std::unordered_map<std::string, size_t> at;
+  std::vector<std::string> keys;  // lower() of each group's name, computed once
   for (const Track& t : tracks) {
     if (t.video || (album && t.album.empty())) continue;
     std::string name = album ? t.album : (t.artist.empty() ? "Unknown artist" : t.artist);
@@ -288,26 +283,40 @@ std::vector<Library::Group> group(const std::vector<Track>& tracks, bool album) 
     if (it == at.end()) {
       at[k] = out.size();
       out.push_back({name, {}});
+      keys.push_back(k);
       it = at.find(k);
     }
     out[it->second].second.push_back(&t);
   }
-  std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) { return lower(a.first) < lower(b.first); });
-  for (auto& g : out)
+  std::vector<size_t> order(out.size());
+  for (size_t i = 0; i < order.size(); i++) order[i] = i;
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return keys[a] < keys[b]; });
+  std::vector<Library::Group> sorted;
+  sorted.reserve(out.size());
+  for (size_t i : order) sorted.push_back(std::move(out[i]));
+  // inside a group: by album (artists only), track, title; the lower-case keys made once per track
+  std::unordered_map<const Track*, std::pair<std::string, std::string>> k;
+  for (auto& g : sorted)
+    for (const Track* t : g.second) k[t] = {album ? std::string() : lower(t->album), lower(t->title)};
+  for (auto& g : sorted)
     std::stable_sort(g.second.begin(), g.second.end(), [&](const Track* a, const Track* b) {
-      if (!album) {
-        std::string la = lower(a->album), lb = lower(b->album);
-        if (la != lb) return la < lb;
-      }
+      const auto& ka = k[a];
+      const auto& kb = k[b];
+      if (ka.first != kb.first) return ka.first < kb.first;
       if (a->track != b->track) return a->track < b->track;
-      return lower(a->title) < lower(b->title);
+      return ka.second < kb.second;
     });
-  return out;
+  return sorted;
 }
 }  // namespace
 
 void Library::index() const {
   if (indexed_) return;
+  songs_.clear();
+  videos_.clear();
+  for (const Track& t : tracks_) (t.video ? videos_ : songs_).push_back(&t);
+  byTitle(songs_);
+  byTitle(videos_);
   artists_ = group(tracks_, false);
   albums_ = group(tracks_, true);
   artistKeys_.clear();

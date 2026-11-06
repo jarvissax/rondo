@@ -34,6 +34,7 @@
 #include "../../shell/dispatch.h"
 #include "../../shell/kit.h"
 #include "../../ui/frame_log.h"
+#include "../../ui/keyboard.h"
 
 using namespace rondo;
 using namespace rondo::ui;
@@ -119,6 +120,11 @@ class App {
     statusBar(e, W, status, sliding ? other->title() : top->title(), sliding ? top->title() : "", sliding ? p : 0);
     e.c.layer(0);
   }
+
+ private:
+  // A frame skipped (see the loop): what started moving starts one refresh later instead of jumping.
+ public:
+  void delay(int64_t by) { transition_.start += by; }
 
  private:
   void finishTransition() {
@@ -218,53 +224,82 @@ std::string subtitleOf(const Track& t) {
   return s;
 }
 
-enum class Scope { Songs, Artists, Albums, Videos };
+enum class Scope { All, Songs, Artists, Albums, Videos };
 const char* scopeTitle(Scope s) {
   switch (s) {
+    case Scope::All: return "Search";
     case Scope::Songs: return "Search songs";
     case Scope::Artists: return "Search artists";
     case Scope::Albums: return "Search albums";
     default: return "Search videos";
   }
 }
-// the first row of a long list: search just that list (the search screens come next)
+const char* scopeHint(Scope s) {
+  switch (s) {
+    case Scope::All: return "Songs, artists, albums, videos and playlists";
+    case Scope::Songs: return "Songs by title, artist or album";
+    case Scope::Artists: return "The artists on the card";
+    case Scope::Albums: return "The albums on the card";
+    default: return "The videos on the card";
+  }
+}
+std::unique_ptr<Screen> makeSearch(Scope s);
+
+// the first row of a long list: search just that list
 Row searchRow(Scope s) {
   Row r;
   r.title = scopeTitle(s);
   r.tile = &tiles::search;
   r.chevron = true;
+  r.onSelect = [s] { g_app->push(makeSearch(s)); };
   return r;
 }
 
 class LocalSongsScreen : public LetterListScreen {
  public:
   LocalSongsScreen(std::string title, std::vector<const Track*> tracks, bool alphabetical, bool showArtist)
-      : LetterListScreen(std::move(title)) {
+      : LetterListScreen(std::move(title)), tracks_(std::move(tracks)), showArtist_(showArtist) {
     std::vector<Row> rows;
     if (alphabetical) rows.push_back(searchRow(Scope::Songs));
     Row head;
     head.header = true;
     char h[96];
-    if (alphabetical && tracks.size() > 30) snprintf(h, sizeof(h), "%zu songs \xc2\xb7 Next/Prev jump A\xe2\x80\x93Z", tracks.size());
-    else snprintf(h, sizeof(h), "%zu songs", tracks.size());
+    if (alphabetical && tracks_.size() > 30) snprintf(h, sizeof(h), "%zu songs \xc2\xb7 Next/Prev jump A\xe2\x80\x93Z", tracks_.size());
+    else snprintf(h, sizeof(h), "%zu songs", tracks_.size());
     head.title = h;
     rows.push_back(head);
-    for (const Track* t : tracks) {
-      Row r;
+    first_ = int(rows.size());
+    rows.resize(rows.size() + tracks_.size());  // filled in when drawn (Select plays the queue: phase N3)
+    list_.fill = [this](int i, Row& r) {
+      if (i < first_) return;
+      const Track* t = tracks_[size_t(i - first_)];
       r.title = t->title;
       std::string sub = subtitleOf(*t);
-      if (!showArtist) {  // substringAfter(" · ", ""): the album only
+      if (!showArtist_) {  // substringAfter(" · ", ""): the album only
         size_t at = sub.find(" \xc2\xb7 ");
         sub = at == std::string::npos ? "" : sub.substr(at + 4);
       }
       r.subtitle = sub;
       r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       r.thumb = t->path;
-      rows.push_back(std::move(r));  // Select plays the queue from here (phase N3)
-    }
+    };
     list_.setRows(std::move(rows));
-    if (alphabetical) indexLetters();
+    if (alphabetical) {  // the letters from the titles themselves (the rows are empty until drawn)
+      std::vector<uint32_t> seen;
+      for (size_t k = 0; k < tracks_.size(); k++) {
+        if (tracks_[k]->title.empty()) continue;
+        uint32_t c = firstLetter(tracks_[k]->title);
+        if (std::find(seen.begin(), seen.end(), c) != seen.end()) continue;
+        seen.push_back(c);
+        letters_.push_back({first_ + int(k), c});
+      }
+    }
   }
+
+ private:
+  std::vector<const Track*> tracks_;
+  bool showArtist_;
+  int first_ = 0;
 };
 
 class LocalGroupsScreen : public LetterListScreen {
@@ -316,6 +351,177 @@ std::vector<const Track*> recent() {
   return v;
 }
 
+// LibrarySearchScreen: a search bar, a summary line, and the TV-remote keyboard; Show opens what was
+// found as a list (Menu goes back to typing).
+class LibrarySearchScreen : public Screen {
+ public:
+  explicit LibrarySearchScreen(Scope scope) : scope_(scope), kb_("Show", true) { search(); }
+  std::string title() const override { return scopeTitle(scope_); }
+  bool onAction(Action a, int steps) override {
+    if (showing_) {
+      if (a == Action::Back) {
+        showing_ = false;
+        return true;
+      }
+      switch (a) {
+        case Action::Down: return results_.down(steps);
+        case Action::Up: return results_.up(steps);
+        case Action::Select: return results_.select();
+        case Action::LongSelect: return results_.longSelect();
+        default: return false;
+      }
+    }
+    switch (a) {  // TvKeyboard.handle()
+      case Action::Down: kb_.nextKey(); return true;
+      case Action::Up: kb_.prevKey(); return true;
+      case Action::Next:
+      case Action::LongNext: kb_.right(); return true;
+      case Action::Prev:
+      case Action::LongPrev: kb_.left(); return true;
+      case Action::PlayPause: kb_.down(); return true;
+      case Action::Back: return kb_.up();
+      case Action::Select: {
+        Keyboard::Result r = kb_.press();
+        if (r == Keyboard::Result::Action) {
+          if (!nothingFound()) {
+            showing_ = true;
+            results_.setRows(rows(), true);
+          }
+        } else if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) {
+          if (r == Keyboard::Result::Typed && codepoints(kb_.typed()) > 40) {  // 1.0.x keeps 40
+            std::string t = kb_.typed();
+            while (!t.empty() && (uint8_t(t.back()) & 0xc0) == 0x80) t.pop_back();
+            if (!t.empty()) t.pop_back();
+            kb_.setTyped(t);
+          }
+          search();
+        }
+        return true;
+      }
+      default: return false;
+    }
+  }
+  bool step(float dt) override { return showing_ ? results_.step(dt) : kb_.step(dt); }
+  void draw(Env& e, float w, float h) override {
+    const Palette& p = e.p;
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, p.shellBg);
+    // the bar: 26 units tall, 8 in from the sides and 5 from the top, rounded 8 with a 1 px edge
+    float bx = float(e.dp(8)), by = float(e.dp(5)), bw = w - 2 * bx, bh = float(e.dp(26));
+    e.c.shape({bx, by, bw, bh}, e.dpf(8), p.rowLine);
+    e.c.shape({bx + 1, by + 1, bw - 2, bh - 2}, e.dpf(8) - 1, p.header);
+    int icon = e.dp(11);
+    float ix = bx + e.dp(10);
+    e.c.layer(3);
+    e.icons.draw(e.c, Icon::Search, {ix, by + float((int(bh) - icon) / 2), float(icon), float(icon)}, p.muted);
+    float fx = ix + icon + e.dp(7), fw = bx + bw - e.dp(10) - fx;
+    Label field = label(e, showing_ ? kb_.typed() : kb_.typed() + "|", 14, false, fw);
+    drawLabel(e, field, fx, by + float((int(bh) - field.h) / 2), p.text);
+    // the summary, centered, 3 units above and below
+    float sy = by + bh + e.dp(3);
+    Label sum = label(e, summary(), 10, false, w - 2 * e.dp(8));
+    drawLabel(e, sum, centerText(float(e.dp(8)), w - 2 * e.dp(8), sum.w), sy, p.muted);
+    float area = sy + sum.h + e.dp(3);
+    if (showing_) {
+      results_.layout(e, w, h - area);
+      results_.draw(e, 0, area);
+      return;
+    }
+    Label hint = label(e, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", 9,
+                       false, w);
+    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
+    e.c.layer(1);
+    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
+    e.c.layer(4);
+    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), p.muted);
+  }
+
+ private:
+  static size_t codepoints(const std::string& s) {
+    size_t n = 0;
+    for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
+    return n;
+  }
+  bool nothingFound() const {
+    return found_.artists.empty() && found_.albums.empty() && found_.songs.empty() && found_.videos.empty();
+  }
+  void search() {
+    found_ = g_library.search(kb_.typed());
+    if (scope_ != Scope::All) {  // cut down to the scope
+      if (scope_ != Scope::Artists) found_.artists.clear();
+      if (scope_ != Scope::Albums) found_.albums.clear();
+      if (scope_ != Scope::Songs) found_.songs.clear();
+      if (scope_ != Scope::Videos) found_.videos.clear();
+    }
+  }
+  std::string summary() const {
+    const std::string& q = kb_.typed();
+    if (q.find_first_not_of(' ') == std::string::npos) return scopeHint(scope_);
+    if (nothingFound()) return "Nothing on the card matches";
+    std::string s;
+    auto part = [&](size_t n, const char* word) {
+      if (!n) return;
+      if (!s.empty()) s += " \xc2\xb7 ";
+      s += std::to_string(n) + " " + word + (n == 1 ? "" : "s");
+    };
+    part(found_.artists.size(), "artist");
+    part(found_.albums.size(), "album");
+    part(found_.songs.size(), "song");
+    part(found_.videos.size(), "video");
+    return s + (showing_ ? " \xc2\xb7 Menu: back to typing" : " \xc2\xb7 Show to see them");
+  }
+  Row group(const Library::Group& g) {
+    Row r;
+    r.title = g.first;
+    r.trailing = std::to_string(g.second.size());
+    if (!g.second.empty()) r.thumb = g.second.front()->path;
+    r.chevron = true;
+    auto tracks = g.second;
+    std::string name = g.first;
+    r.onSelect = [name, tracks] { g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(name, tracks, false, true))); };
+    return r;
+  }
+  std::vector<Row> rows() {
+    std::vector<Row> rows;
+    auto header = [&](const char* t) {
+      Row h;
+      h.header = true;
+      h.title = t;
+      rows.push_back(h);
+    };
+    if (!found_.artists.empty()) header("Artists");
+    for (auto& g : found_.artists) rows.push_back(group(g));
+    if (!found_.albums.empty()) header("Albums");
+    for (auto& g : found_.albums) rows.push_back(group(g));
+    if (!found_.songs.empty()) header("Songs");
+    for (const Track* t : found_.songs) {
+      Row r;
+      r.title = t->title;
+      r.subtitle = subtitleOf(*t);
+      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
+      r.thumb = t->path;
+      rows.push_back(std::move(r));
+    }
+    if (!found_.videos.empty()) header("Videos");
+    for (const Track* t : found_.videos) {
+      Row r;
+      r.title = t->title;
+      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
+      r.thumb = t->path;
+      rows.push_back(std::move(r));
+    }
+    return rows;
+  }
+
+  Scope scope_;
+  Keyboard kb_;
+  Library::Found found_;
+  RowList results_;
+  bool showing_ = false;
+};
+
+std::unique_ptr<Screen> makeSearch(Scope s) { return std::unique_ptr<Screen>(new LibrarySearchScreen(s)); }
+
 // DeviceScreen: the card, in the iPod's own words.
 class DeviceScreen : public ShellListScreen {
  public:
@@ -341,7 +547,7 @@ class DeviceScreen : public ShellListScreen {
       rows.push_back(std::move(r));
     };
     add("Shuffle songs", tiles::shuffle, std::to_string(songs.size()), false, !songs.empty(), nullptr);
-    add("Search", tiles::search, "", true, true, nullptr);
+    add("Search", tiles::search, "", true, true, [] { g_app->push(makeSearch(Scope::All)); });
     add("Playlists", tiles::playlists, "", true, true, nullptr);
     add("Songs", tiles::songs, std::to_string(songs.size()), true, !songs.empty(), [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Songs", g_library.songs(), true, true)));
@@ -476,17 +682,17 @@ class MainMenuScreen : public Screen {
     if (!tile->brand) {
       e.c.shape(vis, e.dpf(22), 0x2dffffff);
       int g = e.dp(70);
-      e.c.layer(3);
+      e.c.layer(4);
       e.icons.draw(e.c, tile->kind, {bx + float((box - g) / 2), top + float((box - g) / 2), float(g), float(g)}, rgb(0xffffff));
     } else {
-      e.c.layer(3);
+      e.c.layer(4);
       int gw = tile->brand == 1 ? e.dp(80) : e.dp(70), gh = tile->brand == 1 ? e.dp(56) : e.dp(70);
       Rect lr{bx + float((box - gw) / 2), top + float((box - gh) / 2), float(gw), float(gh)};
       if (tile->brand == 1) e.icons.videoLogo(e.c, lr);
       else e.icons.musicLogo(e.c, lr);
     }
     e.c.layer(4);
-    drawLabel(e, title, ix + float((int(iw) - title.w) / 2), top + box + e.dp(9), rgb(0xffffff));
+    drawLabel(e, title, centerText(ix, iw, title.w), top + box + e.dp(9), rgb(0xffffff));
   }
 
   RowList list_;
@@ -568,6 +774,7 @@ int main(int argc, char** argv) {
   g_library.scan();
   g_library.readTags();
   g_library.save();
+  g_library.artists();  // builds the groups now, not when Library opens
   int64_t tLib = now_ns();
 
   auto display = openDisplay();
@@ -581,7 +788,7 @@ int main(int argc, char** argv) {
   if (!text.loadAdvances(advances)) fprintf(stderr, "rondo: no advance table at %s: text widths will differ from 1.0.x\n", advances);
   text.loadKerning("/data/local/tmp/rondo/kerning.bin");
   Icons icons;
-  icons.init();
+  icons.init(text);
   Covers covers(loader);
   covers.reserve(int(floorf(26 * pal.scale + 0.5f)), int(floorf(26 * pal.scale + 0.5f)), 96);
   {  // the list thumbnails, decoded once into the cache while nothing moves
@@ -602,9 +809,52 @@ int main(int argc, char** argv) {
   const int64_t period = display->period();
   bool moving = true, wasMoving = false;
   int64_t lastPresent = 0, lastStatus = now_ns(), menuDown = 0;
+  // Glyphs and icons are rasterized while idle: adding to the atlas while a frame still uses it makes the
+  // next frame wait a whole refresh for the GPU (N5 log), so a screen's first frame must find them ready.
+  std::vector<int> warmFonts;
+  for (float sp : {15.f, 13.5f, 11.f, 12.f, 14.f, 10.f, 9.f})
+    for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, sp * pal.scale));
+  for (int px : {int(floorf(15 * pal.scale + 0.5f)), int(floorf(12 * pal.scale + 0.5f))})  // the keyboard's labels
+    for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, float(px)));
+  static const char kWarmChars[] =
+      " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+      "ÀÁÂÄÇÈÉÊÍÑÓÖÚÜ"
+      "àáâãäåçèéêëíîïñóôöøúûü"
+      "ĞğİıŞşƏə·–—‘’“”•…";
+  bool warmed = false;
+  size_t warmIcon = 0;
+  auto warmIcons = [&] {  // every icon at the sizes the shell draws it, a few per idle slice
+    auto d = [&](float v) { return int(floorf(v * pal.scale + 0.5f)); };
+    struct I { Icon icon; int w, h; };
+    static std::vector<I> list;
+    if (list.empty()) {
+      for (Icon k : {Icon::Note, Icon::Play, Icon::Folder, Icon::Bars, Icon::Gear, Icon::Wifi, Icon::Bluetooth, Icon::Cloud,
+                     Icon::Info, Icon::Person, Icon::Disc, Icon::Screen, Icon::Sun, Icon::Timer, Icon::Radio, Icon::Volume,
+                     Icon::Shuffle, Icon::Power, Icon::Refresh, Icon::Theme, Icon::Playlist, Icon::Plus, Icon::Search,
+                     Icon::Trash, Icon::Shorts})
+        list.push_back({k, d(16), d(16)});
+      for (Icon k : {Icon::Bars, Icon::Folder, Icon::Radio, Icon::Gear}) list.push_back({k, d(70), d(70)});
+      list.push_back({Icon::Chevron, d(8), d(12)});
+      list.push_back({Icon::Wifi, d(14), d(14)});
+      list.push_back({Icon::BatteryFrame, d(24), d(14)});
+      list.push_back({Icon::Play, d(12), d(12)});
+      list.push_back({Icon::Search, d(11), d(11)});
+      for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(19), d(19)}), list.push_back({k, d(70), d(70)});
+      for (Icon k : {Icon::VideoLogoButton, Icon::VideoLogoPlay}) list.push_back({k, d(19), d(14)}), list.push_back({k, d(80), d(56)});
+    }
+    int64_t until = now_ns() + 3 * kMs;
+    while (warmIcon < list.size() && now_ns() < until) icons.mask(list[warmIcon].icon, list[warmIcon].w, list[warmIcon].h), warmIcon++;
+    return warmIcon >= list.size();
+  };
   while (!g_stop) {
     if (!moving && !g_shot) {
       pollfd p[2] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}};
+      if (!warmed) {
+        warmed = warmIcons() && text.warm(warmFonts, kWarmChars, 3 * kMs);
+        text.flush();  // to the GPU now, not in a moving frame
+        pollfd q[1] = {{input->waitFd(), POLLIN, 0}};
+        if (poll(q, 1, 0) == 0) continue;
+      }
       bool prefetching = covers.sendPrefetches();
       int64_t deadline = dispatch.nextDeadline();
       int timeout = prefetching ? 50 : 1000;
@@ -624,6 +874,7 @@ int main(int argc, char** argv) {
     int64_t vs = display->waitVsync();
     int64_t present = vs + period;
     app.setNow(present);
+    int64_t a = now_ns();  // the frame's work starts with the input: a screen opening counts
     input->acknowledge();
     InputEvent ev;
     int64_t oldest = -1;
@@ -636,8 +887,15 @@ int main(int argc, char** argv) {
       }
     }
     dispatch.tick(now_ns());
+    // Opening a screen can take 10 ms. A frame finished that late reaches the panel a refresh late and holds
+    // up the next one (N5 log), so such a refresh draws nothing: the slide starts cleanly on the next.
+    if (now_ns() - a > 6 * kMs) {
+      app.delay(period);
+      lastPresent = present;
+      wasMoving = moving = true;
+      continue;
+    }
     float dt = wasMoving && lastPresent ? std::min(0.1f, float(present - lastPresent) / 1e9f) : float(period) / 1e9f;
-    int64_t a = now_ns();
     bool anim = app.step(dt);
     canvas.begin(pal.shellBg);
     Env env{canvas, text, icons, covers, pal, present};

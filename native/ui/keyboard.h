@@ -20,9 +20,21 @@ class Keyboard {
   explicit Keyboard(std::string actionLabel = "Search", bool shell = false);
   // A key press (wheel pulses: Key::WheelCw/Ccw). Typed text is in typed().
   Result handle(Key k);
+  // TvKeyboard.handle()'s actions: the next or previous key in reading order, right/left in the row,
+  // down a row (Play), up a row (Menu; false on the top row: the screen closes the keyboard), type.
+  void nextKey();
+  void prevKey();
+  void right() { horizontal(1); }
+  void left() { horizontal(-1); }
+  void down() { vertical(1); }
+  bool up();
+  Result press();
+  void clear() { typed_.clear(); }
+  void setTyped(std::string s) { typed_ = std::move(s); }
   const std::string& typed() const { return typed_; }
   bool step(float dt);  // true while the highlight moves
-  void draw(Canvas& c, Text& text, const Palette& p, Rect area, int labelFont, int smallFont);
+  // bigPx, smallPx: the label sizes (1.0.x: dp(15) and dp(12), whole pixels)
+  void draw(Canvas& c, Text& text, const Palette& p, Rect area, int bigPx, int smallPx);
 
  private:
   enum class Layout { Lower, Upper, Symbols };

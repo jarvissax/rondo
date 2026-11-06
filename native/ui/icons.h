@@ -9,6 +9,7 @@
 #include <tuple>
 
 #include "gfx.h"
+#include "text.h"
 
 typedef struct FT_LibraryRec_* FT_Library;
 
@@ -26,10 +27,11 @@ enum class Icon : uint8_t {
 
 class Icons {
  public:
-  bool init();
+  // The masks live in the text engine's glyph atlas: icons and text draw in one batch.
+  bool init(Text& text);
   // The mask for an icon drawn into a w x h view (the shapes fit its smaller side, centered). level:
-  // the battery charge, 0..1, in hundredths.
-  const Texture& mask(Icon icon, int w, int h, int level = 0);
+  // the battery charge in hundredths.
+  Text::Mask mask(Icon icon, int w, int h, int level = 0);
   // Draws an icon into rect r (pixel-aligned) in one color.
   void draw(Canvas& c, Icon icon, Rect r, Color color, int level = 0);
   // The battery as 1.0.x draws it: the frame in `color`, the charge green, amber or red by level.
@@ -40,7 +42,9 @@ class Icons {
 
  private:
   FT_Library ft_ = nullptr;
-  std::map<std::tuple<int, int, int, int>, Texture> cache_;
+  Text* text_ = nullptr;
+  uint32_t generation_ = 0;
+  std::map<std::tuple<int, int, int, int>, Text::Mask> cache_;
 };
 
 // batteryColor() in IconView.kt: green from 50 %, amber from 20 %, red below.

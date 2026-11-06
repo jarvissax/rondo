@@ -295,9 +295,16 @@ void drawIcon(Pen& p, Icon kind, float level) {
 
 Color batteryColor(float level) { return level >= 0.5f ? rgb(0x34c759) : level >= 0.2f ? rgb(0xff9f0a) : rgb(0xff3b30); }
 
-bool Icons::init() { return FT_Init_FreeType(&ft_) == 0; }
+bool Icons::init(Text& text) {
+  text_ = &text;
+  return FT_Init_FreeType(&ft_) == 0;
+}
 
-const Texture& Icons::mask(Icon icon, int w, int h, int level) {
+Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
+  if (generation_ != text_->atlasGeneration()) {  // the atlas was cleared
+    cache_.clear();
+    generation_ = text_->atlasGeneration();
+  }
   auto key = std::make_tuple(int(icon), w, h, level);
   auto it = cache_.find(key);
   if (it != cache_.end()) return it->second;
@@ -343,15 +350,21 @@ const Texture& Icons::mask(Icon icon, int w, int h, int level) {
     drawIcon(p, icon, std::clamp(level / 100.f, 0.f, 1.f));
     m = p.mask;
   }
-  Texture t = createTexture(w, h, GL_ALPHA, GL_UNSIGNED_BYTE, m.data(), false);
-  return cache_.emplace(key, t).first->second;
+  Text::Mask t = text_->addMask(w, h, m.data());
+  if (!t.ok) {  // the atlas was full: it was cleared; add again
+    generation_ = text_->atlasGeneration();
+    cache_.clear();
+    t = text_->addMask(w, h, m.data());
+  }
+  cache_.emplace(key, t);
+  return t;
 }
 
 void Icons::draw(Canvas& c, Icon icon, Rect r, Color color, int level) {
   int w = int(lroundf(r.w)), h = int(lroundf(r.h));
   if (w <= 0 || h <= 0) return;
-  const Texture& t = mask(icon, w, h, level);
-  c.glyph(t, {r.x, r.y, float(w), float(h)}, {0, 0, 1, 1}, color);
+  Text::Mask t = mask(icon, w, h, level);
+  if (t.ok) c.glyph(text_->atlas(), {r.x, r.y, float(w), float(h)}, {t.u0, t.v0, t.u1 - t.u0, t.v1 - t.v0}, color);
 }
 
 void Icons::battery(Canvas& c, Rect r, Color color, float level) {

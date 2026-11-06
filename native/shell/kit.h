@@ -41,6 +41,11 @@ struct Label {
 };
 Label label(Env& e, const std::string& s, float sp, bool bold, float maxW = 0);
 void drawLabel(Env& e, const Label& l, float x, float top, Color c);
+// Where a TextView with gravity CENTER starts its text: Android 4.2's Layout.drawText() evens the line
+// width, so odd widths round to the right (a view centered by its parent rounds down instead).
+inline float centerText(float left, float width, int textW) {
+  return float((int(left) * 2 + int(width) - (textW & ~1)) >> 1);
+}
 
 // A colored rounded tile with a white glyph (Tiles in Widgets.kt); the YouTube services show their
 // logo on a white tile.
@@ -100,6 +105,9 @@ class RowList {
   const Row* selectedRow() const { return selected_ >= 0 ? &rows_[selected_] : nullptr; }
   const std::vector<Row>& rows() const { return rows_; }
   std::function<void()> onSelectionChanged;
+  // Long lists: rows hold only what selection needs (header, enabled); this fills in a row's text and
+  // artwork when it is drawn, so opening 821 songs costs nothing up front.
+  std::function<void(int, Row&)> fill;
 
   bool step(float dt);  // true while moving
   void draw(Env& e, float x, float y);

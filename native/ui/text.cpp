@@ -166,6 +166,7 @@ uint32_t Text::slotFor(int size, int face, uint32_t glyph) {
 }
 
 void Text::resetAtlas() {
+  generation_++;
   for (Slot& s : slots_) s.ready = false;
   std::fill(pixels_.begin(), pixels_.end(), 0);
   shelfX_ = shelfY_ = shelfH_ = 0;
@@ -490,6 +491,33 @@ bool Text::loadKerning(const char* path) {
   fclose(f);
   runs_.clear();
   return ok;
+}
+
+}  // namespace rondo::ui
+
+namespace rondo::ui {
+
+Text::Mask Text::addMask(int w, int h, const uint8_t* a8) {
+  Mask m;
+  int pw = w + 2, ph = h + 2;
+  if (pw > kAtlas || ph > kAtlas) return m;
+  if (shelfX_ + pw > kAtlas) {
+    shelfY_ += shelfH_;
+    shelfX_ = shelfH_ = 0;
+  }
+  if (shelfY_ + ph > kAtlas) {
+    resetAtlas();  // the callers see the new generation and add their masks again
+    return m;
+  }
+  int x = shelfX_ + 1, y = shelfY_ + 1;
+  for (int r = 0; r < h; r++) memcpy(&pixels_[size_t(y + r) * kAtlas + x], a8 + size_t(r) * w, size_t(w));
+  shelfX_ += pw;
+  shelfH_ = std::max(shelfH_, ph);
+  dirtyY0_ = std::min(dirtyY0_, y);
+  dirtyY1_ = std::max(dirtyY1_, y + h);
+  m.u0 = float(x) / kAtlas, m.v0 = float(y) / kAtlas, m.u1 = float(x + w) / kAtlas, m.v1 = float(y + h) / kAtlas;
+  m.ok = true;
+  return m;
 }
 
 }  // namespace rondo::ui
