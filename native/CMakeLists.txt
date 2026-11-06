@@ -26,3 +26,6 @@ function(y1_private target)
 endfunction()
 
 add_subdirectory(tests)
+
+# Tools that run on the Y1 (tools/perf drives them)
+add_executable(inject tools/inject.cpp)
