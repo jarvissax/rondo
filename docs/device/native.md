@@ -120,3 +120,12 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   checks `MODIFY_AUDIO_SETTINGS` through the "permission" service. A native program can publish one
   (a BBinder answering `CHECK_PERMISSION_TRANSACTION` with granted). See
   `native/platform/permission_service.h`.
+- **A2DP from a native program:**
+  - Bind the abstract `bt.ext.adp.a2dp` and pass it to `btmtk_a2dp_setSockAddress`; open an
+    auto-bound socket connected to `bt.int.adp`.
+  - Call `btmtk_a2dp_send_activate_req`, then `btmtk_a2dp_send_stream_open_req(0, &addr, 1)`.
+    `btmtk_a2dp_handle_message` returns 3 when connected and 4 when playing (all in
+    `libmtkbtextadpa2dp.so`).
+  - Then `AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, available, address)`,
+    and `setForceUse(FOR_MEDIA, NONE)`: mediaserver keeps the last "no A2DP" otherwise.
+  - Paired devices are in `/data/@btmtk/devdb`.

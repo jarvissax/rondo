@@ -26,3 +26,7 @@ add_executable(s3 s3-bluetooth/s3.cpp)
 add_executable(s4 s4-fm/s4.cpp)
 y1_private(s4)
 target_link_libraries(s4 PRIVATE y1_fmjni y1_media y1_utils y1_binder)
+
+add_executable(s3a2dp s3-bluetooth/s3a2dp.cpp)
+y1_private(s3a2dp)
+target_link_libraries(s3a2dp PRIVATE y1_mtkbtextadpa2dp y1_media y1_binder y1_utils OpenSLES)
