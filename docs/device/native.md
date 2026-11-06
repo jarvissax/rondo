@@ -75,3 +75,18 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   comes from `resolver setifdns` and `resolver setdefaultif`. The address and default route are set
   with libnetutils' `ifc_configure` after `dhcp_do_request`.
 - **Timing:** a cold start to a working connection took 7.4 s, 4.7 s of it DHCP.
+
+## Power
+
+- **Battery and charger:** `/sys/class/power_supply/battery` has `capacity`, `status`, `batt_vol`
+  (mV), `batt_temp` (tenths of °C), `BatteryAverageCurrent`, `ChargerVoltage` and `health`; `ac` and
+  `usb` have `online`.
+- **Wakelocks:** `/sys/power/wake_lock` and `/sys/power/wake_unlock` (Android's).
+- **Backlight:** `/sys/class/leds/lcd-backlight/brightness`, 0–255.
+- **Early suspend:** `mem` to `/sys/power/state` starts it; `on` ends it (late resume).
+- **The stop-drawing handshake:** while early suspend runs, the kernel waits up to 1 s for the
+  program drawing to the screen to stop. The program blocks on `/sys/power/wait_for_fb_sleep`, stops
+  drawing when it returns, then reads `/sys/power/wait_for_fb_wake`. That read acknowledges, and
+  blocks until late resume allows drawing again.
+- **Waking takes 0.6 s,** because the display driver's late resume (`mtkfb_late_resume`) takes about
+  540 ms. Keys on `/dev/input/event0` (Power, Center) still arrive during early suspend.
