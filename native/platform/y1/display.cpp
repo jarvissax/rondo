@@ -3,6 +3,7 @@
 // stopped. Measured in N0 (S1b): a finished frame is on screen at the next refresh.
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -37,6 +38,13 @@ class FbDisplay : public Display {
     if (st >= 0) {
       write(st, "on", 2);
       close(st);
+    }
+    // the backlight: Android's power manager leaves it at 0 when it turned the screen off
+    int bl = ::open("/sys/class/leds/lcd-backlight/brightness", O_RDWR);
+    if (bl >= 0) {
+      char level[8] = {0};
+      if (read(bl, level, sizeof(level) - 1) > 0 && atoi(level) == 0) write(bl, "150", 3);
+      close(bl);
     }
     vsync_ = ::open("/dev/mtkfb_vsync", O_RDONLY);
     if (vsync_ < 0) {
