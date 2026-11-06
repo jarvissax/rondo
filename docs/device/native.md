@@ -62,3 +62,16 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
 - **Without SurfaceFlinger:** a `BufferQueue` built with SurfaceFlinger's `GraphicBufferAlloc` (exported
   by `libsurfaceflinger.so`) allocates the buffers in-process. Decoding and drawing straight to the
   framebuffer then needs no SurfaceFlinger service at all.
+
+## Wi-Fi
+
+- **Driver:** libhardware_legacy's `wifi_load_driver` and `wifi_unload_driver` power the combo chip's
+  Wi-Fi through MediaTek's **hald** (`/dev/socket/hald`, commands `hal load wifi`, `hal unload wifi`,
+  `hal load p2p`, `hal unload p2p`; no sequence numbers).
+- **wpa_supplicant:** the firmware's build crashes (SIGSEGV) when started as the wlan0-only
+  `wpa_supplicant` service. Start it as `p2p_supplicant` (wlan0 and p2p0), after `hal load p2p`. Its
+  control socket is reached with `wifi_connect_to_supplicant("wlan0")`.
+- **netd** on 4.2 wants a sequence number before each command (`1 resolver setdefaultif wlan0`). DNS
+  comes from `resolver setifdns` and `resolver setdefaultif`. The address and default route are set
+  with libnetutils' `ifc_configure` after `dhcp_do_request`.
+- **Timing:** a cold start to a working connection took 7.4 s, 4.7 s of it DHCP.

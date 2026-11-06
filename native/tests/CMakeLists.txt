@@ -14,3 +14,7 @@ target_link_libraries(s5 PRIVATE OpenSLES)
 add_executable(s2 s2-video/s2.cpp)
 y1_private(s2)
 target_link_libraries(s2 PRIVATE y1_stagefright y1_stagefright_foundation y1_surfaceflinger y1_gui y1_ui y1_binder y1_utils y1_cutils EGL GLESv2)
+
+add_executable(s6 s6-wifi/s6.cpp)
+y1_private(s6)
+target_link_libraries(s6 PRIVATE y1_hardware_legacy y1_netutils y1_cutils)

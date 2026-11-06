@@ -9,7 +9,7 @@ add_compile_options(-fno-exceptions -fno-rtti -Wall -Wextra -Wno-unused-paramete
 # The Y1's own libraries and the AOSP 4.2.2 headers that describe them (tools/native/sysroot.sh)
 set(Y1_SYSROOT ${CMAKE_CURRENT_SOURCE_DIR}/sysroot)
 set(Y1_LIB ${Y1_SYSROOT}/system-lib)
-foreach(lib gui ui binder utils cutils log hardware media stagefright stagefright_foundation surfaceflinger)
+foreach(lib gui ui binder utils cutils log hardware media stagefright stagefright_foundation surfaceflinger hardware_legacy netutils)
   add_library(y1_${lib} SHARED IMPORTED)
   set_target_properties(y1_${lib} PROPERTIES IMPORTED_LOCATION ${Y1_LIB}/lib${lib}.so)
 endforeach()
@@ -18,7 +18,8 @@ endforeach()
 # libraries were built with, and the firmware's libraries to link and resolve against.
 function(y1_private target)
   target_include_directories(${target} SYSTEM PRIVATE
-    ${Y1_SYSROOT}/aosp/native ${Y1_SYSROOT}/aosp/core ${Y1_SYSROOT}/aosp/hardware ${Y1_SYSROOT}/aosp/av)
+    ${Y1_SYSROOT}/aosp/native ${Y1_SYSROOT}/aosp/core ${Y1_SYSROOT}/aosp/hardware ${Y1_SYSROOT}/aosp/av
+    ${Y1_SYSROOT}/aosp/hardware_legacy)
   target_compile_options(${target} PRIVATE -include ${Y1_SYSROOT}/aosp/config/AndroidConfig.h
     -Wno-deprecated-register -Wno-unused-private-field -Wno-overloaded-virtual)
   target_link_options(${target} PRIVATE -Wl,-rpath-link,${Y1_LIB})

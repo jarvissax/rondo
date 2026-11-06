@@ -28,6 +28,7 @@ echo "system-lib: $(ls "$OUT/system-lib" | wc -l | tr -d ' ') files"
 # <repo path>:<folder in the repo>:<name here> (config: the AndroidConfig.h every 4.2.2 library was built with)
 for spec in frameworks/native:include:native system/core:include:core \
             hardware/libhardware:include:hardware frameworks/av:include:av \
+            hardware/libhardware_legacy:include:hardware_legacy \
             build:core/combo/include/arch/linux-arm:config; do
   IFS=: read -r repo dir name <<< "$spec"
   [[ -d $OUT/aosp/$name ]] && continue
