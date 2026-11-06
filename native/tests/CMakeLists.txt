@@ -20,3 +20,5 @@ y1_private(s6)
 target_link_libraries(s6 PRIVATE y1_hardware_legacy y1_netutils y1_cutils)
 
 add_executable(s7 s7-power/s7.cpp)
+
+add_executable(s3 s3-bluetooth/s3.cpp)
