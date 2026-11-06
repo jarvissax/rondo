@@ -36,3 +36,4 @@ firmware/out/
 # native build: the Y1 sysroot (firmware libraries, fetched headers) and build output
 native/sysroot/
 native/build/
+native/third_party/

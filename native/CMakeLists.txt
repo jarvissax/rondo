@@ -29,3 +29,25 @@ add_subdirectory(tests)
 
 # Tools that run on the Y1 (tools/perf drives them)
 add_executable(inject tools/inject.cpp)
+
+# Third-party libraries, built for the Y1 by tools/native/deps.sh
+set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party/y1)
+foreach(lib freetype harfbuzz png16 turbojpeg)
+  add_library(tp_${lib} STATIC IMPORTED)
+  set_target_properties(tp_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.a)
+endforeach()
+
+# The UI engine (N1): portable C++ over GLES2
+add_library(rondo_ui STATIC ui/gfx.cpp ui/text.cpp ui/image.cpp ui/frame_log.cpp core/cover.cpp)
+target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/freetype2 ${TP}/include/harfbuzz)
+target_link_libraries(rondo_ui PUBLIC tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
+
+# The Y1's platform layer: framebuffer, vsync, input
+add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp)
+y1_private(rondo_platform_y1)
+target_link_libraries(rondo_platform_y1 PUBLIC y1_ui y1_utils y1_cutils EGL GLESv2)
+
+add_executable(uitest apps/uitest/main.cpp)
+target_link_libraries(uitest PRIVATE rondo_ui rondo_platform_y1)
+target_link_options(uitest PRIVATE -Wl,-rpath-link,${Y1_LIB})
+add_executable(churn tools/churn.cpp)

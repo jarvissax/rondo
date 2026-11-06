@@ -47,6 +47,10 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   first (`tools/native/sysroot.sh` fetches it).
 - **`adb pull /system/lib`** stops at a dangling symlink, `modules/wlan.ko`. Pull `hw/` and `egl/`
   separately.
+- **Optimization flags:** with CMake 3.21 or newer, NDK r23's toolchain file gives the Release build
+  type no `-O` flag at all, so everything builds at `-O0`. `tools/native/build.sh` and
+  `tools/native/deps.sh` set `-O2` explicitly. Measured: the UI engine's CPU time per frame went from
+  1.8 ms to 0.9 ms, and startup from 250 ms to 53 ms.
 
 ## Video
 
@@ -129,3 +133,27 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   - Then `AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, available, address)`,
     and `setForceUse(FOR_MEDIA, NONE)`: mediaserver keeps the last "no A2DP" otherwise.
   - Paired devices are in `/data/@btmtk/devdb`.
+
+## Keeping frames on time (measured with the N1 UI engine)
+
+- **The render process's address space must stay quiet.** Page faults and large allocations (anything
+  `malloc` serves with `mmap`, 64 KB and up) on any thread of the process that draws take its
+  memory-map lock. The Mali driver needs that lock at the start of every frame, inside the first GL
+  call. With two threads decoding covers in the same process, `glClear` waited 50 ms to 2 s.
+  - Allocating, touching and freeing 2 MB blocks on two threads is enough to cause it, with no I/O and
+    no decoding.
+  - The same churn in another process costs nothing. So does a CPU hog or an SD-card reader in
+    another process.
+  - So decoding runs in a helper process with its own address space (`ImageLoader` forks it at
+    startup), and pixels come back through shared memory mapped and touched once.
+- **Background work runs at `SCHED_IDLE`.** At nice 10 the helper still delayed the display about once
+  a minute (a frame's first GL call waited a whole refresh for its buffer). `SCHED_IDLE` lets the
+  kernel's display and GPU threads always go first.
+- **Glyphs are rasterized before they are needed.** FreeType's light autohinting costs about 0.25 ms
+  per glyph. A screen's first frame with 70 new glyphs missed its refresh, so the engine rasterizes the
+  common glyphs of every text style while idle, uploads them while idle, and shapes a sample per font
+  so HarfBuzz builds its plans early.
+- **Only one core is usually online.** The `hotplug` cpufreq governor
+  (`/sys/devices/system/cpu/cpufreq/hotplug/`) adds the second core after 300 ms above 90 % load
+  (`cpu_up_avg_times` 10 × 30 ms samples) and removes it after 1.5 s. `cpu_num_base` sets the minimum
+  number of cores online.
