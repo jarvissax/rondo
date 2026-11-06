@@ -25,7 +25,13 @@ LIBS=(
   "libjpeg-turbo 3.1.0 https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0.tar.gz"
   "freetype 2.13.3 https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz"
   "harfbuzz 10.2.0 https://github.com/harfbuzz/harfbuzz/releases/download/10.2.0/harfbuzz-10.2.0.tar.xz"
+  "sqlite 3.50.4 https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip"
+  "yyjson 0.12.0 https://github.com/ibireme/yyjson/archive/refs/tags/0.12.0.tar.gz"
+  "openssl 3.5.4 https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz"
+  "nghttp2 1.67.1 https://github.com/nghttp2/nghttp2/releases/download/v1.67.1/nghttp2-1.67.1.tar.xz"
+  "curl 8.16.0 https://curl.se/download/curl-8.16.0.tar.xz"
 )
+BIN=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
 
 ANDROID_ARGS=(-G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA"
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake"
@@ -38,8 +44,14 @@ fetch() {  # name version url -> unpacked source directory on stdout
   local name=$1 version=$2 url=$3 file sum want dir
   file=$SRC/$name-$version.${url##*.}
   [[ $url == *.tar.gz ]] && file=$SRC/$name-$version.tar.gz
+  [[ $url == *.zip ]] && file=$SRC/$name-$version.zip
   [[ $url == *.tar.xz ]] && file=$SRC/$name-$version.tar.xz
-  [[ -f $file ]] || curl -fsSL --retry 3 -o "$file" "$url"
+  # the network here refuses connections now and then: retry those too
+  local try=0
+  until [[ -f $file ]] || { curl -fsSL --retry 3 --retry-connrefused -o "$file.part" "$url" && mv "$file.part" "$file"; }; do
+    (( ++try < 30 )) || { echo "deps: cannot download $url" >&2; exit 1; }
+    sleep 3
+  done
   sum=$(shasum -a 256 "$file" | cut -d' ' -f1)
   want=$(awk -v n="$name" -v v="$version" '$1 == n && $2 == v { print $3 }' "$LOCK")
   if [[ -z $want ]]; then
@@ -51,8 +63,13 @@ fetch() {  # name version url -> unpacked source directory on stdout
   fi
   dir=$SRC/$name-$version
   if [[ ! -d $dir ]]; then
+    rm -rf "$dir.part"
     mkdir -p "$dir.part"
-    tar -xf "$file" -C "$dir.part" --strip-components 1
+    if [[ $file == *.zip ]]; then  # bsdtar fails on this zip's entries; unzip, then lift the one folder
+      unzip -q "$file" -d "$dir.part" && mv "$dir.part"/*/* "$dir.part"/
+    else
+      tar -xf "$file" -C "$dir.part" --strip-components 1
+    fi
     mv "$dir.part" "$dir"
   fi
   echo "$dir"
@@ -78,6 +95,24 @@ for spec in "${LIBS[@]}"; do
               -DWITH_TURBOJPEG=ON -DWITH_JAVA=OFF ;;
     freetype) build freetype "$dir" -DFT_DISABLE_BZIP2=ON -DFT_DISABLE_BROTLI=ON \
               -DFT_DISABLE_HARFBUZZ=ON -DFT_REQUIRE_PNG=OFF -DFT_DISABLE_PNG=ON -DFT_REQUIRE_ZLIB=ON ;;
+    sqlite)  # the amalgamation: one C file
+      "$BIN/armv7a-linux-androideabi17-clang" -O2 -DNDEBUG -fPIC -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+        -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 -DSQLITE_ENABLE_FTS5 -c "$dir/sqlite3.c" -o "$TP/sqlite3.o"
+      "$BIN/llvm-ar" rcs "$OUT/lib/libsqlite3.a" "$TP/sqlite3.o"
+      cp "$dir/sqlite3.h" "$OUT/include/"
+      echo "deps: sqlite built" ;;
+    yyjson) build yyjson "$dir" -DYYJSON_BUILD_TESTS=OFF ;;
+    openssl)  # its own Configure; android-arm at API 17, static
+      (cd "$dir" && export ANDROID_NDK_ROOT="$NDK" PATH="$BIN:$PATH" &&
+        ./Configure android-arm -D__ANDROID_API__=17 no-shared no-tests no-docs no-apps no-engine no-module \
+          --prefix="$OUT" --libdir=lib -O2 >/dev/null && make -j8 build_libs >/dev/null 2>&1 && make install_dev >/dev/null)
+      echo "deps: openssl built" ;;
+    nghttp2) build nghttp2 "$dir" -DENABLE_LIB_ONLY=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DENABLE_DOC=OFF ;;
+    curl) build curl "$dir" -DBUILD_CURL_EXE=OFF -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF -DENABLE_CURL_MANUAL=OFF \
+            -DCURL_USE_OPENSSL=ON -DOPENSSL_ROOT_DIR="$OUT" -DOPENSSL_USE_STATIC_LIBS=ON -DUSE_NGHTTP2=ON \
+            -DNGHTTP2_INCLUDE_DIR="$OUT/include" -DNGHTTP2_LIBRARY="$OUT/lib/libnghttp2.a" -DCURL_USE_LIBPSL=OFF \
+            -DCURL_USE_LIBSSH2=OFF -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DUSE_LIBIDN2=OFF -DCURL_DISABLE_LDAP=ON \
+            -DENABLE_UNIX_SOCKETS=ON -DBUILD_TESTING=OFF -DCURL_CA_BUNDLE=none -DCURL_CA_PATH=none ;;
     harfbuzz) build harfbuzz "$dir" -DHB_HAVE_FREETYPE=ON -DHB_BUILD_SUBSET=OFF -DHB_BUILD_UTILS=OFF \
               -DFREETYPE_INCLUDE_DIRS="$OUT/include/freetype2" -DFREETYPE_LIBRARY="$OUT/lib/libfreetype.a" ;;
   esac
