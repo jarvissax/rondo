@@ -8,10 +8,15 @@
 //
 //   1. power on      MSG 0x64, answered by 0x91 (MSG_ID_BT_POWERON_CNF, result at +0x20)
 //   2. own address   MSG 0x6f, answered by 0x9d (MSG_ID_BT_BM_READ_LOCAL_ADDR_CNF, address at +0x24)
-//   3. discovery     MSG 0x67, then results as events: address at +0x20, RSSI +0x44, class +0x48,
-//                    name length +0x50 and name +0x51 (MSG_ID_BT_BM_DISCOVERY_RESULT_IND)
+//   3. discovery     MSG 0x67, then results as 0x93 (MSG_ID_BT_BM_DISCOVERY_RESULT_IND): address at
+//                    +0x20, RSSI +0x44, class +0x48, name length +0x50 and name +0x51
+//   4. pairing (with a name): discovery until that device shows up, cancel (0x68, answered by 0x96),
+//      bond (0x7e, address at +0x20), then answer what the device asks: a PIN request (0xa3) with
+//      0000 (0x75: address, length +0x28, PIN +0x29) or an SSP confirmation (0xa4, its number at
+//      +0x28) with accept (0x76: address, accept +0x28), as today's Rondo does; the result arrives as
+//      0xab (MSG_ID_BT_BM_BONDING_CNF, result +0x20, 0 = paired)
 //
-//   s3 [seconds of discovery]      default 15
+//   s3 [seconds of discovery] [name to pair with]      default 15
 
 #include <errno.h>
 #include <poll.h>
@@ -19,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
@@ -83,10 +89,56 @@ bool wait_ilm(uint32_t id, uint8_t* m, int ms) {
   return false;
 }
 
+int pair(const uint8_t* target, const char* name, uint8_t* m) {
+  memset(m, 0, kIlm);
+  send_ilm(0x68, m, 0);  // stop discovering first
+  wait_ilm(0x96, m, 5000);
+  int64_t t0 = now_ms();
+  memset(m, 0, kIlm);
+  memcpy(m + 0x20, target, 8);
+  if (!send_ilm(0x7e, m, 0x88)) return 1;
+  printf("s3: bonding with %s:\n", name);
+  int64_t giveUp = now_ms() + 40000;
+  static uint8_t r[kIlm];
+  while (now_ms() < giveUp) {
+    pollfd p = {g_sock, POLLIN, 0};
+    if (poll(&p, 1, 500) <= 0) continue;
+    ssize_t n = recv(g_sock, m, kIlm, 0);
+    if (n < 8) continue;
+    uint32_t id = u32(m, 4);
+    long long at = (long long)(now_ms() - t0);
+    if (id == 0xa3) {  // PIN request: 0000
+      printf("s3:   +%5lld ms  PIN requested: answering 0000\n", at);
+      memset(r, 0, kIlm);
+      memcpy(r + 0x20, target, 8);
+      r[0x28] = 4;
+      memcpy(r + 0x29, "0000", 4);
+      send_ilm(0x75, r, 0x20);
+    } else if (id == 0xa4) {  // SSP: confirm the number
+      char number[7] = {0};
+      memcpy(number, m + 0x28, 6);
+      printf("s3:   +%5lld ms  confirmation requested (number %s, display %u): accepting\n", at, number, m[0x2e]);
+      memset(r, 0, kIlm);
+      memcpy(r + 0x20, target, 8);
+      r[0x28] = 1;
+      send_ilm(0x76, r, 0x10);
+    } else if (id == 0xab) {
+      printf("s3:   +%5lld ms  bonding result %u (%s)\n", at, m[0x20], m[0x20] == 0 ? "paired" : "failed");
+      return m[0x20] == 0 ? 0 : 1;
+    } else {
+      printf("s3:   +%5lld ms  event 0x%x, %zd bytes, first byte %u\n", at, id, n, m[0x20]);
+    }
+  }
+  printf("s3: no bonding result within 40 s\n");
+  return 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   int seconds = argc > 1 ? atoi(argv[1]) : 15;
+  const char* pairWith = argc > 2 ? argv[2] : nullptr;
+  setvbuf(stdout, nullptr, _IONBF, 0);
   g_sock = socket(AF_UNIX, SOCK_DGRAM, 0);
   // the abstract name "bt.ext.adp", as socket_local_server("bt.ext.adp", ABSTRACT, SOCK_DGRAM) binds it
   sockaddr_un me = {};
@@ -117,6 +169,12 @@ int main(int argc, char** argv) {
     printf("s3: no answer to the address request\n");
   }
 
+  // a discovery still running (an inquiry lasts about a minute) makes a new one fail at once (0x95,
+  // result 1), so cancel first
+  memset(m, 0, kIlm);
+  send_ilm(0x68, m, 0);
+  wait_ilm(0x96, m, 3000);
+
   // discovery, with the fields btmtk_gap_discovery sets
   memset(m, 0, kIlm);
   uint32_t all = 0xffffffff, type = 0;
@@ -128,28 +186,38 @@ int main(int argc, char** argv) {
   if (!send_ilm(0x67, m, 0x18)) return 1;
   printf("s3: discovery for %d s:\n", seconds);
   std::set<uint64_t> found;
+  uint8_t target[8] = {0};
+  bool haveTarget = false;
   int64_t until = now_ms() + int64_t(seconds) * 1000;
-  while (now_ms() < until) {
+  while (now_ms() < until && !haveTarget) {
     pollfd p = {g_sock, POLLIN, 0};
     if (poll(&p, 1, 500) <= 0) continue;
     ssize_t n = recv(g_sock, m, kIlm, 0);
     if (n < 8) continue;
     uint32_t id = u32(m, 4);
     uint8_t nameLen = n > 0x51 ? m[0x50] : 0;
-    // a discovery result: long enough, and a sane name length (or none)
-    if (n >= 0x51 && nameLen < 60) {
+    if (id == 0x93 && nameLen < 60) {
       uint64_t key = (uint64_t(u16(m, 0x26)) << 32) | (uint64_t(m[0x24]) << 24) | (u32(m, 0x20) & 0xffffff);
       if (found.insert(key).second || nameLen) {
         char a[18], nm[64] = {0};
         addr_string(m + 0x20, a);
         memcpy(nm, m + 0x51, nameLen);
-        printf("s3:   +%5lld ms  event 0x%x  %s  rssi %d  class 0x%06x  %s\n", (long long)(now_ms() - t1), id, a,
-               int8_t(m[0x44]), u32(m, 0x48) & 0xffffff, nameLen ? nm : "(no name yet)");
+        printf("s3:   +%5lld ms  %s  rssi %d  class 0x%06x  %s\n", (long long)(now_ms() - t1), a, int8_t(m[0x44]),
+               u32(m, 0x48) & 0xffffff, nameLen ? nm : "(no name yet)");
+        if (pairWith && nameLen && !strcasecmp(nm, pairWith)) {
+          memcpy(target, m + 0x20, 8);
+          haveTarget = true;
+        }
       }
     } else if (g_seen.insert(id).second) {
       printf("s3:   +%5lld ms  event 0x%x, %zd bytes, result %u\n", (long long)(now_ms() - t1), id, n, m[0x20]);
     }
   }
   printf("s3: %zu devices found\n", found.size());
-  return 0;
+  if (!pairWith) return 0;
+  if (!haveTarget) {
+    printf("s3: \"%s\" not found\n", pairWith);
+    return 1;
+  }
+  return pair(target, pairWith, m);
 }
