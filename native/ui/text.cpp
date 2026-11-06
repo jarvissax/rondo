@@ -182,8 +182,12 @@ bool Text::rasterize(Slot& s) {
   if (ok && sz.bold) {
     if (f->glyph->format == FT_GLYPH_FORMAT_OUTLINE) {
       static float factor = getenv("RONDO_BOLD") ? float(atof(getenv("RONDO_BOLD"))) : 0.07f;  // matched to 1.0.x on the Y1 (N1 log)
+      static float yfactor = getenv("RONDO_BOLD_Y") ? float(atof(getenv("RONDO_BOLD_Y"))) : factor;
       FT_Pos w = FT_Pos(lroundf(sz.px * factor * 64));  // grows by w/2 on each side, as a stroke of w does
-      FT_Outline_EmboldenXY(&f->glyph->outline, w, w);
+      FT_Outline_EmboldenXY(&f->glyph->outline, w, FT_Pos(lroundf(sz.px * yfactor * 64)));
+      // 1.0.x's stroked bold sits ~0.6 px lower than FreeType's emboldening (measured, N1 log)
+      static int dy = getenv("RONDO_BOLD_DY") ? atoi(getenv("RONDO_BOLD_DY")) : 40;  // 26.6, down
+      if (dy) FT_Outline_Translate(&f->glyph->outline, 0, -dy);
     }
     ok = FT_Render_Glyph(f->glyph, FT_RENDER_MODE_LIGHT) == 0;
   }
@@ -301,6 +305,15 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
         const char* cp = s.data() + info[i].cluster;
         float a = lookup(table, decodeUtf8(cp, end));
         if (a >= 0) base = int32_t(lroundf(a)) << 6;
+      }
+      if (table && kern && !kerned_.empty()) {  // Android kerns only some of the font's pairs
+        const char* a = s.data() + info[i].cluster;
+        uint32_t c1 = decodeUtf8(a, end), c2 = 0;
+        if (i + 1 < n) {
+          const char* b = s.data() + info[i + 1].cluster;
+          c2 = decodeUtf8(b, end);
+        }
+        if (c1 > 0xffff || c2 > 0xffff || !kerned_.count(c1 << 16 | c2)) kern = 0;
       }
       int32_t k = kern >= 0 ? ((kern + 32) >> 6) << 6 : -(((-kern + 32) >> 6) << 6);
       pen += base + k;
@@ -457,6 +470,26 @@ float Text::lookup(const float* row, uint32_t cp) const {
     base += r.second - r.first + 1;
   }
   return -1;
+}
+
+}  // namespace rondo::ui
+
+namespace rondo::ui {
+
+bool Text::loadKerning(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) return false;
+  uint8_t h[8];
+  bool ok = fread(h, 1, 8, f) == 8 && !memcmp(h, "RKRN", 4);
+  uint32_t n = ok ? uint32_t(h[4]) << 24 | uint32_t(h[5]) << 16 | uint32_t(h[6]) << 8 | h[7] : 0;
+  for (uint32_t i = 0; i < n; i++) {
+    uint8_t p[4];
+    if (fread(p, 1, 4, f) != 4) break;
+    kerned_.insert(uint32_t(p[0] << 8 | p[1]) << 16 | uint32_t(p[2] << 8 | p[3]));
+  }
+  fclose(f);
+  runs_.clear();
+  return ok;
 }
 
 }  // namespace rondo::ui

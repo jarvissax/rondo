@@ -21,6 +21,41 @@ public class Advances {
     Typeface tf = Typeface.createFromFile(args[0]);
     Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     p.setTypeface(tf);
+    if (args[1].equals("--pairs")) {  // <font> --pairs <out.bin>: every pair of common characters Android kerns
+      p.setTextSize(100f);
+      java.util.ArrayList<Integer> cps = new java.util.ArrayList<Integer>();
+      for (int cp = 0x21; cp <= 0x7e; cp++) cps.add(cp);
+      for (int cp = 0xa0; cp <= 0x17f; cp++) cps.add(cp);
+      cps.add(0x2018); cps.add(0x2019); cps.add(0x201c); cps.add(0x201d); cps.add(0x2026);
+      float[] single = new float[cps.size()];
+      for (int i = 0; i < cps.size(); i++) single[i] = p.measureText(new String(Character.toChars(cps.get(i))));
+      DataOutputStream out = new DataOutputStream(new FileOutputStream(args[2]));
+      out.writeBytes("RKRN");
+      int count = 0;
+      java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+      DataOutputStream b = new DataOutputStream(body);
+      for (int i = 0; i < cps.size(); i++)
+        for (int j = 0; j < cps.size(); j++) {
+          String s = new String(Character.toChars(cps.get(i))) + new String(Character.toChars(cps.get(j)));
+          if (Math.abs(p.measureText(s) - single[i] - single[j]) >= 0.5f) { b.writeShort(cps.get(i)); b.writeShort(cps.get(j)); count++; }
+        }
+      out.writeInt(count);
+      out.write(body.toByteArray());
+      out.close();
+      System.out.println(count + " kerned pairs");
+      return;
+    }
+    if (args[1].equals("--measure")) {  // <font> --measure <px> <strings...>: widths and per-glyph advances
+      p.setTextSize(Float.parseFloat(args[2]));
+      for (int i = 3; i < args.length; i++) {
+        float[] w = new float[args[i].length()];
+        p.getTextWidths(args[i], w);
+        StringBuilder sb = new StringBuilder(args[i] + " = " + p.measureText(args[i]) + ":");
+        for (float x : w) sb.append(' ').append(x);
+        System.out.println(sb);
+      }
+      return;
+    }
     int n = args.length - 2;
     DataOutputStream out = new DataOutputStream(new FileOutputStream(args[1]));
     out.writeBytes("RADV");

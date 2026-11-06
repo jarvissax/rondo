@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "gfx.h"
@@ -65,6 +66,8 @@ class Text {
   // The advance table measured from Android 4.2 on the Y1 (tools/parity/advances). Without it, advances
   // are HarfBuzz's rounded to whole pixels.
   bool loadAdvances(const char* path);
+  // The pairs Android 4.2 kerns (measured the same way): only these get HarfBuzz's kerning, rounded.
+  bool loadKerning(const char* path);
   int glyphsRasterizedLastFrame() const { return rasterizedFrame_; }
   void frameDone() { rasterizedFrame_ = 0; }
 
@@ -136,6 +139,7 @@ class Text {
     std::vector<float> adv;  // sizes x per
   } advances_;
   const float* advancesFor(float px) const;
+  std::unordered_set<uint32_t> kerned_;  // cp1 << 16 | cp2
   float lookup(const float* row, uint32_t cp) const;
 };
 

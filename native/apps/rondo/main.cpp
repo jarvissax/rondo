@@ -579,6 +579,7 @@ int main(int argc, char** argv) {
   Text text;
   if (!text.init(fonts, access(regular, R_OK) == 0 ? regular : nullptr)) return 1;
   if (!text.loadAdvances(advances)) fprintf(stderr, "rondo: no advance table at %s: text widths will differ from 1.0.x\n", advances);
+  text.loadKerning("/data/local/tmp/rondo/kerning.bin");
   Icons icons;
   icons.init();
   Covers covers(loader);
