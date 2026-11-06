@@ -30,6 +30,8 @@ class Covers {
   bool pump(int64_t now, int max);
   // Makes textures of this size ahead of need (creating one in a frame costs the driver an allocation).
   void reserve(int w, int h, int n);
+  // Tops the reserved sizes back up, one texture a call (while idle): true while some are short.
+  bool topUp();
   size_t bytes() const { return bytes_; }
   int uploadedLast() const { return uploadedLast_; }
 
@@ -57,6 +59,7 @@ class Covers {
   ImageLoader& loader_;
   std::unordered_map<uint64_t, Entry> map_;
   std::unordered_map<uint32_t, std::vector<Texture>> pool_;
+  std::unordered_map<uint32_t, int> reserved_;  // the size's spare count to keep
   std::vector<Ask> prefetch_;
   size_t sent_ = 0;
   uint32_t clock_ = 0;

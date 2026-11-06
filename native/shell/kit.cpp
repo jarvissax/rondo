@@ -362,6 +362,10 @@ std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool b
   while (at < s.size() && int(lines.size()) < maxLines) {
     while (at < s.size() && s[at] == ' ') at++;
     if (at >= s.size()) break;
+    if (width(at, s.size()) <= maxW) {  // the rest fits: most lines do
+      lines.push_back({s.substr(at), false});
+      break;
+    }
     if (int(lines.size()) == maxLines - 1) {  // the last line takes the rest, ellipsized
       lines.push_back({s.substr(at), true});
       break;

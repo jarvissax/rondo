@@ -47,6 +47,7 @@ Config g_config;
 Library g_library;
 PlayerHost g_player;
 App* g_app = nullptr;
+bool g_traceSlow = false;
 }  // namespace rondo::shell
 
 namespace {
@@ -120,6 +121,7 @@ int main(int argc, char** argv) {
   if (!loader.start(2, thumbs)) return 1;
   if (!g_player.start()) return 1;  // rondo-player, also before any thread
   int64_t t0 = now_ns();
+  g_traceSlow = getenv("RONDO_SLOW") != nullptr;
   g_config = loadConfig(configPath);
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
@@ -143,6 +145,9 @@ int main(int argc, char** argv) {
   icons.init(text);
   Covers covers(loader);
   covers.reserve(int(floorf(26 * pal.scale + 0.5f)), int(floorf(26 * pal.scale + 0.5f)), 96);
+  // Now Playing's artwork, its backdrop and the lyrics' thumbnail; the main menu's pane
+  for (float u : {140.f, 22.f, 98.f}) covers.reserve(int(floorf(u * pal.scale + 0.5f)), int(floorf(u * pal.scale + 0.5f)), 3);
+  covers.reserve(6, 6, 3);
   {  // the list thumbnails, decoded once into the cache while nothing moves
     int t = int(floorf(26 * pal.scale + 0.5f));
     for (const Track& tr : g_library.tracks()) covers.prefetch(tr.path, t, t, 0);
@@ -168,12 +173,17 @@ int main(int argc, char** argv) {
     for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, sp * pal.scale));
   for (int px : {int(floorf(15 * pal.scale + 0.5f)), int(floorf(12 * pal.scale + 0.5f))})  // the keyboard's labels
     for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, float(px)));
+  // Now Playing: the title, the artist; the lyrics' sung line
+  for (float sp : {17.f, 17.5f}) warmFonts.push_back(text.font(Weight::Bold, sp * pal.scale));
+  warmFonts.push_back(text.font(Weight::Regular, 13 * pal.scale));
+  std::vector<int> warmDigits = {text.font(Weight::Bold, 26 * pal.scale)};  // the scrub bubble's time
   static const char kWarmChars[] =
       " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
       "ÀÁÂÄÇÈÉÊÍÑÓÖÚÜ"
       "àáâãäåçèéêëíîïñóôöøúûü"
       "ĞğİıŞşƏə·–—‘’“”•…";
   bool warmed = false;
+  int warmStage = 0;
   size_t warmIcon = 0;
   auto warmIcons = [&] {  // every icon at the sizes the shell draws it, a few per idle slice
     auto d = [&](float v) { return int(floorf(v * pal.scale + 0.5f)); };
@@ -191,6 +201,13 @@ int main(int argc, char** argv) {
       list.push_back({Icon::BatteryFrame, d(24), d(14)});
       list.push_back({Icon::Play, d(12), d(12)});
       list.push_back({Icon::Search, d(11), d(11)});
+      // Now Playing
+      list.push_back({Icon::Note, d(44), d(44)});
+      for (Icon k : {Icon::Shuffle, Icon::Repeat}) list.push_back({k, d(15), d(13)});
+      for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(9), d(9)});
+      list.push_back({Icon::Wifi, d(11), d(11)});
+      list.push_back({Icon::BatteryFrame, d(18), d(11)});
+      list.push_back({Icon::Volume, d(22), d(22)});
       for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(19), d(19)}), list.push_back({k, d(70), d(70)});
       for (Icon k : {Icon::VideoLogoButton, Icon::VideoLogoPlay}) list.push_back({k, d(19), d(14)}), list.push_back({k, d(80), d(56)});
     }
@@ -202,12 +219,19 @@ int main(int argc, char** argv) {
     if (!moving && !g_shot) {
       pollfd p[2] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}};
       if (!warmed) {
-        warmed = warmIcons() && text.warm(warmFonts, kWarmChars, 3 * kMs);
+        // the icons, the fonts' characters, the bubble's digits, a slice at a time
+        if (warmStage == 0 && warmIcons()) warmStage = 1, text.resetWarm();
+        if (warmStage == 1 && text.warm(warmFonts, kWarmChars, 3 * kMs)) warmStage = 2, text.resetWarm();
+        if (warmStage == 2 && text.warm(warmDigits, "0123456789:", 3 * kMs)) {
+          warmStage = 3;
+          printf("rondo: warmed, the atlas holds %d of 2048 rows\n", text.atlasRows());
+        }
+        warmed = warmStage == 3;
         text.flush();  // to the GPU now, not in a moving frame
         pollfd q[1] = {{input->waitFd(), POLLIN, 0}};
         if (poll(q, 1, 0) == 0) continue;
       }
-      bool prefetching = covers.sendPrefetches();
+      bool prefetching = covers.sendPrefetches() | covers.topUp();
       int64_t deadline = dispatch.nextDeadline();
       int timeout = prefetching ? 50 : 1000;
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
@@ -257,12 +281,17 @@ int main(int argc, char** argv) {
       continue;
     }
     float dt = wasMoving && lastPresent ? std::min(0.1f, float(present - lastPresent) / 1e9f) : float(period) / 1e9f;
+    int64_t a1 = now_ns();
     bool anim = app.step(dt);
+    int64_t a2 = now_ns();
     canvas.begin(pal.shellBg);
     Env env{canvas, text, icons, covers, pal, present};
     status.playing = g_player.state().playing != 0;
     app.draw(env, float(display->width()), float(display->height()), status);
     int64_t b = now_ns();
+    if (g_traceSlow && b - a > 8 * kMs)
+      printf("slow: frame at %.0f ms: input %.1f, step %.1f, draw %.1f ms\n", (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6,
+             (b - a2) / 1e6);
     text.flush();
     bool more = covers.pump(present, 2);
     canvas.end();

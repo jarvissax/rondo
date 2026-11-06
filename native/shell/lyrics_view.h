@@ -6,6 +6,9 @@
 // 1.0.x drew the lines once into bitmaps to spare Android 4.2's renderer; here they are atlas glyphs,
 // drawn every frame of the glide.
 #pragma once
+#include <memory>
+
+#include "../core/clock.h"
 #include "../core/lyrics.h"
 #include "kit.h"
 
@@ -24,6 +27,10 @@ class LyricsView {
   bool scrollable() const { return !timed_ && !lines_.empty(); }
   void scrollBy(int detents);
   void draw(Env& e, Rect r, int64_t posMs, int64_t durMs);
+  // Lines are measured a slice at a time while nothing moves (shaping a whole song takes about 25 ms; until
+  // it is done the page still says it is finding them): true when the last slice finished.
+  bool layoutSome(int64_t budgetNs);
+  bool layingOut() const { return !lines_.empty() && dirty_ && env_ && w_ > 0; }
 
  private:
   static constexpr int64_t kGlide = 450 * 1000000LL;
@@ -33,7 +40,7 @@ class LyricsView {
     std::vector<WrappedLine> small, big;
     float top = 0, slot = 0;
   };
-  void relayout(Env& e, float w, float h);
+  void startLayout(float w, float h);
   float anchor() const { return timed_ ? h_ * 0.40f : h_ * 0.15f; }
   float anchorFor(int i) const { return i < 0 ? -lines_[0].slot / 2 - gap_ * 2 : lines_[i].top + lines_[i].slot / 2; }
   float maxScroll() const { return std::max(0.f, total_ - h_ * 0.35f); }
@@ -48,6 +55,9 @@ class LyricsView {
   int current_ = -1, fading_ = -2;
   float offset_ = 0, slideFrom_ = 0, slideTo_ = 0;
   int64_t animStart_ = 0;
+  size_t laid_ = 0;  // lines measured so far
+  float laidY_ = 0;
+  std::unique_ptr<Env> env_;  // the text engine and palette, from the first draw
 };
 
 }  // namespace rondo::shell

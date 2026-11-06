@@ -100,8 +100,8 @@ bool Text::init(const char* fontDir, const char* regular) {
     if (f >= 0) fallbacks_.push_back(f);
   }
   buffer_ = hb_buffer_create();
-  pixels_.assign(size_t(kAtlas) * kAtlas, 0);
-  atlas_ = createTexture(kAtlas, kAtlas, GL_ALPHA, GL_UNSIGNED_BYTE, pixels_.data(), true);
+  pixels_.assign(size_t(kAtlasW) * kAtlasH, 0);
+  atlas_ = createTexture(kAtlasW, kAtlasH, GL_ALPHA, GL_UNSIGNED_BYTE, pixels_.data(), true);
   return true;
 }
 
@@ -171,7 +171,7 @@ void Text::resetAtlas() {
   std::fill(pixels_.begin(), pixels_.end(), 0);
   shelfX_ = shelfY_ = shelfH_ = 0;
   dirtyY0_ = 0;
-  dirtyY1_ = kAtlas;
+  dirtyY1_ = kAtlasH;
 }
 
 bool Text::rasterize(Slot& s) {
@@ -210,24 +210,24 @@ bool Text::rasterize(Slot& s) {
   }
   // shelf packing, one pixel of empty border around each glyph for the linear filter
   int w = s.w + 2, h = s.h + 2;
-  if (shelfX_ + w > kAtlas) {
+  if (shelfX_ + w > kAtlasW) {
     shelfY_ += shelfH_;
     shelfX_ = shelfH_ = 0;
   }
-  if (shelfY_ + h > kAtlas) {
+  if (shelfY_ + h > kAtlasH) {
     resetAtlas();
     return rasterize(s);
   }
   int x = shelfX_ + 1, y = shelfY_ + 1;
-  for (unsigned r = 0; r < bm.rows; r++) memcpy(&pixels_[size_t(y + r) * kAtlas + x], bm.buffer + r * bm.pitch, bm.width);
+  for (unsigned r = 0; r < bm.rows; r++) memcpy(&pixels_[size_t(y + r) * kAtlasW + x], bm.buffer + r * bm.pitch, bm.width);
   shelfX_ += w;
   shelfH_ = std::max(shelfH_, h);
   dirtyY0_ = std::min(dirtyY0_, y);
   dirtyY1_ = std::max(dirtyY1_, y + int(s.h));
-  s.u0 = float(x) / kAtlas;
-  s.v0 = float(y) / kAtlas;
-  s.u1 = float(x + s.w) / kAtlas;
-  s.v1 = float(y + s.h) / kAtlas;
+  s.u0 = float(x) / kAtlasW;
+  s.v0 = float(y) / kAtlasH;
+  s.u1 = float(x + s.w) / kAtlasW;
+  s.v1 = float(y + s.h) / kAtlasH;
   return true;
 }
 
@@ -235,9 +235,9 @@ void Text::flush() {
   if (dirtyY1_ <= dirtyY0_) return;
   glBindTexture(GL_TEXTURE_2D, atlas_.id);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirtyY0_, kAtlas, dirtyY1_ - dirtyY0_, GL_ALPHA, GL_UNSIGNED_BYTE,
-                  &pixels_[size_t(dirtyY0_) * kAtlas]);
-  dirtyY0_ = kAtlas;
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirtyY0_, kAtlasW, dirtyY1_ - dirtyY0_, GL_ALPHA, GL_UNSIGNED_BYTE,
+                  &pixels_[size_t(dirtyY0_) * kAtlasW]);
+  dirtyY0_ = kAtlasH;
   dirtyY1_ = 0;
 }
 
@@ -500,22 +500,22 @@ namespace rondo::ui {
 Text::Mask Text::addMask(int w, int h, const uint8_t* a8) {
   Mask m;
   int pw = w + 2, ph = h + 2;
-  if (pw > kAtlas || ph > kAtlas) return m;
-  if (shelfX_ + pw > kAtlas) {
+  if (pw > kAtlasW || ph > kAtlasH) return m;
+  if (shelfX_ + pw > kAtlasW) {
     shelfY_ += shelfH_;
     shelfX_ = shelfH_ = 0;
   }
-  if (shelfY_ + ph > kAtlas) {
+  if (shelfY_ + ph > kAtlasH) {
     resetAtlas();  // the callers see the new generation and add their masks again
     return m;
   }
   int x = shelfX_ + 1, y = shelfY_ + 1;
-  for (int r = 0; r < h; r++) memcpy(&pixels_[size_t(y + r) * kAtlas + x], a8 + size_t(r) * w, size_t(w));
+  for (int r = 0; r < h; r++) memcpy(&pixels_[size_t(y + r) * kAtlasW + x], a8 + size_t(r) * w, size_t(w));
   shelfX_ += pw;
   shelfH_ = std::max(shelfH_, ph);
   dirtyY0_ = std::min(dirtyY0_, y);
   dirtyY1_ = std::max(dirtyY1_, y + h);
-  m.u0 = float(x) / kAtlas, m.v0 = float(y) / kAtlas, m.u1 = float(x + w) / kAtlas, m.v1 = float(y + h) / kAtlas;
+  m.u0 = float(x) / kAtlasW, m.v0 = float(y) / kAtlasH, m.u1 = float(x + w) / kAtlasW, m.v1 = float(y + h) / kAtlasH;
   m.ok = true;
   return m;
 }

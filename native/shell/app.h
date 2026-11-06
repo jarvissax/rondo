@@ -19,6 +19,8 @@ namespace rondo::shell {
 extern Config g_config;
 extern Library g_library;
 extern PlayerHost g_player;
+// RONDO_SLOW=1: frames over 8 ms print where their time went (main.cpp, App::draw)
+extern bool g_traceSlow;
 
 class App;
 
@@ -123,7 +125,9 @@ class App {
       float y = s->statusBar() ? bar : 0;
       e.c.pushOffset(dx, y);
       e.c.pushClip({0, 0, W, H - y});
+      int64_t d0 = g_traceSlow ? now_ns() : 0;
       s->draw(e, W, H - y);
+      if (g_traceSlow && now_ns() - d0 > 4 * kMs) printf("slow: screen %s drew in %.1f ms\n", s->title().c_str(), (now_ns() - d0) / 1e6);
       e.c.popClip();
       e.c.popOffset();
       if (!fixedBar && s->statusBar()) {

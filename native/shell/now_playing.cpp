@@ -8,6 +8,9 @@
 #include <math.h>
 #include <string.h>
 
+#include <pthread.h>
+#include <sys/resource.h>
+
 #include <unordered_map>
 
 #include "../core/lyrics.h"
@@ -213,6 +216,56 @@ class Scrubber {
   int64_t duration_ = 0, last_ = 0;
 };
 
+// Reads lyrics off the drawing thread: reaching a FLAC's tags past its cover takes about 40 ms on the card.
+class LyricsLoader {
+ public:
+  void request(const std::string& path) {
+    pthread_mutex_lock(&mu_);
+    want_ = path;
+    if (!started_) {
+      started_ = true;
+      pthread_t t;
+      pthread_create(&t, nullptr, run, this);
+      pthread_detach(t);
+    }
+    pthread_cond_signal(&cv_);
+    pthread_mutex_unlock(&mu_);
+  }
+  // the lyrics read for `path`, once they are
+  bool take(const std::string& path, Lyrics* out) {
+    pthread_mutex_lock(&mu_);
+    bool ok = ready_ && donePath_ == path;
+    if (ok) *out = std::move(done_), ready_ = false;
+    pthread_mutex_unlock(&mu_);
+    return ok;
+  }
+
+ private:
+  static void* run(void* self) {
+    setpriority(PRIO_PROCESS, 0, 10);
+    auto* l = static_cast<LyricsLoader*>(self);
+    pthread_mutex_lock(&l->mu_);
+    for (;;) {
+      while (l->want_.empty()) pthread_cond_wait(&l->cv_, &l->mu_);
+      std::string path = l->want_;
+      l->want_.clear();
+      pthread_mutex_unlock(&l->mu_);
+      Lyrics found = lyricsForFile(path);
+      pthread_mutex_lock(&l->mu_);
+      l->done_ = std::move(found);
+      l->donePath_ = path;
+      l->ready_ = true;
+    }
+    return nullptr;
+  }
+  pthread_mutex_t mu_ = PTHREAD_MUTEX_INITIALIZER;
+  pthread_cond_t cv_ = PTHREAD_COND_INITIALIZER;
+  bool started_ = false, ready_ = false;
+  std::string want_, donePath_;
+  Lyrics done_;
+};
+LyricsLoader g_lyricsLoader;
+
 class NowPlayingScreen : public Screen {
  public:
   // "Open lyrics automatically" (dashboard) applies when Now Playing opens; the page stays for the next visit
@@ -287,11 +340,14 @@ class NowPlayingScreen : public Screen {
     if (lyricsOn()) {
       std::string path = s.index >= 0 ? std::string(s.path) : std::string();
       if (path != lyricsFor_) loadLyrics(path), changed = true;  // the next song
-      if (loadPending_) {
+      Lyrics found;
+      if (loadPending_ && g_lyricsLoader.take(lyricsFor_, &found)) {
         loadPending_ = false;
-        lyrics_.show(lyricsCached(lyricsFor_));
+        remember(lyricsFor_, found);
+        lyrics_.show(found);
         changed = true;
       }
+      if (lyrics_.layoutSome(3 * kMs)) changed = true;
       changed |= lyrics_.update(PlayerHost::positionAt(s, now), s.durationMs, now);
     }
     return changed;
@@ -301,7 +357,8 @@ class NowPlayingScreen : public Screen {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
     if (lyricsOn()) {
-      if (loadPending_) sooner(now_ns());
+      if (loadPending_) sooner(now_ns() + 20 * kMs);  // the loader's answer
+      if (lyrics_.layingOut()) sooner(now_ns());  // the next slice of the layout
       PlayerState s = g_player.state();
       int64_t now = now_ns();
       if (s.playing) sooner(lyrics_.wakeAt(PlayerHost::positionAt(s, now), now));
@@ -461,23 +518,24 @@ class NowPlayingScreen : public Screen {
     }
     if (path == lyricsFor_) return;
     lyricsFor_ = path;
+    for (auto& c : cache())
+      if (c.first == path) {
+        loadPending_ = false;
+        lyrics_.show(c.second);
+        return;
+      }
     lyrics_.showMessage("Finding lyrics\xe2\x80\xa6");
-    loadPending_ = true;  // read on the next idle look, not in the frame that shows the page
+    loadPending_ = true;
+    g_lyricsLoader.request(path);
   }
   // LyricsSource's cache: the last 24 songs
-  static Lyrics lyricsCached(const std::string& path) {
-    static std::vector<std::pair<std::string, Lyrics>> cache;
-    for (size_t i = 0; i < cache.size(); i++)
-      if (cache[i].first == path) {
-        auto hit = cache[i];
-        cache.erase(cache.begin() + long(i));
-        cache.push_back(hit);
-        return hit.second;
-      }
-    Lyrics l = lyricsForFile(path);
-    cache.push_back({path, l});
-    if (cache.size() > 24) cache.erase(cache.begin());
-    return l;
+  static std::vector<std::pair<std::string, Lyrics>>& cache() {
+    static std::vector<std::pair<std::string, Lyrics>> c;
+    return c;
+  }
+  static void remember(const std::string& path, const Lyrics& l) {
+    cache().push_back({path, l});
+    if (cache().size() > 24) cache().erase(cache().begin());
   }
 
   // the lyrics page: a slim header with the song, the lyrics, a thin progress line

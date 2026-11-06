@@ -61,11 +61,23 @@ void LyricsView::show(const Lyrics& l) {
   animStart_ = 0;
   placed_ = false;
   dirty_ = true;
+  laid_ = 0;
+  laidY_ = 0;
 }
 
-void LyricsView::relayout(Env& e, float w, float h) {
+void LyricsView::startLayout(float w, float h) {
   w_ = w, h_ = h;
-  dirty_ = false;
+  dirty_ = true;
+  laid_ = 0;
+  laidY_ = 0;
+  placed_ = false;
+}
+
+bool LyricsView::layoutSome(int64_t budgetNs) {
+  if (!layingOut()) return false;
+  Env& e = *env_;
+  int64_t until = now_ns() + budgetNs;
+  float w = w_;
   gap_ = e.dpf(9);
   side_ = float(e.dp(16));
   // StaticLayout with spacing 1.1: each line is the font's height plus a tenth of it, rounded
@@ -76,8 +88,13 @@ void LyricsView::relayout(Env& e, float w, float h) {
   lineSmall_ = lineOf(15, false);
   lineBig_ = lineOf(17.5f, true);
   spacing_ = float(e.text.lineHeight(e.font(15, false)));
-  float tw = w - 2 * side_, y = 0;
-  for (Line& l : lines_) {
+  float tw = w - 2 * side_, y = laidY_;
+  for (; laid_ < lines_.size(); laid_++) {
+    if (now_ns() > until) {
+      laidY_ = y;
+      return false;
+    }
+    Line& l = lines_[laid_];
     // a pause between verses shows as three dots
     std::string text = l.text.empty() ? (timed_ ? "\xe2\x80\xa2  \xe2\x80\xa2  \xe2\x80\xa2" : " ") : l.text;
     l.small = wrapText(e, text, 15, false, tw, 1000);
@@ -92,6 +109,9 @@ void LyricsView::relayout(Env& e, float w, float h) {
     y += l.slot + gap_;
   }
   total_ = y;
+  dirty_ = false;
+  placed_ = false;
+  return true;
 }
 
 int LyricsView::sungIndex(int64_t pos) const {
@@ -186,19 +206,22 @@ void LyricsView::pass(Env& e, Rect r, int highlight, float alpha, float offset) 
 }
 
 void LyricsView::draw(Env& e, Rect r, int64_t pos, int64_t dur) {
-  if (!message_.empty()) {
+  if (!env_) env_.reset(new Env(e));
+  if (w_ != r.w || h_ != r.h) startLayout(r.w, r.h);
+  if (!message_.empty() || dirty_) {
+    const std::string msg = !message_.empty() ? message_ : std::string("Finding lyrics\xe2\x80\xa6");
     // the message as a StaticLayout: left-aligned at the side, in the middle of the height
     float tw = r.w - 2 * float(e.dp(16));
     int lh = e.text.lineHeight(e.font(15, false));
     float line = float(lh + int(lh * 0.1f + 0.5f));
     std::vector<WrappedLine> rows;
     size_t start = 0;
-    while (start <= message_.size()) {
-      size_t nl = message_.find('\n', start);
-      auto part = wrapText(e, message_.substr(start, nl == std::string::npos ? std::string::npos : nl - start), 15, false, tw, 1000);
+    while (start <= msg.size()) {
+      size_t nl = msg.find('\n', start);
+      auto part = wrapText(e, msg.substr(start, nl == std::string::npos ? std::string::npos : nl - start), 15, false, tw, 1000);
       if (part.empty()) part.push_back({" ", false});
       rows.insert(rows.end(), part.begin(), part.end());
-      start = nl == std::string::npos ? message_.size() + 1 : nl + 1;
+      start = nl == std::string::npos ? msg.size() + 1 : nl + 1;
     }
     float top = r.y + (r.h - rows.size() * line) / 2;
     for (const WrappedLine& w : rows) {
@@ -206,10 +229,6 @@ void LyricsView::draw(Env& e, Rect r, int64_t pos, int64_t dur) {
       top += line;
     }
     return;
-  }
-  if (dirty_ || w_ != r.w || h_ != r.h) {
-    relayout(e, r.w, r.h);
-    placed_ = false;
   }
   if (!placed_) update(pos, dur, e.now, false);
   float offset = offsetAt(e.now);

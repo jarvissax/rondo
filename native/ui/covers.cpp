@@ -58,8 +58,22 @@ Texture Covers::take(int w, int h) {
 }
 
 void Covers::reserve(int w, int h, int n) {
-  auto& p = pool_[uint32_t(w) << 16 | uint32_t(h)];
+  uint32_t k = uint32_t(w) << 16 | uint32_t(h);
+  reserved_[k] = n;
+  auto& p = pool_[k];
   while (int(p.size()) < n) p.push_back(createTexture(w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr, true));
+}
+
+bool Covers::topUp() {
+  // a texture made in a frame costs the driver an allocation the next frame waits for (N5 log)
+  bool short_ = false;
+  for (auto& r : reserved_) {
+    auto& p = pool_[r.first];
+    if (int(p.size()) >= r.second) continue;
+    if (!short_) p.push_back(createTexture(int(r.first >> 16), int(r.first & 0xffff), GL_RGBA, GL_UNSIGNED_BYTE, nullptr, true));
+    if (int(p.size()) < r.second) short_ = true;
+  }
+  return short_;
 }
 
 bool Covers::pump(int64_t now, int max) {

@@ -63,6 +63,8 @@ class Text {
   // Rasterizes the glyphs of `chars` for each font in `fonts`, for at most budgetNs; true when all are
   // done. Run while idle, so a screen's first frame does not pay for its glyphs.
   bool warm(const std::vector<int>& fonts, std::string_view chars, int64_t budgetNs);
+  int atlasRows() const { return shelfY_ + shelfH_; }
+  void resetWarm() { warmFont_ = 0, warmChar_ = 0; }
   // The advance table measured from Android 4.2 on the Y1 (tools/parity/advances). Without it, advances
   // are HarfBuzz's rounded to whole pixels.
   bool loadAdvances(const char* path);
@@ -134,12 +136,12 @@ class Text {
   uint32_t useClock_ = 0;
   hb_buffer_t* buffer_ = nullptr;
 
-  static constexpr int kAtlas = 1024;
+  static constexpr int kAtlasW = 1024, kAtlasH = 2048;  // 2 MB: every warmed size fits with room
   Texture atlas_;
   uint32_t generation_ = 0;
   std::vector<uint8_t> pixels_;  // the atlas, kept on the CPU: new glyphs go up as one update
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
-  int dirtyY0_ = kAtlas, dirtyY1_ = 0;
+  int dirtyY0_ = kAtlasH, dirtyY1_ = 0;
   int rasterizedFrame_ = 0;
   size_t warmFont_ = 0, warmChar_ = 0;
   struct Advances {
