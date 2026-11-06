@@ -13,7 +13,7 @@
 //   5. a quiet 440 Hz tone for 3 s through OpenSL ES (about -26 dBFS, player volume -30 dB)
 //   6. AudioSystem::setDeviceConnectionState(A2DP, unavailable), btmtk_a2dp_close_device
 //
-//   s3a2dp <address AA:BB:CC:DD:EE:FF> [seconds of tone]
+//   s3a2dp <address AA:BB:CC:DD:EE:FF> [seconds of tone] [seconds to log the headset's AVRCP buttons]
 
 #include <errno.h>
 #include <math.h>
@@ -62,11 +62,115 @@ volatile bool g_stop = false;
 volatile int g_state = 0;  // btmtk_a2dp_handle_message: 1 disconnected, 2 connecting, 3 connected, 4 playing
 int64_t g_t0 = 0;
 
+// AVRCP, as libextavrcp_jni.so (MtkBt) and libextavrcp.so do it: replies on the abstract
+// "bt.ext.adp.avrcp", requests from a socket connected to mtkbt, in the same ILM format (payload from
+// +0x20). activate 500 (index, 0, version 14, SDP features 1), answered by 0x1f5; a headset connecting
+// arrives as 0x1fa (channel +0x20) and is accepted with 0x1fb (channel, 1); each button arrives as
+// 0x207 (channel +0x20, sequence +0x21, frame length +0x26, profile +0x28, frame from +0x2a, the
+// AVRCP operation at +0x2b with bit 7 set on release) and is acknowledged with 0x208 ACCEPTED.
+int g_avrcpReply = -1, g_avrcpApi = -1;
+
+void avrcp_send(uint32_t id, uint8_t* m, uint16_t len) {
+  memcpy(m + 4, &id, 4);
+  uint32_t two = 2, zero = 0;
+  memcpy(m + 0x0c, &two, 4);
+  memcpy(m + 0x10, &zero, 4);
+  m[0x14] = 0;
+  uint16_t one = 1;
+  memcpy(m + 0x1c, &one, 2);
+  memcpy(m + 0x1e, &len, 2);
+  send(g_avrcpApi, m, len + 0x1c, 0);
+}
+
+const char* avrcp_key(int op) {
+  switch (op) {
+    case 0x41: return "volume up";
+    case 0x42: return "volume down";
+    case 0x44: return "play";
+    case 0x45: return "stop";
+    case 0x46: return "pause";
+    case 0x4b: return "next";
+    case 0x4c: return "previous";
+    case 0x49: return "fast forward";
+    case 0x48: return "rewind";
+    default: return "?";
+  }
+}
+
+void avrcp_handle(uint8_t* m, ssize_t n) {
+  static uint8_t r[0x81c];
+  uint32_t id;
+  memcpy(&id, m + 4, 4);
+  long long at = (long long)(now_ms() - g_t0);
+  if (id == 0x1f5) {
+    printf("s3a2dp:   +%5lld ms  AVRCP active (result %u)\n", at, m[0x20]);
+  } else if (id == 0x1fa) {
+    printf("s3a2dp:   +%5lld ms  AVRCP connection from the headset: accepting\n", at);
+    memset(r, 0, sizeof(r));
+    r[0x20] = m[0x20];
+    r[0x21] = 1;
+    avrcp_send(0x1fb, r, 8);
+  } else if (id == 0x207) {
+    uint16_t len;
+    memcpy(&len, m + 0x26, 2);
+    if (len == 3) {
+      int op = m[0x2b] & 0x7f;
+      bool released = m[0x2b] & 0x80;
+      printf("s3a2dp:   +%5lld ms  AVRCP button 0x%02x (%s) %s\n", at, op, avrcp_key(op), released ? "released" : "pressed");
+    } else {
+      printf("s3a2dp:   +%5lld ms  AVRCP command frame, %u bytes\n", at, len);
+    }
+    memset(r, 0, sizeof(r));
+    r[0x20] = m[0x20];  // channel
+    r[0x21] = m[0x21];  // sequence
+    r[0x22] = 9;        // ACCEPTED
+    r[0x23] = 9;        // panel subunit
+    r[0x24] = 0;
+    memcpy(r + 0x26, &len, 2);
+    memcpy(r + 0x28, m + 0x28, 2);
+    if (len && len <= 200) memcpy(r + 0x2a, m + 0x2a, len);
+    avrcp_send(0x208, r, 0xd6);
+  } else {
+    printf("s3a2dp:   +%5lld ms  AVRCP message 0x%x (%zd bytes)\n", at, id, n);
+  }
+}
+
+bool avrcp_start() {
+  g_avrcpReply = socket(AF_UNIX, SOCK_DGRAM, 0);
+  sockaddr_un me = {};
+  me.sun_family = AF_UNIX;
+  const char* name = "bt.ext.adp.avrcp";
+  memcpy(me.sun_path + 1, name, strlen(name));
+  if (bind(g_avrcpReply, (sockaddr*)&me, socklen_t(offsetof(sockaddr_un, sun_path) + 1 + strlen(name))) != 0) return false;
+  g_avrcpApi = socket(AF_UNIX, SOCK_DGRAM, 0);
+  sockaddr_un autobind = {};
+  autobind.sun_family = AF_UNIX;
+  bind(g_avrcpApi, (sockaddr*)&autobind, sizeof(sa_family_t));
+  sockaddr_un mtkbt = {};
+  mtkbt.sun_family = AF_UNIX;
+  strcpy(mtkbt.sun_path, "/dev/socket/bt.int.adp");
+  if (connect(g_avrcpApi, (sockaddr*)&mtkbt, sizeof(mtkbt)) != 0) return false;
+  static uint8_t m[0x81c];
+  memset(m, 0, sizeof(m));
+  m[0x20] = 0;   // index
+  m[0x21] = 0;
+  m[0x22] = 14;  // AVRCP 1.4, as MtkBt activates it
+  m[0x23] = 1;   // SDP features
+  avrcp_send(500, m, 8);
+  return true;
+}
+
 void* event_loop(void*) {
   static uint8_t m[0x81c];
   while (!g_stop) {
-    pollfd p = {g_reply, POLLIN, 0};
-    if (poll(&p, 1, 200) <= 0) continue;
+    pollfd p[2] = {{g_reply, POLLIN, 0}, {g_avrcpReply, POLLIN, 0}};
+    if (poll(p, g_avrcpReply >= 0 ? 2 : 1, 200) <= 0) continue;
+    if (g_avrcpReply >= 0 && (p[1].revents & POLLIN)) {
+      ssize_t an = recv(g_avrcpReply, m, sizeof(m), 0);
+      if (an >= 8) avrcp_handle(m, an);
+      continue;
+    }
+    if (!(p[0].revents & POLLIN)) continue;
     ssize_t n = recv(g_reply, m, sizeof(m), 0);
     if (n < 8) continue;
     uint32_t id;
@@ -147,6 +251,7 @@ int main(int argc, char** argv) {
     return 2;
   }
   int seconds = argc > 2 ? atoi(argv[2]) : 3;
+  int buttonSeconds = argc > 3 ? atoi(argv[3]) : 0;
   uint8_t addr[8];
   if (!parse_addr(argv[1], addr)) return 2;
   android::ProcessState::self()->startThreadPool();
@@ -180,6 +285,8 @@ int main(int argc, char** argv) {
   pthread_t loop;
   pthread_create(&loop, nullptr, event_loop, nullptr);
 
+  // AVRCP first, so the headset's AVRCP connection after A2DP is accepted
+  printf("s3a2dp: AVRCP %s\n", avrcp_start() ? "activating" : "sockets failed");
   // 2. activate A2DP, 3. connect
   btmtk_a2dp_send_activate_req(g_reply, api);
   usleep(500000);
@@ -203,7 +310,11 @@ int main(int argc, char** argv) {
   sleep(1);
 
   // 5. a quiet tone
-  tone(seconds);
+  if (seconds > 0) tone(seconds);
+  if (buttonSeconds > 0) {
+    printf("s3a2dp: listening for the headset's buttons for %d s\n", buttonSeconds);
+    sleep(buttonSeconds);
+  }
 
   // 6. undo
   android::AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP,
