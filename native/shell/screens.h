@@ -2,6 +2,7 @@
 #pragma once
 #include <memory>
 
+#include "../core/api.h"
 #include "app.h"
 
 namespace rondo::shell {
@@ -11,6 +12,17 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
 std::unique_ptr<Screen> makeSettings();
+// YouTube Music (music_screen.cpp) and its search
+std::unique_ptr<Screen> makeMusic();
+std::unique_ptr<Screen> makeMusicSearch();
+// streams.cpp: songs the server streams in the player's queue ("/s/<id>/140"), what the screens show
+// about them, and the artwork of any queue entry at a size (a file's own path; a stream's thumbnail)
+std::string streamPath(const Item& it);
+bool isStream(const std::string& path);
+const Item* streamItem(const std::string& path);
+void playStreams(const std::vector<Item>& items, int start);
+std::string largeThumb(const std::string& thumb, int size);
+std::string artOf(const std::string& path, int size);
 // Wi-Fi (wifi_screens.cpp): its screen, and what Settings says about it (1.0.x's wifiName())
 std::unique_ptr<Screen> makeWifi();
 std::string wifiName();
@@ -55,6 +67,6 @@ std::pair<std::string, std::string> firstAndRest(const std::string& subtitle);
 bool artColor(Env& e, const std::string& path, int sourcePx, Color* out);
 // StatusIcons: Wi-Fi (dimmed offline), the percentage and the battery, ending at `right` in a row
 // rowH tall; returns its left edge.
-float statusIcons(Env& e, float right, int rowH, Color c);
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true);
 
 }  // namespace rondo::shell

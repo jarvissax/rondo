@@ -74,6 +74,10 @@ inline Color whiteA(int a) { return uint32_t(a) << 24 | 0xffffff; }
 
 SongInfo songInfo(const std::string& path) {
   SongInfo s;
+  if (isStream(path)) {
+    if (const Item* it = streamItem(path)) s.title = it->title, s.subtitle = it->subtitle;
+    return s;
+  }
   if (const Track* t = g_library.find(path)) {
     s.title = t->title;
     s.subtitle = t->artist;
@@ -124,19 +128,22 @@ static Color hsvToColor(const float hsv[3]) {
   return rgb(uint32_t(r) << 16 | uint32_t(g) << 8 | uint32_t(b));
 }
 
-float statusIcons(Env& e, float right, int rowH, Color c) {
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi) {
   const Status& st = g_app->status();
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(st.battery * 100 + 0.5f)));
   Label pl = label(e, pct, 10, true);
-  int wifi = e.dp(11), bw = e.dp(18), bh = e.dp(11);
-  int gw = wifi + e.dp(5) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
+  int wifi = showWifi ? e.dp(11) + e.dp(5) : 0, bw = e.dp(18), bh = e.dp(11);
+  int gw = wifi + pl.w + e.dp(3) + bw, gh = std::max({showWifi ? e.dp(11) : 0, pl.h, bh});
   float gx = right - gw, gy = float((rowH - gh) / 2);
-  e.c.pushAlpha(st.online ? 1 : 0.3f);
-  e.icons.draw(e.c, Icon::Wifi, {gx, gy + float((gh - wifi) / 2), float(wifi), float(wifi)}, c);
-  e.c.popAlpha();
-  drawLabel(e, pl, gx + wifi + e.dp(5), gy + float((gh - pl.h) / 2), c);
-  e.icons.battery(e.c, {gx + wifi + e.dp(5) + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
+  if (showWifi) {
+    int s = e.dp(11);
+    e.c.pushAlpha(st.online ? 1 : 0.3f);
+    e.icons.draw(e.c, Icon::Wifi, {gx, gy + float((gh - s) / 2), float(s), float(s)}, c);
+    e.c.popAlpha();
+  }
+  drawLabel(e, pl, gx + wifi, gy + float((gh - pl.h) / 2), c);
+  e.icons.battery(e.c, {gx + wifi + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
   return gx;
 }
 
@@ -394,7 +401,7 @@ class NowPlayingScreen : public Screen {
     if (!path.empty()) {
       // the backdrop: the artwork shrunk to 6 x 6 pixels, stretched over the screen (ArtColor.blurred)
       float a = 0;
-      if (const Texture* t = e.covers.get(path, 6, 6, -art, e.now, &a)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
+      if (const Texture* t = e.covers.get(artOf(path, 400), 6, 6, -art, e.now, &a)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
     }
     e.c.fill({0, 0, w, h}, dim);
     if (lyricsOn()) {
@@ -430,7 +437,7 @@ class NowPlayingScreen : public Screen {
     e.c.shape(ar, e.dpf(6), whiteA(70));
     if (!path.empty()) {
       float a = 0;
-      if (const Texture* t = e.covers.get(path, art, art, 0, e.now, &a)) {
+      if (const Texture* t = e.covers.get(artOf(path, 400), art, art, 0, e.now, &a)) {
         e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(6), withAlpha(white, a));
       }
     }
@@ -451,7 +458,7 @@ class NowPlayingScreen : public Screen {
     drawLabel(e, album, cx, cy, whiteA(160));
     // from the bottom: the modes row, the song up next, "UP NEXT"
     int iconW = e.dp(15), iconH = e.dp(13);
-    std::string source = path.empty() ? "" : upperExt(path) + " \xc2\xb7 Library";
+    std::string source = path.empty() ? "" : isStream(path) ? "Streaming \xc2\xb7 AAC" : upperExt(path) + " \xc2\xb7 Library";
     float srcX = cx + iconW + e.dp(12) + iconW;
     Label src = label(e, source, 10, false, cx + cw - srcX);
     int modesH = std::max(iconH, src.h);
@@ -566,7 +573,7 @@ class NowPlayingScreen : public Screen {
     e.c.shape(ar, e.dpf(3), whiteA(70));
     if (!path.empty()) {
       float a = 0;
-      if (const Texture* t = e.covers.get(path, art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
+      if (const Texture* t = e.covers.get(artOf(path, 0), art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
     }
     e.c.layer(6);
     Label tag = label(e, "LYRICS", 9, true);

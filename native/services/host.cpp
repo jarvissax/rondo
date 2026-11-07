@@ -74,6 +74,66 @@ void CoreHost::wifiForget(int id) {
   send(kWifiForget, &v, 4);
 }
 
+void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token) {
+  std::string b = baseUrl + '\0' + token;
+  send(kApiConfigure, b.data(), uint32_t(b.size()));
+}
+
+uint32_t CoreHost::get(const std::string& path, int cacheMs, Reply done) {
+  uint32_t id = nextId_++;
+  pending_[id] = std::move(done);
+  std::string b(8, '\0');
+  uint32_t ttl = uint32_t(cacheMs);
+  memcpy(&b[0], &id, 4);
+  memcpy(&b[4], &ttl, 4);
+  b += path;
+  send(kApiGet, b.data(), uint32_t(b.size()));
+  return id;
+}
+
+void CoreHost::cancel(uint32_t id) { pending_.erase(id); }
+
+bool CoreHost::pump() {
+  if (sock_ < 0) return false;
+  char buf[16384];
+  for (;;) {
+    ssize_t n = recv(sock_, buf, sizeof(buf), MSG_DONTWAIT);
+    if (n <= 0) break;
+    in_.append(buf, size_t(n));
+  }
+  bool handed = false;
+  while (in_.size() >= 8) {
+    uint32_t len, type;
+    memcpy(&len, in_.data(), 4);
+    if (in_.size() < 4 + size_t(len)) break;
+    memcpy(&type, in_.data() + 4, 4);
+    if (type == kApiReply && len >= 12) {
+      uint32_t id;
+      int32_t status;
+      memcpy(&id, in_.data() + 8, 4);
+      memcpy(&status, in_.data() + 12, 4);
+      auto it = pending_.find(id);
+      if (it != pending_.end()) {
+        Reply done = std::move(it->second);
+        pending_.erase(it);
+        done(status, in_.substr(16, len - 12));
+        handed = true;
+      }
+    }
+    in_.erase(0, 4 + size_t(len));
+  }
+  return handed;
+}
+
+void Requests::get(const std::string& path, int cacheMs, CoreHost::Reply done) {
+  ids_.push_back(coreHost().get(path, cacheMs, std::move(done)));
+}
+
+void Requests::cancelAll() {
+  for (uint32_t id : ids_) coreHost().cancel(id);
+  ids_.clear();
+}
+
 int wifiLevel(int rssi) {
   // WifiManager.calculateSignalLevel(rssi, 4): -100 dBm and under 0, -55 and over 3, linear between
   if (rssi <= -100) return 0;

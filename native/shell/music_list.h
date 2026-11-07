@@ -2,6 +2,7 @@
 // the dark header, the background tinted by the selected artwork, the mini player, and MusicListScreen,
 // which puts them around a MUSIC RowList.
 #pragma once
+#include "../core/api.h"
 #include "app.h"
 #include "screens.h"
 
@@ -27,6 +28,16 @@ class Ambient {
   Color shown_ = 0, from_ = 0;
   Tween fade_;
 };
+
+// Common.kt's music rows: songs play with their siblings as the queue, containers (playlists, albums,
+// artists) open their own screen. `queue` is what plays around a chosen song (everything a paged list
+// has loaded so far).
+std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::vector<Item>()> queue);
+void openMusicItem(const Item& item, const std::vector<Item>& siblings);
+// offlineOr(): what a list says when it couldn't load (pointing at Settings › Wi-Fi without a network)
+std::string offlineOr(const std::string& problem);
+// "HTTP 500 for /music/home", or the connection's failure, as 1.0.x words it
+std::string httpProblem(int status, const std::string& path);
 
 // MiniPlayer: 32 units at the bottom of the music screens while a song plays: a progress line, the
 // artwork, title and artist, the play state.

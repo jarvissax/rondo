@@ -52,6 +52,7 @@ class MainMenuScreen : public Screen {
         if (m.id == "device") r.onSelect = [] { g_app->push(makeDevice()); };
         if (m.id == "nowPlaying") r.onSelect = [] { openNowPlaying(); };
         if (m.id == "settings") r.onSelect = [] { g_app->push(makeSettings()); };
+        if (m.id == "music") r.onSelect = [] { g_app->push(makeMusic()); };
         rows.push_back(std::move(r));
       }
     }
@@ -112,7 +113,7 @@ class MainMenuScreen : public Screen {
     };
     std::string path = s.path;
     Color base = rgb(0x3a3f4a);
-    artColor(e, path, e.dp(98), &base);
+    artColor(e, artOf(path, 300), e.dp(98), &base);
     e.c.layer(0);
     e.c.fillGradient(pane, darker(base, 1.0f), darker(base, 0.45f));
     int padX = e.dp(10), padY = e.dp(8);
@@ -134,7 +135,7 @@ class MainMenuScreen : public Screen {
     e.c.layer(2);
     e.c.shape(ar, e.dpf(6), 0x3cffffff);
     float a = 0;
-    if (const Texture* t = e.covers.get(path, box, box, 0, e.now, &a)) {
+    if (const Texture* t = e.covers.get(artOf(path, 300), box, box, 0, e.now, &a)) {
       e.c.layer(3);
       e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(6), withAlpha(0xffffffff, a));
     }

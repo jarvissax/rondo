@@ -66,6 +66,50 @@ void Ambient::draw(Env& e, Rect r) {
   }
 }
 
+namespace {
+bool isContainer(const std::string& kind) { return kind == "playlist" || kind == "album" || kind == "artist"; }
+}  // namespace
+
+std::string httpProblem(int status, const std::string& path) {
+  return status == 0 ? "couldn't reach the server" : "HTTP " + std::to_string(status) + " for " + path;
+}
+
+std::string offlineOr(const std::string& problem) {
+  if (g_config.server.url.empty()) return "No music server yet.\nConnect one in Settings \xe2\x80\xba Server.";
+  if (!g_app->status().online) return "No Wi-Fi connection.\nConnect in Settings \xe2\x80\xba Wi-Fi, then press center.";
+  return problem + "\nPress center to try again";
+}
+
+void openMusicItem(const Item& item, const std::vector<Item>& siblings) {
+  if (isContainer(item.kind)) return;  // the playlist, album and artist screens come next
+  std::vector<Item> playable;
+  int at = 0;
+  for (const Item& s : siblings)
+    if (!isContainer(s.kind)) {
+      if (s.id == item.id) at = int(playable.size());
+      playable.push_back(s);
+    }
+  playStreams(playable, at);
+  openNowPlaying();
+}
+
+std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::vector<Item>()> queue) {
+  std::vector<Row> rows;
+  for (const Item& it : items) {
+    Row r;
+    r.title = it.title;
+    r.subtitle = it.subtitle;
+    bool container = isContainer(it.kind);
+    r.trailing = container || it.durationSec < 0 ? "" : formatTime(it.durationSec);
+    r.thumb = it.thumb;
+    r.chevron = container;
+    Item item = it;
+    r.onSelect = [item, queue] { openMusicItem(item, queue()); };
+    rows.push_back(std::move(r));
+  }
+  return rows;
+}
+
 bool miniPlayerShown() {
   PlayerState s = g_player.state();
   return s.index >= 0 && s.path[0];  // songs only for now: videos come with N3's video player
@@ -85,7 +129,7 @@ void miniPlayer(Env& e, Rect r) {
   Rect ar{ax, rowY + float((int(rowH) - art) / 2), float(art), float(art)};
   e.c.shape(ar, e.dpf(3), e.p.raised);
   float a = 0;
-  if (const Texture* t = e.covers.get(path, art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
+  if (const Texture* t = e.covers.get(artOf(path, 0), art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
   e.c.layer(7);
   float ix = r.x + r.w - e.dp(12) - icon;
   e.icons.draw(e.c, s.playing ? Icon::Pause : Icon::Play, {ix, rowY + float((int(rowH) - icon) / 2), float(icon), float(icon)}, white);

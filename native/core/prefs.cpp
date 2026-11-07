@@ -24,10 +24,14 @@ void fromOldPrefs(Prefs& p) {
   size_t n = fread(buf, 1, sizeof(buf) - 1, f);
   fclose(f);
   buf[n] = 0;
-  const char* at = strstr(buf, "name=\"video_quality\"");
-  if (!at) return;
-  const char* v = strstr(at, "value=\"");
-  if (v) p.videoQuality = atoi(v + 7);
+  auto value = [&](const char* name) -> const char* {
+    const char* at = strstr(buf, name);
+    const char* v = at ? strstr(at, "value=\"") : nullptr;
+    return v ? v + 7 : nullptr;
+  };
+  if (const char* v = value("name=\"video_quality\"")) p.videoQuality = atoi(v);
+  if (const char* v = value("name=\"account_music\"")) p.accountMusic = strncmp(v, "false", 5) != 0;
+  if (const char* v = value("name=\"account_videos\"")) p.accountVideos = strncmp(v, "false", 5) != 0;
 }
 
 // Android's settings: the system table's screen_brightness, screen_off_timeout, sound_effects_enabled
@@ -73,17 +77,24 @@ Prefs loadPrefs(const std::string& path) {
   p.videoQuality = num("videoQuality", p.videoQuality);
   p.brightness = num("brightness", p.brightness);
   p.screenTimeoutMs = num("screenTimeoutMs", p.screenTimeoutMs);
-  yyjson_val* c = yyjson_obj_get(root, "clickSound");
-  if (yyjson_is_bool(c)) p.clickSound = yyjson_get_bool(c);
+  auto flag = [&](const char* k, bool& out) {
+    yyjson_val* v = yyjson_obj_get(root, k);
+    if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
+  };
+  flag("clickSound", p.clickSound);
+  flag("accountMusic", p.accountMusic);
+  flag("accountVideos", p.accountVideos);
   yyjson_doc_free(doc);
   return p;
 }
 
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[256];
+  char json[320];
   int n = snprintf(json, sizeof(json),
-                   "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s}\n", p.videoQuality,
-                   p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false");
+                   "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
+                   "\"accountVideos\":%s}\n",
+                   p.videoQuality, p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false",
+                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false");
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

@@ -12,6 +12,9 @@ struct Prefs {
   int brightness = 128;           // the backlight, 0-255 (Settings.System.SCREEN_BRIGHTNESS)
   int screenTimeoutMs = 60000;    // Settings.System.SCREEN_OFF_TIMEOUT
   bool clickSound = true;         // Settings.System.SOUND_EFFECTS_ENABLED
+  // which account feeds the server has (GET /healthz "account", Accounts.kt): without one, YouTube Music
+  // has no Library tab and YouTube no Subscriptions or History. Remembered so the tabs don't jump.
+  bool accountMusic = true, accountVideos = true;
 };
 
 // The file, or on the first run what 1.0.x's preferences and Android's settings database hold.

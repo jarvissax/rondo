@@ -121,6 +121,12 @@ class RowList {
   const Row* selectedRow() const { return selected_ >= 0 ? &rows_[selected_] : nullptr; }
   const std::vector<Row>& rows() const { return rows_; }
   std::function<void()> onSelectionChanged;
+  // Up on the first row (true: used, the tabs above take the wheel); 5 rows from the end (the next page)
+  std::function<bool()> onTopReached;
+  std::function<void()> onNearEnd;
+  // false while something else on the screen (a tab bar) has the wheel: no row is highlighted
+  bool active = true;
+  void appendRows(std::vector<Row> more);
   // Long lists: rows hold only what selection needs (header, enabled); this fills in a row's text and
   // artwork when it is drawn, so opening 821 songs costs nothing up front.
   std::function<void(int, Row&)> fill;

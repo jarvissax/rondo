@@ -228,6 +228,7 @@ void RowList::selectIndex(int i) {
   selected_ = i;
   ensureVisible();
   if (old != i && onSelectionChanged) onSelectionChanged();
+  if (onNearEnd && selected_ >= int(rows_.size()) - 5) onNearEnd();
 }
 
 void RowList::move(int dir, int steps) {
@@ -245,8 +246,14 @@ bool RowList::down(int steps) {
   return true;
 }
 
+void RowList::appendRows(std::vector<Row> more) {
+  if (more.empty()) return;
+  for (Row& r : more) rows_.push_back(std::move(r));
+  top_.clear();  // laid out again with the new rows, the scroll kept
+}
+
 bool RowList::up(int steps) {
-  if (selected_ == firstSelectable() || selected_ < 0) return true;
+  if (selected_ == firstSelectable() || selected_ < 0) return onTopReached ? onTopReached() : true;
   move(-1, steps);
   return true;
 }
@@ -281,7 +288,16 @@ void RowList::draw(Env& e, float x, float y) {
     // a TextView of up to 4 lines, centered, 20 units in from each side
     c.layer(3);
     float tw = w_ - 2 * e.dp(20);
-    std::vector<Label> lines = wrap(e, message_, 15, false, tw, 4);
+    // up to 4 lines in all; a "\n" in the message starts a new one
+    std::vector<Label> lines;
+    size_t start = 0;
+    while (start <= message_.size() && lines.size() < 4) {
+      size_t nl = message_.find('\n', start);
+      std::string part = message_.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+      for (Label& l : wrap(e, part.empty() ? " " : part, 15, false, tw, int(4 - lines.size()))) lines.push_back(l);
+      if (nl == std::string::npos) break;
+      start = nl + 1;
+    }
     int th = 0;
     for (auto& l : lines) th += l.h;
     float ty = y + float((int(h_) - th) / 2);
@@ -299,7 +315,7 @@ void RowList::draw(Env& e, float x, float y) {
   }
   float scroll = scroll_.x;
   float H = entryH_;
-  if (selected_ >= 0) {
+  if (selected_ >= 0 && active) {
     c.layer(1);
     c.fillGradient({x, y + bar_.x - scroll, w_, H}, p.accentTop, p.accent);
   }
@@ -321,7 +337,7 @@ void RowList::draw(Env& e, float x, float y) {
       continue;
     }
     // how much of this row the highlight covers: its text turns white as the highlight passes
-    float sel = selected_ >= 0 ? clamp01(1 - fabsf(bar_.x - top_[i]) / H) : 0;
+    float sel = active && selected_ >= 0 ? clamp01(1 - fabsf(bar_.x - top_[i]) / H) : 0;
     c.layer(0);
     c.fill({x + e.dp(8), top + H - 1, w_ - e.dp(8), 1}, p.rowLine);
     int padL = e.dp(8), padR = e.dp(10);
@@ -375,7 +391,7 @@ void RowList::drawMusic(Env& e, float x, float y) {
   Canvas& c = e.c;
   float scroll = scroll_.x, H = entryH_;
   int mx = e.dp(5), my = e.dp(2);
-  if (selected_ >= 0) {
+  if (selected_ >= 0 && active) {
     c.layer(1);
     c.shape({x + mx, y + bar_.x - scroll + my, w_ - 2 * mx, H - 2 * my}, e.dpf(7), p.focus);
   }
@@ -394,7 +410,7 @@ void RowList::drawMusic(Env& e, float x, float y) {
       drawLabel(e, l, x + e.dp(10), top + headerH_ - e.dp(5) - l.h, p.white);
       continue;
     }
-    float sel = selected_ >= 0 ? clamp01(1 - fabsf(bar_.x - top_[i]) / H) : 0;
+    float sel = active && selected_ >= 0 ? clamp01(1 - fabsf(bar_.x - top_[i]) / H) : 0;
     // the card's box and its padding
     float cx = x + mx, cw = w_ - 2 * mx, ctop = top + my;
     int ch = int(H) - 2 * my;

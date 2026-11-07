@@ -7,7 +7,10 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <functional>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace rondo {
 
@@ -54,11 +57,37 @@ class CoreHost {
   void wifiJoin(const std::string& ssid, WifiSecurity security, const std::string& password);
   void wifiForget(int id);
 
+  // The server's API (core/api.h), fetched by rondo-core: the reply comes to `done` on the UI thread
+  // from pump(). cacheMs: answered from rondo-core's memory if fetched that recently.
+  using Reply = std::function<void(int status, const std::string& body)>;
+  void apiConfigure(const std::string& baseUrl, const std::string& token);
+  uint32_t get(const std::string& path, int cacheMs, Reply done);
+  void cancel(uint32_t id);
+  // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.
+  int fd() const { return sock_; }
+  bool pump();
+
  private:
   void send(uint32_t type, const void* payload = nullptr, uint32_t len = 0);
   int sock_ = -1;
   CoreState* shm_ = nullptr;
+  uint32_t nextId_ = 1;
+  std::map<uint32_t, Reply> pending_;
+  std::string in_;  // bytes read and not yet a whole reply
 };
+
+// A screen's requests: dropped (their replies ignored) when it closes.
+class Requests {
+ public:
+  ~Requests() { cancelAll(); }
+  void get(const std::string& path, int cacheMs, CoreHost::Reply done);
+  void cancelAll();
+
+ private:
+  std::vector<uint32_t> ids_;
+};
+// the one CoreHost (the app's g_core)
+CoreHost& coreHost();
 
 // WifiManager.calculateSignalLevel(rssi, 4) and the words 1.0.x shows for it
 int wifiLevel(int rssi);

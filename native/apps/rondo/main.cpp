@@ -77,6 +77,10 @@ App* g_app = nullptr;
 bool g_traceSlow = false;
 }  // namespace rondo::shell
 
+namespace rondo {
+CoreHost& coreHost() { return shell::g_core; }
+}  // namespace rondo
+
 namespace {
 
 volatile sig_atomic_t g_stop = 0, g_shot = 0;
@@ -162,6 +166,7 @@ int main(int argc, char** argv) {
   g_config = loadConfig(configPath);
   g_configPath = configPath, g_prefsPath = prefsPath;
   g_prefs = loadPrefs(prefsPath);
+  g_core.apiConfigure(g_config.server.url, g_config.server.token);
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
   g_library.scan();
@@ -292,7 +297,7 @@ int main(int argc, char** argv) {
   };
   while (!g_stop) {
     if (!moving && !g_shot) {
-      pollfd p[2] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}};
+      pollfd p[3] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0}};
       if (!warmed) {
         // the icons, the fonts' characters, the bubble's digits, a slice at a time
         if (warmStage == 0 && warmIcons()) warmStage = 1, text.resetWarm();
@@ -323,7 +328,8 @@ int main(int argc, char** argv) {
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
-      int r = poll(p, 2, timeout);
+      int r = poll(p, 3, timeout);
+      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents)) continue;  // half a reply
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
         dispatch.tick(now_ns());
@@ -361,6 +367,7 @@ int main(int argc, char** argv) {
         if (!moving) continue;
       }
     }
+    g_core.pump();  // the server's replies, on this thread, before the frame
     int64_t vs = display->waitVsync();
     int64_t present = vs + period;
     app.setNow(present);

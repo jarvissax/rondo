@@ -240,6 +240,12 @@ void Wifi::attached() {
   if (wpa == "COMPLETED") {
     update([&](CoreState& s) { copyName(s.ssid, ssid); });
     if (!field(st, "ip_address").empty()) {
+      // joined with an address before Rondo started (Android, or an earlier run): its DNS again, from
+      // the lease dhcpcd keeps in properties
+      char dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX];
+      property_get("dhcp.wlan0.dns1", dns1, "");
+      property_get("dhcp.wlan0.dns2", dns2, "");
+      if (dns1[0]) setDns(dns1, dns2);
       update([&](CoreState& s) {
         s.wifiState = 4;
         s.ip = inet_addr(field(st, "ip_address").c_str());
@@ -363,13 +369,24 @@ void Wifi::configure(const char* ip, const char* gw, uint32_t prefix, const char
   ifc_init();
   ifc_configure(kIface, inet_addr(ip), prefix, inet_addr(gw), inet_addr(dns1), dns2[0] ? inet_addr(dns2) : 0);
   ifc_close();
-  netd(std::string("resolver setifdns ") + kIface + " \"\" " + dns1 + " " + dns2);
-  netd(std::string("resolver setdefaultif ") + kIface);
+  setDns(dns1, dns2);
   uint32_t addr = inet_addr(ip);
   update([&](CoreState& s) {
     s.wifiState = 4;
     s.ip = addr;
   });
+}
+
+// DNS as Android's ConnectivityService set it: netd's per-interface servers, and the global net.dns
+// properties with net.dnschange bumped, which 4.2's resolver reads (without them nothing resolves)
+void Wifi::setDns(const char* dns1, const char* dns2) {
+  netd(std::string("resolver setifdns ") + kIface + " \"\" " + dns1 + " " + dns2);
+  netd(std::string("resolver setdefaultif ") + kIface);
+  property_set("net.dns1", dns1);
+  property_set("net.dns2", dns2);
+  char n[PROPERTY_VALUE_MAX];
+  property_get("net.dnschange", n, "0");
+  property_set("net.dnschange", std::to_string(atoi(n) + 1).c_str());
 }
 
 void Wifi::lostAddress() {

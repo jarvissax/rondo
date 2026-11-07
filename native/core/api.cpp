@@ -142,24 +142,28 @@ int Api::cached(const std::string& path, std::string& body, int64_t ttlMs) {
   return status;
 }
 
+bool parseHealth(const std::string& json, Health& out) {
+  yyjson_doc* doc = yyjson_read(json.data(), json.size(), 0);
+  if (!doc) return false;
+  yyjson_val* r = yyjson_doc_get_root(doc);
+  out.ok = yyjson_get_bool(yyjson_obj_get(r, "ok"));
+  out.cookiesOk = yyjson_get_bool(yyjson_obj_get(r, "cookiesOk"));
+  out.ytdlp = str(r, "ytdlp");
+  yyjson_val* a = yyjson_obj_get(r, "account");
+  if (yyjson_is_obj(a)) {
+    yyjson_val* m = yyjson_obj_get(a, "music");
+    yyjson_val* v = yyjson_obj_get(a, "videos");
+    if (yyjson_is_bool(m)) out.music = yyjson_get_bool(m);
+    if (yyjson_is_bool(v)) out.videos = yyjson_get_bool(v);
+  }
+  yyjson_doc_free(doc);
+  return true;
+}
+
 int Api::health(Health& out) {
   std::string body;
   int status = get("/healthz", body);
-  yyjson_doc* doc = status == 200 ? yyjson_read(body.data(), body.size(), 0) : nullptr;
-  if (doc) {
-    yyjson_val* r = yyjson_doc_get_root(doc);
-    out.ok = yyjson_get_bool(yyjson_obj_get(r, "ok"));
-    out.cookiesOk = yyjson_get_bool(yyjson_obj_get(r, "cookiesOk"));
-    out.ytdlp = str(r, "ytdlp");
-    yyjson_val* a = yyjson_obj_get(r, "account");
-    if (yyjson_is_obj(a)) {
-      yyjson_val* m = yyjson_obj_get(a, "music");
-      yyjson_val* v = yyjson_obj_get(a, "videos");
-      if (yyjson_is_bool(m)) out.music = yyjson_get_bool(m);
-      if (yyjson_is_bool(v)) out.videos = yyjson_get_bool(v);
-    }
-    yyjson_doc_free(doc);
-  }
+  if (status == 200) parseHealth(body, out);
   return status;
 }
 
