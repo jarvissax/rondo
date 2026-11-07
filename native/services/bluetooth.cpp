@@ -377,6 +377,7 @@ void Bluetooth::sendAvrcp(uint32_t id, uint8_t* m, uint16_t payload) {
 void Bluetooth::onGap(uint8_t* m, ssize_t n) {
   static uint8_t r[kIlm];
   uint32_t id = u32(m, 4);
+  if (getenv("RONDO_BT_LOG")) fprintf(stderr, "bt: gap 0x%x (%zd bytes) +0x20=%u\n", id, n, m[0x20]);
   switch (id) {
     case 0x91:  // powered on: the profiles, the paired devices, the headphones last used
       if (m[0x20]) {
@@ -469,6 +470,7 @@ void Bluetooth::onGap(uint8_t* m, ssize_t n) {
 
 void Bluetooth::onA2dp(uint8_t* m, ssize_t n) {
   int s = btmtk_a2dp_handle_message(m);  // 1 disconnected, 2 connecting, 3 connected, 4 playing
+  if (getenv("RONDO_BT_LOG")) fprintf(stderr, "bt: a2dp 0x%x (%zd bytes) -> %d\n", u32(m, 4), n, s);
   if (s >= 1 && s <= 4) a2dpState(s);
 }
 
@@ -505,6 +507,7 @@ void Bluetooth::a2dpState(int state) {
 // the A2DP output would take mediaserver's default, which can be loud).
 void Bluetooth::route(bool on, const std::string& address) {
   using android::AudioSystem;
+  if (getenv("RONDO_BT_LOG")) fprintf(stderr, "bt: route %s %s\n", on ? "on" : "off", address.c_str());
   if (on) {
     int index = 0;
     AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &index, AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC));
@@ -522,6 +525,7 @@ void Bluetooth::route(bool on, const std::string& address) {
 void Bluetooth::onAvrcp(uint8_t* m, ssize_t n) {
   static uint8_t r[kIlm];
   uint32_t id = u32(m, 4);
+  if (getenv("RONDO_BT_LOG")) fprintf(stderr, "bt: avrcp 0x%x (%zd bytes) op 0x%02x\n", id, n, n > 0x2b ? m[0x2b] : 0);
   if (id == 0x1fa) {
     memset(r, 0, kIlm);
     r[0x20] = m[0x20];  // the channel
