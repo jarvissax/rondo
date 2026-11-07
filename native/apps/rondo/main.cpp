@@ -168,6 +168,8 @@ int main(int argc, char** argv) {
   g_config = loadConfig(configPath);
   g_configPath = configPath, g_prefsPath = prefsPath;
   g_prefs = loadPrefs(prefsPath);
+  // the screen at its brightness whatever the last owner left (Android's 0, or a dimmed screen)
+  applyBrightness(g_prefs.brightness);
   g_core.apiConfigure(g_config.server.url, g_config.server.token);
   // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
