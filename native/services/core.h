@@ -14,7 +14,7 @@
 
 namespace rondo {
 
-constexpr int kMaxWifiNetworks = 48, kMaxWifiSaved = 48;
+constexpr int kMaxWifiNetworks = 48, kMaxWifiSaved = 48, kMaxBtDevices = 32;
 
 enum class WifiSecurity : uint8_t { Open, Wep, Psk, Eap };
 
@@ -27,6 +27,15 @@ struct WifiNetwork {  // one per name, the strongest access point
 struct WifiSaved {
   int32_t id;  // wpa_supplicant's network id
   char ssid[33];
+};
+
+struct BtDevice {  // a paired device, or one a search found
+  char address[18];  // "AA:BB:CC:DD:EE:FF"
+  char name[64];     // "" until known
+  uint32_t cod;      // the class of device
+  int8_t rssi;
+  uint8_t paired, pairing;
+  uint8_t a2dp;      // 0 not connected, 1 connecting, 2 connected (music plays there)
 };
 
 // Written by rondo-core under a sequence lock: read with CoreHost::state().
@@ -43,6 +52,13 @@ struct CoreState {
   int32_t networkCount, savedCount;
   WifiNetwork networks[kMaxWifiNetworks];  // strongest first
   WifiSaved saved[kMaxWifiSaved];
+  // Bluetooth
+  int32_t btPower;      // 0 off, 1 turning on, 2 on, 3 turning off; -1: the stack can't be reached
+  int32_t btSearching;
+  int32_t btCount;
+  uint32_t btKeySerial;  // a headset's button (AVRCP): the operation in btKey, the serial moves on
+  int32_t btKey;
+  BtDevice bt[kMaxBtDevices];  // paired ones and found ones, in the order they came
 };
 
 class CoreHost {
@@ -56,6 +72,16 @@ class CoreHost {
   void wifiConnect(int id);  // a saved network
   void wifiJoin(const std::string& ssid, WifiSecurity security, const std::string& password);
   void wifiForget(int id);
+
+  // Bluetooth: where the device names and the last headphones are kept; on/off; searching (only while
+  // the Bluetooth screen is shown); pairing, connecting, forgetting by address
+  void btConfigure(const std::string& stateFile);
+  void btPower(bool on);
+  void btSearch(bool on);
+  void btPair(const std::string& address);
+  void btConnect(const std::string& address);
+  void btDisconnect(const std::string& address);
+  void btForget(const std::string& address);
 
   // The server's API (core/api.h), fetched by rondo-core: the reply comes to `done` on the UI thread
   // from pump(). cacheMs: answered from rondo-core's memory if fetched that recently.

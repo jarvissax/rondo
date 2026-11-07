@@ -34,6 +34,23 @@ void fromOldPrefs(Prefs& p) {
   if (const char* v = value("name=\"account_videos\"")) p.accountVideos = strncmp(v, "false", 5) != 0;
 }
 
+// Android's global bluetooth_on: whether Bluetooth was on
+void fromAndroidBluetooth(Prefs& p) {
+  sqlite3* db = nullptr;
+  if (sqlite3_open_v2(kAndroidSettings, &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+    sqlite3_close(db);
+    return;
+  }
+  sqlite3_stmt* q = nullptr;
+  if (sqlite3_prepare_v2(db, "SELECT value FROM global WHERE name = 'bluetooth_on'", -1, &q, nullptr) == SQLITE_OK &&
+      sqlite3_step(q) == SQLITE_ROW) {
+    const char* value = reinterpret_cast<const char*>(sqlite3_column_text(q, 0));
+    if (value) p.bluetoothOn = atoi(value) != 0;
+  }
+  sqlite3_finalize(q);
+  sqlite3_close(db);
+}
+
 // Android's settings: the system table's screen_brightness, screen_off_timeout, sound_effects_enabled
 void fromAndroid(Prefs& p) {
   sqlite3* db = nullptr;
@@ -57,6 +74,7 @@ void fromAndroid(Prefs& p) {
   }
   sqlite3_finalize(q);
   sqlite3_close(db);
+  fromAndroidBluetooth(p);
 }
 
 }  // namespace
@@ -84,17 +102,20 @@ Prefs loadPrefs(const std::string& path) {
   flag("clickSound", p.clickSound);
   flag("accountMusic", p.accountMusic);
   flag("accountVideos", p.accountVideos);
+  // a file from before Bluetooth was native: Android's setting, once
+  if (yyjson_is_bool(yyjson_obj_get(root, "bluetoothOn"))) flag("bluetoothOn", p.bluetoothOn);
+  else fromAndroidBluetooth(p);
   yyjson_doc_free(doc);
   return p;
 }
 
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[320];
+  char json[360];
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
-                   "\"accountVideos\":%s}\n",
+                   "\"accountVideos\":%s,\"bluetoothOn\":%s}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false",
-                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false");
+                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false", p.bluetoothOn ? "true" : "false");
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

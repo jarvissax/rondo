@@ -38,6 +38,10 @@ std::string artOf(const std::string& path, int size);
 // Wi-Fi (wifi_screens.cpp): its screen, and what Settings says about it (1.0.x's wifiName())
 std::unique_ptr<Screen> makeWifi();
 std::string wifiName();
+// Bluetooth (bluetooth_screens.cpp): the screen, Settings' row, and the loop's headset buttons and pause
+std::unique_ptr<Screen> makeBluetooth();
+std::string bluetoothState();
+void bluetoothTick();
 // the USB drive (usb_screen.cpp): its screen; the cable plugged into a computer or pulled out; the
 // end of a switch nobody watched (true: something to draw again)
 std::unique_ptr<Screen> makeUsbDrive();

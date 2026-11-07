@@ -1,7 +1,7 @@
 // Settings (SettingsScreen.kt and ThemeScreens.kt in 1.0.x), ported 1:1: the list, the choice
-// screens, Theme with its accent, text size and main menu order, and About. The rows that lead to the
-// system services (Dashboard, Wi-Fi, Bluetooth, Server, Software update, Shut down) are drawn as in
-// 1.0.x; their screens come with N4's services.
+// screens, Theme with its accent, text size and main menu order, and About. Wi-Fi and Bluetooth lead to
+// their screens; the other system services (Dashboard, Server, Software update, Shut down) are drawn as
+// in 1.0.x, their screens come with N4's services.
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -359,7 +359,7 @@ class SettingsScreen : public ShellListScreen {
     const Status& st = g_app->status();
     add("Dashboard", "", tiles::dashboard, true, nullptr);                                  // N4: the web dashboard
     add("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); });
-    add("Bluetooth", "Off", tiles::bluetooth, true, nullptr);  // N4 turns it on; until then it is off
+    add("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); });
     wifi_ = wifiName();
     add("Theme", accentName(g_config.theme.accent), tiles::theme, true,
         [] { g_app->push(std::unique_ptr<Screen>(new ThemeScreen())); });

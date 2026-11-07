@@ -74,6 +74,20 @@ void CoreHost::wifiForget(int id) {
   send(kWifiForget, &v, 4);
 }
 
+void CoreHost::btConfigure(const std::string& stateFile) { send(kBtConfigure, stateFile.data(), uint32_t(stateFile.size())); }
+void CoreHost::btPower(bool on) {
+  uint8_t v = on;
+  send(kBtPower, &v, 1);
+}
+void CoreHost::btSearch(bool on) {
+  uint8_t v = on;
+  send(kBtSearch, &v, 1);
+}
+void CoreHost::btPair(const std::string& a) { send(kBtPair, a.data(), uint32_t(a.size())); }
+void CoreHost::btConnect(const std::string& a) { send(kBtConnect, a.data(), uint32_t(a.size())); }
+void CoreHost::btDisconnect(const std::string& a) { send(kBtDisconnect, a.data(), uint32_t(a.size())); }
+void CoreHost::btForget(const std::string& a) { send(kBtForget, a.data(), uint32_t(a.size())); }
+
 void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token) {
   std::string b = baseUrl + '\0' + token;
   send(kApiConfigure, b.data(), uint32_t(b.size()));

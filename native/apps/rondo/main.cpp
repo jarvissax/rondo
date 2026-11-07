@@ -168,6 +168,9 @@ int main(int argc, char** argv) {
   g_configPath = configPath, g_prefsPath = prefsPath;
   g_prefs = loadPrefs(prefsPath);
   g_core.apiConfigure(g_config.server.url, g_config.server.token);
+  // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
+  g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
+  if (g_prefs.bluetoothOn) g_core.btPower(true);
   loader.configure(g_config.server.url, g_config.server.token);
   g_player.configure(g_config.server.url, g_config.server.token);
   Palette pal = paletteFor(g_config.theme);
@@ -305,6 +308,7 @@ int main(int argc, char** argv) {
     bool changed = false;
     lastPeriodic = now_ns();
     dispatch.tick(now_ns());
+    bluetoothTick();
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
       lastUsb = now_ns();

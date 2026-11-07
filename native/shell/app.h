@@ -48,6 +48,8 @@ class Screen {
   // The content under the status bar, at the canvas's current offset.
   virtual void draw(Env& e, float w, float h) = 0;
   virtual void onShow() {}
+  // another screen covers it, or it leaves (BluetoothScreen stops searching)
+  virtual void onHide() {}
   // false: the screen draws its own header (Now Playing) and gets the whole screen
   virtual bool statusBar() const { return true; }
   // While nothing moves the loop looks every 250 ms and at wakeAt(): true when what the screen shows
@@ -62,6 +64,7 @@ class App {
   void push(std::unique_ptr<Screen> s) {
     if (s) {
       finishTransition();
+      if (!stack_.empty()) stack_.back()->onHide();
       stack_.push_back(std::move(s));
       stack_.back()->onShow();
       transition_.begin(0, 1, now_, 250 * kMs);
@@ -71,6 +74,7 @@ class App {
   void pop() {
     if (stack_.size() < 2) return;
     finishTransition();
+    stack_.back()->onHide();
     leaving_ = std::move(stack_.back());
     stack_.pop_back();
     stack_.back()->onShow();
@@ -85,6 +89,7 @@ class App {
       if (stack_[size_t(i)]->title() == title) at = i;
     if (at < 0) return pop();
     finishTransition();
+    stack_.back()->onHide();
     leaving_ = std::move(stack_.back());
     stack_.resize(size_t(at) + 1);
     stack_.back()->onShow();

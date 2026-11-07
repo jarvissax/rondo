@@ -19,6 +19,7 @@
 
 #include "../player/protocol.h"  // readFully
 #include "core.h"
+#include "bluetooth.h"
 #include "protocol.h"
 #include "wifi.h"
 
@@ -157,6 +158,7 @@ void runCore(int sock, CoreState* shm) {
   wifi.snapshot_ = snapshot;
   wifi.start();
   ApiWorkers api(sock);
+  Bluetooth bt(publish);
   for (;;) {
     uint32_t head[2];
     if (!readFully(sock, head, sizeof(head)) || head[0] < 4) _exit(0);  // the UI is gone
@@ -181,6 +183,13 @@ void runCore(int sock, CoreState* shm) {
         break;
       }
       case kWifiForget: wifi.forget(i32()); break;
+      case kBtConfigure: bt.configure(std::string(reinterpret_cast<const char*>(p), len)); break;
+      case kBtPower: bt.power(len && p[0]); break;
+      case kBtSearch: bt.search(len && p[0]); break;
+      case kBtPair: bt.pair(std::string(reinterpret_cast<const char*>(p), len)); break;
+      case kBtConnect: bt.connect(std::string(reinterpret_cast<const char*>(p), len)); break;
+      case kBtDisconnect: bt.disconnect(std::string(reinterpret_cast<const char*>(p), len)); break;
+      case kBtForget: bt.forget(std::string(reinterpret_cast<const char*>(p), len)); break;
       case kApiConfigure: {
         std::string s(reinterpret_cast<const char*>(p), len);
         size_t z = s.find('\0');

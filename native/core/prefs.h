@@ -12,6 +12,7 @@ struct Prefs {
   int brightness = 128;           // the backlight, 0-255 (Settings.System.SCREEN_BRIGHTNESS)
   int screenTimeoutMs = 60000;    // Settings.System.SCREEN_OFF_TIMEOUT
   bool clickSound = true;         // Settings.System.SOUND_EFFECTS_ENABLED
+  bool bluetoothOn = false;       // Settings.Global.BLUETOOTH_ON: Bluetooth comes on with Rondo
   // which account feeds the server has (GET /healthz "account", Accounts.kt): without one, YouTube Music
   // has no Library tab and YouTube no Subscriptions or History. Remembered so the tabs don't jump.
   bool accountMusic = true, accountVideos = true;
