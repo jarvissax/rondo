@@ -54,6 +54,7 @@ class MainMenuScreen : public Screen {
         if (m.id == "settings") r.onSelect = [] { g_app->push(makeSettings()); };
         if (m.id == "music") r.onSelect = [] { g_app->push(makeMusic()); };
         if (m.id == "videos") r.onSelect = [] { g_app->push(makeVideo()); };
+        if (m.id == "radio") r.onSelect = [] { g_app->push(makeFm()); };
         rows.push_back(std::move(r));
       }
     }
@@ -75,10 +76,11 @@ class MainMenuScreen : public Screen {
   }
   // the Now Playing pane follows the song and its progress (1.0.x's onTick)
   bool tick(int64_t) override {
-    if (shown_ != &tiles::nowPlaying) return false;
+    if (shown_ != &tiles::nowPlaying && shown_ != &tiles::radio) return false;
     PlayerState s = g_player.state();
     std::string sig = std::string(s.path) + "\n" + std::to_string(s.index) + "\n" +
-                      std::to_string(s.durationMs > 0 ? s.positionMs * 120 / s.durationMs : 0);
+                      std::to_string(s.durationMs > 0 ? s.positionMs * 120 / s.durationMs : 0) + "\n" +
+                      std::to_string(s.fmOn ? s.fmFrequency : 0);
     if (sig == paneSig_) return false;
     paneSig_ = sig;
     return true;
@@ -167,11 +169,13 @@ class MainMenuScreen : public Screen {
     int padX = e.dp(10), padY = e.dp(8);
     float ix = pane.x + padX, iy = pane.y + padY, iw = pane.w - 2 * padX, ih = pane.h - 2 * padY;
     int box = e.dp(98);
-    const char* name = tile == &tiles::music       ? "YouTube Music"
+    PlayerState fm = g_player.state();
+    std::string radioName = fm.fmOn ? "FM " + fmName(fm.fmFrequency) : "";
+    std::string name = tile == &tiles::music       ? "YouTube Music"
                        : tile == &tiles::video      ? "YouTube"
                        : tile == &tiles::device     ? "Library"
-                       : tile == &tiles::nowPlaying ? "Nothing playing"
-                       : tile == &tiles::radio      ? "FM Radio"
+                       : tile == &tiles::nowPlaying ? (fm.fmOn ? radioName : "Nothing playing")
+                       : tile == &tiles::radio      ? (fm.fmOn ? radioName : "FM Radio")
                                                     : "Settings";
     Label title = label(e, name, 14, true, iw);
     int total = box + e.dp(9) + title.h;

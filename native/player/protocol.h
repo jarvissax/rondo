@@ -25,6 +25,13 @@ enum PlayerCommand : uint32_t {
   kPlayVideo,   // a video: the sound's path, a zero byte, the picture's (a /s/ path on the server or a file)
   kVideoQuality,  // the picture's path at another quality, from where the sound is
   kStopVideo,   // the video ends: nothing plays
+  kFmStart,     // i32 frequency (tenths of MHz), i32 the radio's volume (-1: music's), u8 speaker
+  kFmStop,
+  kFmTune,      // i32 frequency
+  kFmSeek,      // u8 up, i32 min, i32 max
+  kFmScan,      // i32 min, i32 max
+  kFmMute,      // u8
+  kFmSpeaker,   // u8
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

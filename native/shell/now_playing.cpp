@@ -668,6 +668,9 @@ class NowPlayingScreen : public Screen {
 std::unique_ptr<Screen> makeNowPlayingPreview() { return std::make_unique<NowPlayingScreen>(); }
 
 void openNowPlaying() {
+  // the radio is what's playing
+  PlayerState s = g_player.state();
+  if (s.fmOn && !s.playing) return g_app->push(makeFm());
   if (!g_player.active()) return;
   g_app->push(std::make_unique<NowPlayingScreen>());
 }

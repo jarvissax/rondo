@@ -40,6 +40,16 @@ struct PlayerState {
   int32_t videoHeight;   // the picture's height (0 until known)
   int64_t bufferedMs;    // how far the video's picture has been read
   int32_t videoFailed;   // the video's picture can't be shown (its sound may still play)
+  // FM radio (player/fm.h): it plays instead of music (music is paused meanwhile)
+  int32_t fmOn, fmStarting, fmMuted, fmSeeking, fmScanning, fmStereo, fmSignal, fmSpeaker;
+  int32_t fmError;      // 1: no wired headphones (the antenna), 2: the chip didn't start
+  int32_t fmFrequency;  // tenths of MHz
+  int32_t fmVolume;     // the radio's own volume step (-1: not set yet)
+  uint32_t fmScanSerial;  // moves on when a scan has finished: its stations in fmFound
+  uint32_t fmSeekSerial;  // moves on when a seek has finished: its station in fmFrequency
+  int32_t fmFoundCount;
+  int16_t fmFound[200];
+  char fmName[64], fmText[128];  // RDS
   char path[512];
   char error[160];
   int32_t order[kMaxQueue];
@@ -74,6 +84,14 @@ class PlayerHost {
   void playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths);
   void setVideoQuality(const std::vector<std::string>& picturePaths);
   void stopVideo();
+  // FM radio (FmRadio.kt): frequencies in tenths of MHz; volume: the radio's own step (-1: music's)
+  void fmStart(int frequency, int volume, bool speaker);
+  void fmStop();
+  void fmTune(int frequency);
+  void fmSeek(bool up, int min, int max);
+  void fmScan(int min, int max);
+  void fmMute(bool muted);
+  void fmSpeaker(bool on);
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

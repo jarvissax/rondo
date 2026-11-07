@@ -39,6 +39,7 @@ extern "C" {
 
 #include "http_source.h"
 #include "player.h"
+#include "fm.h"
 #include "protocol.h"
 #include "video.h"
 
@@ -49,6 +50,7 @@ constexpr int kRate = 44100;
 constexpr int kBufferFrames = 2048;  // per OpenSL buffer: 46 ms
 constexpr int kBuffers = 3;
 constexpr uint32_t kRingFrames = 1u << 17;  // 3 s of PCM
+constexpr uint32_t kFmRingFrames = 1u << 14;  // the radio's: 0.37 s
 
 int64_t monoNs() {
   timespec t;
@@ -138,6 +140,18 @@ class Engine {
   bool videoOn_ = false;
   int64_t videoWaitNs_ = 0;  // since when the sound waits for the picture (8 s at most)
   int64_t restartMs_ = 0;    // where the last restart put the sound: the picture's clock counts on from it
+
+  // ---- FM radio: its sound in a ring of its own, played instead of music's ----
+  FmRadio fm_{[this] { fmChanged(); }, [this](const int16_t* pcm, size_t frames) { fmSound(pcm, frames); }};
+  void fmChanged();  // from the radio's threads
+  void fmSound(const int16_t* pcm, size_t frames);
+  void fmVolumes(bool on);  // the radio's own volume while it sounds, music's again after
+  void fmSpeakerApply(bool on);
+  std::vector<int16_t> fmRing_ = std::vector<int16_t>(size_t(kFmRingFrames) * 2);  // under mu_
+  uint64_t fmWrite_ = 0, fmRead_ = 0;
+  bool fmSounding_ = false;  // under mu_: what fill() plays
+  int fmVolume_ = -1, musicVolume_ = -1;
+  bool fmSpeaker_ = false, speakerForced_ = false;
   int videoPasses_ = 0;      // passes of a video's sound decoded since then (more than one: it repeats)
   bool waitingForPicture() const { return videoOn_ && !video_.ready() && monoNs() - videoWaitNs_ < 8000000000LL; }
 
@@ -217,6 +231,15 @@ void Engine::publish() {
   s.videoHeight = videoOn_ ? video_.height() : 0;
   s.bufferedMs = videoOn_ ? std::max(s.positionMs, video_.readMs()) : 0;
   s.videoFailed = videoOn_ && video_.failed();
+  FmStatus fm = fm_.status();
+  s.fmOn = fm.on, s.fmStarting = fm.starting, s.fmMuted = fm.muted, s.fmSeeking = fm.seeking;
+  s.fmScanning = fm.scanning, s.fmStereo = fm.stereo, s.fmSignal = fm.signal, s.fmSpeaker = fmSpeaker_;
+  s.fmError = fm.error, s.fmFrequency = fm.frequency, s.fmVolume = fmVolume_;
+  s.fmScanSerial = fm.scanSerial, s.fmSeekSerial = fm.seekSerial;
+  s.fmFoundCount = int32_t(std::min<size_t>(fm.found.size(), 200));
+  for (int i = 0; i < s.fmFoundCount; i++) s.fmFound[i] = int16_t(fm.found[size_t(i)]);
+  snprintf(s.fmName, sizeof(s.fmName), "%s", fm.name.c_str());
+  snprintf(s.fmText, sizeof(s.fmText), "%s", fm.text.c_str());
   if (s.index >= 0) snprintf(s.path, sizeof(s.path), "%s", items_[size_t(s.index)].c_str());
   else s.path[0] = 0;
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
@@ -275,7 +298,7 @@ void Engine::setPlaying(bool on) { playing_ = on; }  // under mu_; OpenSL follow
 // OpenSL's play state follows playing_, set outside mu_ (the buffer callback takes mu_)
 void Engine::applyPlayState() {
   pthread_mutex_lock(&mu_);
-  bool want = playing_;
+  bool want = playing_ || fmSounding_;
   pthread_mutex_unlock(&mu_);
   if (play_ && want != applied_) {
     (*play_)->SetPlayState(play_, want ? SL_PLAYSTATE_PLAYING : SL_PLAYSTATE_PAUSED);
@@ -295,6 +318,13 @@ void Engine::command(const std::vector<uint8_t>& m) {
     return v;
   };
   auto text = [&]() { return std::string((const char*)p, len); };
+  auto i32at = [&](size_t at) {
+    int32_t v = 0;
+    if (len >= at + 4) memcpy(&v, p + at, 4);
+    return v;
+  };
+  // the radio's calls report back through the engine's lock: they're made once it is let go
+  std::function<void()> radio;
   pthread_mutex_lock(&mu_);
   int64_t heard = int64_t(playedAt_ - heardFrom_) * 1000 / kRate + heardStartMs_;
   switch (type) {
@@ -376,6 +406,42 @@ void Engine::command(const std::vector<uint8_t>& m) {
         restart(-1, 0, false);
       }
       break;
+    case kFmStart: {
+      int32_t f = i32at(0), v = i32at(4);
+      setPlaying(false);  // opening the radio pauses music
+      if (v >= 0) fmVolume_ = v;
+      fmSpeaker_ = len > 8 && p[8];
+      radio = [this, f] { fm_.start(f); };
+      break;
+    }
+    case kFmStop: radio = [this] { fm_.stop(); }; break;
+    case kFmTune: {
+      int32_t f = i32at(0);
+      radio = [this, f] { fm_.tune(f); };
+      break;
+    }
+    case kFmSeek: {
+      bool up = len && p[0];
+      int32_t a = i32at(1), z = i32at(5);
+      radio = [this, up, a, z] { fm_.seek(up, a, z); };
+      break;
+    }
+    case kFmScan: {
+      int32_t a = i32at(0), z = i32at(4);
+      radio = [this, a, z] { fm_.scan(a, z); };
+      break;
+    }
+    case kFmMute: {
+      bool m = len && p[0];
+      radio = [this, m] { fm_.setMuted(m); };
+      break;
+    }
+    case kFmSpeaker: {
+      fmSpeaker_ = len && p[0];
+      bool on = fmSpeaker_ && fmSounding_;
+      radio = [this, on] { fmSpeakerApply(on); };
+      break;
+    }
     case kRelease:
       // The card goes to a computer as a USB drive, and vold kills whoever still has a file open on it:
       // the decoder leaves the song (closing it), the stream is dropped, the place is kept.
@@ -459,9 +525,71 @@ void Engine::command(const std::vector<uint8_t>& m) {
       break;
     }
   }
+  // music started: the radio stops (PlayerService.changed in 1.0.x)
+  if (playing_ && fm_.active() && type != kFmStart) radio = [this] { fm_.stop(); };
   publish();
   pthread_mutex_unlock(&mu_);
+  if (radio) radio();
   applyPlayState();
+}
+
+void Engine::fmSound(const int16_t* pcm, size_t frames) {
+  pthread_mutex_lock(&mu_);
+  for (size_t k = 0; k < frames; k++) {
+    size_t at = size_t((fmWrite_ + k) % kFmRingFrames) * 2;
+    fmRing_[at] = pcm[k * 2];
+    fmRing_[at + 1] = pcm[k * 2 + 1];
+  }
+  fmWrite_ += frames;
+  // the recording and the output run on the same clock; at most 0.19 s behind, or it catches up
+  if (fmWrite_ - fmRead_ > kFmRingFrames / 2) fmRead_ = fmWrite_ - kFmRingFrames / 4;
+  pthread_mutex_unlock(&mu_);
+}
+
+void Engine::fmChanged() {
+  bool sounding = fm_.sounding();
+  pthread_mutex_lock(&mu_);
+  bool switched = sounding != fmSounding_;
+  if (switched) {
+    fmSounding_ = sounding;
+    fmRead_ = fmWrite_;
+    if (sounding) {  // what OpenSL still holds of music isn't heard now
+      memset(buffers_, 0, sizeof(buffers_));
+      for (auto& f : inFlight_) f = {readAt_, readAt_};
+    }
+  }
+  publish();
+  pthread_mutex_unlock(&mu_);
+  if (switched) fmVolumes(sounding);
+  applyPlayState();
+}
+
+// STREAM_FM had its own volume in 1.0.x (the wheel set it while the radio played): the radio's step is
+// put on the output while it sounds, and music's back after it
+void Engine::fmVolumes(bool on) {
+  using android::AudioSystem;
+  audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
+  readVolume();
+  if (on) {
+    musicVolume_ = volume_;
+    if (fmVolume_ < 0) fmVolume_ = volume_;
+    if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, fmVolume_, device) == 0) volume_ = fmVolume_;
+  } else {
+    fmVolume_ = volume_;
+    if (musicVolume_ >= 0 && AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, musicVolume_, device) == 0) volume_ = musicVolume_;
+  }
+  fmSpeakerApply(on && fmSpeaker_);
+  pthread_mutex_lock(&mu_);
+  publish();
+  pthread_mutex_unlock(&mu_);
+}
+
+// FmRadio.setSpeaker(): the radio out of the speaker (1.0.x's FM force-use; Rondo's radio is music's
+// output, so media's)
+void Engine::fmSpeakerApply(bool on) {
+  if (on == speakerForced_) return;
+  android::AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, on ? AUDIO_POLICY_FORCE_SPEAKER : AUDIO_POLICY_FORCE_NONE);
+  speakerForced_ = on;
 }
 
 // ---- decoding ----
@@ -703,6 +831,20 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
   }
   int16_t* b = buffers_[next_];
   next_ = (next_ + 1) % kBuffers;
+  if (fmSounding_) {  // the radio plays: its ring, music's left where it is
+    int n = int(std::min<uint64_t>(fmWrite_ - fmRead_, kBufferFrames));
+    for (int k = 0; k < n; k++) {
+      size_t at = size_t((fmRead_ + uint64_t(k)) % kFmRingFrames) * 2;
+      b[k * 2] = fmRing_[at];
+      b[k * 2 + 1] = fmRing_[at + 1];
+    }
+    if (n < kBufferFrames) memset(b + n * 2, 0, size_t(kBufferFrames - n) * 4);
+    fmRead_ += uint64_t(n);
+    inFlight_.push_back({readAt_, readAt_});
+    (*q)->Enqueue(q, b, sizeof(buffers_[0]));
+    pthread_mutex_unlock(&mu_);
+    return;
+  }
   // a video's sound waits (silence, nothing taken from the ring) until its picture is there
   int n = waitingForPicture() ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
   for (int k = 0; k < n; k++) {

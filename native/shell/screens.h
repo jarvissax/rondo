@@ -39,6 +39,10 @@ std::string artOf(const std::string& path, int size);
 std::unique_ptr<Screen> makeWifi();
 std::string wifiName();
 // Bluetooth (bluetooth_screens.cpp): the screen, Settings' row, and the loop's headset buttons and pause
+// FM radio (fm_screens.cpp): the radio's screen, a frequency as 1.0.x writes it (101.7), the loop's remembering
+std::unique_ptr<Screen> makeFm();
+std::string fmName(int frequency);
+void fmTick();
 std::unique_ptr<Screen> makeBluetooth();
 std::string bluetoothState();
 void bluetoothTick();

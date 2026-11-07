@@ -309,6 +309,7 @@ int main(int argc, char** argv) {
     lastPeriodic = now_ns();
     dispatch.tick(now_ns());
     bluetoothTick();
+    fmTick();
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
       lastUsb = now_ns();

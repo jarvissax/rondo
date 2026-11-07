@@ -110,6 +110,39 @@ void PlayerHost::setVideoQuality(const std::vector<std::string>& picturePaths) {
   for (const auto& p : picturePaths) b += p, b += '\0';
   send(kVideoQuality, b.data(), uint32_t(b.size()));
 }
+void PlayerHost::fmStart(int frequency, int volume, bool speaker) {
+  uint8_t b[9];
+  int32_t f = frequency, v = volume;
+  memcpy(b, &f, 4);
+  memcpy(b + 4, &v, 4);
+  b[8] = speaker;
+  send(kFmStart, b, 9);
+}
+void PlayerHost::fmStop() { send(kFmStop); }
+void PlayerHost::fmTune(int frequency) {
+  int32_t f = frequency;
+  send(kFmTune, &f, 4);
+}
+void PlayerHost::fmSeek(bool up, int min, int max) {
+  uint8_t b[9];
+  b[0] = up;
+  int32_t a = min, z = max;
+  memcpy(b + 1, &a, 4);
+  memcpy(b + 5, &z, 4);
+  send(kFmSeek, b, 9);
+}
+void PlayerHost::fmScan(int min, int max) {
+  int32_t b[2] = {min, max};
+  send(kFmScan, b, 8);
+}
+void PlayerHost::fmMute(bool muted) {
+  uint8_t v = muted;
+  send(kFmMute, &v, 1);
+}
+void PlayerHost::fmSpeaker(bool on) {
+  uint8_t v = on;
+  send(kFmSpeaker, &v, 1);
+}
 void PlayerHost::stopVideo() {
   queue_.clear();
   send(kStopVideo);

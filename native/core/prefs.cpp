@@ -95,6 +95,7 @@ Prefs loadPrefs(const std::string& path) {
   p.videoQuality = num("videoQuality", p.videoQuality);
   p.brightness = num("brightness", p.brightness);
   p.screenTimeoutMs = num("screenTimeoutMs", p.screenTimeoutMs);
+  p.fmVolume = num("fmVolume", p.fmVolume);
   auto flag = [&](const char* k, bool& out) {
     yyjson_val* v = yyjson_obj_get(root, k);
     if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -110,12 +111,13 @@ Prefs loadPrefs(const std::string& path) {
 }
 
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[360];
+  char json[400];
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
-                   "\"accountVideos\":%s,\"bluetoothOn\":%s}\n",
+                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"fmVolume\":%d}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false",
-                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false", p.bluetoothOn ? "true" : "false");
+                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false", p.bluetoothOn ? "true" : "false",
+                   p.fmVolume);
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;
