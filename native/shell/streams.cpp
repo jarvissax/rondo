@@ -57,7 +57,11 @@ std::string artOf(const std::string& path, int size) {
   return it ? (size > 0 ? largeThumb(it->thumb, size) : it->thumb) : "";
 }
 
-// the search comes with the search screen's port
-std::unique_ptr<Screen> makeMusicSearch() { return nullptr; }
+void playStreamsAppend(const Item& item, bool next) {
+  std::string p = streamPath(item);
+  registry()[p] = item;
+  if (next) g_player.insertNext(p);
+  else g_player.append(p);
+}
 
 }  // namespace rondo::shell

@@ -21,6 +21,10 @@ std::string streamPath(const Item& it);
 bool isStream(const std::string& path);
 const Item* streamItem(const std::string& path);
 void playStreams(const std::vector<Item>& items, int start);
+void playStreamsAppend(const Item& item, bool next);  // Play next / Add to queue
+// music_screens.cpp: a playlist, album or artist row's screen; a song's menu
+void openMusicContainer(const Item& item);
+void openSongMenu(const Item& song);
 std::string largeThumb(const std::string& thumb, int size);
 std::string artOf(const std::string& path, int size);
 // Wi-Fi (wifi_screens.cpp): its screen, and what Settings says about it (1.0.x's wifiName())

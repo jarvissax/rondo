@@ -275,7 +275,11 @@ class LocalSongMenuScreen : public RenderedList {
     g_app->pop();
   }
   void enqueue(bool next) {
-    // songs on the card only, for now: an online queue comes with the YouTube Music screens
+    PlayerState s = g_player.state();
+    if (g_player.active() && s.index >= 0 && isStream(s.path)) {
+      note_ = "Songs on the card can't join an online queue.\nUse Play now to start a new one.";
+      return render();
+    }
     if (!g_player.active()) g_player.playQueue({path_}, 0);
     else if (next) g_player.insertNext(path_);
     else g_player.append(path_);

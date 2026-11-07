@@ -81,7 +81,7 @@ std::string offlineOr(const std::string& problem) {
 }
 
 void openMusicItem(const Item& item, const std::vector<Item>& siblings) {
-  if (isContainer(item.kind)) return;  // the playlist, album and artist screens come next
+  if (isContainer(item.kind)) return openMusicContainer(item);
   std::vector<Item> playable;
   int at = 0;
   for (const Item& s : siblings)
@@ -105,6 +105,7 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
     r.chevron = container;
     Item item = it;
     r.onSelect = [item, queue] { openMusicItem(item, queue()); };
+    if (!container) r.onLongSelect = [item] { openSongMenu(item); };
     rows.push_back(std::move(r));
   }
   return rows;
