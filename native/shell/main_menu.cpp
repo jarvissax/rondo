@@ -71,7 +71,7 @@ class MainMenuScreen : public Screen {
   }
   bool step(float dt) override {
     bool a = list_.step(dt);
-    return a || fade_.running(now_);
+    return a || fade_.running(g_app->now());
   }
   // the Now Playing pane follows the song and its progress (1.0.x's onTick)
   bool tick(int64_t) override {

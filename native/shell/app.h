@@ -137,12 +137,17 @@ class App {
   bool step(float dt) {
     tick(now_);
     bool moving = false;
-    for (auto& s : stack_) moving |= s->step(dt);
+    // only what is on screen moves: the top, and during a slide the screen it slides against (a screen
+    // covered before it was ever drawn kept a fade "running" on its own unadvanced clock: endless frames)
+    bool sliding = transition_.running(now_);
+    moving |= stack_.back()->step(dt);
+    if (sliding && !popping_ && stack_.size() > 1) moving |= stack_[stack_.size() - 2]->step(dt);
     if (leaving_) moving |= leaving_->step(dt);
-    if (transition_.running(now_)) moving = true;
+    if (sliding) moving = true;
     else leaving_.reset();
     return moving;
   }
+  int64_t now() const { return now_; }
   void draw(Env& e, float W, float H, const Status& status) {
     status_ = status;
     float bar = float(e.dp(22));
