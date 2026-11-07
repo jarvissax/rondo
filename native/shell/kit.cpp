@@ -483,6 +483,26 @@ void RowList::drawMusic(Env& e, float x, float y) {
 
 namespace rondo::shell {
 
+namespace {
+size_t nextChar(const std::string& s, size_t i) {
+  if (i >= s.size()) return s.size();
+  i++;
+  while (i < s.size() && (uint8_t(s[i]) & 0xc0) == 0x80) i++;
+  return i;
+}
+size_t prevChar(const std::string& s, size_t i) {
+  if (i == 0) return 0;
+  i--;
+  while (i > 0 && (uint8_t(s[i]) & 0xc0) == 0x80) i--;
+  return i;
+}
+}  // namespace
+
+// Android 4.2's StaticLayout for plain text: a line ends at the last space that fits (its spaces hang
+// past the edge), or after the characters that fit when one word is wider than the line. The last
+// line allowed, with more text after it, gets "…" in place of its own last character, or of as many of
+// its characters as no longer fit beside it (calculateEllipsis with forceEllipsis): "| Viva…", not
+// "| Viva İ…".
 std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool bold, float maxW, int maxLines) {
   std::vector<WrappedLine> lines;
   int font = e.font(sp, bold);
@@ -495,10 +515,6 @@ std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool b
       lines.push_back({s.substr(at), false});
       break;
     }
-    if (int(lines.size()) == maxLines - 1) {  // the last line takes the rest, ellipsized
-      lines.push_back({s.substr(at), true});
-      break;
-    }
     // as many words as fit
     size_t end = at, best = std::string::npos;
     for (;;) {
@@ -509,12 +525,30 @@ std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool b
       if (next == std::string::npos) break;
       end = next;
     }
-    if (best == std::string::npos) {  // one word wider than the line: it is cut, ellipsized
-      lines.push_back({s.substr(at), true});
-      break;
+    if (best == std::string::npos) {  // one word wider than the line: as many of its characters as fit
+      best = nextChar(s, at);
+      for (size_t n = nextChar(s, best); n <= s.size() && width(at, n) <= maxW; n = nextChar(s, n)) {
+        best = n;
+        if (n == s.size()) break;
+      }
     }
-    lines.push_back({s.substr(at, best - at), false});
-    at = best;
+    if (int(lines.size()) < maxLines - 1) {
+      lines.push_back({s.substr(at, best - at), false});
+      at = best;
+      continue;
+    }
+    size_t lineEnd = best;
+    while (lineEnd < s.size() && s[lineEnd] == ' ') lineEnd++;  // with the spaces that hang at its end
+    float ell = e.text.run(font, "\xe2\x80\xa6").width;
+    size_t keep = at;
+    for (size_t n = nextChar(s, at); n <= lineEnd; n = nextChar(s, n)) {
+      if (width(at, n) + ell > maxW) break;
+      keep = n;
+      if (n == lineEnd) break;
+    }
+    if (keep == lineEnd) keep = prevChar(s, lineEnd);  // all of it fits: its last character gives way
+    lines.push_back({s.substr(at, keep - at) + "\xe2\x80\xa6", false});
+    break;
   }
   return lines;
 }

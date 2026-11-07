@@ -1,5 +1,7 @@
 // rondo-core's main: the command loop and the services (core.h).
+#include <ctype.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/prctl.h>
@@ -103,9 +105,14 @@ class ApiWorkers {
       bool fresh = j.ttl > 0 && hit != cache_.end() && nowMs() - hit->second.at < j.ttl;
       Cached c = fresh ? hit->second : Cached{};
       pthread_mutex_unlock(&mu_);
+      if (!fresh && replay(j.path, c.body)) {
+        c.status = 200;
+        fresh = true;
+      }
       if (!fresh) {
         c.status = api.get(j.path, c.body);
         c.at = nowMs();
+        if (c.status == 200) record(j.path, c.body);
         if (c.status == 200) {
           pthread_mutex_lock(&mu_);
           if (cache_.size() > 64) cache_.clear();  // metadata only, and little of it
@@ -128,6 +135,37 @@ class ApiWorkers {
     pthread_mutex_lock(&writeMu_);
     writeFully(sock_, m.data(), m.size());
     pthread_mutex_unlock(&writeMu_);
+  }
+  // Development (the parity captures): RONDO_API_RECORD=dir keeps every answer the server gave, and
+  // RONDO_API_REPLAY=dir answers from them, so a native screen can be shot again with the data
+  // 1.0.x was captured with.
+  static std::string fileFor(const char* dir, const std::string& path) {
+    uint64_t h = 1469598103934665603ULL;
+    for (unsigned char ch : path) h = (h ^ ch) * 1099511628211ULL;
+    std::string name;
+    for (char ch : path.substr(0, 80)) name += isalnum((unsigned char)ch) || ch == '-' || ch == '.' ? ch : '_';
+    char hex[20];
+    snprintf(hex, sizeof(hex), "-%016llx", (unsigned long long)h);
+    return std::string(dir) + "/" + name + hex + ".json";
+  }
+  static bool replay(const std::string& path, std::string& body) {
+    static const char* dir = getenv("RONDO_API_REPLAY");
+    if (!dir) return false;
+    FILE* f = fopen(fileFor(dir, path).c_str(), "rb");
+    if (!f) return false;
+    body.clear();
+    char buf[16384];
+    for (size_t n; (n = fread(buf, 1, sizeof(buf), f)) > 0;) body.append(buf, n);
+    fclose(f);
+    return true;
+  }
+  static void record(const std::string& path, const std::string& body) {
+    static const char* dir = getenv("RONDO_API_RECORD");
+    if (!dir) return;
+    if (FILE* f = fopen(fileFor(dir, path).c_str(), "wb")) {
+      fwrite(body.data(), 1, body.size(), f);
+      fclose(f);
+    }
   }
   static int64_t nowMs() {
     timespec t;

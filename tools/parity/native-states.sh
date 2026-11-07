@@ -5,7 +5,7 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 export PATH=$PATH:${ANDROID_SDK:-$HOME/Library/Android/sdk}/platform-tools
-adb shell "kill \$(cat /data/local/tmp/rondo/rondo.pid) 2>/dev/null; sleep 0.5; cd /data/local/tmp/rondo; (RONDO_USB_PROMPT=0 ./run.sh > rondo.log 2>&1 </dev/null &); sleep 2.5"
+adb shell "kill \$(cat /data/local/tmp/rondo/rondo.pid) 2>/dev/null; sleep 0.5; cd /data/local/tmp/rondo; (RONDO_SCREEN_ON=1 RONDO_USB_PROMPT=0 ./run.sh > rondo.log 2>&1 </dev/null &); sleep 2.5"
 T=$HERE/shot.sh
 $T mm-nowplaying >/dev/null
 $T mm-library wheel 1 80 >/dev/null

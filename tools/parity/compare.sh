@@ -17,5 +17,5 @@ if [[ ${#names[@]} -eq 0 ]]; then
 fi
 for n in "${names[@]}"; do
   [[ -f $P/1.0/$n.png ]] || { echo "$n: no reference"; continue; }
-  "$BIN" "$P/1.0/$n.png" "$P/2.0/$n.png" "$P/diff/$n.png" | sed "s|$P/2.0/||"
+  "$BIN" "$P/1.0/$n.png" "$P/2.0/$n.png" "$P/diff/$n.png" | sed "s|$P/2.0/||" || echo "$n: could not be read (shoot it again)"
 done

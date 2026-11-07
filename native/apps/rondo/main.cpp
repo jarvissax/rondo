@@ -34,6 +34,7 @@
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
 #include "../../platform/power.h"
+#include "../../platform/video_frame.h"
 #include "../../platform/video_surface.h"
 #include "../../services/core.h"
 #include "../../shell/dispatch.h"
@@ -152,6 +153,7 @@ int main(int argc, char** argv) {
     fclose(pf);
   }
   // first, while this is the only thread: it forks the decoding process
+  ui::setFrameGrabber(grabVideoFrame);  // card videos' artwork: a frame (in rondo-media)
   ImageLoader loader;
   if (!loader.start(2, thumbs)) return 1;
   if (!g_player.start()) return 1;  // rondo-player, also before any thread

@@ -51,9 +51,9 @@ target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/fr
 target_link_libraries(rondo_ui PUBLIC rondo_core tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
 
 # The Y1's platform layer: framebuffer, vsync, input
-add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp platform/y1/video_surface.cpp platform/y1/power.cpp)
+add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp platform/y1/video_surface.cpp platform/y1/power.cpp platform/y1/video_frame.cpp)
 y1_private(rondo_platform_y1)
-target_link_libraries(rondo_platform_y1 PUBLIC y1_gui y1_ui y1_binder y1_utils y1_cutils EGL GLESv2 dl)
+target_link_libraries(rondo_platform_y1 PUBLIC rondo_ui y1_gui y1_ui y1_media y1_binder y1_utils y1_cutils EGL GLESv2 dl)
 
 add_executable(uitest apps/uitest/main.cpp)
 target_link_libraries(uitest PRIVATE rondo_ui rondo_platform_y1)

@@ -51,7 +51,8 @@ class MusicScreen : public MusicListScreen {
   }
   void draw(Env& e, float w, float h) override {
     now_ = e.now;
-    const Row* sel = list_.active ? list_.selectedRow() : nullptr;
+    // the selected row's artwork, also while the pills have the focus (RowList.selectedEntry() in 1.0.x)
+    const Row* sel = list_.selectedRow();
     ambient_.follow(e, sel ? sel->thumb : "", e.dp(34));
     ambient_.draw(e, {0, 0, w, h});
     header(e, w);

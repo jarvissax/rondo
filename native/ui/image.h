@@ -20,6 +20,10 @@ struct Pixels {
 };
 
 bool decodeImage(const uint8_t* data, size_t size, int w, int h, Pixels& out);
+// A still from a video file at atUs, as RGBA at its own size: the platform's (on the Y1, Android's
+// MediaMetadataRetriever, as 1.0.x's ImageLoader used it). Set before the loader starts.
+using FrameGrabber = bool (*)(const char* path, int64_t atUs, Pixels& out);
+void setFrameGrabber(FrameGrabber grabber);
 // A box blur repeated `passes` times (3 is close to a Gaussian), in place.
 void blur(Pixels& p, int radius, int passes);
 

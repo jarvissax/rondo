@@ -191,7 +191,9 @@ bool powerTick(int64_t now) {
   headset = jack;
   power::hold(s.playing || s.fmOn || s.fmStarting);
   // the timeout (Settings › Screen off after); the video player and Shorts keep the screen on
-  if (g_app->topKeepsScreenOn() && g_stage <= kDim) g_activity = now;
+  // (development: RONDO_SCREEN_ON=1 keeps it on, for the parity scripts)
+  static const bool screenOn = getenv("RONDO_SCREEN_ON") != nullptr;
+  if ((screenOn || g_app->topKeepsScreenOn()) && g_stage <= kDim) g_activity = now;
   int64_t timeout = int64_t(g_prefs.screenTimeoutMs) * kMs;
   if (timeout > 0) {
     int64_t dimFor = std::min<int64_t>(7000 * kMs, timeout / 5);

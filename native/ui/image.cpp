@@ -26,6 +26,12 @@
 #include "../core/cover.h"
 
 namespace rondo::ui {
+
+namespace {
+FrameGrabber g_grabber = nullptr;
+}
+void setFrameGrabber(FrameGrabber grabber) { g_grabber = grabber; }
+
 namespace {
 
 // Area-filtered resample of the crop (cx, cy, cw, ch) of src into dst, 4 channels: each output pixel
@@ -180,7 +186,7 @@ uint64_t fnv64(const char* s) {
 // A cached thumbnail: this header, then w * h * 4 bytes of RGBA. w = h = 0 records a file with no
 // picture, so it is not read again.
 struct CacheHeader {
-  char magic[4];  // "RTH1"
+  char magic[4];  // "RTH2" (2: video frames and folder pictures, Nov 7)
   int32_t w, h, blur;
   int64_t mtime, size;  // of the source file, to notice a changed file
 };
@@ -233,7 +239,7 @@ struct Worker {
     if (fd < 0) return -1;
     CacheHeader h;
     int result = -1;
-    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && !memcmp(h.magic, "RTH1", 4) && h.mtime == int64_t(st.st_mtime) &&
+    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && !memcmp(h.magic, "RTH2", 4) && h.mtime == int64_t(st.st_mtime) &&
         h.size == int64_t(st.st_size)) {
       if (h.w == 0) {
         result = 0;
@@ -251,7 +257,7 @@ struct Worker {
     std::string path = cachePath(r), tmp = path + ".part";
     int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return;
-    CacheHeader h = {{'R', 'T', 'H', '1'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
+    CacheHeader h = {{'R', 'T', 'H', '2'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
     bool ok = write(fd, &h, sizeof(h)) == ssize_t(sizeof(h));
     if (ok && px) ok = write(fd, px->rgba.data(), px->rgba.size()) == ssize_t(px->rgba.size());
     close(fd);
@@ -309,7 +315,14 @@ struct Worker {
         fclose(f);
       }
     } else {
+      // 1.0.x's order (ImageLoader.local): the embedded picture, a video's frame at 10 s, then a picture
+      // next to the file
       rondo::readCover(path.c_str(), bytes);
+      if (bytes.empty() && isVideo(path) && g_grabber) {
+        Pixels frame;
+        if (g_grabber(path.c_str(), 10000000, frame) && frame.w > 0 && frame.h > 0) return fit(frame, r, px);
+      }
+      if (bytes.empty()) folderPicture(path, bytes);
     }
     if (r.blur < 0) {
       Pixels big;
@@ -320,6 +333,73 @@ struct Worker {
     bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes && decodeImage(bytes.data(), bytes.size(), r.w, r.h, px);
     if (ok && r.blur > 0) blur(px, r.blur, 3);
     return ok;
+  }
+
+  static bool isVideo(const std::string& path) {
+    size_t dot = path.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string x = path.substr(dot + 1);
+    for (char& c : x) c = char(tolower((unsigned char)c));
+    return x == "mp4" || x == "m4v" || x == "mkv" || x == "3gp" || x == "webm";
+  }
+  // cover.jpg, folder.jpg (either case) or front.jpg beside the file
+  static void folderPicture(const std::string& path, std::vector<uint8_t>& bytes) {
+    std::string dir = path.substr(0, path.rfind('/') + 1);
+    for (const char* name : {"cover.jpg", "folder.jpg", "Cover.jpg", "Folder.jpg", "front.jpg"}) {
+      FILE* f = fopen((dir + name).c_str(), "rb");
+      if (!f) continue;
+      fseek(f, 0, SEEK_END);
+      long n = ftell(f);
+      fseek(f, 0, SEEK_SET);
+      bytes.resize(n > 0 && n < (16 << 20) ? size_t(n) : 0);
+      if (!bytes.empty() && fread(bytes.data(), 1, bytes.size(), f) != bytes.size()) bytes.clear();
+      fclose(f);
+      if (!bytes.empty()) return;
+    }
+  }
+  // a video's still as 1.0.x showed it (ImageLoader.local): Bitmap.createScaledBitmap to twice the asked
+  // width (bilinear), then the ImageView's center crop, drawn with bilinear filtering. The backdrops
+  // (blur) take it the way they take a picture.
+  static bool fit(const Pixels& src, const Msg& r, Pixels& px) {
+    int w = r.blur < 0 ? -r.blur : r.w, h = r.blur < 0 ? -r.blur : r.h;
+    if (w <= 0 || h <= 0 || size_t(w) * h * 4 > kSlotBytes * 4) return false;
+    if (r.blur != 0) {
+      float aspect = float(w) / h, cw = float(src.w), ch = float(src.h);
+      if (cw / ch > aspect) cw = ch * aspect;
+      else ch = cw / aspect;
+      Pixels out;
+      out.w = w, out.h = h;
+      out.rgba.resize(size_t(w) * h * 4);
+      resample(src.rgba.data(), src.w, src.h, (src.w - cw) / 2, (src.h - ch) / 2, cw, ch, out.rgba.data(), w, h);
+      if (r.blur < 0) bilinearDown(out, r.w, r.h, px);
+      else px = std::move(out), blur(px, r.blur, 3);
+      return true;
+    }
+    if (size_t(w) * h * 4 > kSlotBytes) return false;
+    Pixels scaled;
+    const Pixels* a = &src;
+    if (src.w > w * 2) {
+      bilinearDown(src, w * 2, src.h * w * 2 / src.w, scaled);
+      a = &scaled;
+    }
+    // ImageView.CENTER_CROP: the larger scale, the offset rounded to whole pixels
+    float s = std::max(float(w) / a->w, float(h) / a->h);
+    int dx = int((w - a->w * s) * 0.5f + 0.5f), dy = int((h - a->h * s) * 0.5f + 0.5f);
+    px.w = w, px.h = h;
+    px.rgba.assign(size_t(w) * h * 4, 0);
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) {
+        float sx = (x + 0.5f - dx) / s - 0.5f, sy = (y + 0.5f - dy) / s - 0.5f;
+        sx = std::max(0.f, std::min(float(a->w - 1), sx)), sy = std::max(0.f, std::min(float(a->h - 1), sy));
+        int x0 = int(sx), y0 = int(sy), x1 = std::min(a->w - 1, x0 + 1), y1 = std::min(a->h - 1, y0 + 1);
+        float fx = sx - x0, fy = sy - y0;
+        for (int c = 0; c < 4; c++) {
+          auto at = [&](int qx, int qy) { return float(a->rgba[(size_t(qy) * a->w + qx) * 4 + c]); };
+          float v = (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+          px.rgba[(size_t(y) * w + x) * 4 + c] = uint8_t(std::min(255.f, v + 0.5f));
+        }
+      }
+    return true;
   }
 
   bool quiet() const { return monoNs() - control->lastActivity > kQuietNs; }
