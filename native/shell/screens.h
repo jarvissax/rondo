@@ -56,6 +56,16 @@ std::unique_ptr<Screen> makeFm();
 std::string fmName(int frequency);
 void fmTick();
 std::unique_ptr<Screen> makeBluetooth();
+// Settings › Server, its row's state ("OK · signed in", "Unreachable"…), and the main menu's account check
+std::unique_ptr<Screen> makeServer();
+void serverState(std::function<void(const std::string&)> done);
+void checkAccounts();
+extern std::function<void()> g_onServerChanged;  // the server's address or token changed: everything that talks to it
+// Software update (SoftwareUpdate.kt): this Y1's firmware number, GET /update's version, and which is newer
+constexpr const char* kVersion = "2.0.0";
+int firmwareLevel();
+std::string updateVersion(const std::string& json);
+bool isNewerVersion(const std::string& latest, const std::string& current);
 std::string bluetoothState();
 void bluetoothTick();
 // the USB drive (usb_screen.cpp): its screen; the cable plugged into a computer or pulled out; the
@@ -86,6 +96,12 @@ std::unique_ptr<Screen> makeAddToPlaylist(std::vector<std::string> paths);
 std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, size_t maxLength,
                                       std::function<std::string(const std::string&)> onDone,
                                       std::function<void(const std::string&)> then);
+// The full form: a note under the field, how the typed text is shown (a code as 123 456), and an answer
+// that may come later: onDone(text, answer) calls answer("") to take it or answer(problem).
+using TextAnswer = std::function<void(const std::string& text, std::function<void(const std::string& problem)> answer)>;
+std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, std::string note,
+                                      size_t maxLength, std::function<std::string(const std::string&)> shown,
+                                      TextAnswer onDone, std::function<void(const std::string&)> then);
 
 // 1.0.x's local Item for a file: its title and "artist · album" (LocalLibrary.item), and the subtitle's
 // first part (the artist) and the rest (the album).

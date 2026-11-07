@@ -105,6 +105,18 @@ uint32_t CoreHost::get(const std::string& path, int cacheMs, Reply done) {
   return id;
 }
 
+uint32_t CoreHost::post(const std::string& url, const std::string& json, Reply done) {
+  uint32_t id = nextId_++;
+  pending_[id] = std::move(done);
+  std::string b(4, '\0');
+  memcpy(&b[0], &id, 4);
+  b += url;
+  b += '\0';
+  b += json;
+  send(kApiPost, b.data(), uint32_t(b.size()));
+  return id;
+}
+
 void CoreHost::cancel(uint32_t id) { pending_.erase(id); }
 
 bool CoreHost::pump() {

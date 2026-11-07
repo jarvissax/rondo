@@ -71,7 +71,13 @@ class ApiWorkers {
   }
   void get(uint32_t id, int ttl, std::string path) {
     pthread_mutex_lock(&mu_);
-    jobs_.push_back({id, ttl, std::move(path)});
+    jobs_.push_back({id, ttl, std::move(path), false, ""});
+    pthread_cond_signal(&cv_);
+    pthread_mutex_unlock(&mu_);
+  }
+  void post(uint32_t id, std::string url, std::string body) {
+    pthread_mutex_lock(&mu_);
+    jobs_.push_back({id, 0, std::move(url), true, std::move(body)});
     pthread_cond_signal(&cv_);
     pthread_mutex_unlock(&mu_);
   }
@@ -80,7 +86,9 @@ class ApiWorkers {
   struct Job {
     uint32_t id;
     int ttl;
-    std::string path;
+    std::string path;  // a POST's: the full URL
+    bool post;
+    std::string body;
   };
   struct Cached {
     std::string body;
@@ -101,6 +109,13 @@ class ApiWorkers {
       Job j = jobs_.front();
       jobs_.pop_front();
       if (generation != generation_) generation = generation_, api.configure(base_, token_);
+      if (j.post) {
+        pthread_mutex_unlock(&mu_);
+        std::string body;
+        int status = api.post(j.path, j.body, body);
+        reply(j.id, status, body);
+        continue;
+      }
       auto hit = cache_.find(j.path);
       bool fresh = j.ttl > 0 && hit != cache_.end() && nowMs() - hit->second.at < j.ttl;
       Cached c = fresh ? hit->second : Cached{};
@@ -232,6 +247,16 @@ void runCore(int sock, CoreState* shm) {
         std::string s(reinterpret_cast<const char*>(p), len);
         size_t z = s.find('\0');
         api.configure(s.substr(0, z), z == std::string::npos ? "" : s.substr(z + 1));
+        break;
+      }
+      case kApiPost: {
+        if (len < 4) break;
+        uint32_t id;
+        memcpy(&id, p, 4);
+        std::string rest(reinterpret_cast<const char*>(p + 4), len - 4);
+        size_t z = rest.find('\0');
+        if (z == std::string::npos) break;
+        api.post(id, rest.substr(0, z), rest.substr(z + 1));
         break;
       }
       case kApiGet: {

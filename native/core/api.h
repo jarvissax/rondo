@@ -29,7 +29,8 @@ struct ItemsPage {
 };
 struct Health {
   bool ok = false, cookiesOk = false, music = true, videos = true;
-  std::string ytdlp;
+  int lastResolveOk = -1;  // the server's last playback check: -1 not tried yet, 0 failing, 1 working
+  std::string ytdlp;      // empty: missing
 };
 
 class Api {
@@ -44,6 +45,8 @@ class Api {
   int get(const std::string& path, std::string& body);
   // As get(), answered from memory for ttlMs (screens reopened within two minutes open at once).
   int cached(const std::string& path, std::string& body, int64_t ttlMs = 120000);
+  // POST a JSON body to a full URL without the token (pairing: 1.0.x's bare client)
+  int post(const std::string& url, const std::string& json, std::string& body);
 
   int health(Health& out);
   int musicHome(SectionsPage& out);

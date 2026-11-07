@@ -20,6 +20,7 @@ enum CoreCommand : uint32_t {
   kBtForget,          // the address
   kApiConfigure = 20,  // the server's base URL, a zero byte, the token
   kApiGet,             // u32 request id, u32 cache ms, the path
+  kApiPost,            // u32 request id, the full URL, a zero byte, the JSON body (no token: pairing)
   kApiReply = 100,     // rondo-core to the UI: u32 request id, i32 HTTP status (0: no connection), the body
 };
 

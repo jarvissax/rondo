@@ -179,6 +179,12 @@ int main(int argc, char** argv) {
   if (g_prefs.bluetoothOn) g_core.btPower(true);
   loader.configure(g_config.server.url, g_config.server.token);
   g_player.configure(g_config.server.url, g_config.server.token);
+  // Settings › Server connected to another server or took a token: everything that talks to it
+  g_onServerChanged = [&] {
+    g_core.apiConfigure(g_config.server.url, g_config.server.token);
+    loader.configure(g_config.server.url, g_config.server.token);
+    g_player.configure(g_config.server.url, g_config.server.token);
+  };
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
   g_library.scan();

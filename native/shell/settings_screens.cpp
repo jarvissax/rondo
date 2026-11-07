@@ -22,7 +22,7 @@
 namespace rondo::shell {
 namespace {
 
-constexpr const char* kVersion = "2.0.0";
+// kVersion: screens.h
 
 std::string onOff(bool on) { return on ? "On" : "Off"; }
 
@@ -339,7 +339,21 @@ class AboutScreen : public ShellListScreen {
 class SettingsScreen : public ShellListScreen {
  public:
   SettingsScreen() : ShellListScreen("Settings") { render(); }
-  void onShow() override { render(); }
+  ~SettingsScreen() override { *alive_ = false; }
+  void onShow() override {
+    render();
+    checkServer();
+    // a newer Rondo, when the server knows one
+    if (!g_config.server.url.empty()) {
+      auto alive = alive_;
+      g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
+        if (!*alive || status != 200) return;
+        std::string v = updateVersion(body);
+        latest_ = isNewerVersion(v, kVersion) ? v : "";
+        render();
+      });
+    }
+  }
   bool tick(int64_t) override {
     std::string w = wifiName();
     if (w == wifi_) return false;
@@ -441,14 +455,26 @@ class SettingsScreen : public ShellListScreen {
       savePrefsNow();
       render();
     });
-    add("Server", g_config.server.url.empty() ? "Not set up" : "", tiles::server, true, nullptr);  // N2/N4: its state
-    add("Software update", "", tiles::update, true, nullptr);
+    add("Server", server_, tiles::server, true, [] { g_app->push(makeServer()); });
+    add("Software update", latest_.empty() ? "" : latest_ + " is out", tiles::update, true, nullptr);
     add("About", std::string("Rondo ") + kVersion, tiles::about, true,
         [] { g_app->push(std::unique_ptr<Screen>(new AboutScreen())); });
     add("Shut down", "", tiles::power, true, [] { g_app->push(makePower()); });
     list_.setRows(std::move(rows), true);
   }
-  std::string wifi_;
+  // on opening Settings: the row says Checking… until the server answers
+  void checkServer() {
+    server_ = "Checking\xe2\x80\xa6";
+    render();
+    auto alive = alive_;
+    serverState([this, alive](const std::string& s) {
+      if (!*alive) return;
+      server_ = s;
+      render();
+    });
+  }
+  std::string wifi_, server_ = "Checking\xe2\x80\xa6", latest_;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 }  // namespace

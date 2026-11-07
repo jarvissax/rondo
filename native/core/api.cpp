@@ -122,6 +122,37 @@ int Api::get(const std::string& path, std::string& body) {
   return int(status);
 }
 
+int Api::post(const std::string& url, const std::string& json, std::string& body) {
+  curl_slist* headers = curl_slist_append(nullptr, "Content-Type: application/json");
+  curl_blob roots = {(void*)kRootCerts, strlen(kRootCerts), CURL_BLOB_NOCOPY};
+  long status = 0;
+  for (int attempt = 0; attempt < 20; attempt++) {
+    body.clear();
+    curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl_, CURLOPT_USERAGENT, "Rondo/2.0-dev (Innioasis Y1; native)");
+    curl_easy_setopt(curl_, CURLOPT_CAINFO_BLOB, &roots);
+    curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+    curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT_MS, 15000L);
+    curl_easy_setopt(curl_, CURLOPT_TIMEOUT_MS, 30000L);
+    curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, json.c_str());
+    curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, long(json.size()));
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, collect);
+    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &body);
+    CURLcode rc = curl_easy_perform(curl_);
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &status);
+      break;
+    }
+    if (rc != CURLE_COULDNT_CONNECT) break;
+    usleep(250000);
+  }
+  curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
+  curl_slist_free_all(headers);
+  return int(status);
+}
+
 int Api::cached(const std::string& path, std::string& body, int64_t ttlMs) {
   int64_t now = now_ns() / 1000000;
   for (auto it = cache_.begin(); it != cache_.end(); ++it) {
@@ -149,6 +180,8 @@ bool parseHealth(const std::string& json, Health& out) {
   out.ok = yyjson_get_bool(yyjson_obj_get(r, "ok"));
   out.cookiesOk = yyjson_get_bool(yyjson_obj_get(r, "cookiesOk"));
   out.ytdlp = str(r, "ytdlp");
+  yyjson_val* lr = yyjson_obj_get(r, "lastResolveOk");
+  if (yyjson_is_bool(lr)) out.lastResolveOk = yyjson_get_bool(lr) ? 1 : 0;
   yyjson_val* a = yyjson_obj_get(r, "account");
   if (yyjson_is_obj(a)) {
     yyjson_val* m = yyjson_obj_get(a, "music");

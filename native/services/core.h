@@ -88,6 +88,7 @@ class CoreHost {
   using Reply = std::function<void(int status, const std::string& body)>;
   void apiConfigure(const std::string& baseUrl, const std::string& token);
   uint32_t get(const std::string& path, int cacheMs, Reply done);
+  uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
   void cancel(uint32_t id);
   // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.
   int fd() const { return sock_; }

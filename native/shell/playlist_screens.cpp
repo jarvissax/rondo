@@ -63,19 +63,23 @@ class ConfirmScreen : public ShellListScreen {
 }  // namespace
 
 // TextEntryScreen: one line typed on the wheel keyboard, in the shell's look. onDone answers "" when it
-// took the text (the screen closes, then `then` runs) or the problem to show above the keyboard. Menu
-// on the keyboard's top row leaves without saving.
+// took the text (the screen closes, then `then` runs) or the problem to show above the keyboard, now or
+// later (a server's answer: "Just a moment…" meanwhile, and the keys wait). Menu on the keyboard's top
+// row leaves without saving.
 class TextEntryScreen : public Screen {
  public:
   TextEntryScreen(std::string title, std::string initial, std::string action, std::string note, size_t maxLength,
-                  std::function<std::string(const std::string&)> onDone, std::function<void(const std::string&)> then)
+                  std::function<std::string(const std::string&)> shown, TextAnswer onDone,
+                  std::function<void(const std::string&)> then)
       : title_(std::move(title)), note_(std::move(note)), max_(maxLength), kb_(std::move(action), true),
-        onDone_(std::move(onDone)), then_(std::move(then)) {
+        shown_(std::move(shown)), onDone_(std::move(onDone)), then_(std::move(then)) {
     kb_.setTyped(std::move(initial));
     line_ = note_;
   }
+  ~TextEntryScreen() override { *alive_ = false; }
   std::string title() const override { return title_; }
   bool onAction(Action a, int steps) override {
+    if (working_) return true;
     switch (a) {  // TvKeyboard.handle()
       case Action::Down: kb_.nextKey(); return true;
       case Action::Up: kb_.prevKey(); return true;
@@ -112,13 +116,13 @@ class TextEntryScreen : public Screen {
     e.c.shape({bx + 1, by + 1, bw - 2, bh - 2}, e.dpf(8) - 1, p.header);
     e.c.layer(3);
     float fx = bx + e.dp(10), fw = bw - 2 * e.dp(10);
-    Label field = label(e, kb_.typed() + "|", 14, false, fw);
+    Label field = label(e, (shown_ ? shown_(kb_.typed()) : kb_.typed()) + "|", 14, false, fw);
     drawLabel(e, field, fx, by + float((int(bh) - field.h) / 2), p.text);
     // the note, or the problem in the accent color
     float sy = by + bh + e.dp(3);
     Label msg = label(e, line_, 10, false, w - 2 * e.dp(8));
     if (msg.h == 0 || line_.empty()) msg.h = label(e, " ", 10, false).h;
-    drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, problem_ ? p.accent : p.muted);
+    drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, problem_ && !working_ ? p.accent : p.muted);
     float area = sy + msg.h + e.dp(3);
     Label hint = label(e, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", 9,
                        false, w);
@@ -132,29 +136,46 @@ class TextEntryScreen : public Screen {
  private:
   void finish() {
     std::string text = trimmed(kb_.typed());
-    std::string problem = onDone_(text);
-    if (problem.empty()) {
-      auto then = then_;
-      g_app->pop();  // this screen is gone after this line
-      if (then) then(text);
-      return;
-    }
-    line_ = problem;
-    problem_ = true;
+    working_ = true;
+    line_ = "Just a moment\xe2\x80\xa6";
+    std::shared_ptr<bool> alive = alive_;
+    // nothing of this screen is touched after onDone_: its answer may have closed it
+    onDone_(text, [this, alive, text](const std::string& problem) {
+      if (!*alive) return;
+      working_ = false;
+      if (problem.empty()) {
+        auto then = then_;
+        g_app->pop();  // this screen is gone after this line
+        if (then) then(text);
+        return;
+      }
+      line_ = problem;
+      problem_ = true;
+    });
   }
   std::string title_, note_, line_;
   size_t max_;
   Keyboard kb_;
-  std::function<std::string(const std::string&)> onDone_;
+  std::function<std::string(const std::string&)> shown_;
+  TextAnswer onDone_;
   std::function<void(const std::string&)> then_;
-  bool problem_ = false;
+  bool problem_ = false, working_ = false;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, size_t maxLength,
                                       std::function<std::string(const std::string&)> onDone,
                                       std::function<void(const std::string&)> then) {
-  return std::unique_ptr<Screen>(
-      new TextEntryScreen(std::move(title), std::move(initial), std::move(action), "", maxLength, std::move(onDone), std::move(then)));
+  auto now = [onDone](const std::string& text, std::function<void(const std::string&)> answer) { answer(onDone(text)); };
+  return std::unique_ptr<Screen>(new TextEntryScreen(std::move(title), std::move(initial), std::move(action), "", maxLength,
+                                                     nullptr, now, std::move(then)));
+}
+
+std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, std::string note,
+                                      size_t maxLength, std::function<std::string(const std::string&)> shown,
+                                      TextAnswer onDone, std::function<void(const std::string&)> then) {
+  return std::unique_ptr<Screen>(new TextEntryScreen(std::move(title), std::move(initial), std::move(action), std::move(note),
+                                                     maxLength, std::move(shown), std::move(onDone), std::move(then)));
 }
 
 namespace {
