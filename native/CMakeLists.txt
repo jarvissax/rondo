@@ -51,9 +51,9 @@ target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/fr
 target_link_libraries(rondo_ui PUBLIC rondo_core tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
 
 # The Y1's platform layer: framebuffer, vsync, input
-add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp)
+add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp platform/y1/video_surface.cpp)
 y1_private(rondo_platform_y1)
-target_link_libraries(rondo_platform_y1 PUBLIC y1_ui y1_utils y1_cutils EGL GLESv2)
+target_link_libraries(rondo_platform_y1 PUBLIC y1_gui y1_ui y1_binder y1_utils y1_cutils EGL GLESv2 dl)
 
 add_executable(uitest apps/uitest/main.cpp)
 target_link_libraries(uitest PRIVATE rondo_ui rondo_platform_y1)
@@ -79,7 +79,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
@@ -90,10 +90,10 @@ foreach(lib avformat avcodec avutil swresample)
   add_library(ff_${lib} SHARED IMPORTED)
   set_target_properties(ff_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.so)
 endforeach()
-add_library(rondo_player STATIC player/engine.cpp player/host.cpp player/http_source.cpp)
+add_library(rondo_player STATIC player/engine.cpp player/host.cpp player/http_source.cpp player/video.cpp)
 y1_private(rondo_player)
 target_include_directories(rondo_player SYSTEM PRIVATE ${TP}/include)
-target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_media y1_binder y1_utils rondo_net)
+target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_media y1_stagefright y1_stagefright_foundation y1_gui y1_binder y1_utils rondo_net)
 target_link_libraries(rondo PRIVATE rondo_player)
 
 # rondo-core: the system services (services/core.h), forked at startup like rondo-player

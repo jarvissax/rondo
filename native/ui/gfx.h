@@ -80,6 +80,9 @@ class Canvas {
   // An image (uv in 0..1 of the texture) with optional rounded corners, tinted (premultiplied white =
   // as is).
   void image(const Texture& t, Rect dst, Rect uv, float radius = 0, Color tint = 0xffffffff);
+  // A video frame: an external (GL_TEXTURE_EXTERNAL_OES) texture, its texture transform (the
+  // SurfaceTexture's 4x4, column-major) applied to the corners.
+  void video(unsigned externalTex, Rect dst, const float* transform);
   // A glyph from an A8 atlas; uv in 0..1.
   void glyph(const Texture& atlas, Rect dst, Rect uv, Color c);
   // Glyphs drawn until clearFade() fade out toward a band's edges (current coordinates): opaque from
@@ -95,7 +98,7 @@ class Canvas {
 
  private:
   static constexpr int kLayers = 8;
-  enum Pipe : uint8_t { kFill, kShape, kImage, kText, kImagePlain, kPipes };
+  enum Pipe : uint8_t { kFill, kShape, kImage, kText, kImagePlain, kVideo, kPipes };
   struct Clip {
     int16_t x0, y0, x1, y1;
     bool operator==(const Clip& o) const { return x0 == o.x0 && y0 == o.y0 && x1 == o.x1 && y1 == o.y1; }

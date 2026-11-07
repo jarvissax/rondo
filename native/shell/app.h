@@ -216,7 +216,9 @@ extern App* g_app;
 
 // ProgressBarView: a rounded track, the played part, an optional round thumb and the scrub marker
 // (marker < 0: none). In view coordinates (x, y, w, h).
-void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int thumbDp, int barDp, float marker = -1);
+// ProgressBarView: buffered (0: none) is drawn square in bufferedColor from the played end to it.
+void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int thumbDp, int barDp, float marker = -1,
+                 Color bufferedColor = 0, float buffered = 0);
 
 // ShellListScreen: the status bar's title and a RowList 3 units below it.
 class ShellListScreen : public Screen {

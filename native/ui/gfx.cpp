@@ -1,5 +1,6 @@
 #include "gfx.h"
 
+#include <GLES2/gl2ext.h>
 #include <png.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -83,6 +84,15 @@ varying vec4 v_color;
 void main() { gl_FragColor = texture2D(u_tex, v_uv) * v_color; }
 )";
 
+// A video frame from a SurfaceTexture: MediaTek's decoder format, sampled by the GPU as it is (S2)
+const char* kVideoFs = R"(#extension GL_OES_EGL_image_external : require
+precision mediump float;
+uniform samplerExternalOES u_tex;
+varying vec2 v_uv;
+varying vec4 v_color;
+void main() { gl_FragColor = texture2D(u_tex, v_uv) * v_color; }
+)";
+
 GLuint compile(GLenum type, const char* src) {
   GLuint s = glCreateShader(type);
   glShaderSource(s, 1, &src, nullptr);
@@ -159,7 +169,7 @@ bool Canvas::init(int width, int height) {
   h_ = height;
   GLuint vs = compile(GL_VERTEX_SHADER, kVertex);
   if (!vs) return false;
-  const char* fragments[kPipes] = {kFillFs, kShapeFs, kImageFs, kTextFs, kImagePlainFs};
+  const char* fragments[kPipes] = {kFillFs, kShapeFs, kImageFs, kTextFs, kImagePlainFs, kVideoFs};
   for (int i = 0; i < kPipes; i++) {
     programs_[i] = program(vs, fragments[i], width, height);
     if (!programs_[i]) return false;
@@ -249,7 +259,7 @@ void Canvas::end() {
       }
       if (c.tex && c.tex != tex) {
         tex = c.tex;
-        glBindTexture(GL_TEXTURE_2D, tex);
+        glBindTexture(c.pipe == kVideo ? GL_TEXTURE_EXTERNAL_OES : GL_TEXTURE_2D, tex);
       }
       if (!(c.clip == clip)) {
         clip = c.clip;
@@ -374,6 +384,21 @@ void Canvas::shape(Rect r, float radius, Color top, Color bottom) {
   uint32_t t = color(top), b = color(bottom);
   v[0].rgba = v[1].rgba = t;
   v[2].rgba = v[3].rgba = b;
+}
+
+void Canvas::video(unsigned externalTex, Rect dst, const float* m) {
+  if (!externalTex || dst.w <= 0 || dst.h <= 0) return;
+  Vertex* v = quad(kVideo, externalTex);
+  float x = dst.x + offX_.back(), y = dst.y + offY_.back();
+  corners(v, x, y, x + dst.w, y + dst.h);
+  // the corners top-left, top-right, bottom-left, bottom-right are (0,1) (1,1) (0,0) (1,0) in the
+  // texture's own space (its v runs up), then through its transform
+  const float tu[4] = {0, 1, 0, 1}, tv[4] = {1, 1, 0, 0};
+  for (int i = 0; i < 4; i++) {
+    v[i].u = m[0] * tu[i] + m[4] * tv[i] + m[12];
+    v[i].v = m[1] * tu[i] + m[5] * tv[i] + m[13];
+    v[i].rgba = color(0xffffffff);
+  }
 }
 
 void Canvas::image(const Texture& t, Rect dst, Rect uv, float radius, Color tint) {

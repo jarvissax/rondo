@@ -99,6 +99,21 @@ void PlayerHost::changeVolume(int delta) {
   int64_t d = delta;
   send(kVolume, &d, 8);
 }
+void PlayerHost::playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths) {
+  queue_ = {soundPath};
+  std::string b = soundPath;
+  for (const auto& p : picturePaths) b += '\0', b += p;
+  send(kPlayVideo, b.data(), uint32_t(b.size()));
+}
+void PlayerHost::setVideoQuality(const std::vector<std::string>& picturePaths) {
+  std::string b;
+  for (const auto& p : picturePaths) b += p, b += '\0';
+  send(kVideoQuality, b.data(), uint32_t(b.size()));
+}
+void PlayerHost::stopVideo() {
+  queue_.clear();
+  send(kStopVideo);
+}
 bool PlayerHost::active() const { return !queue_.empty(); }
 
 }  // namespace rondo

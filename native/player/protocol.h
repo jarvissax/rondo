@@ -22,6 +22,9 @@ enum PlayerCommand : uint32_t {
   kVolume,      // i64 steps
   kRelease,     // the card goes to a computer: close the song's file, keep the place (Play reopens it)
   kConfigure,   // the server streams come from: its base URL, a zero byte, the token
+  kPlayVideo,   // a video: the sound's path, a zero byte, the picture's (a /s/ path on the server or a file)
+  kVideoQuality,  // the picture's path at another quality, from where the sound is
+  kStopVideo,   // the video ends: nothing plays
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

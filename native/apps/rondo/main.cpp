@@ -33,6 +33,7 @@
 #include "../../core/library.h"
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
+#include "../../platform/video_surface.h"
 #include "../../services/core.h"
 #include "../../shell/dispatch.h"
 #include "../../shell/kit.h"
@@ -299,7 +300,9 @@ int main(int argc, char** argv) {
   };
   while (!g_stop) {
     if (!moving && !g_shot) {
-      pollfd p[3] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0}};
+      VideoSurface* video = VideoSurface::made();  // a video's pictures wake the loop as input does
+      pollfd p[4] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0},
+                     {video ? video->fd() : -1, POLLIN, 0}};
       if (!warmed) {
         // the icons, the fonts' characters, the bubble's digits, a slice at a time
         if (warmStage == 0 && warmIcons()) warmStage = 1, text.resetWarm();
@@ -330,8 +333,8 @@ int main(int argc, char** argv) {
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
-      int r = poll(p, 3, timeout);
-      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents)) continue;  // half a reply
+      int r = poll(p, 4, timeout);
+      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents)) continue;  // half a reply
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
         dispatch.tick(now_ns());
@@ -394,6 +397,7 @@ int main(int argc, char** argv) {
       wasMoving = moving = true;
       continue;
     }
+    if (VideoSurface* v = VideoSurface::made()) v->latch();  // the newest picture, for this frame
     float dt = wasMoving && lastPresent ? std::min(0.1f, float(present - lastPresent) / 1e9f) : float(period) / 1e9f;
     int64_t a1 = now_ns();
     bool anim = app.step(dt);

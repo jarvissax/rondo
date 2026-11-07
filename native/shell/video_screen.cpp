@@ -155,8 +155,7 @@ class VideoScreen : public MusicListScreen {
 
 std::unique_ptr<Screen> makeVideo() { return std::unique_ptr<Screen>(new VideoScreen()); }
 
-// the video player and Shorts come with N3's video (S2 proved hardware decoding without Java)
-void openVideo(const Item&) {}
+// Shorts come with N3's video
 std::unique_ptr<Screen> makeShorts() { return nullptr; }
 
 }  // namespace rondo::shell

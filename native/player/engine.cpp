@@ -40,6 +40,7 @@ extern "C" {
 #include "http_source.h"
 #include "player.h"
 #include "protocol.h"
+#include "video.h"
 
 namespace rondo {
 namespace {
@@ -118,6 +119,25 @@ class Engine {
   void* curl_ = nullptr;      // the decoder thread's libcurl handle
   int64_t releasedMs_ = 0;
 
+  // ---- a video's picture, on the sound's clock ----
+  int64_t videoClockUs(bool& moving);
+  // the pictures to try, zero-separated: /s/ paths on the server or files (under mu_)
+  std::vector<std::string> videoSources(const std::string& list) const {
+    std::vector<std::string> out;
+    for (size_t at = 0; at < list.size();) {
+      size_t end = list.find('\0', at);
+      if (end == std::string::npos) end = list.size();
+      std::string p = list.substr(at, end - at);
+      if (!p.empty()) out.push_back(p.compare(0, 3, "/s/") == 0 ? base_ + p : p);
+      at = end + 1;
+    }
+    return out;
+  }
+  VideoDecoder video_{[this](bool& moving) { return videoClockUs(moving); }};
+  bool videoOn_ = false;
+  int64_t videoWaitNs_ = 0;  // since when the sound waits for the picture (8 s at most)
+  bool waitingForPicture() const { return videoOn_ && !video_.ready() && monoNs() - videoWaitNs_ < 8000000000LL; }
+
   // ---- output ----
   bool openOutput();
   static void onBuffer(SLAndroidSimpleBufferQueueItf q, void* self) { static_cast<Engine*>(self)->fill(q); }
@@ -174,7 +194,7 @@ void Engine::publish() {
   PlayerState& s = *shm_;
   __atomic_add_fetch(&s.seq, 1, __ATOMIC_ACQ_REL);  // odd: being written
   s.playing = playing_;
-  s.buffering = playing_ && readAt_ == writeAt_ && !ended_;
+  s.buffering = playing_ && (readAt_ == writeAt_ || waitingForPicture()) && !ended_;
   s.pos = heardPos_;
   s.index = heardPos_ >= 0 && heardPos_ < int(order_.size()) ? order_[heardPos_] : -1;
   s.count = int(items_.size());
@@ -190,6 +210,9 @@ void Engine::publish() {
   s.ended = ended_;
   int np = heardPos_ >= 0 ? nextAfter(heardPos_) : -1;
   s.nextIndex = np >= 0 && np < int(order_.size()) ? order_[np] : -1;
+  s.video = videoOn_;
+  s.videoHeight = videoOn_ ? video_.height() : 0;
+  s.bufferedMs = videoOn_ ? std::max(s.positionMs, video_.readMs()) : 0;
   if (s.index >= 0) snprintf(s.path, sizeof(s.path), "%s", items_[size_t(s.index)].c_str());
   else s.path[0] = 0;
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
@@ -217,6 +240,23 @@ void Engine::restart(int pos, int64_t atMs, bool play) {
   pos_ = pos;
   pthread_cond_broadcast(&cv_);
   setPlaying(play && pos >= 0);
+  if (videoOn_) video_.seek(atMs), videoWaitNs_ = monoNs();  // the picture follows; the sound waits for it
+}
+
+// Where the sound is, to the microsecond: the frames handed to OpenSL, and the part of the buffer it is
+// playing now by the time since it took it. It stops while the ring is empty (buffering) and paused.
+int64_t Engine::videoClockUs(bool& moving) {
+  pthread_mutex_lock(&mu_);
+  uint64_t at = std::max(playedAt_, heardFrom_);
+  if (playing_ && !inFlight_.empty() && lastCallbackNs_) {
+    const Sent& f = inFlight_.front();
+    if (f.to > f.from && f.from == playedAt_)
+      at += std::min<uint64_t>(f.to - f.from, uint64_t(std::max<int64_t>(0, monoNs() - lastCallbackNs_)) * kRate / 1000000000ULL);
+  }
+  int64_t us = int64_t(at - heardFrom_) * 1000000 / kRate + heardStartMs_ * 1000;
+  moving = playing_ && !ended_;
+  pthread_mutex_unlock(&mu_);
+  return us;
 }
 
 void Engine::setPlaying(bool on) { playing_ = on; }  // under mu_; OpenSL follows in applyPlayState()
@@ -248,6 +288,7 @@ void Engine::command(const std::vector<uint8_t>& m) {
   int64_t heard = int64_t(playedAt_ - heardFrom_) * 1000 / kRate + heardStartMs_;
   switch (type) {
     case kPlayQueue: {
+      if (videoOn_) videoOn_ = false, video_.stop();
       uint32_t start = 0;
       if (len >= 4) memcpy(&start, p, 4);
       items_.clear();
@@ -289,9 +330,38 @@ void Engine::command(const std::vector<uint8_t>& m) {
       token_ = z == std::string::npos ? "" : s.substr(z + 1);
       break;
     }
+    case kPlayVideo: {
+      std::string s = text();
+      size_t z = s.find('\0');
+      std::string sound = s.substr(0, z), pictures = z == std::string::npos ? "" : s.substr(z + 1);
+      videoOn_ = false;
+      video_.stop();
+      items_ = {sound};
+      order_ = {0};
+      pos_ = 0;
+      restart(0, 0, true);
+      videoOn_ = true;
+      video_.play(videoSources(pictures), token_, 0);
+      videoWaitNs_ = monoNs();
+      break;
+    }
+    case kVideoQuality:
+      if (videoOn_) video_.play(videoSources(text()), token_, heard, false);
+      break;
+    case kStopVideo:
+      if (videoOn_) {
+        videoOn_ = false;
+        video_.stop();
+        items_.clear();
+        order_.clear();
+        pos_ = -1;
+        restart(-1, 0, false);
+      }
+      break;
     case kRelease:
       // The card goes to a computer as a USB drive, and vold kills whoever still has a file open on it:
       // the decoder leaves the song (closing it), the stream is dropped, the place is kept.
+      if (videoOn_) videoOn_ = false, video_.stop();
       if (heardPos_ >= 0 && !released_) {
         releasedMs_ = heard;
         int64_t duration = heardDuration_;
@@ -608,7 +678,8 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
   }
   int16_t* b = buffers_[next_];
   next_ = (next_ + 1) % kBuffers;
-  int n = int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
+  // a video's sound waits (silence, nothing taken from the ring) until its picture is there
+  int n = waitingForPicture() ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
   for (int k = 0; k < n; k++) {
     size_t at = size_t((readAt_ + uint64_t(k)) % kRingFrames) * 2;
     b[k * 2] = ring_[at];
@@ -651,6 +722,14 @@ void Engine::main() {
     rondo::PermissionService::publish();
   readVolume();
   if (!openOutput()) fprintf(stderr, "rondo-player: no audio output\n");
+  // A buffer handed to OpenSL is heard two output latencies later: measured on the Y1, the AudioTrack
+  // holds 92 ms (OpenSL's GetPosition) and the mixer's output latency is 92 ms. A picture waits that
+  // long after the clock reaches it.
+  uint32_t latency = 0;
+  android::AudioSystem::getOutputLatency(&latency, AUDIO_STREAM_MUSIC);
+  int64_t syncMs = getenv("RONDO_AV_SYNC_MS") ? atoll(getenv("RONDO_AV_SYNC_MS")) : 2 * int64_t(latency);
+  video_.setLatency(syncMs * 1000);
+  if (getenv("RONDO_VIDEO_LOG")) printf("video: output latency %u ms, pictures %lld ms after the clock\n", latency, (long long)syncMs);
   pthread_t t;
   pthread_create(&t, nullptr, &Engine::decodeThread, this);
   pthread_mutex_lock(&mu_);

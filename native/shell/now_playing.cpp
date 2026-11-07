@@ -18,10 +18,12 @@
 #include "lyrics_view.h"
 #include "music_list.h"
 #include "screens.h"
+#include "scrub.h"
 
 namespace rondo::shell {
 
-void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int thumbDp, int barDp, float marker) {
+void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int thumbDp, int barDp, float marker,
+                 Color bufferedColor, float buffered) {
   fraction = std::max(0.f, std::min(1.f, fraction));
   float bar = e.dpf(float(barDp)), rad = e.dpf(float(thumbDp)) / 2;
   float left = std::max(rad, e.dpf(6)), right = r.w - left;
@@ -36,6 +38,10 @@ void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int 
     e.c.shape({r.x + cx - rr, r.y + r.h / 2 - rr, 2 * rr, 2 * rr}, rr, c);
   };
   pill(left, right, track);
+  if (bufferedColor) {
+    float bx = left + (right - left) * std::max(std::max(0.f, std::min(1.f, buffered)), fraction);
+    if (bx > x) e.c.fill({r.x + x, r.y + top, bx - x, bar}, bufferedColor);
+  }
   pill(left, x, played);
   if (rad > 0) circle(x, rad, played);
   if (marker >= 0) {  // the scrub target: a larger white ring with a red center
@@ -44,6 +50,21 @@ void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int 
     circle(mx, base * 1.25f, rgb(0xffffff));
     circle(mx, base * 0.7f, e.p.red);
   }
+}
+
+// ScrubBubble (scrub.h)
+void drawScrubBubble(Env& e, float w, float h, int64_t target, int64_t from) {
+  Label t = label(e, formatTime(int(target / 1000)), 26, true);
+  int64_t d = target - from;
+  std::string delta = (d >= 0 ? "+" : "\xe2\x88\x92") + formatTime(int(std::llabs(d) / 1000)) + "   center to jump";
+  Label dl = label(e, delta, 14, false);
+  int padX = e.dp(16), padY = e.dp(8), inner = std::max(t.w, dl.w);
+  int bw = inner + 2 * padX, bh = padY + t.h + e.dp(2) + dl.h + padY;
+  float x = float((int(w) - bw) / 2), y = float((int(h) - bh) / 2);
+  e.c.layer(7);
+  e.c.shape({x, y, float(bw), float(bh)}, e.dpf(10), 0xe6141414);
+  drawLabel(e, t, x + padX + float((inner - t.w) / 2), y + padY, 0xffffffff);
+  drawLabel(e, dl, x + padX + float((inner - dl.w) / 2), y + padY + t.h + e.dp(2), e.p.darkMuted);
 }
 
 // VolumeOverlay: a 230 x 50 panel in the middle of the screen, the icon, the level as a bar, the number.
@@ -182,71 +203,6 @@ std::string upperExt(const std::string& path) {
   for (char& c : x) c = char(toupper((unsigned char)c));
   return x;
 }
-
-// Scrubber.kt: seeking that scales with the length. The target is previewed (bubble and marker) and
-// playback jumps once: on center, when Next/Prev is let go, or 1.2 s after the last wheel turn. Menu
-// cancels.
-class Scrubber {
- public:
-  bool active = false;
-  int64_t target = 0, from = 0;  // ms
-
-  float fraction(int64_t duration) const { return active && duration > 0 ? float(target) / duration : -1; }
-  bool begin() {
-    PlayerState s = g_player.state();
-    if (s.durationMs <= 0) return false;
-    active = true, holding_ = false, moved_ = false;
-    duration_ = s.durationMs;
-    from = target = s.positionMs;
-    last_ = now_ns();
-    return true;
-  }
-  void turn(int dir, int steps) {
-    if (!active && !begin()) return;
-    int64_t step = std::max<int64_t>(1000, std::min<int64_t>(60000, duration_ / 150)) * (steps > 1 ? 4 : 1);
-    move(dir * step);
-  }
-  void jump(int dir) {
-    if (!active && !begin()) return;
-    move(dir * std::max<int64_t>(duration_ / 10, 5000));
-  }
-  void hold(int dir) {  // one repeat of a held Next/Prev
-    if (!holding_) {
-      if (!active && !begin()) return;
-      holding_ = true;
-      repeats_ = 0;
-    }
-    repeats_++;
-    double share = repeats_ <= 5 ? 0.01 : repeats_ <= 10 ? 0.02 : 0.04;
-    move(dir * std::max<int64_t>(int64_t(duration_ * share), 2000));
-  }
-  void commit() {
-    if (!active) return;
-    if (moved_) g_player.seekTo(target);
-    active = holding_ = false;
-  }
-  void cancel() { active = holding_ = false; }
-  // jumps after the wheel has rested (not while a button is held); an unused scrub closes after 4 s
-  int64_t deadline() const { return active && !holding_ ? last_ + (moved_ ? 1200 : 4000) * kMs : 0; }
-  bool tick(int64_t now) {
-    int64_t d = deadline();
-    if (d && now >= d) {
-      commit();
-      return true;
-    }
-    return false;
-  }
-
- private:
-  void move(int64_t delta) {
-    moved_ = true;
-    target = std::max<int64_t>(0, std::min(target + delta, std::max<int64_t>(0, duration_ - 1000)));
-    last_ = now_ns();
-  }
-  bool holding_ = false, moved_ = false;
-  int repeats_ = 0;
-  int64_t duration_ = 0, last_ = 0;
-};
 
 // Reads lyrics off the drawing thread: reaching a FLAC's tags past its cover takes about 40 ms on the card.
 class LyricsLoader {
@@ -414,7 +370,7 @@ class NowPlayingScreen : public Screen {
     e.c.fill({0, 0, w, h}, dim);
     if (lyricsOn()) {
       drawLyricsPage(e, w, h, s, path);
-      if (scrub_.active) drawBubble(e, w, h, scrub_.target, scrub_.from);
+      if (scrub_.active) drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
       if (options_) drawOptions(e, w, h, s);
       e.c.layer(0);
       return;
@@ -524,7 +480,7 @@ class NowPlayingScreen : public Screen {
     }
     drawLabel(e, st, gx, gy + float((groupH - st.h) / 2), white);
 
-    if (scrub_.active) drawBubble(e, w, h, scrub_.target, scrub_.from);
+    if (scrub_.active) drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
     if (options_) drawOptions(e, w, h, s);
     e.c.layer(0);
   }
@@ -646,20 +602,6 @@ class NowPlayingScreen : public Screen {
     return v;
   }
 
-  // ScrubBubble: the target time large, the change and "center to jump" under it, in the middle
-  void drawBubble(Env& e, float w, float h, int64_t target, int64_t from) {
-    Label t = label(e, formatTime(int(target / 1000)), 26, true);
-    int64_t d = target - from;
-    std::string delta = (d >= 0 ? "+" : "\xe2\x88\x92") + formatTime(int(std::llabs(d) / 1000)) + "   center to jump";
-    Label dl = label(e, delta, 14, false);
-    int padX = e.dp(16), padY = e.dp(8), inner = std::max(t.w, dl.w);
-    int bw = inner + 2 * padX, bh = padY + t.h + e.dp(2) + dl.h + padY;
-    float x = float((int(w) - bw) / 2), y = float((int(h) - bh) / 2);
-    e.c.layer(7);
-    e.c.shape({x, y, float(bw), float(bh)}, e.dpf(10), 0xe6141414);
-    drawLabel(e, t, x + padX + float((inner - t.w) / 2), y + padY, white);
-    drawLabel(e, dl, x + padX + float((inner - dl.w) / 2), y + padY + t.h + e.dp(2), e.p.darkMuted);
-  }
 
   // the options panel: 190 units wide, four 28-unit rows, the chosen one white
   std::string optionLabel(int i, const PlayerState& s) const {

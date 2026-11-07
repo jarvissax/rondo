@@ -36,6 +36,9 @@ struct PlayerState {
   uint32_t trackSerial;  // changes whenever the track does
   int32_t ended;         // the queue played to its end
   int32_t nextIndex;     // the queue item up next (-1: none), by the order and repeat
+  int32_t video;         // a video plays: the queue is its sound, its picture is on "rondo.video"
+  int32_t videoHeight;   // the picture's height (0 until known)
+  int64_t bufferedMs;    // how far the video's picture has been read
   char path[512];
   char error[160];
   int32_t order[kMaxQueue];
@@ -64,6 +67,12 @@ class PlayerHost {
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
   void release();                // paused, the song's file closed (the USB drive); Play picks it up again
   void configure(const std::string& baseUrl, const std::string& token);  // where /s/<id>/140 streams come from
+  // A video (1.0.x's playVideo): whatever played stops; the sound plays as the queue's one item, the
+  // picture goes to the VideoSurface (made before this is called). stopVideo() leaves nothing playing.
+  // The pictures are tried in order: the quality asked for, then the one that stands in for it.
+  void playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths);
+  void setVideoQuality(const std::vector<std::string>& picturePaths);
+  void stopVideo();
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {
