@@ -69,6 +69,12 @@ class Api {
 
 bool parseSections(const std::string& json, SectionsPage& out);
 bool parseHealth(const std::string& json, Health& out);
+// /video/short/<id>: a short's details (the Shorts chain names only the video and its first frame)
+struct ShortInfo {
+  std::string id, title, channel, subtitle;
+  int durationSec = -1;
+};
+bool parseShortInfo(const std::string& json, ShortInfo& out);
 bool parseItems(const std::string& json, ItemsPage& out);
 
 }  // namespace rondo

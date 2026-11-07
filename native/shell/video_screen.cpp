@@ -155,7 +155,5 @@ class VideoScreen : public MusicListScreen {
 
 std::unique_ptr<Screen> makeVideo() { return std::unique_ptr<Screen>(new VideoScreen()); }
 
-// Shorts come with N3's video
-std::unique_ptr<Screen> makeShorts() { return nullptr; }
 
 }  // namespace rondo::shell

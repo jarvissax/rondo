@@ -121,6 +121,7 @@ class Engine {
 
   // ---- a video's picture, on the sound's clock ----
   int64_t videoClockUs(bool& moving);
+  int64_t videoClockLocked(bool& moving) const;  // under mu_
   // the pictures to try, zero-separated: /s/ paths on the server or files (under mu_)
   std::vector<std::string> videoSources(const std::string& list) const {
     std::vector<std::string> out;
@@ -136,6 +137,8 @@ class Engine {
   VideoDecoder video_{[this](bool& moving) { return videoClockUs(moving); }};
   bool videoOn_ = false;
   int64_t videoWaitNs_ = 0;  // since when the sound waits for the picture (8 s at most)
+  int64_t restartMs_ = 0;    // where the last restart put the sound: the picture's clock counts on from it
+  int videoPasses_ = 0;      // passes of a video's sound decoded since then (more than one: it repeats)
   bool waitingForPicture() const { return videoOn_ && !video_.ready() && monoNs() - videoWaitNs_ < 8000000000LL; }
 
   // ---- output ----
@@ -213,6 +216,7 @@ void Engine::publish() {
   s.video = videoOn_;
   s.videoHeight = videoOn_ ? video_.height() : 0;
   s.bufferedMs = videoOn_ ? std::max(s.positionMs, video_.readMs()) : 0;
+  s.videoFailed = videoOn_ && video_.failed();
   if (s.index >= 0) snprintf(s.path, sizeof(s.path), "%s", items_[size_t(s.index)].c_str());
   else s.path[0] = 0;
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
@@ -240,23 +244,30 @@ void Engine::restart(int pos, int64_t atMs, bool play) {
   pos_ = pos;
   pthread_cond_broadcast(&cv_);
   setPlaying(play && pos >= 0);
+  restartMs_ = atMs;
+  videoPasses_ = 0;
   if (videoOn_) video_.seek(atMs), videoWaitNs_ = monoNs();  // the picture follows; the sound waits for it
 }
 
-// Where the sound is, to the microsecond: the frames handed to OpenSL, and the part of the buffer it is
-// playing now by the time since it took it. It stops while the ring is empty (buffering) and paused.
+// Where the sound is, to the microsecond: the frames handed to OpenSL since the last restart, and the
+// part of the buffer it is playing now by the time since it took it. It stops while the ring is empty
+// (buffering) and paused, and runs on across the passes of a repeat.
 int64_t Engine::videoClockUs(bool& moving) {
   pthread_mutex_lock(&mu_);
-  uint64_t at = std::max(playedAt_, heardFrom_);
+  int64_t us = videoClockLocked(moving);
+  pthread_mutex_unlock(&mu_);
+  return us;
+}
+
+int64_t Engine::videoClockLocked(bool& moving) const {
+  uint64_t at = playedAt_;
   if (playing_ && !inFlight_.empty() && lastCallbackNs_) {
     const Sent& f = inFlight_.front();
     if (f.to > f.from && f.from == playedAt_)
       at += std::min<uint64_t>(f.to - f.from, uint64_t(std::max<int64_t>(0, monoNs() - lastCallbackNs_)) * kRate / 1000000000ULL);
   }
-  int64_t us = int64_t(at - heardFrom_) * 1000000 / kRate + heardStartMs_ * 1000;
   moving = playing_ && !ended_;
-  pthread_mutex_unlock(&mu_);
-  return us;
+  return int64_t(at) * 1000000 / kRate + restartMs_ * 1000;
 }
 
 void Engine::setPlaying(bool on) { playing_ = on; }  // under mu_; OpenSL follows in applyPlayState()
@@ -342,11 +353,18 @@ void Engine::command(const std::vector<uint8_t>& m) {
       restart(0, 0, true);
       videoOn_ = true;
       video_.play(videoSources(pictures), token_, 0);
+      video_.setLooping(repeat_ != 0);  // one item: Repeat all or one plays it again
       videoWaitNs_ = monoNs();
       break;
     }
     case kVideoQuality:
-      if (videoOn_) video_.play(videoSources(text()), token_, heard, false);
+      if (videoOn_) {
+        // from where the sound is in this pass; the pass began this long ago on the clock
+        bool moving;
+        int64_t clock = videoClockLocked(moving);
+        video_.play(videoSources(text()), token_, heard, false, std::max<int64_t>(0, clock - heard * 1000));
+        video_.setLooping(repeat_ != 0);
+      }
       break;
     case kStopVideo:
       if (videoOn_) {
@@ -424,10 +442,15 @@ void Engine::command(const std::vector<uint8_t>& m) {
       // what is decoded ahead may now be the wrong song: decode again from where it is heard
       if (heardPos_ >= 0) restart(heardPos_, heard, playing_);
       break;
-    case kRepeat:
+    case kRepeat: {
       repeat_ = len ? p[0] : 0;
-      if (heardPos_ >= 0) restart(heardPos_, heard, playing_);
+      // A video (one item, decoded once) only needs decoding again when its end is already queued;
+      // Shorts turn Repeat on as they start.
+      bool endQueued = std::any_of(markers_.begin(), markers_.end(), [](const Marker& m) { return m.pos < 0; });
+      if (videoOn_) video_.setLooping(repeat_ != 0);
+      if (heardPos_ >= 0 && (!videoOn_ || endQueued)) restart(heardPos_, heard, playing_);
       break;
+    }
     case kVolume: {
       int32_t delta = int32_t(i64());
       pthread_mutex_unlock(&mu_);
@@ -535,6 +558,8 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     int64_t duration = fmt->duration > 0 ? fmt->duration / 1000 : 0;
     markers_.push_back({writeAt_, pos, duration, seekMs});
     if (heardPos_ == pos && readAt_ == markers_.back().at) heardDuration_ = duration;
+    // a video's sound again (Repeat): the picture's next pass starts where this one does on the clock
+    if (videoOn_ && videoPasses_++ > 0) video_.loop(restartMs_ * 1000 + int64_t(writeAt_) * 1000000 / kRate);
   }
   pthread_mutex_unlock(&mu_);
   if (ok && seekMs > 0) {

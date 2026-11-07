@@ -39,6 +39,7 @@ struct PlayerState {
   int32_t video;         // a video plays: the queue is its sound, its picture is on "rondo.video"
   int32_t videoHeight;   // the picture's height (0 until known)
   int64_t bufferedMs;    // how far the video's picture has been read
+  int32_t videoFailed;   // the video's picture can't be shown (its sound may still play)
   char path[512];
   char error[160];
   int32_t order[kMaxQueue];

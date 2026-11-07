@@ -20,6 +20,9 @@ std::unique_ptr<Screen> makeVideo();
 std::unique_ptr<Screen> makeVideoSearch();
 void openVideo(const Item& item);
 std::unique_ptr<Screen> makeShorts();
+// a video's sound (/s/<id>/140, or the file) and its pictures to try for a quality (video_player.cpp)
+std::string videoSound(const Item& item);
+std::vector<std::string> videoPictures(const Item& item, int height);
 // streams.cpp: songs the server streams in the player's queue ("/s/<id>/140"), what the screens show
 // about them, and the artwork of any queue entry at a size (a file's own path; a stream's thumbnail)
 std::string streamPath(const Item& it);

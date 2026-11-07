@@ -5,6 +5,10 @@
 //
 // The sound is the engine's: a video's audio (/s/<id>/140) plays exactly like a song, and the picture
 // follows its clock, so it pauses, buffers and seeks with it.
+//
+// The clock runs on across repeats (Shorts loop, as does any video with Repeat on): each pass of the
+// sound starts at a time the engine names with loop(), and the reader, at the stream's end, goes back
+// to its start with the pictures' times moved on by as much, so the decoder never stops.
 #pragma once
 #include <pthread.h>
 #include <stdint.h>
@@ -25,9 +29,14 @@ class VideoDecoder {
 
   // A video from `atMs`: the first of `sources` that opens, each a URL (sent with the token) or a file.
   // Another quality is another play() from where the sound is.
-  // gate: the sound waits for the first picture (a start); another quality doesn't hold the sound up
-  void play(const std::vector<std::string>& sources, const std::string& token, int64_t atMs, bool gate = true);
-  void seek(int64_t atMs);  // the sound jumped: it waits for the picture at the new place
+  // gate: the sound waits for the first picture (a start); another quality doesn't hold the sound up.
+  // baseUs: the clock's time at the stream's start (in a later pass of a repeat).
+  void play(const std::vector<std::string>& sources, const std::string& token, int64_t atMs, bool gate = true,
+            int64_t baseUs = 0);
+  void seek(int64_t atMs);  // the sound jumped (its clock now reads atMs): it waits for the picture there
+  void setLooping(bool on);   // the sound repeats: the stream's end is followed by its start
+  void loop(int64_t baseUs);  // the sound's next pass begins at this time on the clock
+  bool failed() const { return failed_.load(); }  // the picture can't be shown (the sound plays on)
   // The picture at the latest start or seek has been shown (or there is none to wait for): the sound
   // may play. ExoPlayer starts both together the same way.
   bool ready() const { return failed_.load() || shownSeek_.load() == latestSeek_.load(); }
@@ -70,6 +79,9 @@ class VideoDecoder {
   std::string token_;
   uint32_t seekGen_ = 0;  // a seek or a play: the packets after it start from seekMs_
   int64_t seekMs_ = 0;
+  int64_t baseUs_ = 0;           // the clock at the stream's start for that seek
+  std::deque<int64_t> loops_;    // the clock at the start of the passes to come
+  bool looping_ = false;
   // from the demuxer to the renderer
   uint32_t formatJob_ = 0;  // the job `format_` belongs to
   Format format_;

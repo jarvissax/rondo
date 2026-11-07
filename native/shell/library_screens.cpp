@@ -149,6 +149,15 @@ class LocalGroupsScreen : public LetterListScreen {
   std::vector<Library::Group> groups_;
 };
 
+// a video on the card as the player takes it (LocalLibrary.item in 1.0.x): its path is its id
+Item cardVideo(const Track& t) {
+  Item i;
+  i.kind = "video";
+  i.id = t.path, i.title = t.title, i.subtitle = subtitleOf(t), i.thumb = t.path;
+  i.durationSec = t.durationSec;
+  return i;
+}
+
 class LocalVideosScreen : public ShellListScreen {
  public:
   LocalVideosScreen() : ShellListScreen("Videos") {
@@ -159,6 +168,8 @@ class LocalVideosScreen : public ShellListScreen {
       r.subtitle = subtitleOf(*t);
       r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       r.thumb = t->path;
+      Item item = cardVideo(*t);
+      r.onSelect = [item] { openVideo(item); };
       rows.push_back(std::move(r));
     }
     list_.setRows(std::move(rows));
@@ -385,6 +396,8 @@ class LibrarySearchScreen : public Screen {
         r.title = t->title;
         r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
         r.thumb = t->path;
+        Item item = cardVideo(*t);
+        r.onSelect = [item] { openVideo(item); };
         rows.push_back(std::move(r));
       }
     }

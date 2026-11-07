@@ -160,6 +160,17 @@ bool parseHealth(const std::string& json, Health& out) {
   return true;
 }
 
+bool parseShortInfo(const std::string& json, ShortInfo& out) {
+  yyjson_doc* doc = yyjson_read(json.data(), json.size(), 0);
+  if (!doc) return false;
+  yyjson_val* r = yyjson_doc_get_root(doc);
+  out.id = str(r, "id"), out.title = str(r, "title"), out.channel = str(r, "channel"), out.subtitle = str(r, "subtitle");
+  yyjson_val* d = yyjson_obj_get(r, "durationSec");
+  out.durationSec = yyjson_is_num(d) ? int(yyjson_get_num(d)) : -1;
+  yyjson_doc_free(doc);
+  return true;
+}
+
 int Api::health(Health& out) {
   std::string body;
   int status = get("/healthz", body);

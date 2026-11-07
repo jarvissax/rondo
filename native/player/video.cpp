@@ -111,7 +111,8 @@ void VideoDecoder::startThreads() {
   pthread_create(&t, nullptr, &VideoDecoder::renderThread, this);
 }
 
-void VideoDecoder::play(const std::vector<std::string>& sources, const std::string& token, int64_t atMs, bool gate) {
+void VideoDecoder::play(const std::vector<std::string>& sources, const std::string& token, int64_t atMs, bool gate,
+                        int64_t baseUs) {
   pthread_mutex_lock(&mu_);
   startThreads();
   want_ = true;
@@ -119,6 +120,8 @@ void VideoDecoder::play(const std::vector<std::string>& sources, const std::stri
   sources_ = sources, token_ = token;
   seekGen_++;
   seekMs_ = atMs;
+  baseUs_ = baseUs;
+  loops_.clear();
   latestSeek_ = seekGen_;
   if (!gate) shownSeek_ = seekGen_;
   catchUp_ = !gate;
@@ -136,9 +139,25 @@ void VideoDecoder::seek(int64_t atMs) {
   if (want_) {
     seekGen_++;
     seekMs_ = atMs;
+    baseUs_ = 0;  // a seek starts the clock again at the stream's own time
+    loops_.clear();
     latestSeek_ = seekGen_;
     pthread_cond_broadcast(&cv_);
   }
+  pthread_mutex_unlock(&mu_);
+}
+
+void VideoDecoder::setLooping(bool on) {
+  pthread_mutex_lock(&mu_);
+  looping_ = on;
+  pthread_cond_broadcast(&cv_);
+  pthread_mutex_unlock(&mu_);
+}
+
+void VideoDecoder::loop(int64_t baseUs) {
+  pthread_mutex_lock(&mu_);
+  if (want_) loops_.push_back(baseUs);
+  pthread_cond_broadcast(&cv_);
   pthread_mutex_unlock(&mu_);
 }
 
@@ -241,11 +260,14 @@ void VideoDecoder::demuxLoop() {
     AVStream* st = fmt->streams[stream];
     AVPacket* pkt = av_packet_alloc();
     uint32_t seek = 0;  // none yet: the first pass puts the stream at seekMs_
-    bool eos = false, readAny = false;
+    bool eos = false, readAny = false, rewind = false;
+    int64_t base = 0;
     while (job_ == job) {
       if (seek != seekGen_) {
         seek = seekGen_;
         int64_t at = seekMs_;
+        base = baseUs_;
+        rewind = false;
         packets_.clear();
         queuedBytes_ = 0;
         queueSeek_ = seek;
@@ -261,8 +283,24 @@ void VideoDecoder::demuxLoop() {
         pthread_mutex_lock(&mu_);
         continue;
       }
+      if (rewind && !loops_.empty()) {  // the next pass of a repeat: the stream from its start, later on the clock
+        base = loops_.front();
+        loops_.pop_front();
+        rewind = false;
+        pthread_mutex_unlock(&mu_);
+        av_seek_frame(fmt, stream, 0, AVSEEK_FLAG_BACKWARD);
+        pthread_mutex_lock(&mu_);
+        continue;
+      }
+      if (rewind && !looping_) {  // Repeat went off at the end: the decoder gets its end after all
+        rewind = false;
+        eos = true;
+        packets_.push_back(Packet{{}, 0, true});
+        pthread_cond_broadcast(&cv_);
+        continue;
+      }
       bool full = queuedBytes_ > kMaxBytes || (packets_.size() > 1 && packets_.back().ptsUs - packets_.front().ptsUs > kAheadUs);
-      if (eos || full) {
+      if (eos || full || rewind) {
         timespec until;
         clock_gettime(CLOCK_REALTIME, &until);
         until.tv_nsec += 100000000;
@@ -285,9 +323,13 @@ void VideoDecoder::demuxLoop() {
       }
       if (r >= 0) av_packet_unref(pkt);
       pthread_mutex_lock(&mu_);
+      if (have && p.eos && r == AVERROR_EOF && looping_ && job_ == job && seek == seekGen_) {
+        rewind = true;  // a repeat: wait for the next pass's time instead of ending the decoder
+        continue;
+      }
       if (have && job_ == job && seek == seekGen_) {
         if (p.eos) eos = true;
-        else readMs_ = std::max<int64_t>(readMs_.load(), p.ptsUs / 1000);
+        else readMs_ = std::max<int64_t>(readMs_.load(), p.ptsUs / 1000), p.ptsUs += base;
         queuedBytes_ += p.data.size();
         packets_.push_back(std::move(p));
         pthread_cond_broadcast(&cv_);
@@ -313,7 +355,7 @@ void VideoDecoder::renderLoop() {
     uint32_t job = done = job_;
     Format f = format_;
     uint32_t mySeek = queueSeek_;
-    int64_t dropBefore = seekMs_ * 1000;
+    int64_t dropBefore = baseUs_ + seekMs_ * 1000;
     // Another quality starts where the sound was when it was asked for, and the sound goes on meanwhile:
     // the pictures it has passed are skipped (the last one stays on the screen), not shown late.
     bool catchUp = catchUp_;
@@ -370,7 +412,7 @@ void VideoDecoder::renderLoop() {
       }
       if (queueSeek_ != mySeek) {  // the stream was moved: everything in the decoder is the old place's
         mySeek = queueSeek_;
-        dropBefore = seekMs_ * 1000;
+        dropBefore = baseUs_ + seekMs_ * 1000;
         pthread_mutex_unlock(&mu_);
         codec->flush();  // every buffer comes back, the held picture and the free input with them
         if (log) printf("video: flushed for %lld ms (%zu samples were in the decoder)\n", (long long)dropBefore / 1000, queued.size());

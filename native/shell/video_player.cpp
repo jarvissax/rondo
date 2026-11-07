@@ -19,17 +19,7 @@ inline Color blackA(int a) { return uint32_t(a) << 24; }
 
 const int kChoices[4] = {0, 720, 480, 360};  // 0: Auto (adaptive, capped at 360p)
 
-// The picture for a height: the server's H.264 DASH streams (136 is 720p, 135 480p, 134 360p). A height
-// the video doesn't have falls back to Auto's 360p, as QualityTrackSelection does.
-std::vector<std::string> pictures(const Item& item, int height) {
-  if (!item.id.empty() && item.id[0] == '/') return {item.id};
-  std::string base = "/s/" + item.id + "/";
-  std::vector<std::string> out;
-  if (height == 720) out.push_back(base + "136");
-  if (height == 480) out.push_back(base + "135");
-  out.push_back(base + "134");
-  return out;
-}
+std::vector<std::string> pictures(const Item& item, int height) { return videoPictures(item, height); }
 
 class VideoPlayerScreen : public Screen {
  public:
@@ -43,7 +33,7 @@ class VideoPlayerScreen : public Screen {
     if (!started_) {
       started_ = true;
       if (VideoSurface* v = VideoSurface::get()) v->clear();  // the last video's picture is not this one's
-      g_player.playVideo(local_ ? item_.id : "/s/" + item_.id + "/140", pictures(item_, g_prefs.videoQuality));
+      g_player.playVideo(videoSound(item_), pictures(item_, g_prefs.videoQuality));
     }
     showOverlay();
   }
@@ -276,6 +266,20 @@ class VideoPlayerScreen : public Screen {
 };
 
 }  // namespace
+
+// The server's H.264 DASH streams (136 is 720p, 135 480p, 134 360p). A height the video doesn't have
+// falls back to Auto's 360p, as QualityTrackSelection does.
+std::vector<std::string> videoPictures(const Item& item, int height) {
+  if (!item.id.empty() && item.id[0] == '/') return {item.id};
+  std::string base = "/s/" + item.id + "/";
+  std::vector<std::string> out;
+  if (height == 720) out.push_back(base + "136");
+  if (height == 480) out.push_back(base + "135");
+  out.push_back(base + "134");
+  return out;
+}
+
+std::string videoSound(const Item& item) { return !item.id.empty() && item.id[0] == '/' ? item.id : "/s/" + item.id + "/140"; }
 
 void openVideo(const Item& item) { g_app->push(std::unique_ptr<Screen>(new VideoPlayerScreen(item))); }
 

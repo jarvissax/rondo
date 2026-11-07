@@ -298,6 +298,46 @@ int main(int argc, char** argv) {
     covers.reserve(u(34), u(34), 24);
     for (float v : {140.f, 22.f, 98.f, 24.f}) covers.reserve(u(v), u(v), 3);
   };
+  int64_t lastPeriodic = 0;
+  // The timers, the cable and the status: on every quiet wake, and every 250 ms while frames follow each
+  // other (a video's pictures, a long animation), which never leave the loop quiet.
+  auto periodic = [&]() {
+    bool changed = false;
+    lastPeriodic = now_ns();
+    dispatch.tick(now_ns());
+    if (app.tick(now_ns())) changed = true;
+    if (now_ns() - lastUsb > kSec) {  // the cable, once a second
+      lastUsb = now_ns();
+      bool c = usb::computerConnected();
+      if (c != usbComputer) usbComputer = c, usbCableChanged(c), changed = true;
+      if (usbIdle()) changed = true;
+    }
+    if ((g_player.state().playing != 0) != status.playing) changed = true;
+    if (now_ns() - lastStatus > 2 * kSec) {  // 1.0.x refreshes on its 500 ms tick
+      lastStatus = now_ns();
+      Status s{false, readOnline(), readBattery()};
+      if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f) status = s, changed = true;
+      if (getenv("RONDO_WIFI_LOG")) {
+        CoreState cs = g_core.state();
+        char ip[16] = "";
+        if (cs.ip) snprintf(ip, sizeof(ip), "%u.%u.%u.%u", cs.ip & 0xff, cs.ip >> 8 & 0xff, cs.ip >> 16 & 0xff, cs.ip >> 24);
+        printf("wifi: enabled %d state %d ssid \"%s\" ip %s rssi %d speed %d, %d networks, %d saved, failed \"%s\"\n", cs.wifiEnabled,
+               cs.wifiState, cs.ssid, ip, cs.rssi, cs.linkSpeed, cs.networkCount, cs.savedCount, cs.failedSsid);
+        std::string names;
+        for (int i = 0; i < cs.networkCount; i++) names += std::string(i ? ", " : "") + cs.networks[i].ssid + " " + std::to_string(cs.networks[i].rssi);
+        printf("wifi: in range: %s\n", names.c_str());
+        names.clear();
+        for (int i = 0; i < cs.savedCount; i++) names += std::string(i ? ", " : "") + std::to_string(cs.saved[i].id) + " " + cs.saved[i].ssid;
+        printf("wifi: saved: %s\n", names.c_str());
+      }
+      if (getenv("RONDO_PLAYER_LOG")) {
+        PlayerState ps = g_player.state();
+        printf("player: %s %d/%d %lld/%lld ms vol %d %s\n", ps.playing ? "playing" : "paused", ps.pos, ps.count,
+               (long long)ps.positionMs, (long long)ps.durationMs, ps.volume, ps.error);
+      }
+    }
+    return changed;
+  };
   while (!g_stop) {
     if (!moving && !g_shot) {
       VideoSurface* video = VideoSurface::made();  // a video's pictures wake the loop as input does
@@ -337,42 +377,12 @@ int main(int argc, char** argv) {
       if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents)) continue;  // half a reply
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
-        dispatch.tick(now_ns());
-        if (app.tick(now_ns())) moving = true;
-        if (now_ns() - lastUsb > kSec) {  // the cable, once a second
-          lastUsb = now_ns();
-          bool c = usb::computerConnected();
-          if (c != usbComputer) usbComputer = c, usbCableChanged(c), moving = true;
-          if (usbIdle()) moving = true;
-        }
-        if ((g_player.state().playing != 0) != status.playing) moving = true;
-        if (now_ns() - lastStatus > 2 * kSec) {  // 1.0.x refreshes on its 500 ms tick
-          lastStatus = now_ns();
-          Status s{false, readOnline(), readBattery()};
-          if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f) status = s, moving = true;
-          if (getenv("RONDO_WIFI_LOG")) {
-            CoreState cs = g_core.state();
-            char ip[16] = "";
-            if (cs.ip) snprintf(ip, sizeof(ip), "%u.%u.%u.%u", cs.ip & 0xff, cs.ip >> 8 & 0xff, cs.ip >> 16 & 0xff, cs.ip >> 24);
-            printf("wifi: enabled %d state %d ssid \"%s\" ip %s rssi %d speed %d, %d networks, %d saved, failed \"%s\"\n", cs.wifiEnabled,
-                   cs.wifiState, cs.ssid, ip, cs.rssi, cs.linkSpeed, cs.networkCount, cs.savedCount, cs.failedSsid);
-            std::string names;
-            for (int i = 0; i < cs.networkCount; i++) names += std::string(i ? ", " : "") + cs.networks[i].ssid + " " + std::to_string(cs.networks[i].rssi);
-            printf("wifi: in range: %s\n", names.c_str());
-            names.clear();
-            for (int i = 0; i < cs.savedCount; i++) names += std::string(i ? ", " : "") + std::to_string(cs.saved[i].id) + " " + cs.saved[i].ssid;
-            printf("wifi: saved: %s\n", names.c_str());
-          }
-          if (getenv("RONDO_PLAYER_LOG")) {
-            PlayerState ps = g_player.state();
-            printf("player: %s %d/%d %lld/%lld ms vol %d %s\n", ps.playing ? "playing" : "paused", ps.pos, ps.count,
-                   (long long)ps.positionMs, (long long)ps.durationMs, ps.volume, ps.error);
-          }
-        }
+        if (periodic()) moving = true;
         if (!moving) continue;
       }
     }
     g_core.pump();  // the server's replies, on this thread, before the frame
+    if (now_ns() - lastPeriodic > 250 * kMs) periodic();
     int64_t vs = display->waitVsync();
     int64_t present = vs + period;
     app.setNow(present);
