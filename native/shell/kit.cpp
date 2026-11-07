@@ -66,7 +66,7 @@ void drawTile(Env& e, const Tile& t, Rect r, float alpha) {
     e.c.shape(r, radius, t.top, t.bottom);
     int g = e.dp(16);
     e.c.layer(layer + 2);  // with the text: icons are in the glyph atlas
-    e.icons.draw(e.c, t.kind, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
+    if (t.glyph) e.icons.draw(e.c, t.kind, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
                  rgb(0xffffff));
   } else {
     // the stroke lies over the white fill: an 11 % black edge on white is #e3e3e3
@@ -178,9 +178,13 @@ void RowList::setRows(std::vector<Row> rows, bool keepSelection) {
 }
 
 void RowList::layout(Env& e, float w, float h) {
-  entryH_ = float(e.dp(style == RowStyle::Shell ? 36 : style == RowStyle::Music ? 42 : 66));
-  headerH_ = float(e.dp(style == RowStyle::Shell ? 20 : 28));
-  bool resized = w != w_ || h != h_;
+  float entry = float(e.dp(style == RowStyle::Shell ? 36 : style == RowStyle::Music ? 42 : 66));
+  float header = float(e.dp(style == RowStyle::Shell ? 20 : 28));
+  // a new text size changes the rows' heights: laid out again, the selection kept in view
+  bool rescaled = entry != entryH_ || header != headerH_;
+  entryH_ = entry, headerH_ = header;
+  bool resized = w != w_ || h != h_ || rescaled;
+  if (rescaled) placed_ = false;
   w_ = w, h_ = h;
   if (top_.size() != rows_.size() || resized) {
     top_.resize(rows_.size());

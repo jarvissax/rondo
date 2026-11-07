@@ -11,6 +11,7 @@
 #include "../core/config.h"
 #include "../core/library.h"
 #include "../core/playlists.h"
+#include "../core/prefs.h"
 #include "../player/player.h"
 #include "dispatch.h"
 #include "kit.h"
@@ -21,6 +22,15 @@ extern Config g_config;
 extern Library g_library;
 extern PlayerHost g_player;
 extern Playlists g_playlists;
+extern Prefs g_prefs;
+extern std::string g_configPath, g_prefsPath;
+// Settings changed on the device are written at once (Config.update in 1.0.x); a theme change also
+// redraws everything in the new look.
+void saveConfigNow();
+void savePrefsNow();
+void themeChanged();
+// the backlight, 0-255 (applied at once; Prefs.brightness keeps it)
+void applyBrightness(int value);
 // RONDO_SLOW=1: frames over 8 ms print where their time went (main.cpp, App::draw)
 extern bool g_traceSlow;
 
@@ -79,6 +89,9 @@ class App {
     transition_.begin(0, 1, now_, 250 * kMs);
     popping_ = true;
   }
+  // set by the loop: the palette and the warmed sizes follow the theme
+  std::function<void()> onThemeChanged;
+  std::function<void()> onAccelerationChanged;
   void action(Action a, int steps) {
     if (stack_.back()->onAction(a, steps)) return;
     // the shell's global meanings (ShellActivity.onWheel)

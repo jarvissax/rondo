@@ -63,6 +63,7 @@ struct Tile {
   Icon kind;
   Color top, bottom;
   int brand = 0;  // 1 YouTube, 2 YouTube Music
+  bool glyph = true;  // false: the color alone (the accent swatches)
 };
 namespace tiles {
 extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,

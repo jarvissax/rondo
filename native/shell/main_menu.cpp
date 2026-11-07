@@ -9,6 +9,29 @@ namespace rondo::shell {
 class MainMenuScreen : public Screen {
  public:
   MainMenuScreen() {
+    list_.onSelectionChanged = [this] {
+      const Row* r = list_.selectedRow();
+      if (!r) return;
+      if (shown_ != r->tile) {
+        from_ = shown_;
+        shown_ = r->tile;
+        fade_.begin(0, 1, now_, 180 * kMs, easeInOutCubic);
+      }
+    };
+    build();
+    from_ = shown_;
+  }
+  // Settings › Theme › Main menu reorders or hides entries: the menu is built again on the way back
+  void onShow() override {
+    if (menuSig() != builtSig_) build();
+  }
+  std::string menuSig() const {
+    std::string s;
+    for (const MenuEntry& m : g_config.theme.menu) s += m.id + (m.visible ? "+" : "-");
+    return s;
+  }
+  void build() {
+    builtSig_ = menuSig();
     struct E {
       const char* id;
       const char* label;
@@ -28,20 +51,11 @@ class MainMenuScreen : public Screen {
         r.chevron = true;
         if (m.id == "device") r.onSelect = [] { g_app->push(makeDevice()); };
         if (m.id == "nowPlaying") r.onSelect = [] { openNowPlaying(); };
+        if (m.id == "settings") r.onSelect = [] { g_app->push(makeSettings()); };
         rows.push_back(std::move(r));
       }
     }
-    list_.onSelectionChanged = [this] {
-      const Row* r = list_.selectedRow();
-      if (!r) return;
-      if (shown_ != r->tile) {
-        from_ = shown_;
-        shown_ = r->tile;
-        fade_.begin(0, 1, now_, 180 * kMs, easeInOutCubic);
-      }
-    };
-    list_.setRows(std::move(rows));
-    from_ = shown_;
+    list_.setRows(std::move(rows), true);
   }
   std::string title() const override { return "Rondo"; }
   bool onAction(Action a, int steps) override {
@@ -184,7 +198,7 @@ class MainMenuScreen : public Screen {
   const Tile* from_ = nullptr;
   Tween fade_;
   int64_t now_ = 0;
-  std::string paneSig_;
+  std::string paneSig_, builtSig_;
 };
 
 std::unique_ptr<Screen> makeMainMenu() { return std::unique_ptr<Screen>(new MainMenuScreen()); }

@@ -10,6 +10,7 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
+std::unique_ptr<Screen> makeSettings();
 std::unique_ptr<Screen> makeSearch(Scope s);
 // openNowPlaying() in 1.0.x: the Now Playing screen for what plays (nothing when nothing does)
 void openNowPlaying();

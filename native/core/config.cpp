@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -180,6 +181,15 @@ bool saveConfig(const char* path, const Config& c) {
   if (!json) return false;
   std::string tmp = std::string(path) + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  // Rondo runs as root, the file belongs to 1.0.x's app user (they share it until 2.0 replaces 1.0.x):
+  // the new file keeps the old one's owner and mode, or takes its folder's owner, or 1.0.x could no
+  // longer read its own settings.
+  struct stat st;
+  std::string dir = std::string(path).substr(0, std::string(path).rfind('/'));
+  if (fd >= 0 && (stat(path, &st) == 0 || stat(dir.c_str(), &st) == 0)) {
+    if (fchown(fd, st.st_uid, st.st_gid) != 0) fprintf(stderr, "rondo: config owner not kept\n");
+    if (S_ISREG(st.st_mode)) fchmod(fd, st.st_mode & 07777);
+  }
   bool ok = fd >= 0 && write(fd, json, len) == ssize_t(len) && fsync(fd) == 0;
   if (fd >= 0) close(fd);
   free(json);

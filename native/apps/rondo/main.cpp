@@ -14,6 +14,7 @@
 // SIGUSR1 saves a screenshot (--shot, default /data/local/tmp/rondo/shot.png). Holding Menu 2 s quits
 // (a development affordance); with --restore-android 1, 1.0.x then comes back.
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -47,6 +48,28 @@ Config g_config;
 Library g_library;
 PlayerHost g_player;
 Playlists g_playlists(g_library);
+Prefs g_prefs;
+std::string g_configPath, g_prefsPath;
+
+void saveConfigNow() {
+  if (!saveConfig(g_configPath.c_str(), g_config)) fprintf(stderr, "rondo: settings not saved\n");
+}
+void savePrefsNow() {
+  if (!savePrefs(g_prefsPath, g_prefs)) fprintf(stderr, "rondo: device settings not saved\n");
+}
+void themeChanged() {
+  sanitize(g_config.theme);
+  saveConfigNow();
+  if (g_app && g_app->onThemeChanged) g_app->onThemeChanged();
+}
+void applyBrightness(int value) {
+  int fd = open("/sys/class/leds/lcd-backlight/brightness", O_WRONLY);
+  if (fd < 0) return;
+  char b[8];
+  int n = snprintf(b, sizeof(b), "%d", std::max(10, std::min(255, value)));
+  if (write(fd, b, size_t(n)) != n) fprintf(stderr, "rondo: brightness not set\n");
+  close(fd);
+}
 App* g_app = nullptr;
 bool g_traceSlow = false;
 }  // namespace rondo::shell
@@ -89,6 +112,7 @@ void onSignal(int sig) {
 int main(int argc, char** argv) {
   const char* configPath = "/data/data/com.jarvissax.rondo/files/config.json";
   const char* libraryDb = "/data/local/tmp/rondo/library.db";
+  const char* prefsPath = "/data/local/tmp/rondo/prefs.json";
   const char* indexJson = "/data/data/com.jarvissax.rondo/files/local-index.json";
   const char* fonts = "/system/fonts";
   const char* regular = "/data/local/tmp/rondo/fonts/Roboto-Regular.ttf";
@@ -100,6 +124,7 @@ int main(int argc, char** argv) {
   for (int i = 1; i + 1 < argc; i += 2) {
     if (!strcmp(argv[i], "--config")) configPath = argv[i + 1];
     else if (!strcmp(argv[i], "--library")) libraryDb = argv[i + 1];
+    else if (!strcmp(argv[i], "--prefs")) prefsPath = argv[i + 1];
     else if (!strcmp(argv[i], "--fonts")) fonts = argv[i + 1];
     else if (!strcmp(argv[i], "--regular")) regular = argv[i + 1];
     else if (!strcmp(argv[i], "--thumbs")) thumbs = argv[i + 1];
@@ -124,6 +149,8 @@ int main(int argc, char** argv) {
   int64_t t0 = now_ns();
   g_traceSlow = getenv("RONDO_SLOW") != nullptr;
   g_config = loadConfig(configPath);
+  g_configPath = configPath, g_prefsPath = prefsPath;
+  g_prefs = loadPrefs(prefsPath);
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
   g_library.scan();
@@ -159,6 +186,7 @@ int main(int argc, char** argv) {
   app.push(makeMainMenu());
   Dispatcher dispatch;
   dispatch.acceleration = g_config.behavior.wheelAcceleration;
+  app.onAccelerationChanged = [&] { dispatch.acceleration = g_config.behavior.wheelAcceleration; };
   dispatch.emit = [&](Action a, int steps) { app.action(a, steps); };
   Status status{false, readOnline(), readBattery()};
   printf("rondo: %zu files in the library (%.0f ms), ready at %.0f ms\n", g_library.tracks().size(), (tLib - t0) / 1e6,
@@ -172,16 +200,53 @@ int main(int argc, char** argv) {
   int64_t lastPresent = 0, lastStatus = now_ns(), menuDown = 0;
   // Glyphs and icons are rasterized while idle: adding to the atlas while a frame still uses it makes the
   // next frame wait a whole refresh for the GPU (N5 log), so a screen's first frame must find them ready.
-  std::vector<int> warmFonts;
-  for (float sp : {15.f, 13.5f, 11.f, 12.f, 14.f, 10.f, 9.f})
-    for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, sp * pal.scale));
-  for (int px : {int(floorf(15 * pal.scale + 0.5f)), int(floorf(12 * pal.scale + 0.5f))})  // the keyboard's labels
-    for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, float(px)));
-  // Now Playing: the title, the artist; the lyrics' sung line
-  for (float sp : {17.f, 17.5f}) warmFonts.push_back(text.font(Weight::Bold, sp * pal.scale));
-  warmFonts.push_back(text.font(Weight::Regular, 13 * pal.scale));
-  warmFonts.push_back(text.font(Weight::Bold, 13 * pal.scale));  // the selected MUSIC row
-  std::vector<int> warmDigits = {text.font(Weight::Bold, 26 * pal.scale)};  // the scrub bubble's time
+  // What is warmed depends on the text scale: built again when the theme changes it.
+  std::vector<int> warmFonts, warmDigits;
+  struct WarmIcon {
+    Icon icon;
+    int w, h;
+  };
+  std::vector<WarmIcon> warmIconList;
+  auto buildWarm = [&] {
+    warmFonts.clear();
+    for (float sp : {15.f, 13.5f, 11.f, 12.f, 14.f, 10.f, 9.f})
+      for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, sp * pal.scale));
+    for (int px : {int(floorf(15 * pal.scale + 0.5f)), int(floorf(12 * pal.scale + 0.5f))})  // the keyboard's labels
+      for (bool bold : {false, true}) warmFonts.push_back(text.font(bold ? Weight::Bold : Weight::Regular, float(px)));
+    // Now Playing: the title, the artist; the lyrics' sung line
+    for (float sp : {17.f, 17.5f}) warmFonts.push_back(text.font(Weight::Bold, sp * pal.scale));
+    warmFonts.push_back(text.font(Weight::Regular, 13 * pal.scale));
+    warmFonts.push_back(text.font(Weight::Bold, 13 * pal.scale));  // the selected MUSIC row
+    warmDigits = {text.font(Weight::Bold, 26 * pal.scale)};        // the scrub bubble's time
+    auto d = [&](float v) { return int(floorf(v * pal.scale + 0.5f)); };
+    auto& list = warmIconList;  // every icon at the sizes the shell draws it
+    list.clear();
+    for (Icon k : {Icon::Note, Icon::Play, Icon::Folder, Icon::Bars, Icon::Gear, Icon::Wifi, Icon::Bluetooth, Icon::Cloud,
+                   Icon::Info, Icon::Person, Icon::Disc, Icon::Screen, Icon::Sun, Icon::Timer, Icon::Radio, Icon::Volume,
+                   Icon::Shuffle, Icon::Power, Icon::Refresh, Icon::Theme, Icon::Playlist, Icon::Plus, Icon::Search,
+                   Icon::Trash, Icon::Shorts, Icon::Check})
+      list.push_back({k, d(16), d(16)});
+    for (Icon k : {Icon::Bars, Icon::Folder, Icon::Radio, Icon::Gear}) list.push_back({k, d(70), d(70)});
+    list.push_back({Icon::Chevron, d(8), d(12)});
+    list.push_back({Icon::Wifi, d(14), d(14)});
+    list.push_back({Icon::BatteryFrame, d(24), d(14)});
+    list.push_back({Icon::Play, d(12), d(12)});
+    list.push_back({Icon::Search, d(11), d(11)});
+    // Now Playing
+    list.push_back({Icon::Note, d(44), d(44)});
+    for (Icon k : {Icon::Shuffle, Icon::Repeat}) list.push_back({k, d(15), d(13)});
+    for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(9), d(9)});
+    list.push_back({Icon::Wifi, d(11), d(11)});
+    list.push_back({Icon::BatteryFrame, d(18), d(11)});
+    list.push_back({Icon::Volume, d(22), d(22)});
+    // the YouTube Music lists: the chevron, the mini player's state, the header's logo
+    list.push_back({Icon::Chevron, d(7), d(11)});
+    for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(12), d(12)});
+    for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(16), d(16)});
+    for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(19), d(19)}), list.push_back({k, d(70), d(70)});
+    for (Icon k : {Icon::VideoLogoButton, Icon::VideoLogoPlay}) list.push_back({k, d(19), d(14)}), list.push_back({k, d(80), d(56)});
+  };
+  buildWarm();
   static const char kWarmChars[] =
       " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
       "ÀÁÂÄÇÈÉÊÍÑÓÖÚÜ"
@@ -190,39 +255,24 @@ int main(int argc, char** argv) {
   bool warmed = false;
   int warmStage = 0;
   size_t warmIcon = 0;
-  auto warmIcons = [&] {  // every icon at the sizes the shell draws it, a few per idle slice
-    auto d = [&](float v) { return int(floorf(v * pal.scale + 0.5f)); };
-    struct I { Icon icon; int w, h; };
-    static std::vector<I> list;
-    if (list.empty()) {
-      for (Icon k : {Icon::Note, Icon::Play, Icon::Folder, Icon::Bars, Icon::Gear, Icon::Wifi, Icon::Bluetooth, Icon::Cloud,
-                     Icon::Info, Icon::Person, Icon::Disc, Icon::Screen, Icon::Sun, Icon::Timer, Icon::Radio, Icon::Volume,
-                     Icon::Shuffle, Icon::Power, Icon::Refresh, Icon::Theme, Icon::Playlist, Icon::Plus, Icon::Search,
-                     Icon::Trash, Icon::Shorts})
-        list.push_back({k, d(16), d(16)});
-      for (Icon k : {Icon::Bars, Icon::Folder, Icon::Radio, Icon::Gear}) list.push_back({k, d(70), d(70)});
-      list.push_back({Icon::Chevron, d(8), d(12)});
-      list.push_back({Icon::Wifi, d(14), d(14)});
-      list.push_back({Icon::BatteryFrame, d(24), d(14)});
-      list.push_back({Icon::Play, d(12), d(12)});
-      list.push_back({Icon::Search, d(11), d(11)});
-      // Now Playing
-      list.push_back({Icon::Note, d(44), d(44)});
-      for (Icon k : {Icon::Shuffle, Icon::Repeat}) list.push_back({k, d(15), d(13)});
-      for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(9), d(9)});
-      list.push_back({Icon::Wifi, d(11), d(11)});
-      list.push_back({Icon::BatteryFrame, d(18), d(11)});
-      list.push_back({Icon::Volume, d(22), d(22)});
-      // the YouTube Music lists: the chevron, the mini player's state, the header's logo
-      list.push_back({Icon::Chevron, d(7), d(11)});
-      for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(12), d(12)});
-      for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(16), d(16)});
-      for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(19), d(19)}), list.push_back({k, d(70), d(70)});
-      for (Icon k : {Icon::VideoLogoButton, Icon::VideoLogoPlay}) list.push_back({k, d(19), d(14)}), list.push_back({k, d(80), d(56)});
-    }
+  auto warmIcons = [&] {  // a few per idle slice
     int64_t until = now_ns() + 3 * kMs;
+    const auto& list = warmIconList;
     while (warmIcon < list.size() && now_ns() < until) icons.mask(list[warmIcon].icon, list[warmIcon].w, list[warmIcon].h), warmIcon++;
     return warmIcon >= list.size();
+  };
+  // Settings › Theme: the palette, and the text scale's sizes warmed again (1.0.x rebuilds its screens)
+  app.onThemeChanged = [&] {
+    pal = paletteFor(g_config.theme);
+    buildWarm();
+    warmIcon = 0;
+    warmStage = 0;
+    warmed = false;
+    text.resetWarm();
+    auto u = [&](float v) { return int(floorf(v * pal.scale + 0.5f)); };
+    covers.reserve(u(26), u(26), 96);
+    covers.reserve(u(34), u(34), 24);
+    for (float v : {140.f, 22.f, 98.f, 24.f}) covers.reserve(u(v), u(v), 3);
   };
   while (!g_stop) {
     if (!moving && !g_shot) {

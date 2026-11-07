@@ -38,7 +38,7 @@ foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson)
 endforeach()
 
 # The core (N2): settings, the card library, later the server client
-add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/lyrics.cpp)
+add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/lyrics.cpp core/prefs.cpp)
 target_include_directories(rondo_core SYSTEM PUBLIC ${TP}/include)
 target_link_libraries(rondo_core PUBLIC tp_sqlite3 tp_yyjson dl)
 
@@ -78,7 +78,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
