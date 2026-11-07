@@ -19,6 +19,35 @@ namespace {
 constexpr Color white = 0xffffffff;
 inline Color whiteA(int a) { return uint32_t(a) << 24 | 0xffffff; }
 
+// An axis-aligned Canvas.drawLine() as 4.2's GL renderer draws it with an antialiased paint (measured on
+// FM's dial, Nov 7): the line's middle sits 0.375 px right of and below where it was asked for; across
+// it, a pixel whose center is d from the middle gets clamp((1.5 w/2 - d) / (w/2)) (an edge ramp half
+// the stroke wide); along it, its ends cover pixels by area.
+void glLine(Env& e, bool vertical, float across, float from, float to, float width, Color c) {
+  const float o = 0.375f, half = width / 2;
+  float mid = across + o;
+  from += o, to += o;
+  if (to <= from || half <= 0) return;
+  for (int i = int(floorf(mid - 1.5f * half)); i <= int(floorf(mid + 1.5f * half)); i++) {
+    float a = std::min(1.f, std::max(0.f, (1.5f * half - fabsf(i + 0.5f - mid)) / half));
+    if (a <= 0) continue;
+    Color ca = withAlpha(c, a);
+    auto run = [&](int p, int n, float cover) {
+      Color cc = cover >= 1 ? ca : withAlpha(ca, cover);
+      if (vertical) e.c.fill({float(i), float(p), 1, float(n)}, cc);
+      else e.c.fill({float(p), float(i), float(n), 1}, cc);
+    };
+    int p0 = int(floorf(from)), p1 = int(ceilf(to)) - 1;
+    if (p0 == p1) {
+      run(p0, 1, to - from);
+      continue;
+    }
+    run(p0, 1, float(p0 + 1) - from);  // the ends by area, the pixels between whole
+    if (p1 - p0 > 1) run(p0 + 1, p1 - p0 - 1, 1);
+    run(p1, 1, to - float(p1));
+  }
+}
+
 bool japan() { return g_config.radio.band == "japan"; }
 int bandMin() { return japan() ? 760 : 875; }
 int bandMax() { return japan() ? 950 : 1080; }
@@ -409,14 +438,22 @@ class FmScreen : public Screen {
     float iw = w - 2 * side;
     Label freq = label(e, fmName(f), 44, true), unit = label(e, "MHz", 14, true);
     int rowW = freq.w + e.dp(6) + unit.w;
-    int rowH = std::max(freq.h, unit.h + e.dp(9));
+    // A horizontal LinearLayout with gravity BOTTOM lines up its children's baselines: laid out, the
+    // descents count MHz's 9 dp bottom margin, which lifts MHz and the number (the number's view starts
+    // above the row); the row itself is as tall as its tallest child (1.0.x's view bounds, Nov 7: the
+    // row 72 px, the number at -3, MHz at 23).
+    int m = e.dp(9);
+    int fa = e.text.ascentInt(freq.font), ua = e.text.ascentInt(unit.font);
+    int fd = freq.h - fa, ud = unit.h - ua;
+    int rowH = std::max({freq.h, unit.h + m, std::max(fa, ua) + std::max(fd, ud)});
+    int maxDesc = std::max(fd, ud + m);
     float y = top + e.dp(6);
     float x = float(side) + float((int(iw) - rowW) / 2);
     e.c.layer(2);
     e.c.pushAlpha(s.fmOn ? 1 : 0.45f);
-    drawLabel(e, freq, x, y + rowH - freq.h, white);
+    drawLabel(e, freq, x, y + rowH - freq.h - (maxDesc - fd), white);
     e.c.popAlpha();
-    drawLabel(e, unit, x + freq.w + e.dp(6), y + rowH - e.dp(9) - unit.h, whiteA(190));
+    drawLabel(e, unit, x + freq.w + e.dp(6), y + rowH - unit.h - m - (maxDesc - ud), whiteA(190));
     y += rowH;
     // what is on: an error, the state, or the station's name and radio text
     const Preset* saved = presetAt(f);
@@ -458,7 +495,7 @@ class FmScreen : public Screen {
       bool major = japan() ? f % 20 == 0 : f % 40 == 0;
       bool half = f % 10 != 0;
       float len = e.dpf(major ? 9 : half ? 3 : 5);
-      e.c.fill({x(f) - line / 2, base - len, line, len}, c);
+      glLine(e, true, x(f), base - len, base, line, c);
       if (major) {
         Label l = label(e, std::to_string(f / 10), 9, false);
         e.c.layer(2);
@@ -466,7 +503,7 @@ class FmScreen : public Screen {
         e.c.layer(1);
       }
     }
-    e.c.fill({pad, base - line / 2, dw, line}, c);
+    glLine(e, false, base, pad, pad + dw, line, c);
     float dot = e.dpf(2);
     for (const Preset& p : g_config.radio.presets)
       e.c.shape({x(p.frequency) - dot, base - e.dpf(13) - dot, 2 * dot, 2 * dot}, dot, 0xc8ffb04d);

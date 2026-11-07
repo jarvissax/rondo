@@ -11,7 +11,7 @@ I wheel 5 300; sleep 0.8                      # Settings
 I key center; sleep 1.5
 I wheel 1 300; sleep 0.6                      # Wi-Fi
 SETTLE=4 $T wifi key center >/dev/null
-I wheel 2 300; sleep 0.6                      # the network joined (under the toggle and its header)
+I wheel 1 300; sleep 0.6                      # the network joined (under the toggle; the header is skipped)
 SETTLE=1.5 $T wifi-network key center >/dev/null
 I key menu; sleep 1.2
 I key menu; sleep 1.2                         # Settings, Wi-Fi selected

@@ -270,8 +270,10 @@ bool Text::rasterize(Slot& s) {
       static float yfactor = getenv("RONDO_BOLD_Y") ? float(atof(getenv("RONDO_BOLD_Y"))) : factor;
       FT_Pos w = FT_Pos(lroundf(sz.px * factor * 64));  // grows by w/2 on each side, as a stroke of w does
       FT_Outline_EmboldenXY(&f->glyph->outline, w, FT_Pos(lroundf(sz.px * yfactor * 64)));
-      // 1.0.x's stroked bold sits ~0.6 px lower than FreeType's emboldening (measured, N1 log)
-      static int dy = getenv("RONDO_BOLD_DY") ? atoi(getenv("RONDO_BOLD_DY")) : 40;  // 26.6, down
+      // 1.0.x's stroked bold sits ~0.6 px lower than FreeType's emboldening (measured at 17 sp, N1 log),
+      // more with the size: 2.1 px at FM's 44 sp frequency (61.6 px, Nov 7), a line through both
+      static int dy0 = getenv("RONDO_BOLD_DY") ? atoi(getenv("RONDO_BOLD_DY")) : 40;  // 26.6, down
+      int dy = std::max(dy0, int(lroundf((0.625f + 0.039f * (sz.px - 23.8f)) * 64)));
       if (dy) FT_Outline_Translate(&f->glyph->outline, 0, -dy);
     }
     ok = FT_Render_Glyph(f->glyph, FT_RENDER_MODE_LIGHT) == 0;
