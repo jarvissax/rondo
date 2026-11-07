@@ -334,6 +334,11 @@ void Bluetooth::loop() {
     bool changed = false;
     if ((power_ == 1 || power_ == 3) && now - powerSince_ > 15000) power_ = power_ == 1 ? 0 : 2, changed = true;
     if (searching_ && now - searchSince_ > 90000) searching_ = false, changed = true;
+    if (autoConnectAt_ && now >= autoConnectAt_) {
+      autoConnectAt_ = 0;
+      bool any = std::any_of(devs_.begin(), devs_.end(), [](const Dev& x) { return x.a2dp != 0; });
+      if (!any && power_ == 2) connect(autoConnect_);
+    }
     if (connectSince_ && now - connectSince_ > 25000) {
       connectSince_ = 0;
       for (Dev& d : devs_)
@@ -403,6 +408,7 @@ void Bluetooth::onGap(uint8_t* m, ssize_t n) {
       break;
     case 0x92:  // powered off
       power_ = 0;
+      links_ = 0;
       searching_ = false;
       a2dpActive_ = avrcpActive_ = false;
       for (Dev& d : devs_) d.found = d.pairing = false, d.a2dp = 0;
@@ -461,6 +467,20 @@ void Bluetooth::onGap(uint8_t* m, ssize_t n) {
       readPaired();
       publish();
       break;
+    case 0xba: {  // the number of links changed (+0x21, the device at +0x24)
+      int links = m[0x21];
+      bool up = links > links_;
+      links_ = links;
+      // paired headphones came on and linked: connected unless they connect A2DP themselves within 2 s
+      // (Android's A2DP auto-connect)
+      Dev* d = find(m + 0x24);
+      bool any = std::any_of(devs_.begin(), devs_.end(), [](const Dev& x) { return x.a2dp != 0; });
+      if (up && d && d->paired && (d->cod & 0x1f00) == 0x0400 && !any && power_ == 2) {
+        autoConnect_ = d->address;
+        autoConnectAt_ = nowMs() + 2000;
+      }
+      break;
+    }
     case 0xc2:  // a device's name
       if (n >= 0x29 + m[0x28] && m[0x28] < 60) learnName(m + 0x20, reinterpret_cast<const char*>(m + 0x29), m[0x28]), publish();
       break;

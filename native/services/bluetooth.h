@@ -89,6 +89,9 @@ class Bluetooth {
   std::string pendingConnect_;                // to connect once the other one has gone
   int a2dpStateNow_ = 1;
   int64_t connectSince_ = 0;  // a connection asked for (given up after 25 s)
+  int links_ = 0;             // mtkbt's link count (0xba)
+  std::string autoConnect_;   // paired headphones that linked by themselves, connected at autoConnectAt_
+  int64_t autoConnectAt_ = 0;
   uint32_t keySerial_ = 0;
   int key_ = 0;
 };

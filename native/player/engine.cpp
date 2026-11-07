@@ -325,7 +325,10 @@ void Engine::command(const std::vector<uint8_t>& m) {
   };
   // the radio's calls report back through the engine's lock: they're made once it is let go
   std::function<void()> radio;
+  static const bool logCommands = getenv("RONDO_PLAYER_LOG") != nullptr;
+  int64_t asked = logCommands ? monoNs() : 0;
   pthread_mutex_lock(&mu_);
+  if (logCommands) printf("player: command %u (the lock after %.1f ms)\n", type, (monoNs() - asked) / 1e6);
   int64_t heard = int64_t(playedAt_ - heardFrom_) * 1000 / kRate + heardStartMs_;
   switch (type) {
     case kPlayQueue: {
