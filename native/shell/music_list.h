@@ -7,8 +7,10 @@
 
 namespace rondo::shell {
 
-// darkHeader(): 31 units, the YouTube Music logo (16 units), the title (14 bold), the status icons.
-void darkHeader(Env& e, float w, const std::string& title, bool musicLogo, Color titleColor = 0xffffffff);
+// darkHeader(): 31 units (28 on the Wi-Fi password screen), a logo (16 units), the title (14 bold), the
+// status icons.
+enum class HeaderLogo { None, Music, Wifi };
+void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Color titleColor = 0xffffffff, float heightUnits = 31);
 
 // Ambient: like YouTube Music's ambient color, the selected row's artwork color at the top fading into
 // #0f0f0f. 1.0.x swaps it at once; here the new color fades in over 200 ms.

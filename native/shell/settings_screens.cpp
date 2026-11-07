@@ -323,7 +323,7 @@ class AboutScreen : public ShellListScreen {
       uint64_t total = uint64_t(s.f_blocks) * s.f_bsize, free = uint64_t(s.f_bavail) * s.f_bsize;
       if (total > 0) add(name, bytes(free) + " free of " + bytes(total));
     }
-    add("Wi-Fi", st.online ? "Connected" : "Not connected");  // the network's name comes with N4's Wi-Fi
+    add("Wi-Fi", wifiName());
     std::string ip = wifiAddress();
     if (!ip.empty()) add("IP address", ip);
     std::string server = g_config.server.url;
@@ -340,6 +340,12 @@ class SettingsScreen : public ShellListScreen {
  public:
   SettingsScreen() : ShellListScreen("Settings") { render(); }
   void onShow() override { render(); }
+  bool tick(int64_t) override {
+    std::string w = wifiName();
+    if (w == wifi_) return false;
+    render();
+    return true;
+  }
 
  private:
   void render() {
@@ -352,8 +358,9 @@ class SettingsScreen : public ShellListScreen {
     };
     const Status& st = g_app->status();
     add("Dashboard", "", tiles::dashboard, true, nullptr);                                  // N4: the web dashboard
-    add("Wi-Fi", st.online ? "Connected" : "Not connected", tiles::wifi, true, nullptr);    // N4: the network's name
+    add("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); });
     add("Bluetooth", "Off", tiles::bluetooth, true, nullptr);  // N4 turns it on; until then it is off
+    wifi_ = wifiName();
     add("Theme", accentName(g_config.theme.accent), tiles::theme, true,
         [] { g_app->push(std::unique_ptr<Screen>(new ThemeScreen())); });
     add("Video quality", g_prefs.videoQuality ? std::to_string(g_prefs.videoQuality) + "p" : "Auto", tiles::quality, true, [] {
@@ -441,6 +448,7 @@ class SettingsScreen : public ShellListScreen {
     add("Shut down", "", tiles::power, true, nullptr);  // N4: sys.powerctl
     list_.setRows(std::move(rows), true);
   }
+  std::string wifi_;
 };
 
 }  // namespace

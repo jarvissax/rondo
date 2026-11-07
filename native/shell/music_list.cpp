@@ -15,13 +15,15 @@ Color darker(Color c, float f) {
 
 }  // namespace
 
-void darkHeader(Env& e, float w, const std::string& title, bool musicLogo, Color titleColor) {
-  int h = e.dp(31), pad = e.dp(10);
+void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Color titleColor, float heightUnits) {
+  int h = e.dp(heightUnits), pad = e.dp(10);
   float x = float(pad);
   e.c.layer(4);
-  if (musicLogo) {
+  if (logo != HeaderLogo::None) {
     int s = e.dp(16);
-    e.icons.musicLogo(e.c, {x, float((h - s) / 2), float(s), float(s)});
+    Rect r{x, float((h - s) / 2), float(s), float(s)};
+    if (logo == HeaderLogo::Music) e.icons.musicLogo(e.c, r);
+    else e.icons.draw(e.c, Icon::Wifi, r, white);
     x += s + e.dp(7);
   }
   float iconsLeft = statusIcons(e, w - pad, h, e.p.darkMuted);
@@ -132,7 +134,7 @@ void MusicListScreen::draw(Env& e, float w, float h) {
   }
   ambient_.follow(e, thumb, e.dp(34));
   ambient_.draw(e, {0, 0, w, h});
-  darkHeader(e, w, title_, true);
+  darkHeader(e, w, title_, HeaderLogo::Music);
   float top = float(e.dp(31));
   bool mini = miniPlayerShown();
   float bottom = mini ? float(e.dp(kMiniPlayer)) : 0;
