@@ -108,6 +108,8 @@ class Engine {
   bool decodeTrack(int pos, int64_t seekMs, uint32_t gen);
   bool write(const int16_t* pcm, int frames, uint32_t gen);
   bool eager_ = true;  // the decode thread at -4 (filling), else at +10 (topping up)
+  bool released_ = false;  // kRelease: no file open until Play
+  int64_t releasedMs_ = 0;
 
   // ---- output ----
   bool openOutput();
@@ -256,13 +258,33 @@ void Engine::command(const std::vector<uint8_t>& m) {
       break;
     }
     case kToggle:
-      if (heardPos_ >= 0) {
+      if (released_) {
+        released_ = false;
+        restart(heardPos_, releasedMs_, true);
+      } else if (heardPos_ >= 0) {
         if (ended_) restart(heardPos_, 0, true);
         else setPlaying(!playing_);
       }
       break;
     case kPlay:
-      if (heardPos_ >= 0 && !playing_) setPlaying(true);
+      if (released_) {
+        released_ = false;
+        restart(heardPos_, releasedMs_, true);
+      } else if (heardPos_ >= 0 && !playing_) {
+        setPlaying(true);
+      }
+      break;
+    case kRelease:
+      // The card goes to a computer as a USB drive, and vold kills whoever still has a file open on it:
+      // the decoder leaves the song (closing it), the stream is dropped, the place is kept.
+      if (heardPos_ >= 0 && !released_) {
+        releasedMs_ = heard;
+        int64_t duration = heardDuration_;
+        restart(heardPos_, releasedMs_, false);
+        startPos_ = -1;  // nothing decodes until Play
+        heardDuration_ = duration;
+        released_ = true;
+      }
       break;
     case kPause: setPlaying(false); break;
     case kNext: {

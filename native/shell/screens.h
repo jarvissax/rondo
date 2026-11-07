@@ -11,6 +11,11 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
 std::unique_ptr<Screen> makeSettings();
+// the USB drive (usb_screen.cpp): its screen; the cable plugged into a computer or pulled out; the
+// end of a switch nobody watched (true: something to draw again)
+std::unique_ptr<Screen> makeUsbDrive();
+void usbCableChanged(bool computer);
+bool usbIdle();
 std::unique_ptr<Screen> makeSearch(Scope s);
 // openNowPlaying() in 1.0.x: the Now Playing screen for what plays (nothing when nothing does)
 void openNowPlaying();

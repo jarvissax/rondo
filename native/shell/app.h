@@ -111,6 +111,7 @@ class App {
     }
   }
   void setNow(int64_t now) { now_ = now; }
+  std::string topTitle() const { return stack_.back()->title(); }
   bool tick(int64_t now) {
     bool changed = stack_.back()->tick(now);
     if (volumeUntil_ && now >= volumeUntil_) volumeUntil_ = 0, changed = true;

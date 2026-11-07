@@ -32,6 +32,7 @@
 #include "../../core/config.h"
 #include "../../core/library.h"
 #include "../../platform/platform.h"
+#include "../../platform/usb_drive.h"
 #include "../../shell/dispatch.h"
 #include "../../shell/kit.h"
 #include "../../shell/app.h"
@@ -184,6 +185,11 @@ int main(int argc, char** argv) {
   App app;
   g_app = &app;
   app.push(makeMainMenu());
+  // A computer on the cable offers the USB drive screen, at startup too (1.0.x's sticky broadcast).
+  // RONDO_USB_PROMPT=0 (the test scripts) leaves it to the cable being plugged in later.
+  bool usbComputer = usb::computerConnected();
+  if (usbComputer && !(getenv("RONDO_USB_PROMPT") && !strcmp(getenv("RONDO_USB_PROMPT"), "0"))) app.push(makeUsbDrive());
+  int64_t lastUsb = 0;
   Dispatcher dispatch;
   dispatch.acceleration = g_config.behavior.wheelAcceleration;
   app.onAccelerationChanged = [&] { dispatch.acceleration = g_config.behavior.wheelAcceleration; };
@@ -312,6 +318,12 @@ int main(int argc, char** argv) {
       if (r == 0) {
         dispatch.tick(now_ns());
         if (app.tick(now_ns())) moving = true;
+        if (now_ns() - lastUsb > kSec) {  // the cable, once a second
+          lastUsb = now_ns();
+          bool c = usb::computerConnected();
+          if (c != usbComputer) usbComputer = c, usbCableChanged(c), moving = true;
+          if (usbIdle()) moving = true;
+        }
         if ((g_player.state().playing != 0) != status.playing) moving = true;
         if (now_ns() - lastStatus > 2 * kSec) {  // 1.0.x refreshes on its 500 ms tick
           lastStatus = now_ns();

@@ -82,6 +82,7 @@ void PlayerHost::append(const std::string& path) {
   queue_.push_back(path);
   send(kAppend, path.data(), uint32_t(path.size()));
 }
+void PlayerHost::release() { send(kRelease); }
 void PlayerHost::setShuffle(bool on) {
   uint8_t v = on;
   send(kShuffle, &v, 1);

@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(dirname "$0")/y1.sh"
 y1_push rondo inject
 adb shell "getprop init.svc.surfaceflinger" | grep -q stopped || y1_stop_android
-adb shell "kill \$(cat $DIR/rondo.pid) 2>/dev/null; sleep 0.5; cd $DIR; rm -f frames.csv; (./run.sh --csv $DIR/frames.csv > rondo.log 2>&1 </dev/null &); sleep 2.5"
+adb shell "kill \$(cat $DIR/rondo.pid) 2>/dev/null; sleep 0.5; cd $DIR; rm -f frames.csv; (RONDO_USB_PROMPT=0 ./run.sh --csv $DIR/frames.csv > rondo.log 2>&1 </dev/null &); sleep 2.5"
 I() { adb shell "$DIR/inject $*"; }
 I wheel 1 300; sleep 0.5; I key center; sleep 1          # Library
 I wheel 3 300; sleep 0.6; I key center; sleep 1          # Songs

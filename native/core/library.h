@@ -5,6 +5,7 @@
 #pragma once
 #include <stdint.h>
 
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -41,7 +42,9 @@ class Library {
   // Writes what changed since the last save, in one transaction.
   bool save();
 
-  const std::vector<Track>& tracks() const { return tracks_; }
+  // Tracks never move once added (a deque; a song that leaves the card is marked gone): screens keep
+  // pointers to them across a rescan.
+  const std::deque<Track>& tracks() const { return tracks_; }
   std::vector<const Track*> songs() const;   // sorted by lower-case title
   std::vector<const Track*> videos() const;
   using Group = std::pair<std::string, std::vector<const Track*>>;
@@ -68,7 +71,7 @@ class Library {
   mutable std::vector<const Track*> songs_, videos_;
   mutable std::vector<std::string> artistKeys_, albumKeys_;
   mutable std::unordered_map<std::string, const Track*> byPath_;
-  std::vector<Track> tracks_;
+  std::deque<Track> tracks_;
   std::vector<std::string> removed_;
 };
 

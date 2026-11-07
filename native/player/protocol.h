@@ -20,6 +20,7 @@ enum PlayerCommand : uint32_t {
   kShuffle,     // u8
   kRepeat,      // u8: 0 off, 1 all, 2 one
   kVolume,      // i64 steps
+  kRelease,     // the card goes to a computer: close the song's file, keep the place (Play reopens it)
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

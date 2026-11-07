@@ -62,6 +62,7 @@ class PlayerHost {
   void setShuffle(bool on);
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
+  void release();                // paused, the song's file closed (the USB drive); Play picks it up again
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

@@ -180,13 +180,28 @@ void Library::walk(const std::string& dir, int depth, std::vector<Track>& out) {
 
 void Library::scan(const std::vector<std::string>& roots) {
   std::vector<Track> found;
-  std::vector<Track> old = tracks_;
   for (const std::string& r : roots) walk(r, 0, found);
+  // in place: a track stays where it is (screens hold pointers to it), a changed file is updated where
+  // it is, a new one is added at the end, one that left the card is marked gone
+  std::unordered_map<std::string, Track*> byPath;
+  for (Track& t : tracks_)
+    if (!t.gone) byPath[t.path] = &t;
   std::unordered_map<std::string, bool> now;
-  for (const Track& t : found) now[t.path] = true;
-  for (const Track& t : old)
-    if (!now.count(t.path)) removed_.push_back(t.path);
-  tracks_ = std::move(found);
+  for (Track& f : found) {
+    now[f.path] = true;
+    f.gone = false;
+    auto it = byPath.find(f.path);
+    if (it == byPath.end()) {
+      tracks_.push_back(std::move(f));
+    } else if (it->second->size != f.size || it->second->modified / 1000 != f.modified / 1000) {
+      *it->second = std::move(f);  // read again (its tags too)
+    }
+  }
+  for (Track& t : tracks_)
+    if (!t.gone && !now.count(t.path)) {
+      t.gone = true;
+      removed_.push_back(t.path);
+    }
   indexed_ = false;
 }
 
@@ -272,7 +287,7 @@ std::vector<const Track*> Library::videos() const {
 namespace {
 // groups sorted case-insensitively by name (TreeMap with CASE_INSENSITIVE_ORDER: names differing only in
 // case join the first one seen)
-std::vector<Library::Group> group(const std::vector<Track>& tracks, bool album) {
+std::vector<Library::Group> group(const std::deque<Track>& tracks, bool album) {
   std::vector<Library::Group> out;
   std::unordered_map<std::string, size_t> at;
   std::vector<std::string> keys;  // lower() of each group's name, computed once
