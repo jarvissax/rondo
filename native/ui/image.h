@@ -50,6 +50,8 @@ class ImageLoader {
   bool request(const Request& r);
   // Decodes into the cache only, at low priority and only while the UI is still (no reply).
   bool prefetch(const Request& r);
+  // The server artwork ("/thumb?…" paths) comes from: its base URL and the device's token.
+  void configure(const std::string& baseUrl, const std::string& token);
   // Tells the helper the UI moved at `now`: prefetching waits until it has been still 1.5 s.
   void active(int64_t now);
   void cancelAll();

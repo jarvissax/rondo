@@ -13,13 +13,16 @@
 #include <time.h>
 #include <signal.h>
 #include <pthread.h>
+#include <atomic>
 #include <deque>
+#include <memory>
 #include <turbojpeg.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
 
+#include "../core/api.h"
 #include "../core/cover.h"
 
 namespace rondo::ui {
@@ -146,7 +149,7 @@ constexpr int kSlots = 32;
 constexpr size_t kSlotBytes = 160 << 10;
 constexpr size_t kControlBytes = 4096;  // the shared block before the slots
 
-enum MsgType : uint32_t { kRequest = 1, kCancel, kRelease, kResult, kPrefetch };
+enum MsgType : uint32_t { kRequest = 1, kCancel, kRelease, kResult, kPrefetch, kConfigure };
 
 struct Msg {
   uint32_t type;
@@ -194,6 +197,12 @@ struct Worker {
   pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
   std::deque<Msg> queue, prefetch;
   std::vector<int> freeSlots;
+  // the server's /thumb artwork: one API handle per worker (libcurl's setup isn't thread-safe, so they
+  // are made before the threads), configured by kConfigure
+  std::unique_ptr<rondo::Api> apis[4];
+  std::atomic<int> nextApi{0};
+  std::string base, token;
+  int generation = 0;
 
   static constexpr int64_t kQuietNs = 1500000000LL;  // still this long before prefetching
 
@@ -269,12 +278,29 @@ struct Worker {
       }
   }
 
-  bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px) {
+  static bool remote(const char* path) { return !strncmp(path, "/thumb", 6); }
+
+  // a thumbnail from the server: <base><thumb>&w=<width>&h=<height>, as 1.0.x's ImageLoader asked
+  bool fetch(rondo::Api& api, int& apiGeneration, const Msg& r, std::vector<uint8_t>& bytes) {
+    pthread_mutex_lock(&mu);
+    if (apiGeneration != generation) apiGeneration = generation, api.configure(base, token);
+    pthread_mutex_unlock(&mu);
+    int w = r.blur < 0 ? -r.blur : r.w, h = r.blur < 0 ? -r.blur : r.h;
+    std::string body;
+    std::string path = std::string(r.path) + "&w=" + std::to_string(w) + "&h=" + std::to_string(h);
+    if (api.get(path, body) != 200 || body.empty()) return false;
+    bytes.assign(body.begin(), body.end());
+    return true;
+  }
+
+  bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px, rondo::Api* api = nullptr, int* apiGeneration = nullptr) {
     bytes.clear();
     std::string path = r.path;
     bool file = path.size() > 4 && (path.compare(path.size() - 4, 4, ".jpg") == 0 ||
                                     path.compare(path.size() - 4, 4, ".png") == 0);
-    if (file) {
+    if (remote(r.path)) {
+      if (!api || !fetch(*api, *apiGeneration, r, bytes)) return false;
+    } else if (file) {
       if (FILE* f = fopen(path.c_str(), "rb")) {
         fseek(f, 0, SEEK_END);
         bytes.resize(size_t(ftell(f)));
@@ -300,6 +326,8 @@ struct Worker {
 
   void decodeLoop() {
     std::vector<uint8_t> bytes;
+    rondo::Api& api = *apis[nextApi++];
+    int apiGeneration = -1;
     for (;;) {
       pthread_mutex_lock(&mu);
       Msg r;
@@ -330,6 +358,30 @@ struct Worker {
       pthread_mutex_unlock(&mu);
       struct stat st;
       bool exists = stat(r.path, &st) == 0;
+      if (remote(r.path)) {
+        // the server's artwork: cached on disk once fetched (it doesn't change); a failed fetch (Wi-Fi)
+        // is not recorded as "no picture", so it is asked again later
+        memset(&st, 0, sizeof(st));
+        int cached = r.type == kPrefetch ? fromCache(r, st, nullptr) : fromCache(r, st, slot(s));
+        if (cached == 1) {
+          if (r.type != kPrefetch) reply(r, true, false, s, r.w, r.h);
+          continue;
+        }
+        Pixels px;
+        bool ok = decode(r, bytes, px, &api, &apiGeneration);
+        if (ok) toCache(r, st, &px);
+        if (r.type == kPrefetch) continue;
+        if (ok) {
+          memcpy(slot(s), px.rgba.data(), px.rgba.size());
+          reply(r, true, false, s, px.w, px.h);
+        } else {
+          pthread_mutex_lock(&mu);
+          freeSlots.push_back(s);
+          pthread_mutex_unlock(&mu);
+          reply(r, false, false, -1, 0, 0);
+        }
+        continue;
+      }
       if (r.type == kPrefetch) {
         if (exists && fromCache(r, st, nullptr) < 0) {
           Pixels px;
@@ -371,6 +423,8 @@ struct Worker {
     sched_param sp = {};
     if (sched_setscheduler(0, 5 /* SCHED_IDLE */, &sp) != 0) setpriority(PRIO_PROCESS, 0, 19);
     for (int i = 0; i < kSlots; i++) freeSlots.push_back(i);
+    threads = std::min(threads, 4);
+    for (int i = 0; i < threads; i++) apis[i].reset(new rondo::Api());
     for (int i = 0; i < threads; i++) {
       pthread_t t;
       pthread_create(&t, nullptr, &Worker::run, this);
@@ -395,6 +449,12 @@ struct Worker {
         queue.clear();
       } else if (m.type == kRelease && m.slot >= 0 && m.slot < kSlots) {
         freeSlots.push_back(m.slot);
+      } else if (m.type == kConfigure) {
+        std::string s = m.path;
+        size_t nl = s.find('\n');
+        base = s.substr(0, nl);
+        token = nl == std::string::npos ? "" : s.substr(nl + 1);
+        generation++;
       }
       pthread_cond_broadcast(&cv);
       pthread_mutex_unlock(&mu);
@@ -457,6 +517,11 @@ bool ImageLoader::request(const Request& r) {
 }
 
 bool ImageLoader::prefetch(const Request& r) { return sendRequest(sock_, kPrefetch, r); }
+
+void ImageLoader::configure(const std::string& baseUrl, const std::string& token) {
+  Request r{0, baseUrl + "\n" + token, 0, 0, 0};
+  sendRequest(sock_, kConfigure, r);
+}
 
 void ImageLoader::cancelAll() {
   Msg m = {};

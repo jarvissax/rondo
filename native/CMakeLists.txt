@@ -73,6 +73,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
   add_library(rondo_net STATIC core/api.cpp ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp)
   target_compile_definitions(rondo_net PUBLIC CURL_STATICLIB)
   target_link_libraries(rondo_net PUBLIC rondo_core tp_curl tp_nghttp2 tp_ssl tp_crypto z)
+  target_link_libraries(rondo_ui PUBLIC rondo_net)  # rondo-media fetches the server's artwork
   add_executable(apitest apps/apitest/main.cpp)
   target_link_libraries(apitest PRIVATE rondo_net)
 endif()

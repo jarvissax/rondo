@@ -16,6 +16,8 @@ const Texture* Covers::get(const std::string& path, int w, int h, int blur, int6
   uint64_t key = keyOf(path, w, h, blur);
   Entry& e = map_[key];
   e.used = ++clock_;
+  // the server's artwork that didn't come (Wi-Fi): asked again after a while, as 1.0.x retried
+  if (e.state == kMissing && path.compare(0, 6, "/thumb") == 0 && now - e.readyAt > 15 * 1000000000LL) e.state = kNone;
   if (e.state == kNone) {
     e.path = path, e.w = w, e.h = h, e.blur = blur;
     if (loader_.request({key, path, w, h, blur})) e.state = kLoading;
@@ -92,6 +94,7 @@ bool Covers::pump(int64_t now, int max) {
     }
     if (!r.ok) {
       e.state = kMissing;
+      e.readyAt = now;
       continue;
     }
     if (e.cpuOnly) {
