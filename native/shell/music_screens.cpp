@@ -160,8 +160,11 @@ class ArtistScreen : public MusicListScreen {
 // Menu goes back to the keyboard.
 class MusicSearchScreen : public Screen {
  public:
-  MusicSearchScreen() : kb_("Search") { results_.style = RowStyle::Music; results_.onNearEnd = [this] { more(); }; }
-  std::string title() const override { return "Search YouTube Music"; }
+  explicit MusicSearchScreen(bool video) : video_(video), kb_("Search") {
+    results_.style = video ? RowStyle::Video : RowStyle::Music;
+    results_.onNearEnd = [this] { more(); };
+  }
+  std::string title() const override { return video_ ? "Search YouTube" : "Search YouTube Music"; }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     if (showing_) {
@@ -205,7 +208,7 @@ class MusicSearchScreen : public Screen {
     const Palette& p = e.p;
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, p.dark);
-    darkHeader(e, w, title(), HeaderLogo::Music, white, 28);
+    darkHeader(e, w, title(), video_ ? HeaderLogo::Video : HeaderLogo::Music, white, 28);
     // the bar: 28 units, 8 in from the sides, 2 under the header, 5 above what follows, radius 14
     float bx = float(e.dp(8)), by = float(e.dp(28) + e.dp(2)), bw = w - 2 * bx, bh = float(e.dp(28));
     e.c.layer(2);
@@ -250,7 +253,7 @@ class MusicSearchScreen : public Screen {
     requests_.cancelAll();
     next_.clear();
     results_.setMessage("Searching \xe2\x80\x9c" + q + "\xe2\x80\x9d\xe2\x80\xa6");
-    std::string path = "/music/search?type=song&q=" + Api::escape(q);
+    std::string path = (video_ ? "/video/search?q=" : "/music/search?type=song&q=") + Api::escape(q);
     requests_.get(path, 0, [this, q, path](int status, const std::string& body) {
       if (status != 200) return results_.setMessage("Search failed: " + httpProblem(status, path));
       ItemsPage page;
@@ -258,13 +261,14 @@ class MusicSearchScreen : public Screen {
       found_ = page.items;
       next_ = page.next;
       if (found_.empty()) return results_.setMessage("Nothing found for \xe2\x80\x9c" + q + "\xe2\x80\x9d");
-      results_.setRows(musicRows(page.items, [this] { return found_; }));
+      results_.setRows(rowsFor(page.items));
     });
   }
   void more() {
     if (next_.empty() || loading_) return;
     loading_ = true;
-    requests_.get("/music/search?next=" + Api::escape(next_), 0, [this](int status, const std::string& body) {
+    requests_.get(std::string(video_ ? "/video/search" : "/music/search") + "?next=" + Api::escape(next_), 0,
+                  [this](int status, const std::string& body) {
       loading_ = false;
       if (status == 410) next_.clear();
       if (status != 200) return;
@@ -272,9 +276,13 @@ class MusicSearchScreen : public Screen {
       parseItems(body, page);
       next_ = page.next;
       found_.insert(found_.end(), page.items.begin(), page.items.end());
-      results_.appendRows(musicRows(page.items, [this] { return found_; }));
+      results_.appendRows(rowsFor(page.items));
     });
   }
+  std::vector<Row> rowsFor(const std::vector<Item>& items) {
+    return video_ ? videoRows(items) : musicRows(items, [this] { return found_; });
+  }
+  bool video_;
   Keyboard kb_;
   RowList results_;
   bool showing_ = false, loading_ = false;
@@ -285,7 +293,8 @@ class MusicSearchScreen : public Screen {
 
 }  // namespace
 
-std::unique_ptr<Screen> makeMusicSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen()); }
+std::unique_ptr<Screen> makeMusicSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(false)); }
+std::unique_ptr<Screen> makeVideoSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(true)); }
 
 void openMusicContainer(const Item& item) {
   if (item.kind == "playlist") g_app->push(std::unique_ptr<Screen>(new CollectionScreen(item.id, item.title, false)));

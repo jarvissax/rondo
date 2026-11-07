@@ -10,7 +10,7 @@ namespace rondo::shell {
 
 // darkHeader(): 31 units (28 on the Wi-Fi password screen), a logo (16 units), the title (14 bold), the
 // status icons.
-enum class HeaderLogo { None, Music, Wifi };
+enum class HeaderLogo { None, Music, Wifi, Video };
 void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Color titleColor = 0xffffffff, float heightUnits = 31);
 
 // Ambient: like YouTube Music's ambient color, the selected row's artwork color at the top fading into
@@ -34,6 +34,8 @@ class Ambient {
 // has loaded so far).
 std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::vector<Item>()> queue);
 void openMusicItem(const Item& item, const std::vector<Item>& siblings);
+// videoRows(): YouTube's rows; center plays the video
+std::vector<Row> videoRows(const std::vector<Item>& items);
 // offlineOr(): what a list says when it couldn't load (pointing at Settings › Wi-Fi without a network)
 std::string offlineOr(const std::string& problem);
 // "HTTP 500 for /music/home", or the connection's failure, as 1.0.x words it

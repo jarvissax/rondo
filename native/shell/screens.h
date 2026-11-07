@@ -15,6 +15,11 @@ std::unique_ptr<Screen> makeSettings();
 // YouTube Music (music_screen.cpp) and its search
 std::unique_ptr<Screen> makeMusic();
 std::unique_ptr<Screen> makeMusicSearch();
+// YouTube (video_screen.cpp), its search, and a video's player
+std::unique_ptr<Screen> makeVideo();
+std::unique_ptr<Screen> makeVideoSearch();
+void openVideo(const Item& item);
+std::unique_ptr<Screen> makeShorts();
 // streams.cpp: songs the server streams in the player's queue ("/s/<id>/140"), what the screens show
 // about them, and the artwork of any queue entry at a size (a file's own path; a stream's thumbnail)
 std::string streamPath(const Item& it);
@@ -71,6 +76,8 @@ std::pair<std::string, std::string> firstAndRest(const std::string& subtitle);
 bool artColor(Env& e, const std::string& path, int sourcePx, Color* out);
 // StatusIcons: Wi-Fi (dimmed offline), the percentage and the battery, ending at `right` in a row
 // rowH tall; returns its left edge.
-float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true);
+// hidePercent: a header that runs out of room (YouTube's three pills) keeps the battery only
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true, bool hidePercent = false);
+float statusIconsWidth(Env& e, bool showWifi);
 
 }  // namespace rondo::shell

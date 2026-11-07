@@ -53,6 +53,7 @@ class MainMenuScreen : public Screen {
         if (m.id == "nowPlaying") r.onSelect = [] { openNowPlaying(); };
         if (m.id == "settings") r.onSelect = [] { g_app->push(makeSettings()); };
         if (m.id == "music") r.onSelect = [] { g_app->push(makeMusic()); };
+        if (m.id == "videos") r.onSelect = [] { g_app->push(makeVideo()); };
         rows.push_back(std::move(r));
       }
     }

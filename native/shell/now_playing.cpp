@@ -129,11 +129,18 @@ static Color hsvToColor(const float hsv[3]) {
   return rgb(uint32_t(r) << 16 | uint32_t(g) << 8 | uint32_t(b));
 }
 
-float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi) {
+float statusIconsWidth(Env& e, bool showWifi) {
+  char pct[8];
+  snprintf(pct, sizeof(pct), "%d%%", int(floorf(g_app->status().battery * 100 + 0.5f)));
+  return float((showWifi ? e.dp(11) + e.dp(5) : 0) + label(e, pct, 10, true).w + e.dp(3) + e.dp(18));
+}
+
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hidePercent) {
   const Status& st = g_app->status();
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(st.battery * 100 + 0.5f)));
-  Label pl = label(e, pct, 10, true);
+  Label pl = label(e, hidePercent ? "" : pct, 10, true);
+  if (hidePercent) pl.w = -e.dp(3);  // the percentage and its margin gone
   int wifi = showWifi ? e.dp(11) + e.dp(5) : 0, bw = e.dp(18), bh = e.dp(11);
   int gw = wifi + pl.w + e.dp(3) + bw, gh = std::max({showWifi ? e.dp(11) : 0, pl.h, bh});
   float gx = right - gw, gy = float((rowH - gh) / 2);
@@ -143,7 +150,7 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi) {
     e.icons.draw(e.c, Icon::Wifi, {gx, gy + float((gh - s) / 2), float(s), float(s)}, c);
     e.c.popAlpha();
   }
-  drawLabel(e, pl, gx + wifi, gy + float((gh - pl.h) / 2), c);
+  if (!hidePercent) drawLabel(e, pl, gx + wifi, gy + float((gh - pl.h) / 2), c);
   e.icons.battery(e.c, {gx + wifi + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
   return gx;
 }

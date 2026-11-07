@@ -415,19 +415,44 @@ void RowList::drawMusic(Env& e, float x, float y) {
     float cx = x + mx, cw = w_ - 2 * mx, ctop = top + my;
     int ch = int(H) - 2 * my;
     float left = cx + e.dp(4), right = cx + cw - e.dp(8);
-    int art = e.dp(34);
-    Rect ar{left, ctop + float((ch - art) / 2), float(art), float(art)};
+    bool video = style == RowStyle::Video;
+    // MUSIC: 34-unit square artwork, radius 3; VIDEO: a 104 x 58 thumbnail, radius 5, its length in a badge
+    int artW = e.dp(video ? 104 : 34), artH = e.dp(video ? 58 : 34);
+    float radius = e.dpf(video ? 5 : 3);
+    Rect ar{left, ctop + float((ch - artH) / 2), float(artW), float(artH)};
     c.layer(2);
     if (r.tile) {
       drawTile(e, *r.tile, ar, 1);
     } else {
       float a = 1;
-      const Texture* tex = r.thumb.empty() ? nullptr : e.covers.get(r.thumb, art, art, 0, e.now, &a);
-      if (!tex || a < 1) c.shape(ar, e.dpf(3), p.raised);
+      const Texture* tex = r.thumb.empty() ? nullptr : e.covers.get(r.thumb, artW, artH, 0, e.now, &a);
+      if (!tex || a < 1) c.shape(ar, radius, p.raised);
       c.layer(3);
-      if (tex) c.image(*tex, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(0xffffffff, a));
+      if (tex) c.image(*tex, ar, {0, 0, 1, 1}, radius, withAlpha(0xffffffff, a));
     }
-    float colX = left + art + e.dp(8);
+    if (video) {
+      if (!r.trailing.empty()) {  // the length badge: 9 bold white on argb(220) black, 3 units from the corner
+        Label b = label(e, r.trailing, 9, true);
+        int bw = b.w + 2 * e.dp(3), bh = b.h + 2 * e.dp(1);
+        Rect br{ar.x + ar.w - e.dp(3) - bw, ar.y + ar.h - e.dp(3) - bh, float(bw), float(bh)};
+        c.layer(3);
+        c.shape(br, e.dpf(3), 0xdc000000);
+        c.layer(4);
+        drawLabel(e, b, br.x + e.dp(3), br.y + e.dp(1), p.white);
+      }
+      float colX = left + artW + e.dp(9), colW = right - colX;
+      c.layer(4);
+      std::vector<Label> title = wrap(e, r.title, 12, sel > 0.5f, colW, 2);
+      Label sl;
+      if (!r.subtitle.empty()) sl = label(e, r.subtitle, 10, false, colW);
+      int colH = r.subtitle.empty() ? 0 : e.dp(2) + sl.h;
+      for (auto& l : title) colH += l.h;
+      float ty = ctop + float((ch - colH) / 2);
+      for (auto& l : title) drawLabel(e, l, colX, ty, mix(p.white, p.focusText, sel)), ty += l.h;
+      if (!r.subtitle.empty()) drawLabel(e, sl, colX, ty + e.dp(2), mix(p.darkMuted, p.focusMuted, sel));
+      continue;
+    }
+    float colX = left + artW + e.dp(8);
     float end = right;
     int cvw = e.dp(7), cvh = e.dp(11);
     c.layer(4);

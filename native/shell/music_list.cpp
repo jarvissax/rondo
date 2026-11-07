@@ -23,6 +23,7 @@ void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Colo
     int s = e.dp(16);
     Rect r{x, float((h - s) / 2), float(s), float(s)};
     if (logo == HeaderLogo::Music) e.icons.musicLogo(e.c, r);
+    else if (logo == HeaderLogo::Video) e.icons.videoLogo(e.c, {r.x, r.y + float((s - e.dp(11)) / 2), float(s), float(e.dp(11))});
     else e.icons.draw(e.c, Icon::Wifi, r, white);
     x += s + e.dp(7);
   }
@@ -106,6 +107,21 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
     Item item = it;
     r.onSelect = [item, queue] { openMusicItem(item, queue()); };
     if (!container) r.onLongSelect = [item] { openSongMenu(item); };
+    rows.push_back(std::move(r));
+  }
+  return rows;
+}
+
+std::vector<Row> videoRows(const std::vector<Item>& items) {
+  std::vector<Row> rows;
+  for (const Item& it : items) {
+    Row r;
+    r.title = it.title;
+    r.subtitle = it.subtitle;
+    r.trailing = it.durationSec < 0 ? "" : formatTime(it.durationSec);
+    r.thumb = it.thumb;
+    Item item = it;
+    r.onSelect = [item] { openVideo(item); };
     rows.push_back(std::move(r));
   }
   return rows;
