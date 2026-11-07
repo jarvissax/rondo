@@ -31,6 +31,7 @@ LIBS=(
   "nghttp2 1.67.1 https://github.com/nghttp2/nghttp2/releases/download/v1.67.1/nghttp2-1.67.1.tar.xz"
   "curl 8.16.0 https://curl.se/download/curl-8.16.0.tar.xz"
   "ffmpeg 7.1.2 https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz"
+  "noto-emoji 2026-09-24-unicode18_0 https://github.com/googlefonts/noto-emoji/raw/v2026-09-24-unicode18_0/2D/fonts/NotoColorEmoji.ttf"
 )
 BIN=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
 
@@ -63,6 +64,10 @@ fetch() {  # name version url -> unpacked source directory on stdout
     exit 1
   fi
   dir=$SRC/$name-$version
+  if [[ $file == *.ttf ]]; then  # a font: nothing to unpack
+    echo "$file"
+    return
+  fi
   if [[ ! -d $dir ]]; then
     rm -rf "$dir.part"
     mkdir -p "$dir.part"
@@ -94,8 +99,12 @@ for spec in "${LIBS[@]}"; do
               -DPNG_ARM_NEON=on ;;
     libjpeg-turbo) build libjpeg-turbo "$dir" -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DWITH_SIMD=ON \
               -DWITH_TURBOJPEG=ON -DWITH_JAVA=OFF ;;
+    # PNG: Noto Color Emoji's glyphs are PNG bitmaps (CBDT)
     freetype) build freetype "$dir" -DFT_DISABLE_BZIP2=ON -DFT_DISABLE_BROTLI=ON \
-              -DFT_DISABLE_HARFBUZZ=ON -DFT_REQUIRE_PNG=OFF -DFT_DISABLE_PNG=ON -DFT_REQUIRE_ZLIB=ON ;;
+              -DFT_DISABLE_HARFBUZZ=ON -DFT_REQUIRE_PNG=ON -DFT_DISABLE_PNG=OFF -DFT_REQUIRE_ZLIB=ON ;;
+    noto-emoji)  # the color emoji (SIL Open Font License 1.1): the font, with Rondo's assets
+      mkdir -p "$OUT/fonts" && cp "$dir" "$OUT/fonts/NotoColorEmoji.ttf"
+      echo "deps: noto-emoji in place" ;;
     sqlite)  # the amalgamation: one C file
       "$BIN/armv7a-linux-androideabi17-clang" -O2 -DNDEBUG -fPIC -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
         -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 -DSQLITE_ENABLE_FTS5 -c "$dir/sqlite3.c" -o "$TP/sqlite3.o"

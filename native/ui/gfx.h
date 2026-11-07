@@ -85,6 +85,9 @@ class Canvas {
   void video(unsigned externalTex, Rect dst, const float* transform);
   // A glyph from an A8 atlas; uv in 0..1.
   void glyph(const Texture& atlas, Rect dst, Rect uv, Color c);
+  // A color glyph (an emoji, premultiplied RGBA): its own colors at the text's opacity (0-255), with the
+  // same fade as glyph()
+  void colorGlyph(const Texture& atlas, Rect dst, Rect uv, uint32_t alpha);
   // Glyphs drawn until clearFade() fade out toward a band's edges (current coordinates): opaque from
   // top + edge to bottom - edge, transparent at top and bottom (a gradient mask, per vertex).
   void setFade(float top, float bottom, float edge) {

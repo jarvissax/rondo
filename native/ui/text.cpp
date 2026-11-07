@@ -41,6 +41,16 @@ bool isRtl(uint32_t cp) {
 
 bool isStrong(uint32_t cp) { return !isCommon(cp) && cp > 0x40; }
 
+// What is drawn from the color emoji font: the emoji blocks and the pictographs with an emoji form
+bool isEmoji(uint32_t cp) {
+  return (cp >= 0x1f000 && cp <= 0x1faff) || (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0x2300 && cp <= 0x23ff) ||
+         (cp >= 0x2b00 && cp <= 0x2bff) || cp == 0x3030 || cp == 0x303d || cp == 0x3297 || cp == 0x3299;
+}
+// What stays inside an emoji (a sequence): the joiner, the emoji form selector, the keycap, the tags
+bool joinsEmoji(uint32_t cp) {
+  return cp == 0x200d || cp == 0xfe0f || cp == 0x20e3 || (cp >= 0xe0020 && cp <= 0xe007f);
+}
+
 uint64_t fnv(std::string_view s, uint64_t seed) {
   uint64_t h = 1469598103934665603ULL ^ seed;
   for (char c : s) h = (h ^ uint8_t(c)) * 1099511628211ULL;
@@ -84,7 +94,7 @@ int Text::openFace(const std::string& path) {
   return int(faces_.size() - 1);
 }
 
-bool Text::init(const char* fontDir, const char* regular) {
+bool Text::init(const char* fontDir, const char* regular, const char* emoji) {
   if (FT_Init_FreeType(&ft_) != 0) return false;
   std::string dir = fontDir;
   regular_ = regular ? openFace(regular) : -1;
@@ -95,6 +105,17 @@ bool Text::init(const char* fontDir, const char* regular) {
     return false;
   }
   if (bold_ < 0) bold_ = regular_;
+  if (emoji) {
+    emoji_ = openFace(emoji);
+    if (emoji_ >= 0) {
+      FT_Face f = faces_[emoji_].ft;
+      if (f->num_fixed_sizes > 0 && FT_HAS_COLOR(f)) {
+        faces_[emoji_].strike = f->available_sizes[0].y_ppem / 64.0f;
+      } else {
+        emoji_ = -1;
+      }
+    }
+  }
   for (const char* name : kFallbacks) {
     int f = openFace(dir + "/" + name);
     if (f >= 0) fallbacks_.push_back(f);
@@ -102,6 +123,10 @@ bool Text::init(const char* fontDir, const char* regular) {
   buffer_ = hb_buffer_create();
   pixels_.assign(size_t(kAtlasW) * kAtlasH, 0);
   atlas_ = createTexture(kAtlasW, kAtlasH, GL_ALPHA, GL_UNSIGNED_BYTE, pixels_.data(), true);
+  if (emoji_ >= 0) {
+    colorPixels_.assign(size_t(kColorW) * kColorH * 4, 0);
+    colorAtlas_ = createTexture(kColorW, kColorH, GL_RGBA, GL_UNSIGNED_BYTE, colorPixels_.data(), true);
+  }
   return true;
 }
 
@@ -146,7 +171,8 @@ FT_Size Text::ftSize(int size, int face) {
     FT_Face f = faces_[face].ft;
     FT_New_Size(f, &s.ft[face]);
     FT_Activate_Size(s.ft[face]);
-    FT_Set_Char_Size(f, 0, FT_F26Dot6(lroundf(s.px * 64)), 72, 72);
+    if (faces_[face].strike > 0) FT_Select_Size(f, 0);  // a bitmap font has its one size
+    else FT_Set_Char_Size(f, 0, FT_F26Dot6(lroundf(s.px * 64)), 72, 72);
   }
   return s.ft[face];
 }
@@ -174,7 +200,65 @@ void Text::resetAtlas() {
   dirtyY1_ = kAtlasH;
 }
 
+// An emoji: the font's bitmap (BGRA, premultiplied, at its one size), scaled to the text's size with an
+// area filter into the color atlas.
+bool Text::rasterizeColor(Slot& s) {
+  FT_Face f = faces_[s.face].ft;
+  FT_Activate_Size(ftSize(s.size, s.face));
+  s.ready = true;
+  s.color = true;
+  s.w = s.h = 0;
+  if (FT_Load_Glyph(f, s.glyph, FT_LOAD_COLOR) != 0) return false;
+  const FT_Bitmap& bm = f->glyph->bitmap;
+  if (bm.pixel_mode != FT_PIXEL_MODE_BGRA || !bm.width || !bm.rows) return false;
+  rasterizedFrame_++;
+  float k = sizes_[s.size].px / faces_[s.face].strike;
+  int w = std::max(1, int(lroundf(bm.width * k))), h = std::max(1, int(lroundf(bm.rows * k)));
+  s.left = int16_t(lroundf(f->glyph->bitmap_left * k));
+  s.top = int16_t(lroundf(f->glyph->bitmap_top * k));
+  if (cShelfX_ + w + 2 > kColorW) cShelfY_ += cShelfH_, cShelfX_ = cShelfH_ = 0;
+  if (cShelfY_ + h + 2 > kColorH) {  // full: start again (the color glyphs only)
+    for (Slot& o : slots_)
+      if (o.color) o.ready = false;
+    std::fill(colorPixels_.begin(), colorPixels_.end(), 0);
+    cShelfX_ = cShelfY_ = cShelfH_ = 0;
+    cDirtyY0_ = 0, cDirtyY1_ = kColorH;
+    s.ready = true;
+  }
+  int x0 = cShelfX_ + 1, y0 = cShelfY_ + 1;
+  // each target pixel: the average of the source pixels it covers (BGRA in, RGBA out)
+  float sx = float(bm.width) / w, sy = float(bm.rows) / h;
+  for (int y = 0; y < h; y++) {
+    float fy0 = y * sy, fy1 = fy0 + sy;
+    for (int x = 0; x < w; x++) {
+      float fx0 = x * sx, fx1 = fx0 + sx;
+      float acc[4] = {0, 0, 0, 0}, area = 0;
+      for (int py = int(fy0); py < int(ceilf(fy1)) && py < int(bm.rows); py++) {
+        float wy = std::min(fy1, float(py + 1)) - std::max(fy0, float(py));
+        const uint8_t* row = bm.buffer + py * bm.pitch;
+        for (int px = int(fx0); px < int(ceilf(fx1)) && px < int(bm.width); px++) {
+          float wgt = wy * (std::min(fx1, float(px + 1)) - std::max(fx0, float(px)));
+          const uint8_t* p = row + px * 4;
+          acc[0] += p[2] * wgt, acc[1] += p[1] * wgt, acc[2] += p[0] * wgt, acc[3] += p[3] * wgt;
+          area += wgt;
+        }
+      }
+      uint8_t* o = &colorPixels_[(size_t(y0 + y) * kColorW + size_t(x0 + x)) * 4];
+      for (int c = 0; c < 4; c++) o[c] = uint8_t(area > 0 ? std::min(255.f, acc[c] / area + 0.5f) : 0);
+    }
+  }
+  cShelfX_ += w + 2;
+  cShelfH_ = std::max(cShelfH_, h + 2);
+  cDirtyY0_ = std::min(cDirtyY0_, y0);
+  cDirtyY1_ = std::max(cDirtyY1_, y0 + h);
+  s.w = uint16_t(w), s.h = uint16_t(h);
+  s.u0 = float(x0) / kColorW, s.v0 = float(y0) / kColorH;
+  s.u1 = float(x0 + w) / kColorW, s.v1 = float(y0 + h) / kColorH;
+  return true;
+}
+
 bool Text::rasterize(Slot& s) {
+  if (faces_[s.face].strike > 0) return rasterizeColor(s);
   FT_Face f = faces_[s.face].ft;
   FT_Activate_Size(ftSize(s.size, s.face));
   // light hinting: crisp horizontal stems, advances untouched (they come from HarfBuzz anyway)
@@ -233,6 +317,15 @@ bool Text::rasterize(Slot& s) {
 
 void Text::flush() {
   flushedRows_ = 0;
+  if (cDirtyY1_ > cDirtyY0_) {
+    glBindTexture(GL_TEXTURE_2D, colorAtlas_.id);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, cDirtyY0_, kColorW, cDirtyY1_ - cDirtyY0_, GL_RGBA, GL_UNSIGNED_BYTE,
+                    &colorPixels_[size_t(cDirtyY0_) * kColorW * 4]);
+    flushedRows_ += cDirtyY1_ - cDirtyY0_;
+    cDirtyY0_ = kColorH;
+    cDirtyY1_ = 0;
+  }
   if (dirtyY1_ <= dirtyY0_) return;
   flushedRows_ = dirtyY1_ - dirtyY0_;
   glBindTexture(GL_TEXTURE_2D, atlas_.id);
@@ -266,7 +359,20 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
       haveDirection = true;
     }
     int face = -1;
-    if (cur >= 0 && isCommon(cp) && FT_Get_Char_Index(faces_[cur].ft, cp)) face = cur;
+    // an emoji (with what joins it) from the color font, before any other face has its look-alike; a
+    // keycap is its digit, # or * followed by the keycap mark (with the emoji form selector or not)
+    bool keycap = false;
+    if (emoji_ >= 0 && (cp == '#' || cp == '*' || (cp >= '0' && cp <= '9'))) {
+      const char* q = p;
+      uint32_t n1 = q < end ? decodeUtf8(q, end) : 0;
+      uint32_t n2 = n1 == 0xfe0f && q < end ? decodeUtf8(q, end) : 0;
+      keycap = n1 == 0x20e3 || n2 == 0x20e3;
+    }
+    if (emoji_ >= 0 && (keycap || isEmoji(cp) || (cur == emoji_ && joinsEmoji(cp))) && FT_Get_Char_Index(faces_[emoji_].ft, cp))
+      face = emoji_;
+    // spaces and punctuation stay with the text around them, never with an emoji (the emoji font has
+    // its own, far wider)
+    if (face < 0 && cur >= 0 && cur != emoji_ && isCommon(cp) && FT_Get_Char_Index(faces_[cur].ft, cp)) face = cur;
     if (face < 0 && FT_Get_Char_Index(faces_[sz.face].ft, cp)) face = sz.face;
     for (size_t i = 0; face < 0 && i < fallbacks_.size(); i++)
       if (FT_Get_Char_Index(faces_[fallbacks_[i]].ft, cp)) face = fallbacks_[i];
@@ -278,6 +384,27 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
     }
   }
   if (cur >= 0 && count < 64) items[count++] = {cur, curStart, unsigned(s.size()) - curStart};
+  static const bool logText = getenv("RONDO_TEXT_LOG") != nullptr;
+  if (logText && emoji_ >= 0) {
+    bool any = false;
+    for (int k = 0; k < count; k++) any |= items[k].face == emoji_;
+    if (any) {
+      std::string line;
+      for (int k = 0; k < count; k++) {
+        char b[48];
+        snprintf(b, sizeof(b), "[%s:", items[k].face == emoji_ ? "emoji" : faces_[items[k].face].path.substr(faces_[items[k].face].path.rfind('/') + 1).c_str());
+        line += b;
+        const char* q = s.data() + items[k].start;
+        const char* qe = q + items[k].len;
+        while (q < qe) {
+          snprintf(b, sizeof(b), " %X", decodeUtf8(q, qe));
+          line += b;
+        }
+        line += "]";
+      }
+      printf("text: %s\n", line.c_str());
+    }
+  }
 
   // a right-to-left line shows its runs from the right: lay them out in reverse
   int32_t pen = 0;  // 26.6
@@ -382,7 +509,8 @@ void Text::draw(Canvas& c, const TextRun& run, float x, float baseline, Color co
     if (!s.ready) rasterize(s);
     if (!s.w) continue;
     float gx = x + g.x + s.left, gy = baseline + g.y - s.top;
-    c.glyph(atlas_, {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color);
+    if (s.color) c.colorGlyph(colorAtlas_, {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color >> 24);
+    else c.glyph(atlas_, {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color);
   }
 }
 

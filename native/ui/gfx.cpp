@@ -424,6 +424,24 @@ void Canvas::image(const Texture& t, Rect dst, Rect uv, float radius, Color tint
   for (int i = 0; i < 4; i++) v[i].rgba = c;
 }
 
+void Canvas::colorGlyph(const Texture& atlas, Rect dst, Rect uv, uint32_t alpha) {
+  Vertex* v = quad(kImagePlain, atlas.id);
+  float x = dst.x + offX_.back(), y = dst.y + offY_.back();
+  corners(v, x, y, x + dst.w, y + dst.h);
+  uvs(v, uv.x, uv.y, uv.x + uv.w, uv.y + uv.h);
+  uint32_t col = color((alpha & 0xff) << 24 | 0xffffff);
+  for (int i = 0; i < 4; i++) v[i].rgba = col;
+  if (fade_) {
+    for (int i = 0; i < 4; i++) {
+      float f = std::min((v[i].y - fadeTop_) / fadeEdge_, (fadeBottom_ - v[i].y) / fadeEdge_);
+      f = f < 0 ? 0 : f > 1 ? 1 : f;
+      uint32_t o = 0;
+      for (int k = 0; k < 32; k += 8) o |= uint32_t(((col >> k) & 0xff) * f + 0.5f) << k;
+      v[i].rgba = o;
+    }
+  }
+}
+
 void Canvas::glyph(const Texture& atlas, Rect dst, Rect uv, Color c) {
   Vertex* v = quad(kText, atlas.id);
   float x = dst.x + offX_.back(), y = dst.y + offY_.back();

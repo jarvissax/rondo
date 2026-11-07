@@ -39,8 +39,9 @@ struct TextRun {
 
 class Text {
  public:
-  // fontDir holds the Y1's system fonts; regular is the bundled Roboto Regular (null: the system one).
-  bool init(const char* fontDir, const char* regular);
+  // fontDir holds the Y1's system fonts; regular is the bundled Roboto Regular (null: the system one);
+  // emoji the bundled Noto Color Emoji (null or missing: Android 4.2's black-and-white AndroidEmoji).
+  bool init(const char* fontDir, const char* regular, const char* emoji = nullptr);
   // A style at a pixel size. The same arguments always return the same id.
   int font(Weight weight, float px);
   float ascent(int font) const { return sizes_[font].ascent; }
@@ -91,6 +92,7 @@ class Text {
     size_t size = 0;
     hb_face_t* hb = nullptr;
     FT_Face ft = nullptr;
+    float strike = 0;  // a color bitmap font's one size (ppem): its glyphs are scaled from it
   };
   struct Size {
     int face;  // primary face for this style
@@ -107,6 +109,7 @@ class Text {
     uint16_t size, face;
     uint32_t glyph;
     bool ready = false;
+    bool color = false;  // in the color atlas (an emoji)
     int16_t left = 0, top = 0;  // bitmap offset from the pen position
     uint16_t w = 0, h = 0;
     float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
@@ -124,12 +127,13 @@ class Text {
   FT_Size ftSize(int size, int face);
   uint32_t slotFor(int size, int face, uint32_t glyph);
   bool rasterize(Slot& s);
+  bool rasterizeColor(Slot& s);
   void shapeInto(TextRun& out, int font, std::string_view utf8);
   void resetAtlas();
 
   FT_Library ft_ = nullptr;
   std::vector<Face> faces_;
-  int regular_ = -1, bold_ = -1;
+  int regular_ = -1, bold_ = -1, emoji_ = -1;
   std::vector<int> fallbacks_;
   std::vector<Size> sizes_;
   std::vector<Slot> slots_;
@@ -144,6 +148,12 @@ class Text {
   std::vector<uint8_t> pixels_;  // the atlas, kept on the CPU: new glyphs go up as one update
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
   int dirtyY0_ = kAtlasH, dirtyY1_ = 0;
+  // color glyphs (emoji), premultiplied RGBA, packed the same way
+  static constexpr int kColorW = 512, kColorH = 512;
+  Texture colorAtlas_;
+  std::vector<uint8_t> colorPixels_;
+  int cShelfX_ = 0, cShelfY_ = 0, cShelfH_ = 0;
+  int cDirtyY0_ = kColorH, cDirtyY1_ = 0;
   int flushedRows_ = 0;
   int rasterizedFrame_ = 0;
   size_t warmFont_ = 0, warmChar_ = 0;

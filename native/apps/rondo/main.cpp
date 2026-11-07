@@ -191,7 +191,9 @@ int main(int argc, char** argv) {
   Canvas canvas;
   if (!canvas.init(display->width(), display->height())) return 1;
   Text text;
-  if (!text.init(fonts, access(regular, R_OK) == 0 ? regular : nullptr)) return 1;
+  // the color emoji next to the bundled Roboto
+  std::string emoji = std::string(regular).substr(0, std::string(regular).rfind('/') + 1) + "NotoColorEmoji.ttf";
+  if (!text.init(fonts, access(regular, R_OK) == 0 ? regular : nullptr, access(emoji.c_str(), R_OK) == 0 ? emoji.c_str() : nullptr)) return 1;
   if (!text.loadAdvances(advances)) fprintf(stderr, "rondo: no advance table at %s: text widths will differ from 1.0.x\n", advances);
   text.loadKerning("/data/local/tmp/rondo/kerning.bin");
   Icons icons;
