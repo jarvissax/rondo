@@ -34,6 +34,7 @@
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
 #include "../../platform/power.h"
+#include "../../platform/haptics.h"
 #include "../../platform/video_frame.h"
 #include "../../platform/video_surface.h"
 #include "../../services/core.h"
@@ -222,6 +223,14 @@ int main(int argc, char** argv) {
   dispatch.acceleration = g_config.behavior.wheelAcceleration;
   app.onAccelerationChanged = [&] { dispatch.acceleration = g_config.behavior.wheelAcceleration; };
   dispatch.emit = [&](Action a, int steps) { app.action(a, steps); };
+  // 1.0.x's onPulse (WheelHaptics.kt, ShellActivity): a buzz of the setting's length plus a boost that
+  // fades as a spin goes on (a slow turn feels like clicks, a fast spin like a purr), and the click
+  dispatch.onPulse = [](int spin) {
+    const std::string& level = g_config.behavior.wheelVibration;
+    int base = level == "light" ? 15 : level == "normal" ? 25 : level == "strong" ? 40 : 0;
+    if (base) rondo::haptics::vibrate(base + (spin < 3 ? 20 : spin < 7 ? 8 : spin < 15 ? 2 : 0));
+    if (g_prefs.clickSound) g_player.click();
+  };
   g_onSleep = [&] { dispatch.cancel(); };
   Status status{false, readOnline(), readBattery()};
   printf("rondo: %zu files in the library (%.0f ms), ready at %.0f ms\n", g_library.tracks().size(), (tLib - t0) / 1e6,

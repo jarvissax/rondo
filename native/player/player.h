@@ -92,6 +92,7 @@ class PlayerHost {
   void fmScan(int min, int max);
   void fmMute(bool muted);
   void fmSpeaker(bool on);
+  void click();  // the wheel's click sound
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

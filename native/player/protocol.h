@@ -32,6 +32,7 @@ enum PlayerCommand : uint32_t {
   kFmScan,      // i32 min, i32 max
   kFmMute,      // u8
   kFmSpeaker,   // u8
+  kClick,       // the wheel's click (Settings › Click sound)
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

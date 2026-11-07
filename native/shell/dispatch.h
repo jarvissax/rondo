@@ -20,6 +20,8 @@ class Dispatcher {
  public:
   std::function<void(Action, int steps)> emit;
   std::string acceleration = "normal";  // off | normal | fast
+  // after each pulse, with the spin count (1 for a lone pulse): the buzz and the click
+  std::function<void(int spin)> onPulse;
 
   void event(const InputEvent& e) {
     const int64_t t = e.time;
@@ -92,6 +94,7 @@ class Dispatcher {
     spin_ = dir == lastDir_ && t - lastPulse_ < kGap ? spin_ + 1 : 1;
     lastPulse_ = t;
     lastDir_ = dir;
+    if (onPulse) onPulse(spin_);
     int steps = 1;
     if (acceleration == "fast") steps = spin_ >= 6 ? 3 : 1;
     else if (acceleration != "off") steps = spin_ >= 12 ? 2 : 1;

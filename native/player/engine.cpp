@@ -39,6 +39,7 @@ extern "C" {
 
 #include "http_source.h"
 #include "player.h"
+#include "click.h"
 #include "fm.h"
 #include "protocol.h"
 #include "video.h"
@@ -201,9 +202,10 @@ class Engine {
   SLObjectItf engineObj_ = nullptr, mixObj_ = nullptr, playerObj_ = nullptr;
   SLPlayItf play_ = nullptr;
   SLAndroidSimpleBufferQueueItf queue_ = nullptr;
+  Click click_;
   int16_t buffers_[kBuffers][kBufferFrames * 2];
   int next_ = 0;
-  int volume_ = 0, volumeMax_ = 15;
+  int volume_ = 0, volumeMax_ = 13;  // MediaTek's STREAM_MUSIC has 13 steps (the policy's index max, Nov 7)
 };
 
 void Engine::publish() {
@@ -437,6 +439,11 @@ void Engine::command(const std::vector<uint8_t>& m) {
     case kFmMute: {
       bool m = len && p[0];
       radio = [this, m] { fm_.setMuted(m); };
+      break;
+    }
+    case kClick: {
+      Click* c = &click_;
+      radio = [c] { c->play(); };  // outside the lock, as the radio's calls
       break;
     }
     case kFmSpeaker: {
@@ -803,6 +810,7 @@ bool Engine::openOutput() {
     (*queue_)->Enqueue(queue_, buffers_[b], sizeof(buffers_[b]));
   }
   (*play_)->SetPlayState(play_, SL_PLAYSTATE_PAUSED);
+  click_.open(engine, mixObj_);
   return true;
 }
 

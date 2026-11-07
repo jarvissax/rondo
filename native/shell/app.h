@@ -143,7 +143,7 @@ class App {
   // ShellActivity.changeVolume(): one step of STREAM_MUSIC and the volume panel for 1.5 s
   void changeVolume(int dir) {
     PlayerState s = g_player.state();
-    int max = s.volumeMax > 0 ? s.volumeMax : 15;
+    int max = s.volumeMax > 0 ? s.volumeMax : 13;
     volumeLevel_ = std::max(0, std::min(max, (volumeUntil_ ? volumeLevel_ : s.volume) + dir));
     volumeMax_ = max;
     volumeUntil_ = now_ns() + 1500 * kMs;
@@ -228,7 +228,7 @@ class App {
   bool popping_ = false;
   int64_t now_ = 0;
   Status status_;
-  int volumeLevel_ = 0, volumeMax_ = 15;
+  int volumeLevel_ = 0, volumeMax_ = 13;
   int64_t volumeUntil_ = 0;
 };
 

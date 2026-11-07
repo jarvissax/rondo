@@ -430,13 +430,13 @@ class SettingsScreen : public ShellListScreen {
       g_app->push(choice(
           "Wheel vibration", {{"Off", "off"}, {"Light", "light"}, {"Normal", "normal"}, {"Strong", "strong"}},
           [] { return g_config.behavior.wheelVibration; },
-          [](const std::string& v) {  // the buzz itself comes with N4's vibrator
+          [](const std::string& v) {
             g_config.behavior.wheelVibration = v;
             saveConfigNow();
           },
           [](const std::string& v) { return v == "normal" ? "like Rockbox" : ""; }));
     });
-    add("Click sound", onOff(g_prefs.clickSound), tiles::sound, false, [this] {  // the tick comes with N4's mixer
+    add("Click sound", onOff(g_prefs.clickSound), tiles::sound, false, [this] {
       g_prefs.clickSound = !g_prefs.clickSound;
       savePrefsNow();
       render();

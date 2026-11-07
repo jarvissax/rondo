@@ -143,6 +143,7 @@ void PlayerHost::fmSpeaker(bool on) {
   uint8_t v = on;
   send(kFmSpeaker, &v, 1);
 }
+void PlayerHost::click() { send(kClick); }
 void PlayerHost::stopVideo() {
   queue_.clear();
   send(kStopVideo);
