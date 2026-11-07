@@ -24,6 +24,7 @@ struct Track {
   bool tagged = false;
   std::string key;  // fold() of what search matches
   bool dirty = true;
+  bool gone = false;  // deleted from the card in this run: kept, so screens' pointers stay valid
 };
 
 class Library {
@@ -53,6 +54,8 @@ class Library {
   };
   // Every word must be in the title, artist, album or file name, ignoring case and accents.
   Found search(const std::string& query) const;
+  // LocalLibrary.delete(): the file and the .lrc next to it leave the card, the song leaves the library.
+  bool deleteFile(const std::string& path);
   // The track at a path (null: not in the library).
   const Track* find(const std::string& path) const;
 

@@ -59,6 +59,8 @@ class Text {
   void draw(Canvas& c, const TextRun& run, float x, float baseline, Color color);
   // Sends this frame's new glyphs to the atlas texture; call before Canvas::end().
   void flush();
+  // atlas rows the last flush() uploaded (0: none)
+  int flushedRows() const { return flushedRows_; }
 
   // Rasterizes the glyphs of `chars` for each font in `fonts`, for at most budgetNs; true when all are
   // done. Run while idle, so a screen's first frame does not pay for its glyphs.
@@ -142,6 +144,7 @@ class Text {
   std::vector<uint8_t> pixels_;  // the atlas, kept on the CPU: new glyphs go up as one update
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
   int dirtyY0_ = kAtlasH, dirtyY1_ = 0;
+  int flushedRows_ = 0;
   int rasterizedFrame_ = 0;
   size_t warmFont_ = 0, warmChar_ = 0;
   struct Advances {

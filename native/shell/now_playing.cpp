@@ -124,12 +124,29 @@ static Color hsvToColor(const float hsv[3]) {
   return rgb(uint32_t(r) << 16 | uint32_t(g) << 8 | uint32_t(b));
 }
 
-bool artColor(Env& e, const std::string& path, Color* out) {
+float statusIcons(Env& e, float right, int rowH, Color c) {
+  const Status& st = g_app->status();
+  char pct[8];
+  snprintf(pct, sizeof(pct), "%d%%", int(floorf(st.battery * 100 + 0.5f)));
+  Label pl = label(e, pct, 10, true);
+  int wifi = e.dp(11), bw = e.dp(18), bh = e.dp(11);
+  int gw = wifi + e.dp(5) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
+  float gx = right - gw, gy = float((rowH - gh) / 2);
+  e.c.pushAlpha(st.online ? 1 : 0.3f);
+  e.icons.draw(e.c, Icon::Wifi, {gx, gy + float((gh - wifi) / 2), float(wifi), float(wifi)}, c);
+  e.c.popAlpha();
+  drawLabel(e, pl, gx + wifi + e.dp(5), gy + float((gh - pl.h) / 2), c);
+  e.icons.battery(e.c, {gx + wifi + e.dp(5) + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
+  return gx;
+}
+
+bool artColor(Env& e, const std::string& path, int sourcePx, Color* out) {
   static std::unordered_map<std::string, Color> known;
-  auto it = known.find(path);
+  std::string key = path + '\n' + std::to_string(sourcePx);
+  auto it = known.find(key);
   if (it != known.end()) return *out = it->second, true;
-  // the artwork as the pane decodes it (98 units), then Bitmap.createScaledBitmap(bitmap, 12, 12, true)
-  const uint8_t* px = e.covers.pixels(path, 12, 12, -e.dp(98));
+  // the artwork as the view decodes it, then Bitmap.createScaledBitmap(bitmap, 12, 12, true)
+  const uint8_t* px = e.covers.pixels(path, 12, 12, -sourcePx);
   if (!px) return false;
   long r = 0, g = 0, b = 0;
   for (int i = 0; i < 144; i++) r += px[i * 4], g += px[i * 4 + 1], b += px[i * 4 + 2];
@@ -138,7 +155,7 @@ bool artColor(Env& e, const std::string& path, Color* out) {
   hsv[1] = std::min(hsv[1] * 1.4f, 0.85f);
   hsv[2] = std::max(0.35f, std::min(hsv[2], 0.6f));
   Color c = hsvToColor(hsv);
-  known[path] = c;
+  known[key] = c;
   *out = c;
   return true;
 }
@@ -593,23 +610,6 @@ class NowPlayingScreen : public Screen {
     return v;
   }
 
-  // StatusIcons: Wi-Fi (dimmed offline), the percentage, the battery, ending at `right`; its left edge
-  float statusIcons(Env& e, float right, int rowH, Color c) {
-    const Status& st = g_app->status();
-    char pct[8];
-    snprintf(pct, sizeof(pct), "%d%%", int(floorf(st.battery * 100 + 0.5f)));
-    Label pl = label(e, pct, 10, true);
-    int wifi = e.dp(11), bw = e.dp(18), bh = e.dp(11);
-    int gw = wifi + e.dp(5) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
-    float gx = right - gw, gy = float((rowH - gh) / 2);
-    e.c.pushAlpha(st.online ? 1 : 0.3f);
-    e.icons.draw(e.c, Icon::Wifi, {gx, gy + float((gh - wifi) / 2), float(wifi), float(wifi)}, c);
-    e.c.popAlpha();
-    drawLabel(e, pl, gx + wifi + e.dp(5), gy + float((gh - pl.h) / 2), c);
-    e.icons.battery(e.c, {gx + wifi + e.dp(5) + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
-    return gx;
-  }
-
   // ScrubBubble: the target time large, the change and "center to jump" under it, in the middle
   void drawBubble(Env& e, float w, float h, int64_t target, int64_t from) {
     Label t = label(e, formatTime(int(target / 1000)), 26, true);
@@ -643,7 +643,7 @@ class NowPlayingScreen : public Screen {
         break;
       case 1:
         options_ = false;
-        // the queue screen comes with its port
+        g_app->push(makeQueue());
         break;
       case 2: g_player.setShuffle(!s.shuffle); shuffleShown_ = !s.shuffle; break;
       default: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
@@ -685,6 +685,8 @@ class NowPlayingScreen : public Screen {
 };
 
 }  // namespace
+
+std::unique_ptr<Screen> makeNowPlayingPreview() { return std::make_unique<NowPlayingScreen>(); }
 
 void openNowPlaying() {
   if (!g_player.active()) return;

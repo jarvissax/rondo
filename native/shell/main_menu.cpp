@@ -98,7 +98,7 @@ class MainMenuScreen : public Screen {
     };
     std::string path = s.path;
     Color base = rgb(0x3a3f4a);
-    artColor(e, path, &base);
+    artColor(e, path, e.dp(98), &base);
     e.c.layer(0);
     e.c.fillGradient(pane, darker(base, 1.0f), darker(base, 0.45f));
     int padX = e.dp(10), padY = e.dp(8);

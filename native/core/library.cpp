@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <unordered_map>
@@ -276,7 +277,7 @@ std::vector<Library::Group> group(const std::vector<Track>& tracks, bool album) 
   std::unordered_map<std::string, size_t> at;
   std::vector<std::string> keys;  // lower() of each group's name, computed once
   for (const Track& t : tracks) {
-    if (t.video || (album && t.album.empty())) continue;
+    if (t.gone || t.video || (album && t.album.empty())) continue;
     std::string name = album ? t.album : (t.artist.empty() ? "Unknown artist" : t.artist);
     std::string k = lower(name);
     auto it = at.find(k);
@@ -314,18 +315,34 @@ void Library::index() const {
   if (indexed_) return;
   songs_.clear();
   videos_.clear();
-  for (const Track& t : tracks_) (t.video ? videos_ : songs_).push_back(&t);
+  for (const Track& t : tracks_)
+    if (!t.gone) (t.video ? videos_ : songs_).push_back(&t);
   byTitle(songs_);
   byTitle(videos_);
   artists_ = group(tracks_, false);
   albums_ = group(tracks_, true);
   byPath_.clear();
-  for (const Track& t : tracks_) byPath_[t.path] = &t;
+  for (const Track& t : tracks_)
+    if (!t.gone) byPath_[t.path] = &t;
   artistKeys_.clear();
   albumKeys_.clear();
   for (auto& g : artists_) artistKeys_.push_back(fold(g.first));
   for (auto& g : albums_) albumKeys_.push_back(fold(g.first));
   indexed_ = true;
+}
+
+bool Library::deleteFile(const std::string& path) {
+  Track* t = nullptr;
+  for (Track& x : tracks_)
+    if (x.path == path && !x.gone) t = &x;
+  if (!t || unlink(path.c_str()) != 0) return false;
+  size_t slash = path.rfind('/'), dot = path.rfind('.');
+  if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) unlink((path.substr(0, dot) + ".lrc").c_str());
+  t->gone = true;
+  removed_.push_back(path);
+  indexed_ = false;
+  save();
+  return true;
 }
 
 const Track* Library::find(const std::string& path) const {
@@ -367,7 +384,7 @@ Library::Found Library::search(const std::string& query) const {
   for (size_t i = 0; i < albums_.size(); i++)
     if (hit(albumKeys_[i])) f.albums.push_back(albums_[i]);
   for (const Track& t : tracks_) {
-    if (hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
+    if (!t.gone && hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
   }
   byTitle(f.songs);
   byTitle(f.videos);

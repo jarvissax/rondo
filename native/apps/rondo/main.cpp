@@ -46,6 +46,7 @@ namespace rondo::shell {
 Config g_config;
 Library g_library;
 PlayerHost g_player;
+Playlists g_playlists(g_library);
 App* g_app = nullptr;
 bool g_traceSlow = false;
 }  // namespace rondo::shell
@@ -146,7 +147,8 @@ int main(int argc, char** argv) {
   Covers covers(loader);
   covers.reserve(int(floorf(26 * pal.scale + 0.5f)), int(floorf(26 * pal.scale + 0.5f)), 96);
   // Now Playing's artwork, its backdrop and the lyrics' thumbnail; the main menu's pane
-  for (float u : {140.f, 22.f, 98.f}) covers.reserve(int(floorf(u * pal.scale + 0.5f)), int(floorf(u * pal.scale + 0.5f)), 3);
+  for (float u : {140.f, 22.f, 98.f, 24.f}) covers.reserve(int(floorf(u * pal.scale + 0.5f)), int(floorf(u * pal.scale + 0.5f)), 3);
+  covers.reserve(int(floorf(34 * pal.scale + 0.5f)), int(floorf(34 * pal.scale + 0.5f)), 24);  // MUSIC rows
   covers.reserve(6, 6, 3);
   {  // the list thumbnails, decoded once into the cache while nothing moves
     int t = int(floorf(26 * pal.scale + 0.5f));
@@ -165,6 +167,8 @@ int main(int argc, char** argv) {
   FrameLog log(display->period());
   const int64_t period = display->period();
   bool moving = true, wasMoving = false;
+  int prevGlyphs = 0, prevRows = 0, prevUploads = 0;  // for RONDO_SLOW
+  int64_t prevSpan = 0;
   int64_t lastPresent = 0, lastStatus = now_ns(), menuDown = 0;
   // Glyphs and icons are rasterized while idle: adding to the atlas while a frame still uses it makes the
   // next frame wait a whole refresh for the GPU (N5 log), so a screen's first frame must find them ready.
@@ -176,6 +180,7 @@ int main(int argc, char** argv) {
   // Now Playing: the title, the artist; the lyrics' sung line
   for (float sp : {17.f, 17.5f}) warmFonts.push_back(text.font(Weight::Bold, sp * pal.scale));
   warmFonts.push_back(text.font(Weight::Regular, 13 * pal.scale));
+  warmFonts.push_back(text.font(Weight::Bold, 13 * pal.scale));  // the selected MUSIC row
   std::vector<int> warmDigits = {text.font(Weight::Bold, 26 * pal.scale)};  // the scrub bubble's time
   static const char kWarmChars[] =
       " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
@@ -208,6 +213,10 @@ int main(int argc, char** argv) {
       list.push_back({Icon::Wifi, d(11), d(11)});
       list.push_back({Icon::BatteryFrame, d(18), d(11)});
       list.push_back({Icon::Volume, d(22), d(22)});
+      // the YouTube Music lists: the chevron, the mini player's state, the header's logo
+      list.push_back({Icon::Chevron, d(7), d(11)});
+      for (Icon k : {Icon::Play, Icon::Pause}) list.push_back({k, d(12), d(12)});
+      for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(16), d(16)});
       for (Icon k : {Icon::MusicLogoDisc, Icon::MusicLogoMarks}) list.push_back({k, d(19), d(19)}), list.push_back({k, d(70), d(70)});
       for (Icon k : {Icon::VideoLogoButton, Icon::VideoLogoPlay}) list.push_back({k, d(19), d(14)}), list.push_back({k, d(80), d(56)});
     }
@@ -225,8 +234,19 @@ int main(int argc, char** argv) {
         if (warmStage == 2 && text.warm(warmDigits, "0123456789:", 3 * kMs)) {
           warmStage = 3;
           printf("rondo: warmed, the atlas holds %d of 2048 rows\n", text.atlasRows());
+        } else if (warmStage == 3) {
+          // Now Playing drawn once, unseen (never presented): the first time it was drawn, the next
+          // frame waited a whole refresh for the GPU, a cost paid once per run (N3 log).
+          warmStage = 4;
+          std::unique_ptr<Screen> np = makeNowPlayingPreview();
+          canvas.begin(pal.shellBg);
+          Env env{canvas, text, icons, covers, pal, now_ns()};
+          np->draw(env, float(display->width()), float(display->height()));
+          text.flush();
+          canvas.end();
+          glFinish();
         }
-        warmed = warmStage == 3;
+        warmed = warmStage == 4;
         text.flush();  // to the GPU now, not in a moving frame
         pollfd q[1] = {{input->waitFd(), POLLIN, 0}};
         if (poll(q, 1, 0) == 0) continue;
@@ -285,15 +305,18 @@ int main(int argc, char** argv) {
     bool anim = app.step(dt);
     int64_t a2 = now_ns();
     canvas.begin(pal.shellBg);
+    int64_t a3 = now_ns();
     Env env{canvas, text, icons, covers, pal, present};
     status.playing = g_player.state().playing != 0;
     app.draw(env, float(display->width()), float(display->height()), status);
     int64_t b = now_ns();
     if (g_traceSlow && b - a > 8 * kMs)
-      printf("slow: frame at %.0f ms: input %.1f, step %.1f, draw %.1f ms\n", (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6,
-             (b - a2) / 1e6);
+      printf("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (the frame before: %d glyphs, "
+             "%d atlas rows, %d covers uploaded, presented %.1f ms after its vsync)\n",
+             (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6, (a3 - a2) / 1e6, (b - a3) / 1e6, prevGlyphs, prevRows, prevUploads, prevSpan / 1e6);
     text.flush();
     bool more = covers.pump(present, 2);
+    prevGlyphs = text.glyphsRasterizedLastFrame(), prevRows = text.flushedRows(), prevUploads = covers.uploadedLast();
     canvas.end();
     int64_t c = now_ns();
     if (g_shot) {
@@ -302,6 +325,7 @@ int main(int argc, char** argv) {
     }
     display->present();
     int64_t d = now_ns();
+    prevSpan = d - vs;
     FrameLog::Frame f{};
     f.vsync = vs, f.buildNs = int32_t(b - a), f.submitNs = int32_t(c - b), f.swapNs = int32_t(d - c);
     f.inputNs = int32_t(oldest), f.draws = int16_t(canvas.drawCalls()), f.quads = canvas.quads();

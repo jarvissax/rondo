@@ -5,6 +5,9 @@
 #include <time.h>
 
 #include <random>
+#include <set>
+
+#include "../core/fold.h"
 
 #include "../ui/keyboard.h"
 #include "app.h"
@@ -25,6 +28,7 @@ const char* scopeTitle(Scope s) {
     case Scope::Songs: return "Search songs";
     case Scope::Artists: return "Search artists";
     case Scope::Albums: return "Search albums";
+    case Scope::Playlists: return "Search playlists";
     default: return "Search videos";
   }
 }
@@ -34,6 +38,7 @@ const char* scopeHint(Scope s) {
     case Scope::Songs: return "Songs by title, artist or album";
     case Scope::Artists: return "The artists on the card";
     case Scope::Albums: return "The albums on the card";
+    case Scope::Playlists: return "Your playlists";
     default: return "The videos on the card";
   }
 }
@@ -52,7 +57,20 @@ Row searchRow(Scope s) {
 class LocalSongsScreen : public LetterListScreen {
  public:
   LocalSongsScreen(std::string title, std::vector<const Track*> tracks, bool alphabetical, bool showArtist)
-      : LetterListScreen(std::move(title)), tracks_(std::move(tracks)), showArtist_(showArtist) {
+      : LetterListScreen(std::move(title)), tracks_(std::move(tracks)), alphabetical_(alphabetical), showArtist_(showArtist) {
+    build();
+  }
+  // a song deleted meanwhile drops out
+  void onShow() override {
+    size_t before = tracks_.size();
+    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(), [](const Track* t) { return t->gone; }), tracks_.end());
+    if (tracks_.size() != before) build();
+  }
+
+ private:
+  void build() {
+    bool alphabetical = alphabetical_;
+    letters_.clear();
     std::vector<Row> rows;
     if (alphabetical) rows.push_back(searchRow(Scope::Songs));
     Row head;
@@ -64,8 +82,10 @@ class LocalSongsScreen : public LetterListScreen {
     rows.push_back(head);
     first_ = int(rows.size());
     rows.resize(rows.size() + tracks_.size());  // filled in when drawn
-    for (size_t k = 0; k < tracks_.size(); k++)  // Select plays them all from here
+    for (size_t k = 0; k < tracks_.size(); k++) {  // Select plays them all from here; holding it, the song's menu
       rows[size_t(first_) + k].onSelect = [this, k] { playFrom(int(k)); };
+      rows[size_t(first_) + k].onLongSelect = [this, k] { g_app->push(makeSongMenu(tracks_[k]->path)); };
+    }
     list_.fill = [this](int i, Row& r) {
       if (i < first_) return;
       const Track* t = tracks_[size_t(i - first_)];
@@ -79,7 +99,7 @@ class LocalSongsScreen : public LetterListScreen {
       r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       r.thumb = t->path;
     };
-    list_.setRows(std::move(rows));
+    list_.setRows(std::move(rows), true);
     if (alphabetical) {  // the letters from the titles themselves (the rows are empty until drawn)
       std::vector<uint32_t> seen;
       for (size_t k = 0; k < tracks_.size(); k++) {
@@ -92,7 +112,6 @@ class LocalSongsScreen : public LetterListScreen {
     }
   }
 
- private:
   void playFrom(int k) {
     std::vector<std::string> paths;
     paths.reserve(tracks_.size());
@@ -101,7 +120,7 @@ class LocalSongsScreen : public LetterListScreen {
     openNowPlaying();
   }
   std::vector<const Track*> tracks_;
-  bool showArtist_;
+  bool alphabetical_, showArtist_;
   int first_ = 0;
 };
 
@@ -149,17 +168,27 @@ class LocalVideosScreen : public ShellListScreen {
 std::vector<const Track*> recent() {
   std::vector<const Track*> v;
   for (const Track& t : g_library.tracks())
-    if (!t.video) v.push_back(&t);
+    if (!t.video && !t.gone) v.push_back(&t);
   std::stable_sort(v.begin(), v.end(), [](const Track* a, const Track* b) { return a->modified > b->modified; });
   return v;
 }
 
 // LibrarySearchScreen: a search bar, a summary line, and the TV-remote keyboard; Show opens what was
-// found as a list (Menu goes back to typing).
+// found as a list (Menu goes back to typing). With `addTo`, it picks songs for that playlist instead:
+// center adds the song (or a whole artist or album).
 class LibrarySearchScreen : public Screen {
  public:
-  explicit LibrarySearchScreen(Scope scope) : scope_(scope), kb_("Show", true) { search(); }
-  std::string title() const override { return scopeTitle(scope_); }
+  explicit LibrarySearchScreen(Scope scope, std::string addTo = "") : scope_(scope), addTo_(std::move(addTo)), kb_("Show", true) {
+    onShow();
+  }
+  std::string title() const override { return addTo_.empty() ? scopeTitle(scope_) : "Add to " + addTo_; }
+  void onShow() override {
+    allPlaylists_.clear();
+    if (addTo_.empty() && (scope_ == Scope::All || scope_ == Scope::Playlists)) allPlaylists_ = g_playlists.all();
+    search();
+    if (showing_ && nothingFound()) showing_ = false;
+    else if (showing_) results_.setRows(rows(), true);
+  }
   bool onAction(Action a, int steps) override {
     if (showing_) {
       if (a == Action::Back) {
@@ -246,10 +275,29 @@ class LibrarySearchScreen : public Screen {
     return n;
   }
   bool nothingFound() const {
-    return found_.artists.empty() && found_.albums.empty() && found_.songs.empty() && found_.videos.empty();
+    return found_.artists.empty() && found_.albums.empty() && found_.songs.empty() && found_.videos.empty() &&
+           playlists_.empty();
   }
   void search() {
     found_ = g_library.search(kb_.typed());
+    // playlists match on their names, every word
+    playlists_.clear();
+    std::vector<std::string> words;
+    std::string q = fold(kb_.typed()), w;
+    for (char c : q + " ") {
+      if (c == ' ') {
+        if (!w.empty()) words.push_back(w);
+        w.clear();
+      } else {
+        w += c;
+      }
+    }
+    if (!words.empty())
+      for (const Playlist& p : allPlaylists_) {
+        std::string n = fold(p.name);
+        if (std::all_of(words.begin(), words.end(), [&](const std::string& x) { return n.find(x) != std::string::npos; }))
+          playlists_.push_back(p);
+      }
     if (scope_ != Scope::All) {  // cut down to the scope
       if (scope_ != Scope::Artists) found_.artists.clear();
       if (scope_ != Scope::Albums) found_.albums.clear();
@@ -259,7 +307,7 @@ class LibrarySearchScreen : public Screen {
   }
   std::string summary() const {
     const std::string& q = kb_.typed();
-    if (q.find_first_not_of(' ') == std::string::npos) return scopeHint(scope_);
+    if (q.find_first_not_of(' ') == std::string::npos) return addTo_.empty() ? scopeHint(scope_) : "Find songs to add, then press Show";
     if (nothingFound()) return "Nothing on the card matches";
     std::string s;
     auto part = [&](size_t n, const char* word) {
@@ -270,19 +318,31 @@ class LibrarySearchScreen : public Screen {
     part(found_.artists.size(), "artist");
     part(found_.albums.size(), "album");
     part(found_.songs.size(), "song");
-    part(found_.videos.size(), "video");
+    if (addTo_.empty()) {
+      part(found_.videos.size(), "video");
+      part(playlists_.size(), "playlist");
+    }
     return s + (showing_ ? " \xc2\xb7 Menu: back to typing" : " \xc2\xb7 Show to see them");
   }
   Row group(const Library::Group& g) {
     Row r;
     r.title = g.first;
-    r.trailing = std::to_string(g.second.size());
+    std::vector<std::string> paths;
+    for (const Track* t : g.second) paths.push_back(t->path);
+    bool all = !addTo_.empty() && std::all_of(paths.begin(), paths.end(), [&](const std::string& p) { return added_.count(p); });
+    r.trailing = all ? "Added" : !addTo_.empty() ? "Add " + std::to_string(g.second.size()) : std::to_string(g.second.size());
     if (!g.second.empty()) r.thumb = g.second.front()->path;
-    r.chevron = true;
+    r.chevron = addTo_.empty();
     auto tracks = g.second;
     std::string name = g.first;
-    r.onSelect = [name, tracks] { g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(name, tracks, false, true))); };
+    if (!addTo_.empty()) r.onSelect = [this, paths] { add(paths); };
+    else r.onSelect = [name, tracks] { g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(name, tracks, false, true))); };
     return r;
+  }
+  void add(const std::vector<std::string>& paths) {
+    std::string problem = g_playlists.add(addTo_, paths);
+    if (problem.empty()) added_.insert(paths.begin(), paths.end());
+    results_.setRows(rows(), true);
   }
   std::vector<Row> rows() {
     std::vector<Row> rows;
@@ -297,33 +357,66 @@ class LibrarySearchScreen : public Screen {
     if (!found_.albums.empty()) header("Albums");
     for (auto& g : found_.albums) rows.push_back(group(g));
     if (!found_.songs.empty()) header("Songs");
-    for (const Track* t : found_.songs) {
+    std::vector<std::string> songs;
+    for (const Track* t : found_.songs) songs.push_back(t->path);
+    for (size_t i = 0; i < found_.songs.size(); i++) {
+      const Track* t = found_.songs[i];
       Row r;
       r.title = t->title;
       r.subtitle = subtitleOf(*t);
-      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
+      r.trailing = !addTo_.empty() && added_.count(t->path) ? "Added" : t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       r.thumb = t->path;
+      std::string path = t->path;
+      if (!addTo_.empty()) {
+        r.onSelect = [this, path] { add({path}); };
+      } else {
+        r.onSelect = [songs, i] {
+          g_player.playQueue(songs, int(i));
+          openNowPlaying();
+        };
+        r.onLongSelect = [path] { g_app->push(makeSongMenu(path)); };
+      }
       rows.push_back(std::move(r));
     }
-    if (!found_.videos.empty()) header("Videos");
-    for (const Track* t : found_.videos) {
+    if (addTo_.empty()) {  // videos aren't added to playlists
+      if (!found_.videos.empty()) header("Videos");
+      for (const Track* t : found_.videos) {
+        Row r;
+        r.title = t->title;
+        r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
+        r.thumb = t->path;
+        rows.push_back(std::move(r));
+      }
+    }
+    if (!playlists_.empty()) header("Playlists");
+    for (const Playlist& p : playlists_) {
       Row r;
-      r.title = t->title;
-      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-      r.thumb = t->path;
+      r.title = p.name;
+      r.trailing = std::to_string(p.paths.size());
+      r.tile = &tiles::playlists;
+      r.chevron = true;
+      std::string name = p.name;
+      r.onSelect = [name] { g_app->push(makePlaylist(name)); };
+      r.onLongSelect = [name] { g_app->push(makePlaylistMenu(name)); };
       rows.push_back(std::move(r));
     }
     return rows;
   }
 
   Scope scope_;
+  std::string addTo_;
   Keyboard kb_;
   Library::Found found_;
+  std::vector<Playlist> allPlaylists_, playlists_;  // the ones matching (not while adding to one)
+  std::set<std::string> added_;
   RowList results_;
   bool showing_ = false;
 };
 
 std::unique_ptr<Screen> makeSearch(Scope s) { return std::unique_ptr<Screen>(new LibrarySearchScreen(s)); }
+std::unique_ptr<Screen> makeSearchToAdd(const std::string& playlist) {
+  return std::unique_ptr<Screen>(new LibrarySearchScreen(Scope::All, playlist));
+}
 
 // DeviceScreen: the card, in the iPod's own words.
 class DeviceScreen : public ShellListScreen {
@@ -358,7 +451,9 @@ class DeviceScreen : public ShellListScreen {
       openNowPlaying();
     });
     add("Search", tiles::search, "", true, true, [] { g_app->push(makeSearch(Scope::All)); });
-    add("Playlists", tiles::playlists, "", true, true, nullptr);
+    size_t playlists = g_playlists.all().size();
+    add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true,
+        [] { g_app->push(makePlaylists()); });
     add("Songs", tiles::songs, std::to_string(songs.size()), true, !songs.empty(), [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Songs", g_library.songs(), true, true)));
     });
@@ -380,18 +475,28 @@ class DeviceScreen : public ShellListScreen {
     rescan.trailing = scanning_ ? "Scanning\xe2\x80\xa6" : "";
     rescan.tile = &tiles::rescan;
     rescan.onSelect = [this] {
-      scanning_ = true;
-      render();
-      g_library.scan();
-      g_library.readTags();
-      g_library.save();
-      scanning_ = false;
+      if (scanning_) return;
+      scanning_ = true;  // "Scanning…" is drawn first; the scan runs on the next look while idle
       render();
     };
     rows.push_back(std::move(rescan));
     list_.setRows(std::move(rows), true);
   }
-  bool scanning_ = false;
+  bool tick(int64_t) override {
+    if (!scanning_ || !drawnScanning_) return false;
+    g_library.scan();
+    g_library.readTags();
+    g_library.save();
+    scanning_ = drawnScanning_ = false;
+    render();
+    return true;
+  }
+  int64_t wakeAt() const override { return scanning_ ? now_ns() + 30 * kMs : 0; }
+  void draw(Env& e, float w, float h) override {
+    ShellListScreen::draw(e, w, h);
+    if (scanning_) drawnScanning_ = true;
+  }
+  bool scanning_ = false, drawnScanning_ = false;
 };
 
 std::unique_ptr<Screen> makeDevice() { return std::unique_ptr<Screen>(new DeviceScreen()); }

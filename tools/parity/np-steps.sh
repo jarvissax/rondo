@@ -22,6 +22,12 @@ $T np-options-shuffle >/dev/null
 I wheel 2 300 ccw; sleep 0.6
 SETTLE=1.2 $T np-scrub key center >/dev/null     # Scrub through the song
 I key menu; sleep 0.8              # cancels the scrub
+I key center 900; sleep 1.2        # the options again
+I wheel 1 300; sleep 0.6           # Up next
+SETTLE=2 $T queue-top key center >/dev/null
+SETTLE=1.5 $T queue-song wheel 2 300 >/dev/null   # the song playing: its artwork tints the background
+SETTLE=1.5 $T queue-next wheel 1 300 >/dev/null
+I key menu; sleep 1.2              # back to Now Playing
 I key menu; sleep 1.2              # back to Songs
 I key menu; sleep 1                # Library
 I key menu; sleep 1                # the main menu

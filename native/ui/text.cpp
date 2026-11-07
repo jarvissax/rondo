@@ -232,7 +232,9 @@ bool Text::rasterize(Slot& s) {
 }
 
 void Text::flush() {
+  flushedRows_ = 0;
   if (dirtyY1_ <= dirtyY0_) return;
+  flushedRows_ = dirtyY1_ - dirtyY0_;
   glBindTexture(GL_TEXTURE_2D, atlas_.id);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirtyY0_, kAtlasW, dirtyY1_ - dirtyY0_, GL_ALPHA, GL_UNSIGNED_BYTE,

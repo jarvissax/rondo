@@ -124,6 +124,7 @@ class Canvas {
   GLuint programs_[kPipes] = {};
   GLuint vbo_[3] = {};
   int vboNext_ = 0;
+  size_t vboCap_ = 0;  // vertices each buffer holds: allocated once, filled with glBufferSubData
   GLuint ibo_ = 0;
   std::vector<Vertex> upload_;
   int draws_ = 0, quads_ = 0;

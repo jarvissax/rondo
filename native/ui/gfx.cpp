@@ -174,6 +174,13 @@ bool Canvas::init(int width, int height) {
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx.size() * 2, idx.data(), GL_STATIC_DRAW);
   glGenBuffers(3, vbo_);
+  // Each buffer is allocated once, big enough for any screen (a buffer that grows makes the driver
+  // allocate while the GPU still draws the last frame: the next frame waited a whole refresh, N3 log).
+  vboCap_ = 16384;
+  for (GLuint b : vbo_) {
+    glBindBuffer(GL_ARRAY_BUFFER, b);
+    glBufferData(GL_ARRAY_BUFFER, vboCap_ * sizeof(Vertex), nullptr, GL_STREAM_DRAW);
+  }
   for (auto& l : layers_) {
     l.verts.reserve(4096);
     l.cmds.reserve(64);
@@ -220,9 +227,16 @@ void Canvas::end() {
     at += layers_[i].verts.size();
   }
   // three buffers in turn, so this frame's upload never waits for the GPU to finish the last one's
+  if (total > vboCap_) {  // more than ever planned for: grow all three, once
+    while (vboCap_ < total) vboCap_ *= 2;
+    for (GLuint b : vbo_) {
+      glBindBuffer(GL_ARRAY_BUFFER, b);
+      glBufferData(GL_ARRAY_BUFFER, vboCap_ * sizeof(Vertex), nullptr, GL_STREAM_DRAW);
+    }
+  }
   glBindBuffer(GL_ARRAY_BUFFER, vbo_[vboNext_]);
   vboNext_ = (vboNext_ + 1) % 3;
-  glBufferData(GL_ARRAY_BUFFER, total * sizeof(Vertex), upload_.data(), GL_STREAM_DRAW);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, total * sizeof(Vertex), upload_.data());
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_);
   int pipe = -1;
   GLuint tex = 0;

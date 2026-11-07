@@ -92,11 +92,16 @@ struct Row {
   std::function<void()> onSelect, onLongSelect;
 };
 
-// RowList in the SHELL style. One selected row, moved by the wheel; at rest the list sits exactly where
-// 1.0.x puts it (the selection re-centered when it reaches the first or last fully visible row; the top
-// at the first row), and it glides there. The highlight glides between rows.
+// RowList's styles: SHELL (the iPod lists, 36 units), MUSIC (YouTube Music, 42 units, a white focus
+// card), VIDEO (YouTube, 66 units, comes with those screens).
+enum class RowStyle { Shell, Music, Video };
+
+// RowList. One selected row, moved by the wheel; at rest the list sits exactly where 1.0.x puts it (the
+// selection re-centered when it reaches the first or last fully visible row; the top at the first
+// row), and it glides there. The highlight glides between rows.
 class RowList {
  public:
+  RowStyle style = RowStyle::Shell;
   void setRows(std::vector<Row> rows, bool keepSelection = false);
   void setMessage(const std::string& m) {
     rows_.clear();
@@ -124,6 +129,7 @@ class RowList {
 
  private:
   bool selectable(int i) const { return i >= 0 && i < int(rows_.size()) && !rows_[i].header && rows_[i].enabled; }
+  void drawMusic(Env& e, float x, float y);
   int firstSelectable() const;
   void ensureVisible();
   void move(int dir, int steps);

@@ -178,8 +178,8 @@ void RowList::setRows(std::vector<Row> rows, bool keepSelection) {
 }
 
 void RowList::layout(Env& e, float w, float h) {
-  entryH_ = float(e.dp(36));
-  headerH_ = float(e.dp(20));
+  entryH_ = float(e.dp(style == RowStyle::Shell ? 36 : style == RowStyle::Music ? 42 : 66));
+  headerH_ = float(e.dp(style == RowStyle::Shell ? 20 : 28));
   bool resized = w != w_ || h != h_;
   w_ = w, h_ = h;
   if (top_.size() != rows_.size() || resized) {
@@ -274,9 +274,22 @@ void RowList::draw(Env& e, float x, float y) {
   Canvas& c = e.c;
   c.pushClip({x, y, w_, h_});
   if (rows_.empty()) {
+    // a TextView of up to 4 lines, centered, 20 units in from each side
     c.layer(3);
-    Label l = label(e, message_, 15, false, w_ - 2 * e.dp(20));
-    drawLabel(e, l, centerText(x, w_, l.w), y + float((int(h_) - l.h) / 2), p.muted);
+    float tw = w_ - 2 * e.dp(20);
+    std::vector<Label> lines = wrap(e, message_, 15, false, tw, 4);
+    int th = 0;
+    for (auto& l : lines) th += l.h;
+    float ty = y + float((int(h_) - th) / 2);
+    for (auto& l : lines) {
+      drawLabel(e, l, centerText(x + e.dp(20), tw, l.w), ty, style == RowStyle::Shell ? p.muted : p.darkMuted);
+      ty += l.h;
+    }
+    c.popClip();
+    return;
+  }
+  if (style != RowStyle::Shell) {
+    drawMusic(e, x, y);
     c.popClip();
     return;
   }
@@ -299,7 +312,7 @@ void RowList::draw(Env& e, float x, float y) {
       c.layer(0);
       c.fill({x, top, w_, headerH_}, p.header);
       c.layer(3);
-      Label l = label(e, upper(r.title), 11, true);
+      Label l = label(e, upper(r.title), 11, true, w_ - e.dp(12));
       drawLabel(e, l, x + e.dp(12), top + headerH_ - e.dp(3) - l.h, p.muted);
       continue;
     }
@@ -348,6 +361,77 @@ void RowList::draw(Env& e, float x, float y) {
   }
   c.layer(0);
   c.popClip();
+}
+
+// RowViews.media() in the MUSIC style: a card inset 5 x 2 units in each 42-unit row, the 34-unit
+// artwork, title and subtitle, trailing text, a chevron. The selected row's card is white (`focus`,
+// radius 7) with dark text, its title bold; the card glides from row to row.
+void RowList::drawMusic(Env& e, float x, float y) {
+  const Palette& p = e.p;
+  Canvas& c = e.c;
+  float scroll = scroll_.x, H = entryH_;
+  int mx = e.dp(5), my = e.dp(2);
+  if (selected_ >= 0) {
+    c.layer(1);
+    c.shape({x + mx, y + bar_.x - scroll + my, w_ - 2 * mx, H - 2 * my}, e.dpf(7), p.focus);
+  }
+  for (int i = 0; i < int(rows_.size()); i++) {
+    float top = y + top_[i] - scroll;
+    if (top + rowH(i) < y || top > y + h_) continue;
+    Row lazy;
+    if (fill && !rows_[i].header) {
+      lazy = rows_[i];
+      fill(i, lazy);
+    }
+    const Row& r = fill && !rows_[i].header ? lazy : rows_[i];
+    if (r.header) {
+      c.layer(3);
+      Label l = label(e, r.title, 15, true, w_ - e.dp(10));
+      drawLabel(e, l, x + e.dp(10), top + headerH_ - e.dp(5) - l.h, p.white);
+      continue;
+    }
+    float sel = selected_ >= 0 ? clamp01(1 - fabsf(bar_.x - top_[i]) / H) : 0;
+    // the card's box and its padding
+    float cx = x + mx, cw = w_ - 2 * mx, ctop = top + my;
+    int ch = int(H) - 2 * my;
+    float left = cx + e.dp(4), right = cx + cw - e.dp(8);
+    int art = e.dp(34);
+    Rect ar{left, ctop + float((ch - art) / 2), float(art), float(art)};
+    c.layer(2);
+    if (r.tile) {
+      drawTile(e, *r.tile, ar, 1);
+    } else {
+      float a = 1;
+      const Texture* tex = r.thumb.empty() ? nullptr : e.covers.get(r.thumb, art, art, 0, e.now, &a);
+      if (!tex || a < 1) c.shape(ar, e.dpf(3), p.raised);
+      c.layer(3);
+      if (tex) c.image(*tex, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(0xffffffff, a));
+    }
+    float colX = left + art + e.dp(8);
+    float end = right;
+    int cvw = e.dp(7), cvh = e.dp(11);
+    c.layer(4);
+    if (r.chevron && style == RowStyle::Music) {
+      end -= cvw;
+      e.icons.draw(c, Icon::Chevron, {end, ctop + float((ch - cvh) / 2), float(cvw), float(cvh)}, mix(p.darkFaint, p.focusMuted, sel));
+      end -= e.dp(5);
+    }
+    if (!r.trailing.empty()) {
+      Label tr = label(e, r.trailing, 11, false);
+      end -= tr.w;
+      drawLabel(e, tr, end, ctop + float((ch - tr.h) / 2), mix(p.darkMuted, p.focusMuted, sel));
+      end -= e.dp(6);
+    }
+    float colW = end - colX;
+    Label tl = label(e, r.title, 13, sel > 0.5f, colW);
+    Label sl;
+    if (!r.subtitle.empty()) sl = label(e, r.subtitle, 11, false, colW);
+    int colH = tl.h + (r.subtitle.empty() ? 0 : e.dp(2) + sl.h);
+    float ty = ctop + float((ch - colH) / 2);
+    drawLabel(e, tl, colX, ty, mix(p.white, p.focusText, sel));
+    if (!r.subtitle.empty()) drawLabel(e, sl, colX, ty + tl.h + e.dp(2), mix(p.darkMuted, p.focusMuted, sel));
+  }
+  c.layer(0);
 }
 
 }  // namespace rondo::shell

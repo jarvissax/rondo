@@ -10,6 +10,7 @@
 #include "../core/clock.h"
 #include "../core/config.h"
 #include "../core/library.h"
+#include "../core/playlists.h"
 #include "../player/player.h"
 #include "dispatch.h"
 #include "kit.h"
@@ -19,6 +20,7 @@ namespace rondo::shell {
 extern Config g_config;
 extern Library g_library;
 extern PlayerHost g_player;
+extern Playlists g_playlists;
 // RONDO_SLOW=1: frames over 8 ms print where their time went (main.cpp, App::draw)
 extern bool g_traceSlow;
 
@@ -59,6 +61,20 @@ class App {
     finishTransition();
     leaving_ = std::move(stack_.back());
     stack_.pop_back();
+    stack_.back()->onShow();
+    transition_.begin(0, 1, now_, 250 * kMs);
+    popping_ = true;
+  }
+  // ShellActivity.popTo(): back to the nearest screen titled `title` in one slide (the screens between
+  // close); with none, one screen back.
+  void popTo(const std::string& title) {
+    int at = -1;
+    for (int i = int(stack_.size()) - 2; i >= 0 && at < 0; i--)
+      if (stack_[size_t(i)]->title() == title) at = i;
+    if (at < 0) return pop();
+    finishTransition();
+    leaving_ = std::move(stack_.back());
+    stack_.resize(size_t(at) + 1);
     stack_.back()->onShow();
     transition_.begin(0, 1, now_, 250 * kMs);
     popping_ = true;

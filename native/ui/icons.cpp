@@ -368,9 +368,14 @@ void Icons::draw(Canvas& c, Icon icon, Rect r, Color color, int level) {
 }
 
 void Icons::battery(Canvas& c, Rect r, Color color, float level) {
-  int pct = int(lroundf(std::clamp(level, 0.f, 1.f) * 100));
   draw(c, Icon::BatteryFrame, r, color);
-  draw(c, Icon::BatteryCharge, r, batteryColor(level), pct);
+  // The charge is a plain rectangle (2.3..18.9 x 8..16 of the 24-unit box): drawn as a shape, so a new
+  // level never adds a mask to the glyph atlas (an atlas upload while the last frame uses it costs the
+  // next frame a whole refresh).
+  int w = int(lroundf(r.w)), h = int(lroundf(r.h));
+  float s = float(std::min(w, h)) / 24, ox = r.x + (w - 24 * s) / 2, oy = r.y + (h - 24 * s) / 2;
+  float l = std::clamp(level, 0.f, 1.f);
+  if (l > 0) c.shape({ox + 2.3f * s, oy + 8 * s, 16.6f * l * s, 8 * s}, 0, batteryColor(level));
 }
 
 void Icons::musicLogo(Canvas& c, Rect r) {

@@ -107,6 +107,7 @@ class Engine {
   void decodeLoop();
   bool decodeTrack(int pos, int64_t seekMs, uint32_t gen);
   bool write(const int16_t* pcm, int frames, uint32_t gen);
+  bool eager_ = true;  // the decode thread at -4 (filling), else at +10 (topping up)
 
   // ---- output ----
   bool openOutput();
@@ -300,6 +301,12 @@ void Engine::command(const std::vector<uint8_t>& m) {
       int k = int(items_.size()) - 1;
       if (type == kInsertNext) order_.insert(order_.begin() + heardPos_ + 1, k);
       else order_.push_back(k);
+      // In a song's last seconds the next one (or the queue's end) is already in the stream: decode
+      // again from where it is heard, so the song just queued is the one that follows (1.0.x's
+      // prepareNext()).
+      // (Add to queue changes what follows only when the queue's end was next.)
+      bool endNext = std::any_of(markers_.begin(), markers_.end(), [](const Marker& m) { return m.pos < 0; });
+      if (heardPos_ >= 0 && (type == kInsertNext ? !markers_.empty() : endNext)) restart(heardPos_, heard, playing_);
       break;
     }
     case kShuffle:
@@ -352,6 +359,17 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
     pcm += n * 2;
     frames -= n;
   }
+  // Filling the whole ring at once, right as a song starts (and Now Playing slides in), took the CPU
+  // from the UI for a refresh. With a second buffered the decoder steps back below the UI's priority,
+  // and comes forward again under half a second.
+  uint64_t buffered = writeAt_ - readAt_;
+  if (eager_ && buffered >= uint64_t(kRate)) {
+    setpriority(PRIO_PROCESS, 0, 10);
+    eager_ = false;
+  } else if (!eager_ && buffered < uint64_t(kRate / 2)) {
+    setpriority(PRIO_PROCESS, 0, -4);
+    eager_ = true;
+  }
   return true;
 }
 
@@ -367,7 +385,17 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   bool ok = false;
   int stream = -1;
   const AVCodec* codec = nullptr;
-  if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) == 0 && avformat_find_stream_info(fmt, nullptr) >= 0 &&
+  // A song's cover is a video stream FFmpeg can't decode (no picture decoders are built), and finding its
+  // size made avformat_find_stream_info read up to 5 MB: half a megabyte is enough for every audio format.
+  AVDictionary* opts = nullptr;
+  av_dict_set(&opts, "probesize", "524288", 0);
+  av_dict_set(&opts, "analyzeduration", "1000000", 0);
+  int opened = avformat_open_input(&fmt, path.c_str(), nullptr, &opts);
+  av_dict_free(&opts);
+  if (opened == 0)
+    for (unsigned i = 0; i < fmt->nb_streams; i++)
+      if (fmt->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) fmt->streams[i]->discard = AVDISCARD_ALL;
+  if (opened == 0 && avformat_find_stream_info(fmt, nullptr) >= 0 &&
       (stream = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0)) >= 0 && codec) {
     dec = avcodec_alloc_context3(codec);
     AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
@@ -564,6 +592,7 @@ void Engine::main() {
   prctl(PR_SET_PDEATHSIG, SIGKILL);
   prctl(PR_SET_NAME, "rondo-player");
   setpriority(PRIO_PROCESS, 0, -8);
+  av_log_set_level(AV_LOG_ERROR);  // FFmpeg's warnings about covers and probing are not errors
   android::ProcessState::self()->startThreadPool();
   // AudioFlinger and the audio policy check MODIFY_AUDIO_SETTINGS with the "permission" service, which
   // system_server hosts; without it, rondo does (N0 log)
