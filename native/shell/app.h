@@ -13,6 +13,7 @@
 #include "../core/playlists.h"
 #include "../core/prefs.h"
 #include "../player/player.h"
+#include "../services/core.h"
 #include "dispatch.h"
 #include "kit.h"
 
@@ -21,6 +22,7 @@ namespace rondo::shell {
 extern Config g_config;
 extern Library g_library;
 extern PlayerHost g_player;
+extern CoreHost g_core;  // rondo-core: Wi-Fi and the other system services
 extern Playlists g_playlists;
 extern Prefs g_prefs;
 extern std::string g_configPath, g_prefsPath;

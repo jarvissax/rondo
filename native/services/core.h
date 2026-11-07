@@ -1,0 +1,67 @@
+// rondo-core: the system services Android's system_server ran for 1.0.x, natively, in a process of their
+// own (forked at startup like rondo-player): Wi-Fi first; Bluetooth, FM, the dashboard, power and the
+// server's API follow (private/native-plan.md, N4). The drawing process never waits on them: their
+// state is in shared memory under a sequence lock, read every frame without a system call, and
+// commands go over a socket.
+#pragma once
+#include <stdint.h>
+#include <sys/types.h>
+
+#include <string>
+
+namespace rondo {
+
+constexpr int kMaxWifiNetworks = 48, kMaxWifiSaved = 48;
+
+enum class WifiSecurity : uint8_t { Open, Wep, Psk, Eap };
+
+struct WifiNetwork {  // one per name, the strongest access point
+  char ssid[33];
+  uint8_t security;  // WifiSecurity
+  int16_t rssi;      // dBm
+};
+
+struct WifiSaved {
+  int32_t id;  // wpa_supplicant's network id
+  char ssid[33];
+};
+
+// Written by rondo-core under a sequence lock: read with CoreHost::state().
+struct CoreState {
+  uint32_t seq;
+  uint32_t serial;  // changes whenever anything below does
+  // Wi-Fi
+  int32_t wifiEnabled;  // 0 off, 1 turning on, 2 on, 3 turning off
+  int32_t wifiState;    // 0 not connected, 1 connecting, 2 checking the password, 3 getting an address, 4 connected
+  char ssid[33];        // the network being joined or joined
+  char failedSsid[33];  // the last attempt's wrong password
+  int32_t rssi, linkSpeed;  // dBm, Mb/s while connected
+  uint32_t ip;              // network order, while connected
+  int32_t networkCount, savedCount;
+  WifiNetwork networks[kMaxWifiNetworks];  // strongest first
+  WifiSaved saved[kMaxWifiSaved];
+};
+
+class CoreHost {
+ public:
+  // Forks rondo-core: call before any other thread exists.
+  bool start();
+  CoreState state() const;  // a consistent copy
+
+  void wifiEnable(bool on);
+  void wifiScan();
+  void wifiConnect(int id);  // a saved network
+  void wifiJoin(const std::string& ssid, WifiSecurity security, const std::string& password);
+  void wifiForget(int id);
+
+ private:
+  void send(uint32_t type, const void* payload = nullptr, uint32_t len = 0);
+  int sock_ = -1;
+  CoreState* shm_ = nullptr;
+};
+
+// WifiManager.calculateSignalLevel(rssi, 4) and the words 1.0.x shows for it
+int wifiLevel(int rssi);
+const char* wifiSignal(int rssi);
+
+}  // namespace rondo

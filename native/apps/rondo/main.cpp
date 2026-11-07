@@ -33,6 +33,7 @@
 #include "../../core/library.h"
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
+#include "../../services/core.h"
 #include "../../shell/dispatch.h"
 #include "../../shell/kit.h"
 #include "../../shell/app.h"
@@ -48,6 +49,7 @@ namespace rondo::shell {
 Config g_config;
 Library g_library;
 PlayerHost g_player;
+CoreHost g_core;
 Playlists g_playlists(g_library);
 Prefs g_prefs;
 std::string g_configPath, g_prefsPath;
@@ -147,6 +149,14 @@ int main(int argc, char** argv) {
   ImageLoader loader;
   if (!loader.start(2, thumbs)) return 1;
   if (!g_player.start()) return 1;  // rondo-player, also before any thread
+  if (!g_core.start()) return 1;    // rondo-core, the system services, the same
+  // Development: RONDO_WIFI_JOIN="<name><tab><password>" joins a WPA network at startup (scripts, without
+  // typing on the wheel)
+  if (const char* j = getenv("RONDO_WIFI_JOIN")) {
+    std::string s = j;
+    size_t tab = s.find('\t');
+    if (tab != std::string::npos) g_core.wifiJoin(s.substr(0, tab), WifiSecurity::Psk, s.substr(tab + 1));
+  }
   int64_t t0 = now_ns();
   g_traceSlow = getenv("RONDO_SLOW") != nullptr;
   g_config = loadConfig(configPath);
@@ -329,6 +339,19 @@ int main(int argc, char** argv) {
           lastStatus = now_ns();
           Status s{false, readOnline(), readBattery()};
           if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f) status = s, moving = true;
+          if (getenv("RONDO_WIFI_LOG")) {
+            CoreState cs = g_core.state();
+            char ip[16] = "";
+            if (cs.ip) snprintf(ip, sizeof(ip), "%u.%u.%u.%u", cs.ip & 0xff, cs.ip >> 8 & 0xff, cs.ip >> 16 & 0xff, cs.ip >> 24);
+            printf("wifi: enabled %d state %d ssid \"%s\" ip %s rssi %d speed %d, %d networks, %d saved, failed \"%s\"\n", cs.wifiEnabled,
+                   cs.wifiState, cs.ssid, ip, cs.rssi, cs.linkSpeed, cs.networkCount, cs.savedCount, cs.failedSsid);
+            std::string names;
+            for (int i = 0; i < cs.networkCount; i++) names += std::string(i ? ", " : "") + cs.networks[i].ssid + " " + std::to_string(cs.networks[i].rssi);
+            printf("wifi: in range: %s\n", names.c_str());
+            names.clear();
+            for (int i = 0; i < cs.savedCount; i++) names += std::string(i ? ", " : "") + std::to_string(cs.saved[i].id) + " " + cs.saved[i].ssid;
+            printf("wifi: saved: %s\n", names.c_str());
+          }
           if (getenv("RONDO_PLAYER_LOG")) {
             PlayerState ps = g_player.state();
             printf("player: %s %d/%d %lld/%lld ms vol %d %s\n", ps.playing ? "playing" : "paused", ps.pos, ps.count,
