@@ -50,6 +50,8 @@ class Screen {
   virtual void onShow() {}
   // another screen covers it, or it leaves (BluetoothScreen stops searching)
   virtual void onHide() {}
+  // the screen stays on while it is in front (1.0.x's keepScreenOn: the video player, Shorts)
+  virtual bool keepScreenOn() const { return false; }
   // false: the screen draws its own header (Now Playing) and gets the whole screen
   virtual bool statusBar() const { return true; }
   // While nothing moves the loop looks every 250 ms and at wakeAt(): true when what the screen shows
@@ -122,12 +124,21 @@ class App {
   bool tick(int64_t now) {
     bool changed = stack_.back()->tick(now);
     if (volumeUntil_ && now >= volumeUntil_) volumeUntil_ = 0, changed = true;
+    if (toastUntil_ && now >= toastUntil_) toastUntil_ = 0, changed = true;
     return changed;
   }
   int64_t wakeAt() const {
     int64_t t = stack_.back()->wakeAt();
     if (volumeUntil_ && (!t || volumeUntil_ < t)) t = volumeUntil_;
+    if (toastUntil_ && (!t || toastUntil_ < t)) t = toastUntil_;
     return t;
+  }
+  bool topKeepsScreenOn() const { return stack_.back()->keepScreenOn(); }
+  Screen* top() const { return stack_.back().get(); }
+  // Toast.LENGTH_LONG: a line near the bottom over everything for 3.5 s
+  void toast(const std::string& text) {
+    toast_ = text;
+    toastUntil_ = now_ns() + 3500 * kMs;
   }
   // ShellActivity.changeVolume(): one step of STREAM_MUSIC and the volume panel for 1.5 s
   void changeVolume(int dir) {
@@ -194,6 +205,7 @@ class App {
       e.c.layer(0);
     }
     if (volumeUntil_) drawVolume(e, W, H);
+    if (toastUntil_) drawToast(e, W, H);
   }
 
  private:
@@ -203,6 +215,9 @@ class App {
 
  private:
   void drawVolume(Env& e, float W, float H);
+  void drawToast(Env& e, float W, float H);
+  std::string toast_;
+  int64_t toastUntil_ = 0;
   void finishTransition() {
     transition_.duration = 0;
     leaving_.reset();

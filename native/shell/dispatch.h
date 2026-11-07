@@ -71,6 +71,13 @@ class Dispatcher {
     }
   }
 
+  // The screen went off: what is held is let go without acting (1.0.x's dispatcher.cancel())
+  void cancel() {
+    centerAt_ = 0;
+    held_ = Key::None;
+    longFired_ = false;
+  }
+
   // When tick() next has something to do (0: nothing held).
   int64_t nextDeadline() const {
     if (centerAt_ && !longFired_) return centerAt_ + kLong;

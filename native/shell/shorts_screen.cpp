@@ -24,6 +24,7 @@ class ShortsScreen : public Screen {
   }
   std::string title() const override { return "Shorts"; }
   bool statusBar() const override { return false; }
+  bool keepScreenOn() const override { return true; }  // the screen stays on here only (1.0.x)
 
   bool onAction(Action a, int steps) override {
     switch (a) {

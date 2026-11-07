@@ -40,6 +40,18 @@ std::unique_ptr<Screen> makeWifi();
 std::string wifiName();
 // Bluetooth (bluetooth_screens.cpp): the screen, Settings' row, and the loop's headset buttons and pause
 // FM radio (fm_screens.cpp): the radio's screen, a frequency as 1.0.x writes it (101.7), the loop's remembering
+// Power (power_screens.cpp): the Power screen, and the screen's power for the loop: an input event passes
+// (true) or is used up (waking, swallowed); the timers, wakelock and battery (true: draw a frame); when
+// they next need the loop; whether frames are drawn now; a wake waiting for its first frame; a frame
+// presented (the backlight after a wake). g_onSleep: the screen went off (the loop lets go of holds).
+std::unique_ptr<Screen> makePower();
+bool powerFilter(const InputEvent& ev);
+bool powerTick(int64_t now);
+int64_t powerWakeAt();
+bool screenDrawing();
+bool powerWantsFrame();
+void framePresented();
+extern std::function<void()> g_onSleep;
 std::unique_ptr<Screen> makeFm();
 std::string fmName(int frequency);
 void fmTick();

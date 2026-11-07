@@ -445,7 +445,7 @@ class SettingsScreen : public ShellListScreen {
     add("Software update", "", tiles::update, true, nullptr);
     add("About", std::string("Rondo ") + kVersion, tiles::about, true,
         [] { g_app->push(std::unique_ptr<Screen>(new AboutScreen())); });
-    add("Shut down", "", tiles::power, true, nullptr);  // N4: sys.powerctl
+    add("Shut down", "", tiles::power, true, [] { g_app->push(makePower()); });
     list_.setRows(std::move(rows), true);
   }
   std::string wifi_;

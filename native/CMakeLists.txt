@@ -51,7 +51,7 @@ target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/fr
 target_link_libraries(rondo_ui PUBLIC rondo_core tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
 
 # The Y1's platform layer: framebuffer, vsync, input
-add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp platform/y1/video_surface.cpp)
+add_library(rondo_platform_y1 STATIC platform/y1/display.cpp platform/y1/input.cpp platform/y1/usb_drive.cpp platform/y1/video_surface.cpp platform/y1/power.cpp)
 y1_private(rondo_platform_y1)
 target_link_libraries(rondo_platform_y1 PUBLIC y1_gui y1_ui y1_binder y1_utils y1_cutils EGL GLESv2 dl)
 
@@ -79,7 +79,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)

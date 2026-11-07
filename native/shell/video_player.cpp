@@ -29,6 +29,7 @@ class VideoPlayerScreen : public Screen {
   }
   std::string title() const override { return item_.title; }
   bool statusBar() const override { return false; }
+  bool keepScreenOn() const override { return true; }  // the screen stays on here only (1.0.x)
   void onShow() override {
     if (!started_) {
       started_ = true;

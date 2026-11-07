@@ -33,6 +33,7 @@
 #include "../../core/library.h"
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
+#include "../../platform/power.h"
 #include "../../platform/video_surface.h"
 #include "../../services/core.h"
 #include "../../shell/dispatch.h"
@@ -215,6 +216,7 @@ int main(int argc, char** argv) {
   dispatch.acceleration = g_config.behavior.wheelAcceleration;
   app.onAccelerationChanged = [&] { dispatch.acceleration = g_config.behavior.wheelAcceleration; };
   dispatch.emit = [&](Action a, int steps) { app.action(a, steps); };
+  g_onSleep = [&] { dispatch.cancel(); };
   Status status{false, readOnline(), readBattery()};
   printf("rondo: %zu files in the library (%.0f ms), ready at %.0f ms\n", g_library.tracks().size(), (tLib - t0) / 1e6,
          (now_ns() - t0) / 1e6);
@@ -307,6 +309,7 @@ int main(int argc, char** argv) {
   auto periodic = [&]() {
     bool changed = false;
     lastPeriodic = now_ns();
+    if (powerTick(now_ns())) changed = true;
     dispatch.tick(now_ns());
     bluetoothTick();
     fmTick();
@@ -346,8 +349,8 @@ int main(int argc, char** argv) {
   while (!g_stop) {
     if (!moving && !g_shot) {
       VideoSurface* video = VideoSurface::made();  // a video's pictures wake the loop as input does
-      pollfd p[4] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0},
-                     {video ? video->fd() : -1, POLLIN, 0}};
+      pollfd p[5] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0},
+                     {video ? video->fd() : -1, POLLIN, 0}, {power::wakeFd(), POLLIN, 0}};
       if (!warmed) {
         // the icons, the fonts' characters, the bubble's digits, a slice at a time
         if (warmStage == 0 && warmIcons()) warmStage = 1, text.resetWarm();
@@ -378,8 +381,13 @@ int main(int argc, char** argv) {
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
-      int r = poll(p, 4, timeout);
-      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents)) continue;  // half a reply
+      if (int64_t wake = powerWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
+      int r = poll(p, 5, timeout);
+      if (r > 0 && (p[4].revents & POLLIN)) {  // drawing may start again after a suspend
+        uint64_t n;
+        (void)!read(p[4].fd, &n, sizeof(n));
+      }
+      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents | p[4].revents)) continue;  // half a reply
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
         if (periodic()) moving = true;
@@ -388,6 +396,16 @@ int main(int argc, char** argv) {
     }
     g_core.pump();  // the server's replies, on this thread, before the frame
     if (now_ns() - lastPeriodic > 250 * kMs) periodic();
+    if (!screenDrawing()) {  // the screen is off: input only (Power wakes it), nothing drawn, no refresh waited for
+      input->acknowledge();
+      InputEvent ev;
+      while (input->poll(ev))
+        if (powerFilter(ev)) dispatch.event(ev);
+      dispatch.tick(now_ns());
+      moving = powerWantsFrame();
+      wasMoving = false;
+      continue;
+    }
     int64_t vs = display->waitVsync();
     int64_t present = vs + period;
     app.setNow(present);
@@ -397,6 +415,7 @@ int main(int argc, char** argv) {
     int64_t oldest = -1;
     while (input->poll(ev)) {
       if (oldest < 0) oldest = vs - ev.time;
+      if (!powerFilter(ev)) continue;  // used up: waking, swallowed, the Power key
       dispatch.event(ev);
       if (ev.key == Key::Menu) {
         if (ev.down) menuDown = ev.time;
@@ -437,6 +456,7 @@ int main(int argc, char** argv) {
       printf("rondo: screenshot %s\n", saveScreenshot(shotPath, display->width(), display->height()) ? "saved" : "failed");
     }
     display->present();
+    framePresented();  // after a wake, the backlight once what is there now is on the panel
     int64_t d = now_ns();
     prevSpan = d - vs;
     FrameLog::Frame f{};
