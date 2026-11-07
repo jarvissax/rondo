@@ -39,6 +39,7 @@ class Wifi {
   void getAddress();
   void configure(const char* ip, const char* gw, uint32_t prefix, const char* dns1, const char* dns2);
   void lostAddress();
+  bool applyLease();  // the lease dhcpcd holds, from its properties
   void setDns(const char* dns1, const char* dns2);
   void poll();
   void readScanResults();

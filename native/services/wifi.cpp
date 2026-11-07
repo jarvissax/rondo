@@ -239,9 +239,12 @@ void Wifi::attached() {
   std::string wpa = field(st, "wpa_state"), ssid = field(st, "ssid");
   if (wpa == "COMPLETED") {
     update([&](CoreState& s) { copyName(s.ssid, ssid); });
-    if (!field(st, "ip_address").empty()) {
-      // joined with an address before Rondo started (Android, or an earlier run): its DNS again, from
-      // the lease dhcpcd keeps in properties
+    char leaseIp[PROPERTY_VALUE_MAX];
+    property_get("dhcp.wlan0.ipaddress", leaseIp, "");
+    if (!field(st, "ip_address").empty() && field(st, "ip_address") == leaseIp && applyLease()) {
+      // joined with an address before Rondo started (Android, or an earlier run): the lease dhcpcd
+      // keeps in properties applied again (the route may be gone), and renewed from now on
+    } else if (!field(st, "ip_address").empty()) {
       char dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX];
       property_get("dhcp.wlan0.dns1", dns1, "");
       property_get("dhcp.wlan0.dns2", dns2, "");
@@ -377,6 +380,39 @@ void Wifi::configure(const char* ip, const char* gw, uint32_t prefix, const char
   });
 }
 
+namespace {
+// A default route out through wlan0 (/proc/net/route). dhcpcd drops it when the link bounces and puts the
+// address back alone (reason REBOOT): the Y1 then had an address and no way to the server (N5 log).
+bool hasDefaultRoute() {
+  FILE* f = fopen("/proc/net/route", "r");
+  if (!f) return true;
+  char line[256];
+  bool found = false;
+  while (fgets(line, sizeof(line), f)) {
+    char ifc[32];
+    unsigned dest = 1, gw = 0;
+    if (sscanf(line, "%31s %x %x", ifc, &dest, &gw) == 3 && dest == 0 && !strcmp(ifc, kIface)) found = true;
+  }
+  fclose(f);
+  return found;
+}
+}  // namespace
+
+bool Wifi::applyLease() {
+  char ip[PROPERTY_VALUE_MAX], gw[PROPERTY_VALUE_MAX], mask[PROPERTY_VALUE_MAX], dns1[PROPERTY_VALUE_MAX],
+      dns2[PROPERTY_VALUE_MAX], lease[PROPERTY_VALUE_MAX];
+  property_get("dhcp.wlan0.ipaddress", ip, "");
+  property_get("dhcp.wlan0.gateway", gw, "");
+  property_get("dhcp.wlan0.mask", mask, "255.255.255.0");
+  property_get("dhcp.wlan0.dns1", dns1, "");
+  property_get("dhcp.wlan0.dns2", dns2, "");
+  property_get("dhcp.wlan0.leasetime", lease, "3600");
+  if (!ip[0] || !gw[0]) return false;
+  configure(ip, gw, uint32_t(__builtin_popcount(ntohl(inet_addr(mask)))), dns1[0] ? dns1 : gw, dns2);
+  if (!renewAt_) renewAt_ = nowMs() + int64_t(std::max(60, atoi(lease))) * 500;
+  return true;
+}
+
 // DNS as Android's ConnectivityService set it: netd's per-interface servers, and the global net.dns
 // properties with net.dnschange bumped, which 4.2's resolver reads (without them nothing resolves)
 void Wifi::setDns(const char* dns1, const char* dns2) {
@@ -422,6 +458,10 @@ void Wifi::poll() {
         if (!strcmp(now.networks[i].ssid, now.ssid)) rssi = now.networks[i].rssi;
   }
   if (rssi != now.rssi || speed != now.linkSpeed) update([&](CoreState& s) { s.rssi = rssi, s.linkSpeed = speed; });
+  if (!hasDefaultRoute()) {
+    fprintf(stderr, "rondo-core: no route out: the lease applied again\n");
+    applyLease();
+  }
   if (renewAt_ && nowMs() > renewAt_) {
     char ip[PROPERTY_VALUE_MAX], gw[PROPERTY_VALUE_MAX], dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX],
         server[PROPERTY_VALUE_MAX], vendor[PROPERTY_VALUE_MAX];
