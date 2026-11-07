@@ -16,6 +16,7 @@
 #include "../core/lyrics.h"
 #include "app.h"
 #include "lyrics_view.h"
+#include "music_list.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -549,8 +550,29 @@ class NowPlayingScreen : public Screen {
         return;
       }
     lyrics_.showMessage("Finding lyrics\xe2\x80\xa6");
+    if (isStream(path)) return loadOnline(path);
     loadPending_ = true;
     g_lyricsLoader.request(path);
+  }
+  // a YouTube Music song: the server's /lyrics (LyricsSource.find), kept 30 minutes
+  void loadOnline(const std::string& path) {
+    const Item* it = streamItem(path);
+    if (!it) return lyrics_.showMessage("No lyrics found for this song");
+    std::string q = "/lyrics?title=" + Api::escape(it->title) + "&artist=" + Api::escape(firstAndRest(it->subtitle).first);
+    if (it->durationSec >= 0) q += "&duration=" + std::to_string(it->durationSec);
+    q += "&id=" + Api::escape(it->id);
+    requests_.get(q, 30 * 60000, [this, path, q](int status, const std::string& body) {
+      if (path != lyricsFor_) return;
+      Lyrics l;
+      if (status == 200 && parseLyrics(body, l)) {
+        remember(path, l);
+        lyrics_.show(l);
+        return;
+      }
+      lyricsFor_.clear();  // try again next time
+      lyrics_.showMessage(!g_app->status().online ? "Lyrics need Wi-Fi.\nConnect in Settings \xe2\x80\xba Wi-Fi."
+                                                  : "Couldn't get lyrics: " + httpProblem(status, q));
+    });
   }
   // LyricsSource's cache: the last 24 songs
   static std::vector<std::pair<std::string, Lyrics>>& cache() {
@@ -681,6 +703,7 @@ class NowPlayingScreen : public Screen {
 
   Scrubber scrub_;
   LyricsView lyrics_;
+  Requests requests_;
   std::string lyricsFor_;
   bool loadPending_ = false;
   int64_t now_ = 0;

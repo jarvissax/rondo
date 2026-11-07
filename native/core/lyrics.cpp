@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+#include <yyjson.h>
+
 namespace rondo {
 namespace {
 
@@ -309,6 +311,27 @@ std::string embeddedLyrics(const std::string& path) {
   else if (ext == "mp3") text = id3(f);
   fclose(f);
   return trim(text);
+}
+
+bool parseLyrics(const std::string& json, Lyrics& out) {
+  yyjson_doc* doc = yyjson_read(json.data(), json.size(), 0);
+  if (!doc) return false;
+  yyjson_val* root = yyjson_doc_get_root(doc);
+  size_t i, n;
+  yyjson_val* e;
+  yyjson_arr_foreach(yyjson_obj_get(root, "synced"), i, n, e) {
+    yyjson_val* t = yyjson_obj_get(e, "t");
+    yyjson_val* x = yyjson_obj_get(e, "text");
+    LyricLine l;
+    l.t = yyjson_is_num(t) ? int64_t(yyjson_get_num(t)) : 0;
+    if (yyjson_is_str(x)) l.text.assign(yyjson_get_str(x), yyjson_get_len(x));
+    out.synced.push_back(std::move(l));
+  }
+  yyjson_val* p = yyjson_obj_get(root, "plain");
+  if (yyjson_is_str(p)) out.plain.assign(yyjson_get_str(p), yyjson_get_len(p));
+  out.instrumental = yyjson_get_bool(yyjson_obj_get(root, "instrumental"));
+  yyjson_doc_free(doc);
+  return true;
 }
 
 Lyrics lyricsForFile(const std::string& path) {

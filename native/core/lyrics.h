@@ -26,5 +26,8 @@ std::vector<LyricLine> parseLrc(const std::string& text);
 // FLAC Vorbis comments (LYRICS, UNSYNCEDLYRICS, SYNCEDLYRICS, LYRICS-*), MP4 ©lyr, ID3v2 USLT; trimmed,
 // "" when none.
 std::string embeddedLyrics(const std::string& path);
+// The server's /lyrics answer: {synced: [{t, text}], plain, instrumental, source} (LRCLIB first, then
+// YouTube Music's own).
+bool parseLyrics(const std::string& json, Lyrics& out);
 
 }  // namespace rondo
