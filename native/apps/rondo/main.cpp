@@ -168,6 +168,7 @@ int main(int argc, char** argv) {
   g_prefs = loadPrefs(prefsPath);
   g_core.apiConfigure(g_config.server.url, g_config.server.token);
   loader.configure(g_config.server.url, g_config.server.token);
+  g_player.configure(g_config.server.url, g_config.server.token);
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
   g_library.scan();

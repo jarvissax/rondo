@@ -83,6 +83,10 @@ void PlayerHost::append(const std::string& path) {
   send(kAppend, path.data(), uint32_t(path.size()));
 }
 void PlayerHost::release() { send(kRelease); }
+void PlayerHost::configure(const std::string& baseUrl, const std::string& token) {
+  std::string b = baseUrl + '\0' + token;
+  send(kConfigure, b.data(), uint32_t(b.size()));
+}
 void PlayerHost::setShuffle(bool on) {
   uint8_t v = on;
   send(kShuffle, &v, 1);

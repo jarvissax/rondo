@@ -63,6 +63,7 @@ class PlayerHost {
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
   void release();                // paused, the song's file closed (the USB drive); Play picks it up again
+  void configure(const std::string& baseUrl, const std::string& token);  // where /s/<id>/140 streams come from
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

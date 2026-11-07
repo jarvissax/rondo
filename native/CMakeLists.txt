@@ -90,10 +90,10 @@ foreach(lib avformat avcodec avutil swresample)
   add_library(ff_${lib} SHARED IMPORTED)
   set_target_properties(ff_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.so)
 endforeach()
-add_library(rondo_player STATIC player/engine.cpp player/host.cpp)
+add_library(rondo_player STATIC player/engine.cpp player/host.cpp player/http_source.cpp)
 y1_private(rondo_player)
 target_include_directories(rondo_player SYSTEM PRIVATE ${TP}/include)
-target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_media y1_binder y1_utils)
+target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_media y1_binder y1_utils rondo_net)
 target_link_libraries(rondo PRIVATE rondo_player)
 
 # rondo-core: the system services (services/core.h), forked at startup like rondo-player

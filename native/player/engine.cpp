@@ -33,6 +33,11 @@ extern "C" {
 #include "../platform/permission_service.h"
 #include "../platform/aosp_end.h"
 
+#include <curl/curl.h>
+
+#include <memory>
+
+#include "http_source.h"
 #include "player.h"
 #include "protocol.h"
 
@@ -109,6 +114,8 @@ class Engine {
   bool write(const int16_t* pcm, int frames, uint32_t gen);
   bool eager_ = true;  // the decode thread at -4 (filling), else at +10 (topping up)
   bool released_ = false;  // kRelease: no file open until Play
+  std::string base_, token_;  // the server, for streamed songs (kConfigure)
+  void* curl_ = nullptr;      // the decoder thread's libcurl handle
   int64_t releasedMs_ = 0;
 
   // ---- output ----
@@ -274,6 +281,14 @@ void Engine::command(const std::vector<uint8_t>& m) {
         setPlaying(true);
       }
       break;
+    case kConfigure: {
+      std::string s(reinterpret_cast<const char*>(p), len);
+      size_t z = s.find('\0');
+      base_ = s.substr(0, z);
+      while (!base_.empty() && base_.back() == '/') base_.pop_back();
+      token_ = z == std::string::npos ? "" : s.substr(z + 1);
+      break;
+    }
     case kRelease:
       // The card goes to a computer as a USB drive, and vold kills whoever still has a file open on it:
       // the decoder leaves the song (closing it), the stream is dropped, the place is kept.
@@ -412,7 +427,20 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   AVDictionary* opts = nullptr;
   av_dict_set(&opts, "probesize", "524288", 0);
   av_dict_set(&opts, "analyzeduration", "1000000", 0);
-  int opened = avformat_open_input(&fmt, path.c_str(), nullptr, &opts);
+  // a song the server streams: read through HttpSource; a file on the card: FFmpeg's own file input
+  bool streamed = path.compare(0, 3, "/s/") == 0;
+  std::unique_ptr<HttpSource> source;
+  if (streamed) {
+    if (!curl_) curl_ = curl_easy_init();  // one handle for every song: its connection stays open
+    pthread_mutex_lock(&mu_);
+    std::string url = base_ + path, token = token_;
+    pthread_mutex_unlock(&mu_);
+    source.reset(new HttpSource(curl_, url, token, [this, gen] { return gen != gen_; }));
+    fmt = avformat_alloc_context();
+    fmt->pb = source->avio();
+    fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
+  }
+  int opened = avformat_open_input(&fmt, streamed ? "" : path.c_str(), nullptr, &opts);
   av_dict_free(&opts);
   if (opened == 0)
     for (unsigned i = 0; i < fmt->nb_streams; i++)
@@ -429,7 +457,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   }
   pthread_mutex_lock(&mu_);
   if (!ok) {
-    error_ = "Can't play " + path.substr(path.rfind('/') + 1);
+    error_ = streamed ? "Can't play this song" : "Can't play " + path.substr(path.rfind('/') + 1);
     fprintf(stderr, "rondo-player: %s\n", error_.c_str());
   }
   if (ok) error_.clear();
@@ -613,6 +641,7 @@ void Engine::changeVolume(int delta) {
 void Engine::main() {
   prctl(PR_SET_PDEATHSIG, SIGKILL);
   prctl(PR_SET_NAME, "rondo-player");
+  curl_global_init(CURL_GLOBAL_DEFAULT);  // before any thread: it isn't thread-safe
   setpriority(PRIO_PROCESS, 0, -8);
   av_log_set_level(AV_LOG_ERROR);  // FFmpeg's warnings about covers and probing are not errors
   android::ProcessState::self()->startThreadPool();
