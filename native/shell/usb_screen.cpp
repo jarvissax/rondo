@@ -22,11 +22,7 @@ void startSwitch(bool on) {
 }
 
 // the card is back: the library reads it again (songs added on the computer appear)
-void rescanCard() {
-  g_library.scan();
-  g_library.readTags();
-  g_library.save();
-}
+void rescanCard() { g_library.scanAsync(); }
 
 // what plays is a song on the card (streamed songs and videos keep playing: 1.0.x's isLocal)
 bool cardPlaying() {

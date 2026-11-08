@@ -24,6 +24,7 @@ class MainMenuScreen : public Screen {
   // Settings › Theme › Main menu reorders or hides entries: the menu is built again on the way back
   void onShow() override {
     if (menuSig() != builtSig_) build();
+    g_library.rescanIfStale();  // the card scan preloaded (MainMenuScreen.kt), at most every 30 s
     // whether the server has an account (Accounts.kt): YouTube and YouTube Music open with the right tabs
     checkAccounts();
   }

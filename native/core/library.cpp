@@ -6,12 +6,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <sys/prctl.h>
+#include <sys/resource.h>
+
 #include <algorithm>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 
 #include <sqlite3.h>
 #include <yyjson.h>
 
+#include "clock.h"
 #include "fold.h"
 #include "tags.h"
 
@@ -78,10 +86,180 @@ Track fromName(const std::string& path, int64_t size, int64_t modified, bool vid
   return t;
 }
 
+// a file's tags over its name-based entry
+void applyTags(Track& t, const Tags& g) {
+  if (!g.title.empty()) t.title = g.title;
+  if (!g.artist.empty()) t.artist = g.artist;
+  else if (!g.albumArtist.empty()) t.artist = g.albumArtist;
+  if (!g.album.empty()) t.album = g.album;
+  t.track = g.track;
+  if (g.durationSec >= 0) t.durationSec = g.durationSec;
+  t.tagged = true;
+  t.dirty = true;
+  setKey(t);
+}
+
+bool writeRows(sqlite3* db, const std::vector<Track>& rows, const std::vector<std::string>& removed);
+
+struct TagResult {
+  std::string path;
+  int64_t size, modified;
+  Tags tags;
+};
+
 }  // namespace
 
+// The library's thread: jobs in order (a scan, then the saves), so the database has one writer
+struct Library::Worker {
+  std::mutex mu;
+  std::condition_variable cv;
+  std::deque<std::function<void()>> jobs;
+  std::thread thread;
+  bool stop = false, started = false;
+  // what the running scan found, for the UI thread
+  bool listed = false, tagsDone = false;
+  std::vector<FileEntry> listing;
+  std::deque<std::vector<TagResult>> batches;
+
+  void post(std::function<void()> job) {
+    std::lock_guard<std::mutex> l(mu);
+    jobs.push_back(std::move(job));
+    if (!started) {
+      started = true;
+      thread = std::thread([this] { run(); });
+    }
+    cv.notify_one();
+  }
+  void run() {
+    prctl(PR_SET_NAME, "rondo-library");
+    setpriority(PRIO_PROCESS, 0, 10);  // below the UI: the card is read while the screen moves
+    for (;;) {
+      std::function<void()> job;
+      {
+        std::unique_lock<std::mutex> l(mu);
+        cv.wait(l, [this] { return stop || !jobs.empty(); });
+        if (jobs.empty()) return;  // stopping, with nothing left
+        job = std::move(jobs.front());
+        jobs.pop_front();
+      }
+      job();
+    }
+  }
+  ~Worker() {
+    {
+      std::lock_guard<std::mutex> l(mu);
+      stop = true;
+      cv.notify_one();
+    }
+    if (thread.joinable()) thread.join();  // the last save is written first
+  }
+};
+
+Library::Library() : worker_(new Worker) {}
+
 Library::~Library() {
+  worker_.reset();
   if (db_) sqlite3_close(db_);
+}
+
+void Library::scanAsync() {
+  if (scanning_) return;
+  scanning_ = true;
+  // the files already read, as they were: unchanged, their tags aren't read again
+  auto known = std::make_shared<std::unordered_map<std::string, std::pair<int64_t, int64_t>>>();
+  known->reserve(tracks_.size());
+  for (const Track& t : tracks_)
+    if (!t.gone && t.tagged) (*known)[t.path] = {t.size, t.modified / 1000};
+  Worker* w = worker_.get();
+  w->post([w, known] {
+    std::vector<FileEntry> found;
+    for (const char* root : {"/storage/sdcard0", "/storage/sdcard1"}) list(root, 0, found);
+    std::vector<FileEntry> need;
+    for (const FileEntry& f : found) {
+      auto it = known->find(f.path);
+      if (it == known->end() || it->second.first != f.size || it->second.second != f.modified / 1000) need.push_back(f);
+    }
+    {
+      std::lock_guard<std::mutex> l(w->mu);
+      w->listing = std::move(found);
+      w->listed = true;
+    }
+    // the tags, 40 files at a time (LocalLibrary.kt's batches): the list redraws as they come
+    std::vector<TagResult> batch;
+    for (const FileEntry& f : need) {
+      batch.push_back({f.path, f.size, f.modified, rondo::readTags(f.path.c_str())});
+      if (batch.size() == 40) {
+        std::lock_guard<std::mutex> l(w->mu);
+        w->batches.push_back(std::move(batch));
+        batch.clear();
+      }
+    }
+    std::lock_guard<std::mutex> l(w->mu);
+    if (!batch.empty()) w->batches.push_back(std::move(batch));
+    w->tagsDone = true;
+  });
+}
+
+void Library::rescanIfStale() {
+  if (!scanning_ && (scanEnded_ == 0 || now_ns() - scanEnded_ > 30 * kSec)) scanAsync();
+}
+
+bool Library::applyScan() {
+  if (!scanning_) return false;
+  Worker* w = worker_.get();
+  std::vector<FileEntry> listing;
+  std::vector<TagResult> batch;
+  bool gotListing = false, gotBatch = false, done = false;
+  {
+    std::lock_guard<std::mutex> l(w->mu);
+    if (w->listed) {
+      listing.swap(w->listing);
+      w->listed = false;
+      gotListing = true;
+    } else if (!w->batches.empty()) {
+      batch = std::move(w->batches.front());
+      w->batches.pop_front();
+      gotBatch = true;
+    } else if (w->tagsDone) {
+      w->tagsDone = false;
+      done = true;
+    }
+  }
+  if (gotListing) {
+    merge(listing);
+    return true;
+  }
+  if (gotBatch) {
+    std::unordered_map<std::string, Track*> byPath;
+    byPath.reserve(tracks_.size());
+    for (Track& t : tracks_)
+      if (!t.gone) byPath[t.path] = &t;
+    for (TagResult& r : batch) {
+      auto it = byPath.find(r.path);
+      // the file as it was read (not changed again since)
+      if (it != byPath.end() && it->second->size == r.size && it->second->modified / 1000 == r.modified / 1000)
+        applyTags(*it->second, r.tags);
+    }
+    indexed_ = false;
+    generation_++;
+    return true;
+  }
+  if (!done) return false;
+  scanning_ = false;
+  scanEnded_ = now_ns();
+  saveAsync();
+  return true;
+}
+
+void Library::saveAsync() {
+  auto rows = std::make_shared<std::vector<Track>>();
+  for (Track& t : tracks_)
+    if (t.dirty) rows->push_back(t), t.dirty = false;
+  auto removed = std::make_shared<std::vector<std::string>>(std::move(removed_));
+  removed_.clear();
+  if (rows->empty() && removed->empty()) return;
+  sqlite3* db = db_;
+  worker_->post([db, rows, removed] { writeRows(db, *rows, *removed); });
 }
 
 bool Library::open(const char* path) {
@@ -144,16 +322,10 @@ int Library::importIndexJson(const char* path) {
   return int(tracks_.size());
 }
 
-void Library::walk(const std::string& dir, int depth, std::vector<Track>& out) {
+void Library::list(const std::string& dir, int depth, std::vector<FileEntry>& out) {
   if (depth > 6) return;
   DIR* d = opendir(dir.c_str());
   if (!d) return;
-  static std::unordered_map<std::string, const Track*>* known = nullptr;
-  std::unordered_map<std::string, const Track*> local;
-  if (depth == 0) {
-    for (const Track& t : tracks_) local[t.path] = &t;
-    known = &local;
-  }
   while (dirent* e = readdir(d)) {
     std::string name = e->d_name;
     if (name.empty() || name[0] == '.') continue;
@@ -161,40 +333,35 @@ void Library::walk(const std::string& dir, int depth, std::vector<Track>& out) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) continue;
     if (S_ISDIR(st.st_mode)) {
-      if (!in(kSkip, 4, asciiLower(name))) walk(path, depth + 1, out);
+      if (!in(kSkip, 4, asciiLower(name))) list(path, depth + 1, out);
       continue;
     }
     size_t dot = name.rfind('.');
     std::string ext = dot == std::string::npos ? "" : asciiLower(name.substr(dot + 1));
     bool video = in(kVideo, 5, ext);
     if (!video && !in(kAudio, 7, ext)) continue;
-    int64_t size = st.st_size, modified = int64_t(st.st_mtime) * 1000;
-    auto it = known->find(path);
-    if (it != known->end() && it->second->size == size && it->second->modified / 1000 == modified / 1000)
-      out.push_back(*it->second);
-    else
-      out.push_back(fromName(path, size, modified, video));
+    out.push_back({path, int64_t(st.st_size), int64_t(st.st_mtime) * 1000, video});
   }
   closedir(d);
 }
 
-void Library::scan(const std::vector<std::string>& roots) {
-  std::vector<Track> found;
-  for (const std::string& r : roots) walk(r, 0, found);
+void Library::merge(std::vector<FileEntry>& found) {
   // in place: a track stays where it is (screens hold pointers to it), a changed file is updated where
-  // it is, a new one is added at the end, one that left the card is marked gone
+  // it is (named from its file again, its tags read again), a new one is added at the end, one that
+  // left the card is marked gone
   std::unordered_map<std::string, Track*> byPath;
+  byPath.reserve(tracks_.size());
   for (Track& t : tracks_)
     if (!t.gone) byPath[t.path] = &t;
   std::unordered_map<std::string, bool> now;
-  for (Track& f : found) {
+  now.reserve(found.size());
+  for (FileEntry& f : found) {
     now[f.path] = true;
-    f.gone = false;
     auto it = byPath.find(f.path);
     if (it == byPath.end()) {
-      tracks_.push_back(std::move(f));
+      tracks_.push_back(fromName(f.path, f.size, f.modified, f.video));
     } else if (it->second->size != f.size || it->second->modified / 1000 != f.modified / 1000) {
-      *it->second = std::move(f);  // read again (its tags too)
+      *it->second = fromName(f.path, f.size, f.modified, f.video);
     }
   }
   for (Track& t : tracks_)
@@ -203,6 +370,13 @@ void Library::scan(const std::vector<std::string>& roots) {
       removed_.push_back(t.path);
     }
   indexed_ = false;
+  generation_++;
+}
+
+void Library::scan(const std::vector<std::string>& roots) {
+  std::vector<FileEntry> found;
+  for (const std::string& r : roots) list(r, 0, found);
+  merge(found);
 }
 
 int Library::readTags(int max) {
@@ -210,24 +384,27 @@ int Library::readTags(int max) {
   for (Track& t : tracks_) {
     if (t.tagged) continue;
     if (max >= 0 && done >= max) break;
-    Tags g = rondo::readTags(t.path.c_str());
-    if (!g.title.empty()) t.title = g.title;
-    if (!g.artist.empty()) t.artist = g.artist;
-    else if (!g.albumArtist.empty()) t.artist = g.albumArtist;
-    if (!g.album.empty()) t.album = g.album;
-    t.track = g.track;
-    if (g.durationSec >= 0) t.durationSec = g.durationSec;
-    t.tagged = true;
-    t.dirty = true;
-    setKey(t);
+    applyTags(t, rondo::readTags(t.path.c_str()));
     done++;
   }
-  if (done) indexed_ = false;
+  if (done) indexed_ = false, generation_++;
   return done;
 }
 
 
 bool Library::save() {
+  std::vector<Track> rows;
+  for (Track& t : tracks_)
+    if (t.dirty) rows.push_back(t), t.dirty = false;
+  bool ok = writeRows(db_, rows, removed_);
+  removed_.clear();
+  return ok;
+}
+
+namespace {
+// One transaction: the paths that left, then the rows that changed. Whichever thread writes is the
+// only one using the database meanwhile (open() reads it before the worker starts).
+bool writeRows(sqlite3* db_, const std::vector<Track>& rows, const std::vector<std::string>& removed_) {
   if (!db_) return false;
   sqlite3_exec(db_, "BEGIN", nullptr, nullptr, nullptr);
   sqlite3_stmt* del = nullptr;
@@ -238,14 +415,12 @@ bool Library::save() {
     sqlite3_reset(del);
   }
   sqlite3_finalize(del);
-  removed_.clear();
   sqlite3_stmt* put = nullptr;
   sqlite3_prepare_v2(db_,
                      "INSERT OR REPLACE INTO tracks (path, size, modified, video, title, artist, album, track, duration,"
                      " tagged) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                      -1, &put, nullptr);
-  for (Track& t : tracks_) {
-    if (!t.dirty) continue;
+  for (const Track& t : rows) {
     sqlite3_bind_text(put, 1, t.path.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_int64(put, 2, t.size);
     sqlite3_bind_int64(put, 3, t.modified);
@@ -259,11 +434,11 @@ bool Library::save() {
     sqlite3_bind_int(put, 10, t.tagged);
     sqlite3_step(put);
     sqlite3_reset(put);
-    t.dirty = false;
   }
   sqlite3_finalize(put);
   return sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) == SQLITE_OK;
 }
+}  // namespace
 
 namespace {
 void byTitle(std::vector<const Track*>& v) {
@@ -356,7 +531,8 @@ bool Library::deleteFile(const std::string& path) {
   t->gone = true;
   removed_.push_back(path);
   indexed_ = false;
-  save();
+  generation_++;
+  saveAsync();  // the database on the library's thread
   return true;
 }
 

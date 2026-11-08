@@ -194,6 +194,7 @@ class LibrarySearchScreen : public Screen {
   }
   std::string title() const override { return addTo_.empty() ? scopeTitle(scope_) : "Add to " + addTo_; }
   void onShow() override {
+    g_library.rescanIfStale();  // 1.0.x: Library's search opening
     allPlaylists_.clear();
     if (addTo_.empty() && (scope_ == Scope::All || scope_ == Scope::Playlists)) allPlaylists_ = g_playlists.all();
     search();
@@ -435,7 +436,6 @@ std::unique_ptr<Screen> makeSearchToAdd(const std::string& playlist) {
 class DeviceScreen : public ShellListScreen {
  public:
   DeviceScreen() : ShellListScreen("Library") { render(); }
-  void onShow() override { render(); }
 
  private:
   void render() {
@@ -485,31 +485,33 @@ class DeviceScreen : public ShellListScreen {
     Row rescan;
     rescan.title = "Rescan the card";
     rescan.subtitle = "After copying files to it";
-    rescan.trailing = scanning_ ? "Scanning\xe2\x80\xa6" : "";
+    rescan.trailing = g_library.scanning() ? "Scanning\xe2\x80\xa6" : "";
     rescan.tile = &tiles::rescan;
     rescan.onSelect = [this] {
-      if (scanning_) return;
-      scanning_ = true;  // "Scanning…" is drawn first; the scan runs on the next look while idle
+      if (g_library.scanning()) return;
+      g_library.scanAsync();  // on the library's thread: the screen stays free
+      scanning_ = true;
       render();
     };
     rows.push_back(std::move(rescan));
     list_.setRows(std::move(rows), true);
   }
-  bool tick(int64_t) override {
-    if (!scanning_ || !drawnScanning_) return false;
-    g_library.scan();
-    g_library.readTags();
-    g_library.save();
-    scanning_ = drawnScanning_ = false;
+  // the card read again when Library opens and the last scan is over 30 s old (DeviceScreens.kt)
+  void onShow() override {
+    g_library.rescanIfStale();
+    scanning_ = g_library.scanning();
     render();
+  }
+  bool tick(int64_t) override {
+    if (scanning_ == g_library.scanning() && generation_ == g_library.generation()) return false;
+    scanning_ = g_library.scanning();
+    generation_ = g_library.generation();
+    render();  // "Scanning…" and the counts
     return true;
   }
-  int64_t wakeAt() const override { return scanning_ ? now_ns() + 30 * kMs : 0; }
-  void draw(Env& e, float w, float h) override {
-    ShellListScreen::draw(e, w, h);
-    if (scanning_) drawnScanning_ = true;
-  }
-  bool scanning_ = false, drawnScanning_ = false;
+  int64_t wakeAt() const override { return scanning_ ? now_ns() + 100 * kMs : 0; }
+  bool scanning_ = false;
+  uint64_t generation_ = 0;
 };
 
 std::unique_ptr<Screen> makeDevice() { return std::unique_ptr<Screen>(new DeviceScreen()); }

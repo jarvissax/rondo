@@ -341,6 +341,10 @@ class PlaylistMenuScreen : public ShellListScreen {
 class PlaylistScreen : public RenderedList {
  public:
   explicit PlaylistScreen(std::string name) : RenderedList(name), name_(std::move(name)) { render(); }
+  void onShow() override {
+    g_library.rescanIfStale();  // 1.0.x: a playlist opening
+    render();
+  }
 
  protected:
   void render() override {

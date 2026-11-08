@@ -4,6 +4,7 @@
 // The file name is the playlist's name.
 #pragma once
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace rondo {
@@ -37,6 +38,13 @@ class Playlists {
 
   const Library& library_;
   std::string card_, dir_;
+  // what each file held when it was last read or written, by its size and time: the playlists are
+  // listed (Library's count, search) without reading every file again
+  struct Read {
+    int64_t size = -1, modified = -1;
+    std::vector<std::string> paths;
+  };
+  mutable std::unordered_map<std::string, Read> read_;
 };
 
 }  // namespace rondo

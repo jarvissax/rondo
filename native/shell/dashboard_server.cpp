@@ -500,20 +500,12 @@ std::shared_ptr<Server> g_running;
 // A join started from the page, and whether the network refused its password (GET /api/wifi passes
 // both on); a rescan a few seconds after the last upload or delete. UI thread.
 std::string g_joining, g_joinError;
-bool g_scanning = false;
 uint64_t g_rescanToken = 0;
 // Bluetooth searches while the page polls: every GET keeps it going, 30 s without one stops it
 int64_t g_btPolledAt = 0, g_btSearchedAt = 0;
 bool g_btSession = false;
 
-void rescan() {
-  if (g_scanning) return;
-  g_scanning = true;
-  g_library.scan();
-  g_library.readTags();
-  g_library.save();
-  g_scanning = false;
-}
+void rescan() { g_library.scanAsync(); }  // on the library's thread; the page sees "scanning"
 void scheduleRescan() {  // several files usually arrive in a row: scan once they stop
   uint64_t token = ++g_rescanToken;
   postToMain([token] {
@@ -1089,7 +1081,7 @@ std::string librarySongJson(const Track& t) {
 }
 
 std::string libraryJson() {
-  if (g_library.songs().empty() && !g_scanning) rescan();
+  if (g_library.songs().empty() && !g_library.scanning()) rescan();
   std::vector<std::string> songs, videos, folders;
   for (const Track* t : g_library.songs()) songs.push_back(librarySongJson(*t));
   for (const Track* t : g_library.videos())
@@ -1100,7 +1092,7 @@ std::string libraryJson() {
                           {"modified", num(t->modified)}}));
   for (const char* r : kRoots)
     if (isDir(r)) folders.push_back(str(std::string(r) + "/Music"));
-  return obj({{"songs", arr(songs)}, {"videos", arr(videos)}, {"scanning", boolean(g_scanning)}, {"folders", arr(folders)}});
+  return obj({{"songs", arr(songs)}, {"videos", arr(videos)}, {"scanning", boolean(g_library.scanning())}, {"folders", arr(folders)}});
 }
 
 std::string playlistJson(const Playlist& p) {

@@ -199,9 +199,7 @@ int main(int argc, char** argv) {
   };
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
-  g_library.scan();
-  g_library.readTags();
-  g_library.save();
+  g_library.scanAsync();  // the card read again on the library's thread; what is indexed shows at once
   g_library.artists();  // builds the groups now, not when Library opens
   int64_t tLib = now_ns();
 
@@ -349,6 +347,7 @@ int main(int argc, char** argv) {
     fmTick();
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
+    if (g_library.applyScan()) changed = true;  // a background scan's files and tags
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
       lastUsb = now_ns();
@@ -419,6 +418,7 @@ int main(int argc, char** argv) {
       int timeout = prefetching ? 50 : screenDrawing() ? 500 : 1000;  // the status bar's 500 ms tick while lit
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
+      if (g_library.scanning()) timeout = std::min(timeout, 50);  // the scan's results as they come
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = powerWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = mainQueueWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));

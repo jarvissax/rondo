@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <deque>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "fold.h"
 #include "library.h"
@@ -131,8 +132,14 @@ std::string Playlists::resolve(const std::string& entry) const {
 
 std::vector<std::string> Playlists::read(const std::string& file) const {
   std::vector<std::string> out;
+  struct stat st;
+  if (stat(file.c_str(), &st) != 0) return out;
+  auto known = read_.find(file);
+  if (known != read_.end() && known->second.size == st.st_size && known->second.modified == int64_t(st.st_mtime))
+    return known->second.paths;
   FILE* f = fopen(file.c_str(), "rb");
   if (!f) return out;
+  std::unordered_set<std::string> seen;
   char line[4096];
   while (fgets(line, sizeof(line), f)) {
     std::string s = line;
@@ -142,9 +149,10 @@ std::vector<std::string> Playlists::read(const std::string& file) const {
     s = s.substr(a, b - a + 1);
     if (s[0] == '#') continue;
     std::string path = resolve(s);
-    if (!path.empty() && std::find(out.begin(), out.end(), path) == out.end()) out.push_back(path);
+    if (!path.empty() && seen.insert(path).second) out.push_back(path);  // each song once
   }
   fclose(f);
+  read_[file] = {int64_t(st.st_size), int64_t(st.st_mtime), out};
   return out;
 }
 
@@ -167,14 +175,17 @@ bool Playlists::write(const std::string& file, const std::vector<std::string>& p
   FILE* f = fopen(tmp.c_str(), "wb");
   if (!f) return false;
   bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
-  ok = fflush(f) == 0 && ok;
-  fsync(fileno(f));
+  ok = fflush(f) == 0 && ok;  // no fsync, as 1.0.x: on the card's FAT it costs a frame or more
   fclose(f);
   if (!ok) return false;
   if (rename(tmp.c_str(), file.c_str()) != 0) {
     unlink(file.c_str());
-    return rename(tmp.c_str(), file.c_str()) == 0;
+    if (rename(tmp.c_str(), file.c_str()) != 0) return false;
   }
+  // what it holds now (FAT's times move in 2 s steps: a quick second change must not look unchanged)
+  struct stat st;
+  if (stat(file.c_str(), &st) == 0) read_[file] = {int64_t(st.st_size), int64_t(st.st_mtime), paths};
+  else read_.erase(file);
   return true;
 }
 

@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include <deque>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -28,8 +29,16 @@ struct Track {
   bool gone = false;  // deleted from the card in this run: kept, so screens' pointers stay valid
 };
 
+// a file the walk found
+struct FileEntry {
+  std::string path;
+  int64_t size = 0, modified = 0;
+  bool video = false;
+};
+
 class Library {
  public:
+  Library();
   ~Library();
   // The index database; created when missing.
   bool open(const char* dbPath);
@@ -41,6 +50,21 @@ class Library {
   int readTags(int max = -1);
   // Writes what changed since the last save, in one transaction.
   bool save();
+
+  // The same on a thread of its own (LocalLibrary.kt's background scan), at a lower priority than
+  // the UI: the walk, then the tags of new and changed files. What it finds is applied by applyScan()
+  // on the UI thread, the file list at once and the tags 40 at a time, and saved there when it ends
+  // (the database write on the thread too). Nothing happens if a scan runs already.
+  void scanAsync();
+  // A scan when the last one ended over 30 s ago (1.0.x: Library, its search or a playlist opening)
+  void rescanIfStale();
+  bool scanning() const { return scanning_; }
+  // From the UI thread's loop: true when the library changed (screens redraw)
+  bool applyScan();
+  // Grows with every change of what the library holds (a scan's files, tags, a delete)
+  uint64_t generation() const { return generation_; }
+  // The database write of what changed, on the thread (deleteFile uses it)
+  void saveAsync();
 
   // Tracks never move once added (a deque; a song that leaves the card is marked gone): screens keep
   // pointers to them across a rescan.
@@ -63,7 +87,9 @@ class Library {
   const Track* find(const std::string& path) const;
 
  private:
-  void walk(const std::string& dir, int depth, std::vector<Track>& out);
+  struct Worker;
+  static void list(const std::string& dir, int depth, std::vector<FileEntry>& out);
+  void merge(std::vector<FileEntry>& found);
   void index() const;  // the groups and their folded names, rebuilt after a change
   sqlite3* db_ = nullptr;
   mutable bool indexed_ = false;
@@ -73,6 +99,10 @@ class Library {
   mutable std::unordered_map<std::string, const Track*> byPath_;
   std::deque<Track> tracks_;
   std::vector<std::string> removed_;
+  std::unique_ptr<Worker> worker_;
+  bool scanning_ = false;
+  int64_t scanEnded_ = 0;
+  uint64_t generation_ = 1;
 };
 
 }  // namespace rondo
