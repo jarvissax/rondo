@@ -1,0 +1,38 @@
+#!/system/bin/sh
+# Rondo 2.0 at boot: init's "rondo" service (firmware/build-native.sh puts it in init.rc) runs this, and
+# this runs Rondo, again at once whenever it ends (an update put in place, a crash: back in about a
+# second, with the queue it kept).
+#
+# Which Rondo: the update named in /data/rondo/current (native/core/bundle.h unpacks it into
+# /data/rondo/<version>), else the firmware's own copy in /system/rondo. Rondo clears
+# /data/rondo/crashes once it has run 30 s; three quick ends in a row set the update aside
+# (current.failed) and the firmware's copy runs.
+D=/data/rondo
+mkdir -p $D
+chmod 0700 $D
+# init starts the main class together: the sound (mediaserver) first, and the card, so the library
+# isn't read before vold has mounted it (each 10 s at most)
+i=0
+while [ $i -lt 50 ] && ! service check media.audio_flinger | grep -q found; do sleep 0.2; i=$((i + 1)); done
+i=0
+while [ $i -lt 50 ] && ! grep -q " /storage/sdcard0 " /proc/mounts; do sleep 0.2; i=$((i + 1)); done
+while true; do
+  dir=/system/rondo
+  n=0
+  [ -f $D/crashes ] && n=$(cat $D/crashes)
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  if [ -f $D/current ]; then
+    v=$(cat $D/current)
+    if [ "$n" -ge 3 ]; then
+      mv $D/current $D/current.failed
+      echo "rondo-start: $v ended three times in a row: the firmware's own Rondo runs" >> $D/start.log
+      n=0
+    elif [ -n "$v" ] && [ -x "$D/$v/rondo" ]; then
+      dir=$D/$v
+    fi
+  fi
+  echo $((n + 1)) > $D/crashes
+  [ -f $D/rondo.log ] && mv $D/rondo.log $D/rondo.log.1
+  (cd $dir && LD_LIBRARY_PATH=$dir/lib:/vendor/lib:/system/lib exec ./rondo) > $D/rondo.log 2>&1
+  sleep 0.2
+done

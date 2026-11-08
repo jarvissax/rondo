@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "../../core/bundle.h"
 #include "../../core/clock.h"
 #include "../../core/config.h"
 #include "../../core/library.h"
@@ -42,6 +43,7 @@
 #include "../../services/core.h"
 #include "../../shell/dispatch.h"
 #include "../../shell/kit.h"
+#include "../../core/bundle.h"
 #include "../../shell/app.h"
 #include "../../shell/screens.h"
 #include "../../ui/frame_log.h"
@@ -157,6 +159,14 @@ void adopt(const std::string& from, const std::string& to) {
 }
 
 int main(int argc, char** argv) {
+  // rondo --install <file.rondo> <folder>: a bundle checked and put in place, as Software update does
+  // (the release's check on the Y1, and a way to install one over adb)
+  if (argc == 4 && !strcmp(argv[1], "--install")) {
+    std::string version, why;
+    bool ok = rondo::bundle::install(argv[2], argv[3], version, why);
+    printf(ok ? "installed %s in %s\n" : "not installed: %s\n", ok ? version.c_str() : why.c_str(), argv[3]);
+    return ok ? 0 : 1;
+  }
   const std::string assets = exeDir();
   const bool dev = assets.compare(0, 15, "/data/local/tmp") == 0;  // a development run (adb push)
   const std::string data = dev ? assets : "/data/rondo";

@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Builds the Rondo firmware for the Innioasis Y1, Type A (rom.zip, for Innioasis Updater).
 #
-#   firmware/build.sh path/to/rondo.apk [firmware/out/rom.zip]
+#   firmware/build.sh path/to/rondo.apk [firmware/out/rom.zip]          Rondo 1.0.x (firmware level 1)
+#   firmware/build.sh path/to/rondo-X.rondo [firmware/out/rom.zip]      Rondo 2.0 (firmware level 2)
+#
+# Rondo 2.0 (a bundle from tools/native/bundle.sh) runs without Android's Java layer: no app is left in
+# /system/app, Rondo goes in as /system/rondo, and the boot image's init.rc starts it instead of zygote
+# and SurfaceFlinger (tools/firmware/BootImage.java). The boot logo shows until Rondo's first frame.
 #
 # It starts from the community's base ROM (stock Android 4.2.2 with the Y1's radios enabled) and
 # takes out everything that isn't Rondo or Android's own background services: Rockbox, the stock
@@ -50,7 +55,15 @@ KEEP_APPS=(
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
-[[ -n "$APK" && -f "$APK" ]] || fail "Usage: firmware/build.sh path/to/rondo.apk [out.zip]"
+[[ -n "$APK" && -f "$APK" ]] || fail "Usage: firmware/build.sh path/to/rondo.apk|rondo-X.rondo [out.zip]"
+NATIVE=0
+if [[ "$APK" == *.rondo ]]; then
+  NATIVE=1
+  # 2.0's version and firmware number are the bundle's own (native/core/version.h)
+  RONDO_VERSION="$(sed -n 's/.*kRondoVersion = "\(.*\)".*/\1/p' "$ROOT/native/core/version.h")"
+  FIRMWARE_LEVEL="$(sed -n 's/.*kFirmwareNeeded = \([0-9][0-9]*\).*/\1/p' "$ROOT/native/core/version.h")"
+  KEEP_APPS=()
+fi
 [[ -n "$FIRMWARE_LEVEL" ]] || fail "No firmwareLevel in app/app/build.gradle.kts"
 for p in /opt/homebrew/opt/e2fsprogs/sbin /usr/local/opt/e2fsprogs/sbin /sbin /usr/sbin; do
   [[ -x "$p/debugfs" ]] && { PATH="$p:$PATH"; break; }
@@ -75,6 +88,7 @@ put() { local img="$1" src="$2" dst="$3"; local dir="${dst%/*}" name="${dst##*/}
 
 say "1/7  Base ROM"
 mkdir -p "$WORK" "$(dirname "$OUT")"
+OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"  # zip runs from inside the ROM
 if [[ ! -f "$WORK/base-rom.zip" ]] || [[ "$(shasum -a 256 "$WORK/base-rom.zip" | cut -d' ' -f1)" != "$BASE_SHA256" ]]; then
   curl -fL --retry 8 --retry-delay 3 --retry-all-errors -o "$WORK/base-rom.zip" "$BASE_URL"
 fi
@@ -90,7 +104,7 @@ removed=()
 for f in $(names "$SYS" /app); do
   base="${f%.*}"
   keep=0
-  for k in "${KEEP_APPS[@]}"; do [[ "$base" == "$k" ]] && keep=1; done
+  for k in "${KEEP_APPS[@]+"${KEEP_APPS[@]}"}"; do [[ "$base" == "$k" ]] && keep=1; done
   if [[ $keep == 0 ]]; then dfs "$SYS" "rm /app/$f"; removed+=("$f"); fi
 done
 echo "Removed from /system/app: $(printf '%s\n' "${removed[@]}" | sed 's/\.[^.]*$//' | sort -u | tr '\n' ' ')"
@@ -115,14 +129,42 @@ done
 echo "Cleared the data image."
 
 say "3/7  Adding Rondo"
-put "$SYS" "$APK" /app/Rondo.apk
-echo "Rondo is /system/app/Rondo.apk."
+if [[ $NATIVE == 1 ]]; then
+  # the bundle's files (after its header: the signature, then a .tar.gz) as /system/rondo
+  rm -rf "$WORK/bundle" && mkdir -p "$WORK/bundle"
+  tail -c +73 "$APK" | tar -xzf - -C "$WORK/bundle"
+  [[ -x "$WORK/bundle/rondo" && -f "$WORK/bundle/start" ]] || fail "$APK doesn't hold Rondo"
+  exists "$SYS" /rondo || dfs "$SYS" "mkdir /rondo"
+  (cd "$WORK/bundle" && find . -type d ! -name . | sed 's|^\./||' | sort) | while read -r d; do
+    exists "$SYS" "/rondo/$d" || dfs "$SYS" "mkdir /rondo/$d"
+    dfs "$SYS" "sif /rondo/$d uid 0" "sif /rondo/$d gid 0" "sif /rondo/$d mode 040755"
+  done
+  (cd "$WORK/bundle" && find . -type f | sed 's|^\./||' | sort) | while read -r p; do
+    put "$SYS" "$WORK/bundle/$p" "/rondo/$p"
+    [[ -x "$WORK/bundle/$p" ]] && dfs "$SYS" "sif /rondo/$p mode 0100755"
+  done
+  dfs "$SYS" "sif /rondo uid 0" "sif /rondo gid 0" "sif /rondo mode 040755"
+  echo "Rondo $RONDO_VERSION is /system/rondo ($(du -sh "$WORK/bundle" | cut -f1))."
+  # init starts it, not the Java layer
+  export PATH="${JAVA_HOME:+$JAVA_HOME/bin:}$PATH"
+  java "$ROOT/tools/firmware/BootImage.java" "$WORK/rom/boot.img" "$WORK/boot-native.img"
+  cp "$WORK/boot-native.img" "$WORK/rom/boot.img"
+else
+  put "$SYS" "$APK" /app/Rondo.apk
+  echo "Rondo is /system/app/Rondo.apk."
+fi
 
 say "4/7  Boot screens"
 java "$ROOT/tools/bootscreen/BootScreen.java" "$WORK/bootscreen" "$WORK/rom/logo.bin" >/dev/null
 cp "$WORK/bootscreen/logo.bin" "$WORK/rom/logo.bin"
-put "$SYS" "$WORK/bootscreen/bootanimation.zip" /media/bootanimation.zip
-echo "Rondo's logo and boot animation are in."
+if [[ $NATIVE == 1 ]]; then
+  # no SurfaceFlinger, so no boot animation: the logo stays until Rondo draws
+  exists "$SYS" /media/bootanimation.zip && dfs "$SYS" "rm /media/bootanimation.zip"
+  echo "Rondo's logo is in (it shows until Rondo's first frame)."
+else
+  put "$SYS" "$WORK/bootscreen/bootanimation.zip" /media/bootanimation.zip
+  echo "Rondo's logo and boot animation are in."
+fi
 
 say "5/7  System properties"
 debugfs -R "dump /build.prop $WORK/build.prop" "$SYS" 2>/dev/null
@@ -141,6 +183,12 @@ for bad in rockbox innioasis Rockbox.kl 99Y1ButtonScript LatinIME Settings.apk F
   if names "$SYS" /app | grep -qi "^$bad" || names "$DATA" /data | grep -qi "$bad"; then fail "$bad is still in the firmware"; fi
 done
 cmp -s <(debugfs -R "cat /usr/keylayout/Generic.kl" "$SYS" 2>/dev/null) "$WORK/Stock.kl" || fail "Generic.kl isn't the stock layout"
+if [[ $NATIVE == 1 ]]; then
+  exists "$SYS" /rondo/rondo || fail "/system/rondo/rondo is missing"
+  exists "$SYS" /rondo/start || fail "/system/rondo/start is missing"
+  [[ -z "$left" ]] || fail "/system/app still holds $left"
+  echo "Rondo 2.0 is in /system/rondo; init.rc starts it (BootImage.java checked zygote and SurfaceFlinger are off)."
+fi
 echo "File systems are clean; only Rondo and Android's core are left."
 
 say "7/7  Packaging"
