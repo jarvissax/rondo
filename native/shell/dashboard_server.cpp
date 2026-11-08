@@ -1082,17 +1082,25 @@ std::string librarySongJson(const Track& t) {
 
 std::string libraryJson() {
   if (g_library.songs().empty() && !g_library.scanning()) rescan();
-  std::vector<std::string> songs, videos, folders;
-  for (const Track* t : g_library.songs()) songs.push_back(librarySongJson(*t));
-  for (const Track* t : g_library.videos())
-    videos.push_back(obj({{"path", str(t->path)},
-                          {"title", str(t->title)},
-                          {"durationSec", t->durationSec < 0 ? kNull : num(int64_t(t->durationSec))},
-                          {"size", num(t->size)},
-                          {"modified", num(t->modified)}}));
+  // the songs' and videos' part is built again only when the library changed (800+ songs)
+  static uint64_t builtFor = 0;
+  static std::string songsPart, videosPart;
+  if (builtFor != g_library.generation()) {
+    builtFor = g_library.generation();
+    std::vector<std::string> songs, videos;
+    for (const Track* t : g_library.songs()) songs.push_back(librarySongJson(*t));
+    for (const Track* t : g_library.videos())
+      videos.push_back(obj({{"path", str(t->path)},
+                            {"title", str(t->title)},
+                            {"durationSec", t->durationSec < 0 ? kNull : num(int64_t(t->durationSec))},
+                            {"size", num(t->size)},
+                            {"modified", num(t->modified)}}));
+    songsPart = arr(songs), videosPart = arr(videos);
+  }
+  std::vector<std::string> folders;
   for (const char* r : kRoots)
     if (isDir(r)) folders.push_back(str(std::string(r) + "/Music"));
-  return obj({{"songs", arr(songs)}, {"videos", arr(videos)}, {"scanning", boolean(g_library.scanning())}, {"folders", arr(folders)}});
+  return obj({{"songs", songsPart}, {"videos", videosPart}, {"scanning", boolean(g_library.scanning())}, {"folders", arr(folders)}});
 }
 
 std::string playlistJson(const Playlist& p) {

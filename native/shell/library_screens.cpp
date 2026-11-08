@@ -291,6 +291,7 @@ class LibrarySearchScreen : public Screen {
            playlists_.empty();
   }
   void search() {
+    problem_.clear();
     found_ = g_library.search(kb_.typed());
     // playlists match on their names, every word
     playlists_.clear();
@@ -318,6 +319,7 @@ class LibrarySearchScreen : public Screen {
     }
   }
   std::string summary() const {
+    if (!problem_.empty()) return problem_;
     const std::string& q = kb_.typed();
     if (q.find_first_not_of(' ') == std::string::npos) return addTo_.empty() ? scopeHint(scope_) : "Find songs to add, then press Show";
     if (nothingFound()) return "Nothing on the card matches";
@@ -354,6 +356,7 @@ class LibrarySearchScreen : public Screen {
   void add(const std::vector<std::string>& paths) {
     std::string problem = g_playlists.add(addTo_, paths);
     if (problem.empty()) added_.insert(paths.begin(), paths.end());
+    problem_ = problem;  // shown in the summary line until the search changes (1.0.x)
     results_.setRows(rows(), true);
   }
   std::vector<Row> rows() {
@@ -423,6 +426,7 @@ class LibrarySearchScreen : public Screen {
   Library::Found found_;
   std::vector<Playlist> allPlaylists_, playlists_;  // the ones matching (not while adding to one)
   std::set<std::string> added_;
+  std::string problem_;  // the last add that failed
   RowList results_;
   bool showing_ = false;
 };

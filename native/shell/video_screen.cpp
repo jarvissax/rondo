@@ -11,6 +11,11 @@ constexpr Color white = 0xffffffff;
 
 class VideoScreen : public MusicListScreen {
  public:
+  // no mini player here: a song playing behind it doesn't redraw the list
+  bool tick(int64_t now) override {
+    now_ = now;
+    return false;
+  }
   VideoScreen() : MusicListScreen("YouTube") {
     list_.style = RowStyle::Video;
     // Subscriptions and History only when the server has an account (Accounts.kt)
