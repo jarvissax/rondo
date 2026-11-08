@@ -373,6 +373,7 @@ class SettingsScreen : public ShellListScreen {
     add("Dashboard", "", tiles::dashboard, true, [] { g_app->push(makeDashboard()); });
     add("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); });
     add("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); });
+    add("Sound", soundState(), tiles::equalizer, true, [] { g_app->push(makeSound()); });
     wifi_ = wifiName();
     add("Theme", accentName(g_config.theme.accent), tiles::theme, true,
         [] { g_app->push(std::unique_ptr<Screen>(new ThemeScreen())); });
@@ -479,5 +480,13 @@ class SettingsScreen : public ShellListScreen {
 }  // namespace
 
 std::unique_ptr<Screen> makeSettings() { return std::unique_ptr<Screen>(new SettingsScreen()); }
+
+std::unique_ptr<Screen> makeChoice(std::string title, std::vector<std::pair<std::string, std::string>> choices,
+                                   std::function<std::string()> current, std::function<void(const std::string&)> pick,
+                                   std::function<std::string(const std::string&)> note) {
+  std::vector<ChoiceScreen::Choice> c;
+  for (auto& p : choices) c.push_back({p.first, p.second});
+  return choice(std::move(title), std::move(c), std::move(current), std::move(pick), std::move(note));
+}
 
 }  // namespace rondo::shell

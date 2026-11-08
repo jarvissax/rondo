@@ -23,6 +23,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/replaygain.h>
 #include <libswresample/swresample.h>
 }
 
@@ -40,6 +41,7 @@ extern "C" {
 #include "http_source.h"
 #include "player.h"
 #include "click.h"
+#include "dsp.h"
 #include "fm.h"
 #include "protocol.h"
 #include "video.h"
@@ -64,6 +66,7 @@ struct Marker {  // where in the stream a track begins (pos -1: the queue's end)
   int pos;
   int64_t durationMs, startMs;
   bool failed = false;  // a stream stopped here (the network, the server): playback stops at startMs of pos
+  float gainDb = NAN;   // the track's ReplayGain (Settings › Sound › Volume leveling)
 };
 
 class Engine {
@@ -209,6 +212,8 @@ class Engine {
   SLPlayItf play_ = nullptr;
   SLAndroidSimpleBufferQueueItf queue_ = nullptr;
   Click click_;
+  Dsp dsp_;                  // Settings › Sound, on what goes out (under mu_, in fill())
+  float heardGainDb_ = NAN;  // the ReplayGain of the track heard now
   int16_t buffers_[kBuffers][kBufferFrames * 2];
   int next_ = 0;
   int volume_ = 0, volumeMax_ = 13;  // MediaTek's STREAM_MUSIC has 13 steps (the policy's index max, Nov 7)
@@ -454,6 +459,16 @@ void Engine::command(const std::vector<uint8_t>& m) {
     case kFmMute: {
       bool m = len && p[0];
       radio = [this, m] { fm_.setMuted(m); };
+      break;
+    }
+    case kSound: {
+      SoundSettings snd;
+      if (decodeSound(p, len, snd)) {
+        dsp_.configure(snd);
+        if (getenv("RONDO_PLAYER_LOG"))
+          printf("player: sound %s, %zu filters, gain %.1f dB, leveling %d\n", snd.active() ? "on" : "off", snd.filters.size(),
+                 snd.gainDb, snd.leveling);
+      }
       break;
     }
     case kClick: {
@@ -709,7 +724,23 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   if (ok) error_.clear();
   if (ok && gen == gen_) {
     int64_t duration = fmt->duration > 0 ? fmt->duration / 1000 : 0;
-    markers_.push_back({writeAt_, pos, duration, seekMs});
+    // ReplayGain: FFmpeg's reading of the tags (ID3 TXXX, Vorbis comments, APE), else the tag itself
+    float rg = NAN;
+    const AVCodecParameters* cp = fmt->streams[stream]->codecpar;
+    const AVPacketSideData* sd = av_packet_side_data_get(cp->coded_side_data, cp->nb_coded_side_data, AV_PKT_DATA_REPLAYGAIN);
+    if (sd && sd->size >= sizeof(AVReplayGain)) {
+      const AVReplayGain* r = reinterpret_cast<const AVReplayGain*>(sd->data);
+      if (r->track_gain != INT32_MIN) rg = float(r->track_gain) / 100000.f;
+      else if (r->album_gain != INT32_MIN) rg = float(r->album_gain) / 100000.f;
+    }
+    if (std::isnan(rg))
+      for (AVDictionary* d : {fmt->metadata, fmt->streams[stream]->metadata})
+        if (const AVDictionaryEntry* e = av_dict_get(d, "REPLAYGAIN_TRACK_GAIN", nullptr, 0)) {
+          rg = float(atof(e->value));
+          break;
+        }
+    if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
+    markers_.push_back({writeAt_, pos, duration, seekMs, false, rg});
     trackAt_ = writeAt_;
     if (heardPos_ == pos && readAt_ == markers_.back().at) heardDuration_ = duration;
     // a video's sound again (Repeat): the picture's next pass starts where this one does on the clock
@@ -886,6 +917,7 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     heardFrom_ = m.at;
     heardStartMs_ = m.startMs;
     heardDuration_ = m.durationMs;
+    heardGainDb_ = m.gainDb;
     pos_ = m.pos;
   }
   int16_t* b = buffers_[next_];
@@ -898,6 +930,7 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
       b[k * 2 + 1] = fmRing_[at + 1];
     }
     if (n < kBufferFrames) memset(b + n * 2, 0, size_t(kBufferFrames - n) * 4);
+    if (dsp_.active()) dsp_.setTrackGain(NAN), dsp_.process(b, kBufferFrames);
     fmRead_ += uint64_t(n);
     inFlight_.push_back({readAt_, readAt_});
     (*q)->Enqueue(q, b, sizeof(buffers_[0]));
@@ -912,6 +945,16 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     b[k * 2 + 1] = ring_[at + 1];
   }
   if (n < kBufferFrames) memset(b + n * 2, 0, size_t(kBufferFrames - n) * 4);  // not decoded yet: silence
+  if (dsp_.active()) {
+    // the track this buffer is from: the last one begun by readAt_ (the heard one lags two buffers)
+    float g = heardGainDb_;
+    for (const Marker& m : markers_) {
+      if (m.at > readAt_) break;
+      if (m.pos >= 0 && !m.failed) g = m.gainDb;
+    }
+    dsp_.setTrackGain(g);
+    dsp_.process(b, kBufferFrames);
+  }
   inFlight_.push_back({readAt_, readAt_ + uint64_t(n)});
   readAt_ += uint64_t(n);
   pthread_cond_broadcast(&cv_);

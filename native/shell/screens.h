@@ -58,6 +58,14 @@ void fmTick();
 std::unique_ptr<Screen> makeBluetooth();
 // Settings › Server, its row's state ("OK · signed in", "Unreachable"…), and the main menu's account check
 std::unique_ptr<Screen> makeServer();
+// A list to pick one of (name, value): the current one says so, a pick goes back
+std::unique_ptr<Screen> makeChoice(std::string title, std::vector<std::pair<std::string, std::string>> choices,
+                                   std::function<std::string()> current, std::function<void(const std::string&)> pick,
+                                   std::function<std::string(const std::string&)> note = nullptr);
+// Settings › Sound, and what it sends the player (from the loop: the output in use changing)
+std::unique_ptr<Screen> makeSound();
+void soundTick();
+std::string soundState();  // Settings' row: the preset for the output in use
 std::unique_ptr<Screen> makeDashboard();  // Settings › Dashboard
 extern std::string g_dashboardAssets;     // <dir>/dashboard and <dir>/fonts
 void serverState(std::function<void(const std::string&)> done);

@@ -144,6 +144,10 @@ void PlayerHost::fmSpeaker(bool on) {
   send(kFmSpeaker, &v, 1);
 }
 void PlayerHost::click() { send(kClick); }
+void PlayerHost::sound(const SoundSettings& s) {
+  std::vector<uint8_t> b = encodeSound(s);
+  send(kSound, b.data(), uint32_t(b.size()));
+}
 void PlayerHost::stopVideo() {
   queue_.clear();
   send(kStopVideo);

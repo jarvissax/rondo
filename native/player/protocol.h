@@ -33,6 +33,7 @@ enum PlayerCommand : uint32_t {
   kFmMute,      // u8
   kFmSpeaker,   // u8
   kClick,       // the wheel's click (Settings › Click sound)
+  kSound,       // Settings › Sound for the output in use: SoundSettings (dsp.h encodeSound)
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

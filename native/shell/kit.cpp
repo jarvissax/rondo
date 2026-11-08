@@ -40,6 +40,7 @@ const Tile radio{Icon::Radio, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile lyrics{Icon::Note, rgb(0xff8fc8), rgb(0xd6338a)};
 const Tile sound{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile accel{Icon::Bars, rgb(0x6a8cff), rgb(0x2c4fd6)};
+const Tile equalizer{Icon::Bars, rgb(0xff7a93), rgb(0xd6304f)};  // Settings › Sound (2.0)
 const Tile wheel{Icon::Disc, rgb(0x6a8cff), rgb(0x2c4fd6)};
 const Tile videos{Icon::Play, rgb(0xff6b5a), rgb(0xe01e1e)};
 const Tile shuffle{Icon::Shuffle, rgb(0x7be07b), rgb(0x26a83b)};

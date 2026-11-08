@@ -68,7 +68,7 @@ struct Tile {
 namespace tiles {
 extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,
     albums, dashboard, brightness, timer, radio, lyrics, sound, accel, wheel, videos, shuffle, power, restart, theme,
-    playlists, add, search, recent, del, rescan, shorts, update;
+    playlists, add, search, recent, del, rescan, shorts, update, equalizer;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 

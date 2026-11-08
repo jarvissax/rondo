@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include "dsp.h"
+
 namespace rondo {
 
 constexpr int kMaxQueue = 4096;
@@ -94,6 +96,7 @@ class PlayerHost {
   void fmMute(bool muted);
   void fmSpeaker(bool on);
   void click();  // the wheel's click sound
+  void sound(const SoundSettings& s);  // Settings › Sound for the output in use
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {
