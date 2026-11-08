@@ -5,7 +5,7 @@
 // update page's latest.json, the same answer the dashboard and the update page get, which appears
 // only once a release's rom.zip is out (.github/workflows/release.yml).
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { request } from "undici";
 import { dispatcher } from "./upstream.js";
 
@@ -13,7 +13,8 @@ export interface Release {
   version: string; // "1.0.1", "2026.11.01.233542"
   url: string; // the release page
   publishedAt: number | null;
-  apk?: { url: string; size: number }; // a Rondo release's APK: the update the Y1 installs
+  apk?: { url: string; size: number }; // a Rondo 1.0.x release's APK: the update the Y1 installs
+  bundle?: { url: string; size: number }; // a Rondo 2.0 release's signed bundle (rondo-<version>.rondo)
   firmware?: number; // Rondo: the firmware the release needs (firmwareLevel in app/app/build.gradle.kts)
 }
 
@@ -56,9 +57,19 @@ function toRelease(j: unknown): Release | null {
   return release;
 }
 
-// latest.json: {"version", "file" (next to it), "size", "firmware", "notes" (the release page), "published"}
+// latest.json: {"version", "file" (next to it), "size", "firmware", "notes" (the release page), "published"},
+// and for Rondo 2.0 "bundle" and "bundleSize" (the signed .rondo; "file" is then the same bundle)
 function toRondo(j: unknown): Release | null {
-  const r = j as { version?: unknown; file?: unknown; size?: unknown; firmware?: unknown; notes?: unknown; published?: unknown };
+  const r = j as {
+    version?: unknown;
+    file?: unknown;
+    size?: unknown;
+    firmware?: unknown;
+    notes?: unknown;
+    published?: unknown;
+    bundle?: unknown;
+    bundleSize?: unknown;
+  };
   if (typeof r?.version !== "string" || !r.version) return null;
   const release: Release = {
     version: r.version,
@@ -66,7 +77,10 @@ function toRondo(j: unknown): Release | null {
     publishedAt: Date.parse(String(r.published)) || null,
     firmware: Number(r.firmware) || 1,
   };
-  if (typeof r.file === "string" && typeof r.size === "number") release.apk = { url: new URL(r.file, RONDO_LATEST).href, size: r.size };
+  if (typeof r.file === "string" && typeof r.size === "number" && r.file.endsWith(".apk"))
+    release.apk = { url: new URL(r.file, RONDO_LATEST).href, size: r.size };
+  if (typeof r.bundle === "string" && typeof r.bundleSize === "number")
+    release.bundle = { url: new URL(r.bundle, RONDO_LATEST).href, size: r.bundleSize };
   return release;
 }
 
@@ -118,37 +132,49 @@ export class Updates {
 }
 
 // Settings › Software update on the Rondo (device token, like every route after the auth hook).
-// GET /update names the newest Rondo that has an update APK; GET /update/rondo.apk passes that APK
-// through as it downloads, so the Y1 talks only to its server. Android installs it only when it's
-// signed with the same key as the firmware's copy. ?firmware=N is the Rondo's firmware: a release
-// that needs a newer one comes with its firmware number, and the Rondo points to Innioasis Updater
-// CE instead of installing it. A Rondo that doesn't say (1.0.0) hears only of first-firmware ones.
+// GET /update names the newest Rondo with an update for the asker: Rondo 1.0.x (an APK) or, with
+// ?native=1, Rondo 2.0 (a signed bundle). GET /update/rondo.apk and /update/rondo.rondo pass the file
+// through as it downloads, so the Y1 talks only to its server; Android installs an APK only when it's
+// signed with the firmware copy's key, Rondo 2.0 a bundle only with the bundle key's signature.
+// ?firmware=N is the Rondo's firmware: a release that needs a newer one comes with its firmware
+// number, and the Rondo points to Innioasis Updater CE instead of installing it (so 1.0.x hears of
+// 2.0, which has no APK, and says how to move). A Rondo that doesn't say (1.0.0) hears only of
+// first-firmware ones.
 export function registerUpdateRoutes(app: FastifyInstance, updates: Updates | undefined): void {
-  app.get<{ Querystring: { firmware?: string } }>("/update", async (req) => {
+  app.get<{ Querystring: { firmware?: string; native?: string } }>("/update", async (req) => {
     const r = await updates?.latest();
-    if (!r?.apk) return { version: null };
+    if (!r) return { version: null };
     const firmware = r.firmware ?? 1;
-    if (!Number(req.query.firmware) && firmware > 1) return { version: null };
-    return { version: r.version, size: r.apk.size, notes: r.url, firmware };
+    const asked = Number(req.query.firmware) || 0;
+    if (!asked && firmware > 1) return { version: null };
+    const file = req.query.native ? r.bundle : r.apk;
+    if (file) return { version: r.version, size: file.size, notes: r.url, firmware };
+    // nothing this Rondo can install, but a newer firmware's release: it says so, with the way to move
+    if (r.bundle && firmware > asked) return { version: r.version, size: 0, notes: r.url, firmware };
+    return { version: null };
   });
 
-  app.get("/update/rondo.apk", async (_req, reply) => {
-    const r = await updates?.latest();
-    if (!r?.apk) return reply.code(404).send({ error: "none" });
-    const res = await request(r.apk.url, {
-      dispatcher, // follows a redirect, if the site sends one
-      headers: { "user-agent": "rondo-server" },
-      headersTimeout: 15_000,
-      bodyTimeout: 60_000,
-    });
-    if (res.statusCode !== 200) {
-      await res.body.dump();
-      return reply.code(502).send({ error: "github" });
-    }
-    return reply
-      .type("application/vnd.android.package-archive")
-      .header("content-length", String(res.headers["content-length"] ?? r.apk.size))
-      .header("cache-control", "no-store")
-      .send(res.body);
+  app.get("/update/rondo.apk", (_req, reply) => passThrough(updates, "apk", reply));
+  app.get("/update/rondo.rondo", (_req, reply) => passThrough(updates, "bundle", reply));
+}
+
+async function passThrough(updates: Updates | undefined, kind: "apk" | "bundle", reply: FastifyReply) {
+  const r = await updates?.latest();
+  const file = r?.[kind];
+  if (!file) return reply.code(404).send({ error: "none" });
+  const res = await request(file.url, {
+    dispatcher, // follows a redirect, if the site sends one
+    headers: { "user-agent": "rondo-server" },
+    headersTimeout: 15_000,
+    bodyTimeout: 60_000,
   });
+  if (res.statusCode !== 200) {
+    await res.body.dump();
+    return reply.code(502).send({ error: "github" });
+  }
+  return reply
+    .type(kind === "apk" ? "application/vnd.android.package-archive" : "application/octet-stream")
+    .header("content-length", String(res.headers["content-length"] ?? file.size))
+    .header("cache-control", "no-store")
+    .send(res.body);
 }

@@ -100,11 +100,26 @@ describe("update routes", () => {
     expect((await second.inject({ url: "/update" })).json()).toEqual({ version: null });
   });
 
+  it("names a 2.0 release's bundle to a native Rondo, and tells 1.0.x it needs the new firmware", async () => {
+    const native = { version: "2.0.0", file: "rondo.rondo", size: 31000000, bundle: "rondo.rondo", bundleSize: 31000000, firmware: 2 };
+    const app = await appWith(new Updates(async () => native));
+    expect((await app.inject({ url: "/update?native=1&firmware=2" })).json()).toEqual({
+      version: "2.0.0",
+      size: 31000000,
+      notes: "https://github.com/jarvissax/rondo/releases/tag/v2.0.0",
+      firmware: 2,
+    });
+    // 1.0.x (firmware 1, no APK in the release): told it is out and needs the firmware
+    expect((await app.inject({ url: "/update?firmware=1" })).json()).toMatchObject({ version: "2.0.0", size: 0, firmware: 2 });
+    expect((await app.inject({ url: "/update/rondo.apk" })).statusCode).toBe(404);
+  });
+
   it("says there's nothing when the release has no APK, or nobody asks", async () => {
     const noApk = await appWith(new Updates(async () => ({ version: "1.0.1" })));
     expect((await noApk.inject({ url: "/update" })).json()).toEqual({ version: null });
     const off = await appWith(undefined);
     expect((await off.inject({ url: "/update" })).json()).toEqual({ version: null });
     expect((await off.inject({ url: "/update/rondo.apk" })).statusCode).toBe(404);
+    expect((await off.inject({ url: "/update/rondo.rondo" })).statusCode).toBe(404);
   });
 });
