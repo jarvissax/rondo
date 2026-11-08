@@ -385,7 +385,7 @@ class SoundScreen : public ShellListScreen {
   bool tick(int64_t) override {
     Output o = currentOutput();
     std::string note = levelingNote();
-    if (o.key == out_.key && note == note_) return false;
+    if (o.key == out_.key && note == note_ && g_player.state().amplifier == amp_) return false;
     out_ = o;
     render();
     return true;
@@ -477,10 +477,22 @@ class SoundScreen : public ShellListScreen {
       render();
     };
     rows.push_back(level);
+    PlayerState ps = g_player.state();
+    if (ps.amplifier >= 0) {  // the Y1's own amplifier (player/amplifier.h)
+      Row amp;
+      amp.title = "Amplifier";
+      amp.subtitle = ps.amplifier ? "About 6 dB more on headphones and the speaker" : "As the Y1 ships; Louder adds about 6 dB";
+      amp.trailing = ps.amplifier ? "Louder" : "Standard";
+      bool louder = ps.amplifier == 1;
+      amp.onSelect = [louder] { g_player.amplifier(!louder, g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin"); };
+      rows.push_back(amp);
+    }
+    amp_ = ps.amplifier;
     list_.setRows(std::move(rows), true);
   }
   Output out_;
   std::string note_;
+  int amp_ = -2;
 };
 
 }  // namespace

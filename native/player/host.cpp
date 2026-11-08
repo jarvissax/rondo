@@ -150,6 +150,11 @@ void PlayerHost::analyzeList(const std::vector<std::string>& paths) {
   for (const std::string& p : paths) all += p + "\n";
   send(kAnalyzeList, all.data(), uint32_t(all.size()));
 }
+void PlayerHost::amplifier(bool louder, const std::string& backup) {
+  std::string b(1, char(louder));
+  b += backup;
+  send(kAmplifier, b.data(), uint32_t(b.size()));
+}
 void PlayerHost::analyzeAllowed(bool on) {
   uint8_t v = on;
   send(kAnalyzeAllowed, &v, 1);

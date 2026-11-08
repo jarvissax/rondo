@@ -37,6 +37,7 @@ enum PlayerCommand : uint32_t {
   kLoudness,    // the measurements' file (Volume leveling)
   kAnalyzeList,  // the library's songs, a line each, to measure while allowed
   kAnalyzeAllowed,  // u8: measuring the library may run (leveling on, the Y1 charging)
+  kAmplifier,   // u8 louder, then the path the shipped volume table is kept at (NVRAM: amplifier.h)
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

@@ -42,6 +42,7 @@ extern "C" {
 #include "player.h"
 #include "click.h"
 #include "dsp.h"
+#include "amplifier.h"
 #include "loudness.h"
 #include "fm.h"
 #include "protocol.h"
@@ -223,6 +224,7 @@ class Engine {
   // Volume leveling's measurements: as songs play (from their start, to their end), and of the
   // library while the Y1 charges (analyzeLoop, a thread at the lowest priority)
   LoudnessCache loudness_;
+  int ampState_ = -1;  // the Y1's amplifier: -1 not known, 0 as shipped, 1 louder (amplifier.h)
   LoudnessMeter meter_;  // the decode thread's
   std::vector<std::string> analyzeList_;
   bool analyzeAllowed_ = false;
@@ -268,6 +270,7 @@ void Engine::publish() {
   s.videoFailed = videoOn_ && video_.failed();
   s.failed = failed_;
   s.loudnessKnown = analyzeKnown_, s.loudnessTotal = int32_t(analyzeList_.size());
+  s.amplifier = ampState_;
   FmStatus fm = fm_.status();
   s.fmOn = fm.on, s.fmStarting = fm.starting, s.fmMuted = fm.muted, s.fmSeeking = fm.seeking;
   s.fmScanning = fm.scanning, s.fmStereo = fm.stereo, s.fmSignal = fm.signal, s.fmSpeaker = fmSpeaker_;
@@ -482,6 +485,22 @@ void Engine::command(const std::vector<uint8_t>& m) {
     case kFmMute: {
       bool m = len && p[0];
       radio = [this, m] { fm_.setMuted(m); };
+      break;
+    }
+    case kAmplifier: {  // u8 louder, then where the shipped table is kept: NVRAM, outside the lock
+      bool up = len && p[0];
+      std::string backup = len > 1 ? std::string(reinterpret_cast<const char*>(p + 1), len - 1) : "";
+      radio = [this, up, backup] {
+        std::string why;
+        bool ok = !backup.empty() && amp::set(up, backup, why);
+        if (!ok) fprintf(stderr, "rondo-player: amplifier not changed: %s\n", why.c_str());
+        std::vector<uint8_t> t;
+        int state = amp::read(t) ? int(amp::louder(t)) : -1;
+        pthread_mutex_lock(&mu_);
+        ampState_ = state;
+        publish();
+        pthread_mutex_unlock(&mu_);
+      };
       break;
     }
     case kLoudness: {  // the measurements' file
@@ -1133,6 +1152,17 @@ void Engine::main() {
     rondo::PermissionService::publish();
   readVolume();
   if (!openOutput()) fprintf(stderr, "rondo-player: no audio output\n");
+  {  // the amplifier as NVRAM has it
+    std::vector<uint8_t> t;
+    if (amp::read(t)) {
+      ampState_ = amp::louder(t);
+      if (const char* dump = getenv("RONDO_AMP_DUMP")) {  // development: the table as the HAL gives it
+        if (FILE* f = fopen(dump, "wb")) fwrite(t.data(), 1, t.size(), f), fclose(f);
+      }
+      if (getenv("RONDO_PLAYER_LOG"))
+        printf("player: amplifier table: headphones %d, speaker %d (%s)\n", t[amp::kHeadset], t[amp::kSpeaker], ampState_ ? "louder" : "as shipped");
+    }
+  }
   // A buffer handed to OpenSL is heard two output latencies later: measured on the Y1, the AudioTrack
   // holds 92 ms (OpenSL's GetPosition) and the mixer's output latency is 92 ms. A picture waits that
   // long after the clock reaches it.
