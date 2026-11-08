@@ -121,9 +121,10 @@ bool readOnline() {
   return online;
 }
 
+volatile sig_atomic_t g_signal = 0;  // what ended it, for the log
 void onSignal(int sig) {
   if (sig == SIGUSR1) g_shot = 1;
-  else g_stop = 1;
+  else g_stop = 1, g_signal = sig;
 }
 
 }  // namespace
@@ -588,6 +589,7 @@ int main(int argc, char** argv) {
     wasMoving = moving;
   }
   resumeSaveNow();  // where the queue was, to the second
+  printf("rondo: ending (%s%d)\n", g_signal ? "signal " : "code ", g_signal ? int(g_signal) : g_exitCode);
   log.report(stdout, csv);
   if (restoreAndroid && dev) {
     display.reset();
