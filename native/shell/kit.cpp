@@ -1,5 +1,7 @@
 #include "kit.h"
 
+#include "../core/fold.h"
+
 #include <stdio.h>
 
 #include <algorithm>
@@ -138,24 +140,6 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   e.c.layer(layer);
 }
 
-namespace {
-// Kotlin's uppercase() for the header titles (ASCII and Latin-1 are what they hold)
-std::string upper(const std::string& s) {
-  std::string o;
-  for (size_t i = 0; i < s.size(); i++) {
-    unsigned char c = (unsigned char)s[i];
-    if (c >= 'a' && c <= 'z') {
-      o += char(c - 32);
-    } else if (c == 0xc3 && i + 1 < s.size() && (unsigned char)s[i + 1] >= 0xa0 && (unsigned char)s[i + 1] <= 0xbe &&
-               (unsigned char)s[i + 1] != 0xb7) {
-      o += char(c), o += char((unsigned char)s[++i] - 0x20);
-    } else {
-      o += char(c);
-    }
-  }
-  return o;
-}
-}  // namespace
 
 std::string formatTime(int s) {
   char b[16];
@@ -336,7 +320,7 @@ void RowList::draw(Env& e, float x, float y) {
       c.layer(0);
       c.fill({x, top, w_, headerH_}, p.header);
       c.layer(3);
-      Label l = label(e, upper(r.title), 11, true, w_ - e.dp(12));
+      Label l = label(e, rondo::upper(r.title), 11, true, w_ - e.dp(12));  // String.uppercase()
       drawLabel(e, l, x + e.dp(12), top + headerH_ - e.dp(3) - l.h, p.muted);
       continue;
     }
@@ -488,17 +472,64 @@ void RowList::drawMusic(Env& e, float x, float y) {
 namespace rondo::shell {
 
 namespace {
+// the code point at i, and where the next one starts
+uint32_t cpAt(const std::string& s, size_t i, size_t* next) {
+  unsigned char c = (unsigned char)s[i];
+  int len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+  uint32_t cp = len == 1 ? c : len == 2 ? c & 0x1f : len == 3 ? c & 0x0f : c & 0x07;
+  size_t k = 1;
+  for (; k < size_t(len) && i + k < s.size() && ((unsigned char)s[i + k] & 0xc0) == 0x80; k++) cp = cp << 6 | ((unsigned char)s[i + k] & 0x3f);
+  *next = i + k;
+  return cp;
+}
+// what stays with the character before it: accents, the variation selectors, the keycap, skin tones,
+// tags (a subdivision flag)
+bool extends(uint32_t cp) {
+  return (cp >= 0x300 && cp <= 0x36f) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp == 0x20e3 || (cp >= 0x1f3fb && cp <= 0x1f3ff) ||
+         (cp >= 0xe0020 && cp <= 0xe007f);
+}
+bool regional(uint32_t cp) { return cp >= 0x1f1e6 && cp <= 0x1f1ff; }
+// One character as the reader sees it (a grapheme cluster, near enough): a code point with what
+// extends it, across a joiner the next one too (a family, a profession), a flag's two letters together.
+// A line is never cut, and "…" never put, inside one.
 size_t nextChar(const std::string& s, size_t i) {
   if (i >= s.size()) return s.size();
-  i++;
-  while (i < s.size() && (uint8_t(s[i]) & 0xc0) == 0x80) i++;
-  return i;
+  size_t n;
+  uint32_t cp = cpAt(s, i, &n);
+  if (regional(cp) && n < s.size()) {
+    size_t m;
+    if (regional(cpAt(s, n, &m))) n = m;
+  }
+  while (n < s.size()) {
+    size_t m;
+    uint32_t c = cpAt(s, n, &m);
+    if (c == 0x200d) {  // the joiner, and what it joins
+      n = m;
+      if (n < s.size()) cpAt(s, n, &n);
+      continue;
+    }
+    if (!extends(c)) break;
+    n = m;
+  }
+  return n;
 }
-size_t prevChar(const std::string& s, size_t i) {
-  if (i == 0) return 0;
-  i--;
-  while (i > 0 && (uint8_t(s[i]) & 0xc0) == 0x80) i--;
-  return i;
+// where each character from `from` ends, up to `to`
+std::vector<size_t> charEnds(const std::string& s, size_t from, size_t to) {
+  std::vector<size_t> b;
+  for (size_t i = from; i < to;) b.push_back(i = std::min(to, nextChar(s, i)));
+  return b;
+}
+// the last of `ends` (in order) where fits() holds, by halves: the width grows with the text, and each
+// look shapes the text once (one at a time, a long title cost a shaping per character); -1: none
+template <typename F>
+int lastFitting(const std::vector<size_t>& ends, F fits) {
+  int lo = 0, hi = int(ends.size()) - 1, found = -1;
+  while (lo <= hi) {
+    int mid = (lo + hi) / 2;
+    if (fits(ends[size_t(mid)])) found = mid, lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return found;
 }
 }  // namespace
 
@@ -519,22 +550,16 @@ std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool b
       lines.push_back({s.substr(at), false});
       break;
     }
-    // as many words as fit
-    size_t end = at, best = std::string::npos;
-    for (;;) {
-      size_t next = s.find(' ', end + 1);
-      size_t cut = next == std::string::npos ? s.size() : next;
-      if (width(at, cut) > maxW) break;
-      best = cut;
-      if (next == std::string::npos) break;
-      end = next;
-    }
+    // as many words as fit (a line ends at a space)
+    std::vector<size_t> cuts;
+    for (size_t next = s.find(' ', at + 1); next != std::string::npos; next = s.find(' ', next + 1)) cuts.push_back(next);
+    cuts.push_back(s.size());
+    int w = lastFitting(cuts, [&](size_t cut) { return width(at, cut) <= maxW; });
+    size_t best = w >= 0 ? cuts[size_t(w)] : std::string::npos;
     if (best == std::string::npos) {  // one word wider than the line: as many of its characters as fit
-      best = nextChar(s, at);
-      for (size_t n = nextChar(s, best); n <= s.size() && width(at, n) <= maxW; n = nextChar(s, n)) {
-        best = n;
-        if (n == s.size()) break;
-      }
+      std::vector<size_t> ends = charEnds(s, at, s.size());
+      int k = lastFitting(ends, [&](size_t n) { return width(at, n) <= maxW; });
+      best = ends[size_t(std::max(0, k))];  // at least one, as StaticLayout
     }
     if (int(lines.size()) < maxLines - 1) {
       lines.push_back({s.substr(at, best - at), false});
@@ -544,13 +569,11 @@ std::vector<WrappedLine> wrapText(Env& e, const std::string& s, float sp, bool b
     size_t lineEnd = best;
     while (lineEnd < s.size() && s[lineEnd] == ' ') lineEnd++;  // with the spaces that hang at its end
     float ell = e.text.run(font, "\xe2\x80\xa6").width;
-    size_t keep = at;
-    for (size_t n = nextChar(s, at); n <= lineEnd; n = nextChar(s, n)) {
-      if (width(at, n) + ell > maxW) break;
-      keep = n;
-      if (n == lineEnd) break;
-    }
-    if (keep == lineEnd) keep = prevChar(s, lineEnd);  // all of it fits: its last character gives way
+    std::vector<size_t> ends = charEnds(s, at, lineEnd);
+    int k = lastFitting(ends, [&](size_t n) { return width(at, n) + ell <= maxW; });
+    size_t keep = k >= 0 ? ends[size_t(k)] : at;
+    // all of it fits: its last character (a whole emoji sequence) gives way
+    if (keep == lineEnd) keep = ends.size() > 1 ? ends[ends.size() - 2] : at;
     lines.push_back({s.substr(at, keep - at) + "\xe2\x80\xa6", false});
     break;
   }

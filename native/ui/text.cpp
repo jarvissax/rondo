@@ -193,6 +193,7 @@ uint32_t Text::slotFor(int size, int face, uint32_t glyph) {
 
 void Text::resetAtlas() {
   generation_++;
+  resetInFrame_ = true;
   for (Slot& s : slots_) s.ready = false;
   std::fill(pixels_.begin(), pixels_.end(), 0);
   shelfX_ = shelfY_ = shelfH_ = 0;
@@ -224,6 +225,7 @@ bool Text::rasterizeColor(Slot& s) {
     cShelfX_ = cShelfY_ = cShelfH_ = 0;
     cDirtyY0_ = 0, cDirtyY1_ = kColorH;
     s.ready = true;
+    resetInFrame_ = true;
   }
   int x0 = cShelfX_ + 1, y0 = cShelfY_ + 1;
   // each target pixel: the average of the source pixels it covers (BGRA in, RGBA out)
@@ -346,8 +348,9 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
     int face;
     unsigned start, len;
   };
-  Item items[64];
-  int count = 0;
+  // the runs, as many as the line has (a title alternating emoji and words has many); UI thread only
+  static std::vector<Item> items;
+  items.clear();
   bool rtl = false, haveDirection = false;
   const char* p = s.data();
   const char* end = p + s.size();
@@ -370,7 +373,14 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
       uint32_t n2 = n1 == 0xfe0f && q < end ? decodeUtf8(q, end) : 0;
       keycap = n1 == 0x20e3 || n2 == 0x20e3;
     }
-    if (emoji_ >= 0 && (keycap || isEmoji(cp) || (cur == emoji_ && joinsEmoji(cp))) && FT_Get_Char_Index(faces_[emoji_].ft, cp))
+    // a symbol asked for in its emoji form (U+FE0F after it: ▶️ ™️ ‼️) is the color one too
+    bool asEmoji = false;
+    if (emoji_ >= 0 && !isEmoji(cp) && cp >= 0xa9) {
+      const char* q = p;
+      asEmoji = q < end && decodeUtf8(q, end) == 0xfe0f;
+    }
+    if (emoji_ >= 0 && (keycap || asEmoji || isEmoji(cp) || (cur == emoji_ && joinsEmoji(cp))) &&
+        FT_Get_Char_Index(faces_[emoji_].ft, cp))
       face = emoji_;
     // spaces and punctuation stay with the text around them, never with an emoji (the emoji font has
     // its own, far wider)
@@ -380,12 +390,13 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
       if (FT_Get_Char_Index(faces_[fallbacks_[i]].ft, cp)) face = fallbacks_[i];
     if (face < 0) face = sz.face;
     if (face != cur) {
-      if (cur >= 0 && count < 64) items[count++] = {cur, curStart, at - curStart};
+      if (cur >= 0) items.push_back({cur, curStart, at - curStart});
       cur = face;
       curStart = at;
     }
   }
-  if (cur >= 0 && count < 64) items[count++] = {cur, curStart, unsigned(s.size()) - curStart};
+  if (cur >= 0) items.push_back({cur, curStart, unsigned(s.size()) - curStart});
+  const int count = int(items.size());
   static const bool logText = getenv("RONDO_TEXT_LOG") != nullptr;
   if (logText && emoji_ >= 0) {
     bool any = false;

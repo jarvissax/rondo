@@ -43,6 +43,28 @@ uint32_t lowerCp(uint32_t c) {
   return c;
 }
 
+uint32_t upperCp(uint32_t c) {
+  if (c >= 'a' && c <= 'z') return c - 32;
+  if (c < 0x80) return c;
+  if (c == 0xb5) return 0x39c;  // micro sign
+  if (c >= 0xe0 && c <= 0xfe && c != 0xf7) return c - 32;
+  if (c == 0xff) return 0x178;
+  if (c == 0x131) return 'I';  // dotless ı
+  if ((c >= 0x100 && c <= 0x137) || (c >= 0x14a && c <= 0x177)) return c & ~1u;
+  if ((c >= 0x139 && c <= 0x148) || (c >= 0x179 && c <= 0x17e)) return (c & 1) ? c : c - 1;
+  if (c == 0x17f) return 'S';
+  if (c == 0x259) return 0x18f;  // ə
+  if (c >= 0x218 && c <= 0x21b) return c & ~1u;
+  if (c >= 0x3b1 && c <= 0x3c9) return c == 0x3c2 ? 0x3a3 : c - 32;
+  if (c == 0x3ac) return 0x386;
+  if (c >= 0x3ad && c <= 0x3af) return c - 37;
+  if (c == 0x3cc) return 0x38c;
+  if (c == 0x3cd || c == 0x3ce) return c - 63;
+  if (c >= 0x430 && c <= 0x44f) return c - 32;
+  if (c >= 0x450 && c <= 0x45f) return c - 80;
+  return c;
+}
+
 // The base letter of an accented lower-case letter (what NFD keeps), or the letter itself.
 uint32_t base(uint32_t c) {
   static const char kLatin1[] = "aaaaaa\0ceeeeiiii\0nooooo\0\0uuuuy\0\0";  // 0xe0..0xff, \0 = unchanged
@@ -99,6 +121,35 @@ std::string lower(std::string_view s) {
     put(out, lowerCp(c));
   }
   return out;
+}
+
+std::string upper(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  const char* p = s.data();
+  const char* end = p + s.size();
+  while (p < end) {
+    uint32_t c = next(p, end);
+    if (c == 0xdf) {  // ß
+      out += "SS";
+      continue;
+    }
+    put(out, upperCp(c));
+  }
+  return out;
+}
+
+uint32_t upperChar(uint32_t cp) { return upperCp(cp); }
+
+bool isLetter(uint32_t c) {
+  if (c < 0x80) return (c | 32) >= 'a' && (c | 32) <= 'z';
+  if (c < 0xc0) return c == 0xaa || c == 0xb5 || c == 0xba;
+  if (c == 0xd7 || c == 0xf7) return false;
+  return c <= 0x24f || (c >= 0x370 && c <= 0x3ff && c != 0x37e && c != 0x387) || (c >= 0x400 && c <= 0x52f && (c < 0x482 || c > 0x489)) ||
+         (c >= 0x531 && c <= 0x587) || (c >= 0x5d0 && c <= 0x5ea) || (c >= 0x620 && c <= 0x64a) || (c >= 0x904 && c <= 0x939) ||
+         (c >= 0xe01 && c <= 0xe30) || (c >= 0x10a0 && c <= 0x10ff) || (c >= 0x1100 && c <= 0x11ff) ||
+         (c >= 0x1e00 && c <= 0x1fff) || (c >= 0x3041 && c <= 0x30ff && c != 0x30fb) || (c >= 0x3400 && c <= 0x4dbf) ||
+         (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7a3);
 }
 
 std::string fold(std::string_view s) {

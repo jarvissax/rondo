@@ -9,6 +9,7 @@
 
 #include "../core/clock.h"
 #include "../core/config.h"
+#include "../core/fold.h"
 #include "../core/library.h"
 #include "../core/playlists.h"
 #include "../core/prefs.h"
@@ -307,13 +308,18 @@ class LetterListScreen : public ShellListScreen {
       letters_.push_back({i, c});
     }
   }
+  // DeviceScreens.kt: the first character, upper case; everything that isn't a letter is one "#"
+  // (é and É are one jump, “ and ¡ none of their own)
   static uint32_t firstLetter(const std::string& s) {
     unsigned char c = (unsigned char)s[0];
-    if (c < 0x80) return isalpha(c) ? uint32_t(toupper(c)) : '#';
-    // a letter outside ASCII: its UTF-8 lead bytes are enough to tell letters apart
     uint32_t cp = c;
-    for (size_t i = 1; i < s.size() && i < 4 && ((unsigned char)s[i] & 0xc0) == 0x80; i++) cp = cp << 8 | (unsigned char)s[i];
-    return cp;
+    if (c >= 0x80) {
+      int extra = c >= 0xf0 ? 3 : c >= 0xe0 ? 2 : c >= 0xc0 ? 1 : 0;
+      cp = c & (0x3f >> extra);
+      for (int i = 1; i <= extra && size_t(i) < s.size() && ((unsigned char)s[size_t(i)] & 0xc0) == 0x80; i++)
+        cp = cp << 6 | ((unsigned char)s[size_t(i)] & 0x3f);
+    }
+    return isLetter(cp) ? upperChar(cp) : '#';
   }
   std::vector<std::pair<int, uint32_t>> letters_;
 };

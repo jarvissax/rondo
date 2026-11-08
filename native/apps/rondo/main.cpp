@@ -483,6 +483,11 @@ int main(int argc, char** argv) {
     Env env{canvas, text, icons, covers, pal, present};
     status.playing = g_player.state().playing != 0;
     app.draw(env, float(display->width()), float(display->height()), status);
+    if (text.takeResetInFrame()) {  // an atlas started again mid-frame: drawn once more, whole
+      canvas.begin(pal.shellBg);
+      app.draw(env, float(display->width()), float(display->height()), status);
+      text.takeResetInFrame();
+    }
     int64_t b = now_ns();
     if (g_traceSlow && b - a > 8 * kMs)
       printf("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (the frame before: %d glyphs, "

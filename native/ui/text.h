@@ -84,6 +84,13 @@ class Text {
   uint32_t atlasGeneration() const { return generation_; }
   int glyphsRasterizedLastFrame() const { return rasterizedFrame_; }
   void frameDone() { rasterizedFrame_ = 0; }
+  // An atlas filled up and started again while this frame was drawn: the glyphs drawn before that point
+  // at what was cleared, so the frame is drawn once more (rare: a screen of new emoji or sizes)
+  bool takeResetInFrame() {
+    bool r = resetInFrame_;
+    resetInFrame_ = false;
+    return r;
+  }
 
  private:
   struct Face {
@@ -156,6 +163,7 @@ class Text {
   int cDirtyY0_ = kColorH, cDirtyY1_ = 0;
   int flushedRows_ = 0;
   int rasterizedFrame_ = 0;
+  bool resetInFrame_ = false;
   size_t warmFont_ = 0, warmChar_ = 0;
   struct Advances {
     std::vector<float> sizes;
