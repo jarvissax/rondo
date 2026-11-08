@@ -225,7 +225,7 @@ bool powerTick(int64_t now) {
   power::hold(s.playing || s.fmOn || s.fmStarting);
   // the timeout (Settings › Screen off after); the video player and Shorts keep the screen on
   // (development: RONDO_SCREEN_ON=1 keeps it on, for the parity scripts)
-  static const bool screenOn = getenv("RONDO_SCREEN_ON") != nullptr;
+  static const bool screenOn = g_development && getenv("RONDO_SCREEN_ON") != nullptr;
   if ((screenOn || g_app->topKeepsScreenOn()) && g_stage <= kDim) g_activity = now;
   int64_t timeout = int64_t(g_prefs.screenTimeoutMs) * kMs;
   if (timeout > 0) {

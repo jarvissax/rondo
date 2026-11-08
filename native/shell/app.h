@@ -36,6 +36,9 @@ void themeChanged();
 void applyBrightness(int value);
 // RONDO_SLOW=1: frames over 8 ms print where their time went (main.cpp, App::draw)
 extern bool g_traceSlow;
+// a development run (from /data/local/tmp): the development switches work (RONDO_* variables, Menu held
+// 2 s quits); the firmware's copy ignores them
+extern bool g_development;
 
 class App;
 

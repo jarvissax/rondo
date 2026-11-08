@@ -60,6 +60,8 @@ std::string artOf(const std::string& path, int size) {
   return it ? (size > 0 ? largeThumb(it->thumb, size) : it->thumb) : "";
 }
 
+void rememberStream(const std::string& path, const Item& item) { registry()[path] = item; }
+
 void playStreamsAppend(const Item& item, bool next) {
   std::string p = streamPath(item);
   registry()[p] = item;

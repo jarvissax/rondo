@@ -10,6 +10,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <signal.h>
 #include <pthread.h>
@@ -571,6 +572,12 @@ struct Worker {
 };
 
 }  // namespace
+
+bool ImageLoader::alive() {
+  if (child_ <= 0) return true;
+  int status;
+  return waitpid(child_, &status, WNOHANG) != child_;
+}
 
 bool ImageLoader::start(int threads, const char* cacheDir) {
   size_t bytes = kControlBytes + size_t(kSlots) * kSlotBytes;

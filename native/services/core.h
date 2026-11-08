@@ -65,6 +65,7 @@ class CoreHost {
  public:
   // Forks rondo-core: call before any other thread exists.
   bool start();
+  bool alive();  // false once rondo-core has died (Rondo restarts: init brings it back)
   CoreState state() const;  // a consistent copy
 
   void wifiEnable(bool on);
@@ -98,6 +99,7 @@ class CoreHost {
  private:
   void send(uint32_t type, const void* payload = nullptr, uint32_t len = 0);
   int sock_ = -1;
+  pid_t child_ = -1;
   CoreState* shm_ = nullptr;
   uint32_t nextId_ = 1;
   std::map<uint32_t, Reply> pending_;

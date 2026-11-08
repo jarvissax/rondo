@@ -54,6 +54,7 @@ class ImageLoader {
   // Forks the decoding process: call before any other thread exists. cacheDir holds the thumbnail cache
   // (null: none).
   bool start(int threads, const char* cacheDir);
+  bool alive();  // false once rondo-media has died
   // False when the helper's queue is full right now: ask again later.
   bool request(const Request& r);
   // Decodes into the cache only, at low priority and only while the UI is still (no reply).

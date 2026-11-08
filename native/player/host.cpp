@@ -1,4 +1,5 @@
 // The UI's side of player.h.
+#include <sys/wait.h>
 #include <stddef.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -10,7 +11,7 @@
 
 namespace rondo {
 
-bool PlayerHost::start() {
+bool PlayerHost::start(const std::string& dataDir, bool development) {
   void* p = mmap(nullptr, sizeof(PlayerState), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   if (p == MAP_FAILED) return false;
   shm_ = static_cast<PlayerState*>(p);
@@ -22,11 +23,17 @@ bool PlayerHost::start() {
   if (child_ < 0) return false;
   if (child_ == 0) {
     close(sv[0]);
-    runPlayer(sv[1], shm_);
+    runPlayer(sv[1], shm_, dataDir, development);
   }
   close(sv[1]);
   sock_ = sv[0];
   return true;
+}
+
+bool PlayerHost::alive() {
+  if (child_ <= 0) return true;
+  int status;
+  return waitpid(child_, &status, WNOHANG) != child_;
 }
 
 PlayerState PlayerHost::state(bool withOrder) const {
@@ -61,6 +68,17 @@ void PlayerHost::playQueue(const std::vector<std::string>& paths, int start) {
   memcpy(&b[0], &s, 4);
   for (const auto& p : paths) b += p, b += '\0';
   send(kPlayQueue, b.data(), uint32_t(b.size()));
+}
+
+void PlayerHost::restoreQueue(const std::vector<std::string>& paths, int start, int64_t ms, bool play) {
+  queue_ = paths;
+  std::string b(13, '\0');
+  uint32_t s = uint32_t(start);
+  memcpy(&b[0], &s, 4);
+  memcpy(&b[4], &ms, 8);
+  b[12] = play ? 1 : 0;
+  for (const auto& p : paths) b += p, b += '\0';
+  send(kRestoreQueue, b.data(), uint32_t(b.size()));
 }
 
 void PlayerHost::togglePlay() { send(kToggle); }

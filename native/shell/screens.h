@@ -31,6 +31,11 @@ bool isStream(const std::string& path);
 const Item* streamItem(const std::string& path);
 void playStreams(const std::vector<Item>& items, int start);
 void playStreamsAppend(const Item& item, bool next);  // Play next / Add to queue
+void rememberStream(const std::string& path, const Item& item);  // a restored queue's streamed song
+// resume.cpp: the queue kept across a restart (saved from the loop, put back at startup)
+void resumeTick(int64_t now);
+void resumeSaveNow();  // on the way out
+void resumeRestore();
 // music_screens.cpp: a playlist, album or artist row's screen; a song's menu
 void openMusicContainer(const Item& item);
 void openSongMenu(const Item& song);

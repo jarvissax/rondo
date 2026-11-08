@@ -75,6 +75,7 @@ struct Marker {  // where in the stream a track begins (pos -1: the queue's end)
 class Engine {
  public:
   Engine(int sock, PlayerState* shm) : sock_(sock), shm_(shm) {}
+  void setData(const std::string& dir, bool development) { volumesFile_ = dir + "/volumes.txt", development_ = development; }
   [[noreturn]] void main();
 
  private:
@@ -242,6 +243,13 @@ class Engine {
   int16_t buffers_[kBuffers][kBufferFrames * 2];
   int next_ = 0;
   int volume_ = 0, volumeMax_ = 13;  // MediaTek's STREAM_MUSIC has 13 steps (the policy's index max, Nov 7)
+  // Each output's music volume, kept as Android's AudioService kept it (volume_music_speaker and the
+  // rest): without Android the policy forgets it at every boot
+  std::string volumesFile_;
+  bool development_ = false;
+  bool fmOnOutput_ = false;  // the radio's step is on the output (not music's)
+  void restoreVolumes();
+  void saveVolume(audio_devices_t device, int index);
 };
 
 void Engine::publish() {
@@ -389,6 +397,27 @@ void Engine::command(const std::vector<uint8_t>& m) {
       pos_ = items_.empty() ? -1 : std::min<int>(int(start), int(items_.size()) - 1);
       if (shuffle_) rebuildOrder();
       restart(pos_, 0, true);
+      break;
+    }
+    case kRestoreQueue: {  // as kPlayQueue, from where it was, playing or not
+      if (len < 13) break;
+      uint32_t start = 0;
+      int64_t at = 0;
+      memcpy(&start, p, 4);
+      memcpy(&at, p + 4, 8);
+      bool play = p[12] != 0;
+      items_.clear();
+      for (size_t i = 13; i < len;) {
+        size_t end = i;
+        while (end < len && p[end]) end++;
+        items_.emplace_back((const char*)p + i, end - i);
+        i = end + 1;
+      }
+      order_.clear();
+      for (int k = 0; k < int(items_.size()); k++) order_.push_back(k);
+      pos_ = items_.empty() ? -1 : std::min<int>(int(start), int(items_.size()) - 1);
+      if (shuffle_) rebuildOrder();
+      if (pos_ >= 0) restart(pos_, std::max<int64_t>(0, at), play);
       break;
     }
     case kToggle:
@@ -688,6 +717,7 @@ void Engine::fmVolumes(bool on) {
   using android::AudioSystem;
   audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
   readVolume();
+  fmOnOutput_ = on;
   if (on) {
     musicVolume_ = volume_;
     if (fmVolume_ < 0) fmVolume_ = volume_;
@@ -1145,7 +1175,60 @@ void Engine::changeVolume(int delta) {
   audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
   readVolume();
   int index = std::max(0, std::min(volumeMax_, volume_ + delta));
-  if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, device) == 0) volume_ = index;
+  if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, device) == 0) {
+    volume_ = index;
+    if (!fmOnOutput_) saveVolume(device, index);  // the radio's own step is the UI's (prefs fmVolume)
+  }
+}
+
+// MediaTek's index maximum of each stream (dumpsys media.audio_policy with Android's AudioService, Nov 8)
+constexpr int kStreamMax[] = {6, 7, 7, 13, 7, 7, 15, 7, 15, 15, 13, 13, 1};
+
+void Engine::restoreVolumes() {
+  using android::AudioSystem;
+  // Without Android (the 2.0 firmware) nobody gives the policy its ranges: every stream would have one
+  // step. AudioService's initStreamVolume, with this firmware's maxima.
+  if (!development_)
+    for (int s = 0; s < int(sizeof(kStreamMax) / sizeof(kStreamMax[0])); s++)
+      AudioSystem::initStreamVolume(audio_stream_type_t(s), 0, kStreamMax[s]);
+  FILE* f = fopen(volumesFile_.c_str(), "r");
+  if (!f) {
+    // the first start without the file: Android's own (settings.db's volume_music_<device>) carry over
+    // through the policy as Android left it; on a fresh 2.0 firmware, speaker and headphones start at 5
+    if (!development_) {
+      for (audio_devices_t d : {AUDIO_DEVICE_OUT_SPEAKER, AUDIO_DEVICE_OUT_WIRED_HEADSET, AUDIO_DEVICE_OUT_WIRED_HEADPHONE,
+                                AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES})
+        AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, 5, d);
+    }
+    return;
+  }
+  unsigned device;
+  int index;
+  while (fscanf(f, "%x %d", &device, &index) == 2)
+    if (index >= 0 && index <= volumeMax_) AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, audio_devices_t(device));
+  fclose(f);
+}
+
+void Engine::saveVolume(audio_devices_t device, int index) {
+  // the file holds a line per output: read, change one, write (a few lines, on /data)
+  std::vector<std::pair<unsigned, int>> lines;
+  if (FILE* f = fopen(volumesFile_.c_str(), "r")) {
+    unsigned d;
+    int i;
+    while (fscanf(f, "%x %d", &d, &i) == 2) lines.push_back({d, i});
+    fclose(f);
+  }
+  bool found = false;
+  for (auto& l : lines)
+    if (l.first == unsigned(device)) l.second = index, found = true;
+  if (!found) lines.push_back({unsigned(device), index});
+  std::string tmp = volumesFile_ + ".part";
+  FILE* f = fopen(tmp.c_str(), "w");
+  if (!f) return;
+  for (auto& l : lines) fprintf(f, "%x %d\n", l.first, l.second);
+  bool ok = fflush(f) == 0;
+  fclose(f);
+  if (ok) rename(tmp.c_str(), volumesFile_.c_str());
 }
 
 void Engine::main() {
@@ -1159,6 +1242,7 @@ void Engine::main() {
   // system_server hosts; without it, rondo does (N0 log)
   if (android::defaultServiceManager()->checkService(android::String16("permission")) == nullptr)
     rondo::PermissionService::publish();
+  restoreVolumes();
   readVolume();
   if (!openOutput()) fprintf(stderr, "rondo-player: no audio output\n");
   {  // the amplifier as NVRAM has it
@@ -1199,8 +1283,9 @@ void Engine::main() {
 
 }  // namespace
 
-[[noreturn]] void runPlayer(int sock, PlayerState* shm) {
+[[noreturn]] void runPlayer(int sock, PlayerState* shm, const std::string& dataDir, bool development) {
   Engine* e = new Engine(sock, shm);
+  e->setData(dataDir, development);
   e->main();
 }
 

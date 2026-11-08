@@ -1,18 +1,17 @@
-// rondo: Rondo 2.0's native shell, a 1:1 port of 1.0.x's screens (private/native-plan.md, "parity
-// first"). Runs on the Y1 with the Java layer and SurfaceFlinger stopped.
+// rondo: Rondo 2.0, natively: every screen of 1.0.x (private/native-plan.md, "parity first"), drawn
+// straight to the framebuffer with no Java layer and no SurfaceFlinger. What 2.0 adds is motion:
+// screens slide like the iPod's, lists and their highlight glide, the preview pane cross-fades.
 //
-// Ported so far: the shell (ShellActivity: the screen stack, the status bar), the main menu with its
-// preview pane (MainMenuScreen.kt), and the card library (DeviceScreens.kt: Library, Songs, Artists,
-// Albums, Recently added, Videos). Everything else is a row that does nothing yet.
-//
-// What 2.0 adds is motion: screens slide like the iPod's (1.0.x replaces them), the list and its
-// highlight glide to where 1.0.x puts them, the preview pane cross-fades.
+// Its files: what it ships with (fonts, the advance and kerning tables, the dashboard's page) beside the
+// binary; what it writes in its data folder. The firmware's copy runs from /system/rondo (or an update
+// in /data/rondo/<version>) and writes /data/rondo; a development run from /data/local/tmp/rondo keeps
+// both there, and shares 1.0.x's config.json with the app.
 //
 //   rondo [--config path] [--library db] [--fonts dir] [--regular ttf] [--thumbs dir] [--csv path]
 //         [--restore-android 1] [--shot path]
 //
-// SIGUSR1 saves a screenshot (--shot, default /data/local/tmp/rondo/shot.png). Holding Menu 2 s quits
-// (a development affordance); with --restore-android 1, 1.0.x then comes back.
+// SIGUSR1 saves a screenshot (--shot, default <data>/shot.png). In a development run, holding Menu 2 s
+// quits; with --restore-android 1, 1.0.x then comes back.
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -21,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -81,6 +81,7 @@ void applyBrightness(int value) {
 }
 App* g_app = nullptr;
 bool g_traceSlow = false;
+bool g_development = false;
 }  // namespace rondo::shell
 
 namespace rondo {
@@ -90,6 +91,7 @@ CoreHost& coreHost() { return shell::g_core; }
 namespace {
 
 volatile sig_atomic_t g_stop = 0, g_shot = 0;
+int g_exitCode = 0;
 
 float readBattery() {
   int v = 100;
@@ -122,16 +124,56 @@ void onSignal(int sig) {
 
 }  // namespace
 
+// The folder the binary is in
+std::string exeDir() {
+  char b[512];
+  ssize_t n = readlink("/proc/self/exe", b, sizeof(b) - 1);
+  if (n <= 0) return "/data/local/tmp/rondo";
+  b[n] = 0;
+  std::string p = b;
+  return p.substr(0, p.rfind('/'));
+}
+
+// 1.0.x's files, taken over once by the firmware's Rondo (a copy: 1.0.x's stay as they were)
+void adopt(const std::string& from, const std::string& to) {
+  if (access(to.c_str(), F_OK) == 0 || access(from.c_str(), R_OK) != 0) return;
+  FILE* in = fopen(from.c_str(), "rb");
+  if (!in) return;
+  std::string tmp = to + ".part";
+  FILE* out = fopen(tmp.c_str(), "wb");
+  if (out) {
+    char buf[8192];
+    size_t n;
+    bool ok = true;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) ok &= fwrite(buf, 1, n, out) == n;
+    ok &= fflush(out) == 0 && fsync(fileno(out)) == 0;
+    fclose(out);
+    if (ok && rename(tmp.c_str(), to.c_str()) == 0) printf("rondo: took over %s\n", from.c_str());
+    else unlink(tmp.c_str());
+  }
+  fclose(in);
+}
+
 int main(int argc, char** argv) {
-  const char* configPath = "/data/data/com.jarvissax.rondo/files/config.json";
-  const char* libraryDb = "/data/local/tmp/rondo/library.db";
-  const char* prefsPath = "/data/local/tmp/rondo/prefs.json";
+  const std::string assets = exeDir();
+  const bool dev = assets.compare(0, 15, "/data/local/tmp") == 0;  // a development run (adb push)
+  const std::string data = dev ? assets : "/data/rondo";
+  if (!dev) mkdir(data.c_str(), 0700);
+  g_development = dev;
+  const char* oldConfig = "/data/data/com.jarvissax.rondo/files/config.json";
+  const std::string ownConfig = data + "/config.json", libraryPath = data + "/library.db", prefsFile = data + "/prefs.json",
+                    regularFont = assets + "/fonts/Roboto-Regular.ttf", thumbsDir = data + "/thumbs", shotFile = data + "/shot.png",
+                    advancesFile = assets + "/advances.bin", kerningFile = assets + "/kerning.bin";
+  if (!dev) adopt(oldConfig, ownConfig);  // the server, the theme, the radio: as 1.0.x had them
+  const char* configPath = dev ? oldConfig : ownConfig.c_str();
+  const char* libraryDb = libraryPath.c_str();
+  const char* prefsPath = prefsFile.c_str();
   const char* indexJson = "/data/data/com.jarvissax.rondo/files/local-index.json";
   const char* fonts = "/system/fonts";
-  const char* regular = "/data/local/tmp/rondo/fonts/Roboto-Regular.ttf";
-  const char* thumbs = "/data/local/tmp/rondo/thumbs";
-  const char* shotPath = "/data/local/tmp/rondo/shot.png";
-  const char* advances = "/data/local/tmp/rondo/advances.bin";
+  const char* regular = regularFont.c_str();
+  const char* thumbs = thumbsDir.c_str();
+  const char* shotPath = shotFile.c_str();
+  const char* advances = advancesFile.c_str();
   const char* csv = nullptr;
   bool restoreAndroid = false;
   for (int i = 1; i + 1 < argc; i += 2) {
@@ -150,8 +192,9 @@ int main(int argc, char** argv) {
   signal(SIGTERM, onSignal);
   signal(SIGUSR1, onSignal);
   signal(SIGHUP, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);  // a helper that died: its socket answers EPIPE, Rondo notices and restarts
   setpriority(PRIO_PROCESS, 0, -10);
-  if (FILE* pf = fopen("/data/local/tmp/rondo/rondo.pid", "w")) {
+  if (FILE* pf = fopen((data + "/rondo.pid").c_str(), "w")) {
     fprintf(pf, "%d\n", getpid());
     fclose(pf);
   }
@@ -166,11 +209,11 @@ int main(int argc, char** argv) {
   ui::setFrameGrabber(grabVideoFrame);  // card videos' artwork: a frame (in rondo-media)
   ImageLoader loader;
   if (!loader.start(2, thumbs)) return 1;
-  if (!g_player.start()) return 1;  // rondo-player, also before any thread
+  if (!g_player.start(data, dev)) return 1;  // rondo-player, also before any thread
   if (!g_core.start()) return 1;    // rondo-core, the system services, the same
   // Development: RONDO_WIFI_JOIN="<name><tab><password>" joins a WPA network at startup (scripts, without
   // typing on the wheel)
-  if (const char* j = getenv("RONDO_WIFI_JOIN")) {
+  if (const char* j = dev ? getenv("RONDO_WIFI_JOIN") : nullptr) {
     std::string s = j;
     size_t tab = s.find('\t');
     if (tab != std::string::npos) g_core.wifiJoin(s.substr(0, tab), WifiSecurity::Psk, s.substr(tab + 1));
@@ -191,6 +234,7 @@ int main(int argc, char** argv) {
   g_core.wifiEnable(g_prefs.wifiOn);  // as it was left (rondo-core takes over a running supplicant)
   loader.configure(g_config.server.url, g_config.server.token);
   g_player.configure(g_config.server.url, g_config.server.token);
+  resumeRestore();  // the queue as Rondo left it (a restart, a crash)
   // Settings › Server connected to another server or took a token: everything that talks to it
   g_onServerChanged = [&] {
     g_core.apiConfigure(g_config.server.url, g_config.server.token, apiCache);
@@ -214,7 +258,7 @@ int main(int argc, char** argv) {
   std::string emoji = std::string(regular).substr(0, std::string(regular).rfind('/') + 1) + "NotoColorEmoji.ttf";
   if (!text.init(fonts, access(regular, R_OK) == 0 ? regular : nullptr, access(emoji.c_str(), R_OK) == 0 ? emoji.c_str() : nullptr)) return 1;
   if (!text.loadAdvances(advances)) fprintf(stderr, "rondo: no advance table at %s: text widths will differ from 1.0.x\n", advances);
-  text.loadKerning("/data/local/tmp/rondo/kerning.bin");
+  text.loadKerning(kerningFile.c_str());
   Icons icons;
   icons.init(text);
   Covers covers(loader);
@@ -348,6 +392,15 @@ int main(int argc, char** argv) {
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
+    resumeTick(now_ns());  // the queue and where it is, for after a restart
+    // a helper process that died (a crash): Rondo ends too, with the queue kept, and init starts it
+    // again (back in about a second, playing on)
+    const char* died = !g_player.alive() ? "rondo-player" : !g_core.alive() ? "rondo-core" : !loader.alive() ? "rondo-media" : nullptr;
+    if (died) {
+      fprintf(stderr, "rondo: %s died: starting again\n", died);
+      g_stop = 1;
+      g_exitCode = 1;
+    }
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
       lastUsb = now_ns();
@@ -459,7 +512,7 @@ int main(int argc, char** argv) {
       if (oldest < 0) oldest = vs - ev.time;
       if (!powerFilter(ev)) continue;  // used up: waking, swallowed, the Power key
       dispatch.event(ev);
-      if (ev.key == Key::Menu) {
+      if (ev.key == Key::Menu && dev) {  // development: Menu held 2 s quits
         if (ev.down) menuDown = ev.time;
         else if (menuDown && ev.time - menuDown >= 2 * kSec) g_stop = 1;
       }
@@ -517,11 +570,12 @@ int main(int argc, char** argv) {
     if (moving) loader.active(present);
     wasMoving = moving;
   }
+  resumeSaveNow();  // where the queue was, to the second
   log.report(stdout, csv);
-  if (restoreAndroid) {
+  if (restoreAndroid && dev) {
     display.reset();
     system("start surfaceflinger; sleep 1; start zygote");
   }
   fflush(stdout);
-  _exit(0);
+  _exit(g_exitCode);
 }

@@ -62,12 +62,16 @@ struct PlayerState {
 
 class PlayerHost {
  public:
-  // Forks rondo-player: call before any other thread exists.
-  bool start();
+  // Forks rondo-player: call before any other thread exists. dataDir: where it keeps the volumes;
+  // development: a run on 1.0.x's firmware (Android set the volume ranges up)
+  bool start(const std::string& dataDir = "/data/rondo", bool development = false);
+  bool alive();  // false once rondo-player has died (Rondo restarts: init brings it back)
   // A consistent copy of the state. withOrder: the play order too (16 KB), else it is left out.
   PlayerState state(bool withOrder = false) const;
 
   void playQueue(const std::vector<std::string>& paths, int start);
+  // the queue as Rondo left it (a restart, a crash): the song at `start` from `ms`, playing or paused
+  void restoreQueue(const std::vector<std::string>& paths, int start, int64_t ms, bool play);
   void togglePlay();
   void play();
   void pause();

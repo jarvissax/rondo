@@ -1,4 +1,5 @@
 // CoreHost: the UI's side of rondo-core (core.h).
+#include <sys/wait.h>
 #include <stddef.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -24,9 +25,16 @@ bool CoreHost::start() {
     close(sv[0]);
     runCore(sv[1], shm_);
   }
+  child_ = pid;
   close(sv[1]);
   sock_ = sv[0];
   return true;
+}
+
+bool CoreHost::alive() {
+  if (child_ <= 0) return true;
+  int status;
+  return waitpid(child_, &status, WNOHANG) != child_;
 }
 
 CoreState CoreHost::state() const {

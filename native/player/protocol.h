@@ -1,5 +1,6 @@
 // The messages between the UI and rondo-player: a 32-bit length, a 32-bit type, then the payload.
 #pragma once
+#include <string>
 #include <stdint.h>
 #include <unistd.h>
 
@@ -39,6 +40,7 @@ enum PlayerCommand : uint32_t {
   kAnalyzeAllowed,  // u8: measuring the library may run (leveling on, the Y1 charging)
   kAmplifier,   // u8 level 0..3, then the path the shipped volume table is kept at (NVRAM: amplifier.h)
   kWired,       // u8: the jack, 0 nothing, 1 a headset (with a microphone), 2 headphones
+  kRestoreQueue,  // u32 start, i64 ms, u8 play, then the paths: the queue as it was before a restart
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {
@@ -62,6 +64,8 @@ inline bool writeFully(int fd, const void* buf, size_t n) {
 }
 
 struct PlayerState;
-[[noreturn]] void runPlayer(int sock, PlayerState* shm);
+// dataDir: where it keeps what it remembers (the volume of each output); development: a run on
+// 1.0.x's firmware, whose Android set the volume ranges up already
+[[noreturn]] void runPlayer(int sock, PlayerState* shm, const std::string& dataDir, bool development);
 
 }  // namespace rondo
