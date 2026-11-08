@@ -22,10 +22,12 @@
 #include <vector>
 
 #include "../core/api.h"
+#include "../core/clock.h"
 
 #include "../player/protocol.h"  // readFully
 #include "core.h"
 #include "bluetooth.h"
+#include "clock.h"
 #include "protocol.h"
 #include "wifi.h"
 
@@ -309,6 +311,32 @@ class ApiWorkers {
 
 }  // namespace
 
+// The clock (clock.h): set from the server once each Wi-Fi connection is up, tried again a minute
+// after a failure
+std::string g_clockBase;
+pthread_mutex_t g_clockMu = PTHREAD_MUTEX_INITIALIZER;
+void* clockLoop(void*) {
+  prctl(PR_SET_NAME, "rondo-clock");
+  uint32_t syncedFor = 0;  // the address of the connection the clock was set on
+  int64_t retryAt = 0;
+  for (;;) {
+    sleep(5);
+    uint32_t ip = g_shm->wifiState == 4 ? g_shm->ip : 0;
+    if (!ip) {
+      syncedFor = 0;
+      continue;
+    }
+    if (ip == syncedFor || now_ns() < retryAt) continue;
+    pthread_mutex_lock(&g_clockMu);
+    std::string base = g_clockBase;
+    pthread_mutex_unlock(&g_clockMu);
+    if (base.empty()) continue;
+    if (syncClock(base)) syncedFor = ip;
+    else retryAt = now_ns() + 60 * kSec;
+  }
+  return nullptr;
+}
+
 void runCore(int sock, CoreState* shm) {
   prctl(PR_SET_PDEATHSIG, SIGKILL);
   prctl(PR_SET_NAME, "rondo-core");
@@ -321,6 +349,9 @@ void runCore(int sock, CoreState* shm) {
   wifi.start();
   ApiWorkers api(sock);
   Bluetooth bt(publish);
+  pthread_t clockThread;
+  pthread_create(&clockThread, nullptr, clockLoop, nullptr);
+  pthread_detach(clockThread);
   for (;;) {
     uint32_t head[2];
     if (!readFully(sock, head, sizeof(head)) || head[0] < 4) _exit(0);  // the UI is gone
@@ -358,6 +389,9 @@ void runCore(int sock, CoreState* shm) {
         size_t z = s.find('\0'), z2 = z == std::string::npos ? z : s.find('\0', z + 1);
         std::string token = z == std::string::npos ? "" : s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
         api.configure(s.substr(0, z), token, z2 == std::string::npos ? "" : s.substr(z2 + 1));
+        pthread_mutex_lock(&g_clockMu);
+        g_clockBase = s.substr(0, z);
+        pthread_mutex_unlock(&g_clockMu);
         break;
       }
       case kApiPost: {
