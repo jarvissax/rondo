@@ -1,4 +1,5 @@
 // The UI thread's queue (main_queue.h).
+#include "../core/clock.h"
 #include "main_queue.h"
 
 #include <errno.h>
@@ -96,14 +97,10 @@ bool onMain(std::function<void()> work, int timeoutMs) {
     pthread_cond_signal(&w->cv);
     pthread_mutex_unlock(&w->mu);
   });
-  timespec until;
-  clock_gettime(CLOCK_REALTIME, &until);
-  until.tv_sec += timeoutMs / 1000;
-  until.tv_nsec += long(timeoutMs % 1000) * 1000000L;
-  if (until.tv_nsec >= 1000000000L) until.tv_sec++, until.tv_nsec -= 1000000000L;
+  int64_t until = now_ns() + int64_t(timeoutMs) * kMs;
   pthread_mutex_lock(&w->mu);
   while (!w->done)
-    if (pthread_cond_timedwait(&w->cv, &w->mu, &until) == ETIMEDOUT) break;
+    if (waitUntil(&w->cv, &w->mu, until) == ETIMEDOUT) break;
   bool done = w->done;
   pthread_mutex_unlock(&w->mu);
   return done;

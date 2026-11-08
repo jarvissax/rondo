@@ -20,6 +20,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "../core/clock.h"
+
 #include <algorithm>
 
 #include "../core/api.h"
@@ -458,11 +460,7 @@ struct Worker {
         if (prefetch.empty()) {
           pthread_cond_wait(&cv, &mu);
         } else {  // check again for quiet in a while
-          timespec until;
-          clock_gettime(CLOCK_REALTIME, &until);
-          until.tv_nsec += 200000000;
-          if (until.tv_nsec >= 1000000000) until.tv_sec++, until.tv_nsec -= 1000000000;
-          pthread_cond_timedwait(&cv, &mu, &until);
+          waitUntil(&cv, &mu, now_ns() + 200 * kMs);
         }
       }
       pthread_mutex_unlock(&mu);

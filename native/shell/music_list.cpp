@@ -84,12 +84,13 @@ std::string offlineOr(const std::string& problem) {
 void openMusicItem(const Item& item, const std::vector<Item>& siblings) {
   if (isContainer(item.kind)) return openMusicContainer(item);
   std::vector<Item> playable;
-  int at = 0;
+  int at = -1;
   for (const Item& s : siblings)
     if (!isContainer(s.kind)) {
-      if (s.id == item.id) at = int(playable.size());
+      if (at < 0 && s.id == item.id) at = int(playable.size());  // the first copy, as indexOf
       playable.push_back(s);
     }
+  if (at < 0) at = 0;
   playStreams(playable, at);
   openNowPlaying();
 }
@@ -129,7 +130,7 @@ std::vector<Row> videoRows(const std::vector<Item>& items) {
 
 bool miniPlayerShown() {
   PlayerState s = g_player.state();
-  return s.index >= 0 && s.path[0];  // songs only for now: videos come with N3's video player
+  return s.index >= 0 && s.path[0] && !s.video;  // a song, not a video (1.0.x: !isVideo)
 }
 
 void miniPlayer(Env& e, Rect r) {
@@ -263,9 +264,11 @@ class QueueScreen : public MusicListScreen {
       SongInfo song = songInfo(queue[k]);
       r.title = song.title;
       r.subtitle = song.subtitle;
-      r.thumb = queue[k];
+      r.thumb = artOf(queue[k], 0);  // a streamed song's thumbnail, a card song's file
       if (int(k) == current_) {
         r.trailing = "Playing";
+      } else if (const Item* it = isStream(queue[k]) ? streamItem(queue[k]) : nullptr) {
+        r.trailing = it->durationSec >= 0 ? formatTime(it->durationSec) : "";
       } else if (const Track* t = g_library.find(queue[k])) {
         r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       }

@@ -258,6 +258,7 @@ void framePresented() {
   if (!g_backlightPending || g_stage > kDim) return;
   g_backlightPending = false;
   applyBrightness(g_prefs.brightness);
+  g_wokeAt = now_ns();  // the 600 ms count from when the screen is lit (1.0.x: ACTION_SCREEN_ON)
 }
 
 }  // namespace rondo::shell

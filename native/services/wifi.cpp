@@ -3,6 +3,7 @@
 // control socket for scanning, joining and forgetting, DHCP through libnetutils, the address, route and
 // DNS set as Android's connectivity service sets them. Saved networks stay in wpa_supplicant.conf,
 // where Android keeps them, so 1.0.x's networks carry over.
+#include "../core/clock.h"
 #include "wifi.h"
 
 #include <arpa/inet.h>
@@ -18,7 +19,6 @@
 #include <algorithm>
 #include <map>
 #include <vector>
-#include <sqlite3.h>
 
 extern "C" {
 #include <hardware_legacy/wifi.h>
@@ -73,24 +73,6 @@ bool daemonCommand(const char* name, const std::string& line, bool numbered) {
 }
 bool netd(const std::string& line) { return daemonCommand("netd", line, true); }
 bool hald(const std::string& line) { return daemonCommand("hald", line, false); }
-
-// Android's Settings.Global wifi_on: whether Wi-Fi was on when Android last ran
-bool androidWifiOn() {
-  sqlite3* db = nullptr;
-  bool on = false;
-  if (sqlite3_open_v2("/data/data/com.android.providers.settings/databases/settings.db", &db, SQLITE_OPEN_READONLY,
-                      nullptr) == SQLITE_OK) {
-    sqlite3_stmt* q = nullptr;
-    if (sqlite3_prepare_v2(db, "SELECT value FROM global WHERE name = 'wifi_on'", -1, &q, nullptr) == SQLITE_OK &&
-        sqlite3_step(q) == SQLITE_ROW) {
-      const char* v = reinterpret_cast<const char*>(sqlite3_column_text(q, 0));
-      on = v && atoi(v) != 0;
-    }
-    sqlite3_finalize(q);
-  }
-  sqlite3_close(db);
-  return on;
-}
 
 std::string field(const std::string& reply, const char* key) {  // key=value lines
   std::string k = std::string(key) + "=";
@@ -155,11 +137,10 @@ void Wifi::start() {
   }, this);
   pthread_detach(t);
   post([this] {
-    // the supplicant still running (Android left Wi-Fi on): take over; else as Android last had it
+    // the supplicant still running (Android left Wi-Fi on): take over; else off until the UI says
+    // (it sends the switch as it was left: prefs wifiOn)
     if (wifi_connect_to_supplicant(kIface) == 0) {
       attached();
-    } else if (androidWifiOn()) {
-      turnOn();
     } else {
       update([](CoreState& s) { s.wifiEnabled = 0; });
     }
@@ -183,10 +164,7 @@ void Wifi::workLoop() {
     pthread_mutex_lock(&mu_);
     while (jobs_.empty()) {
       // every 3 s while connected: the signal and the speed; the DHCP lease renewed halfway
-      timespec until;
-      clock_gettime(CLOCK_REALTIME, &until);
-      until.tv_sec += 3;
-      if (pthread_cond_timedwait(&cv_, &mu_, &until) != 0) break;
+      if (waitUntil(&cv_, &mu_, now_ns() + 3 * kSec) != 0) break;
     }
     if (!jobs_.empty()) {
       job = std::move(jobs_.front());
@@ -299,7 +277,7 @@ void Wifi::eventLoop() {
       post([this, st, ssid] {
         if (st >= 4 && st <= 8)
           update([&](CoreState& c) {
-            c.wifiState = st >= 7 ? 2 : 1;
+            c.wifiState = st == 4 || st >= 7 ? 2 : 1;  // Android's AUTHENTICATING: 4, 7 and 8
             if (!ssid.empty()) copyName(c.ssid, ssid);
           });
       });
@@ -588,7 +566,7 @@ void Wifi::join(const std::string& ssid, WifiSecurity security, const std::strin
     command("SET_NETWORK " + id + " ssid " + quoteForSupplicant(ssid));
     if (security == WifiSecurity::Psk) {
       command("SET_NETWORK " + id + " key_mgmt WPA-PSK");
-      command("SET_NETWORK " + id + " psk " + quoteForSupplicant(password));
+      command("SET_NETWORK " + id + " psk \"" + password + "\"");  // always quoted, as Android does: unquoted means a raw 64-hex key
     } else {
       command("SET_NETWORK " + id + " key_mgmt NONE");
       if (security == WifiSecurity::Wep) {

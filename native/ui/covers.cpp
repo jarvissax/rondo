@@ -12,12 +12,12 @@ uint64_t Covers::keyOf(const std::string& path, int w, int h, int blur) {
   return k ^ (uint64_t(w) << 40) ^ (uint64_t(h) << 24) ^ uint64_t(blur) * 0x9e3779b97f4a7c15ULL;
 }
 
-const Texture* Covers::get(const std::string& path, int w, int h, int blur, int64_t now, float* alpha) {
+const Texture* Covers::get(const std::string& path, int w, int h, int blur, int64_t now, float* alpha, int64_t retryNs) {
   uint64_t key = keyOf(path, w, h, blur);
   Entry& e = map_[key];
   e.used = ++clock_;
   // the server's artwork that didn't come (Wi-Fi): asked again after a while, as 1.0.x retried
-  if (e.state == kMissing && path.compare(0, 6, "/thumb") == 0 && now - e.readyAt > 15 * 1000000000LL) e.state = kNone;
+  if (e.state == kMissing && path.compare(0, 6, "/thumb") == 0 && now - e.readyAt > retryNs) e.state = kNone;
   if (e.state == kNone) {
     e.path = path, e.w = w, e.h = h, e.blur = blur;
     if (loader_.request({key, path, w, h, blur})) e.state = kLoading;

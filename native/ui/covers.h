@@ -18,8 +18,9 @@ class Covers {
   explicit Covers(ImageLoader& loader) : loader_(loader) {}
 
   // The picture at w x h (blurRadius > 0: blurred), or null while it loads (or the file has none).
-  // alpha: its fade-in.
-  const Texture* get(const std::string& path, int w, int h, int blurRadius, int64_t now, float* alpha);
+  // alpha: its fade-in. The server's artwork that didn't come is asked again after retryNs.
+  const Texture* get(const std::string& path, int w, int h, int blurRadius, int64_t now, float* alpha,
+                     int64_t retryNs = 15 * 1000000000LL);
   // A small picture kept on the CPU instead (w * h <= 256: a color sample), RGBA, or null while it loads.
   const uint8_t* pixels(const std::string& path, int w, int h, int blurRadius);
   // Queues the picture for the thumbnail cache, filled while the UI is still.

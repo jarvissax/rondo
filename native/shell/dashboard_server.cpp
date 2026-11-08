@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../core/clock.h"
 #include "../core/cover.h"
 #include "../platform/power.h"
 #include "../platform/video_frame.h"
@@ -342,12 +343,10 @@ int coreCall(bool post, const std::string& path, const std::string& json, std::s
     if (post) g_core.post(path, json, reply);
     else g_core.get(path, 0, reply);
   });
-  timespec until;
-  clock_gettime(CLOCK_REALTIME, &until);
-  until.tv_sec += timeoutMs / 1000;
+  int64_t until = now_ns() + int64_t(timeoutMs) * kMs;
   pthread_mutex_lock(&w->mu);
   while (!w->done)
-    if (pthread_cond_timedwait(&w->cv, &w->mu, &until) == ETIMEDOUT) break;
+    if (waitUntil(&w->cv, &w->mu, until) == ETIMEDOUT) break;
   int status = w->done ? w->status : 0;
   body = w->body;
   pthread_mutex_unlock(&w->mu);

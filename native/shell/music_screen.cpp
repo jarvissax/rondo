@@ -118,7 +118,9 @@ class MusicScreen : public MusicListScreen {
       h.title = s.title;
       rows.push_back(h);
       for (const Item& it : s.items) items_.push_back(it);
-      for (Row& r : musicRows(s.items, [this] { return items_; })) rows.push_back(std::move(r));
+      // a song plays with its own section as the queue (1.0.x: musicRows' default)
+      std::vector<Item> section = s.items;
+      for (Row& r : musicRows(s.items, [section] { return section; })) rows.push_back(std::move(r));
     }
     return rows;
   }

@@ -70,7 +70,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
     add_library(tp_${lib} STATIC IMPORTED)
     set_target_properties(tp_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.a)
   endforeach()
-  add_library(rondo_net STATIC core/api.cpp ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp)
+  add_library(rondo_net STATIC core/api.cpp core/net.cpp ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp)
   target_compile_definitions(rondo_net PUBLIC CURL_STATICLIB)
   target_link_libraries(rondo_net PUBLIC rondo_core tp_curl tp_nghttp2 tp_ssl tp_crypto z)
   target_link_libraries(rondo_ui PUBLIC rondo_net)  # rondo-media fetches the server's artwork

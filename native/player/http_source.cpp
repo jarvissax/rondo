@@ -10,6 +10,8 @@
 
 #include <curl/curl.h>
 
+#include "../core/net.h"
+
 extern "C" {
 #include <libavformat/avio.h>
 #include <libavutil/error.h>
@@ -18,7 +20,6 @@ extern "C" {
 
 namespace rondo {
 
-extern const char kRootCerts[];  // the roots 1.0.x bundles (core/api.cpp)
 
 namespace {
 
@@ -84,13 +85,12 @@ bool HttpSource::fill(int64_t at) {
     Transfer t{&body, -1, &stopped_};
     char range[64];
     snprintf(range, sizeof(range), "%lld-%lld", (long long)at, (long long)(at + kChunk - 1));
-    curl_blob roots = {(void*)kRootCerts, strlen(kRootCerts), CURL_BLOB_NOCOPY};
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_URL, url_.c_str());
     curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers_);
     curl_easy_setopt(curl_, CURLOPT_RANGE, range);
-    curl_easy_setopt(curl_, CURLOPT_USERAGENT, "Rondo/2.0-dev (Innioasis Y1; native)");
-    curl_easy_setopt(curl_, CURLOPT_CAINFO_BLOB, &roots);
+    curl_easy_setopt(curl_, CURLOPT_USERAGENT, net::userAgent());
+    net::trust(curl_, wideRoots_);
     curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
     curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
     curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_LIMIT, 1L);  // a transfer stalled for 15 s is given up
@@ -124,10 +124,11 @@ bool HttpSource::fill(int64_t at) {
       return true;
     }
     if (rc == CURLE_ABORTED_BY_CALLBACK || stopped_()) return false;
+    if (rc == CURLE_PEER_FAILED_VERIFICATION && !wideRoots_) wideRoots_ = true;  // the system's roots too
     // 4xx other than an expired link (the server answers 403 once and resolves the song again): no use
     if (rc == CURLE_OK && status >= 400 && status < 500 && status != 403 && status != 408 && status != 429) return false;
     if (nowMs() > giveUp) return false;
-    usleep(rc == CURLE_COULDNT_CONNECT ? 250000 : useconds_t(std::min(2000, 300 * (attempt + 1))) * 1000);
+    usleep(net::retryable(rc) ? 250000 : useconds_t(std::min(2000, 300 * (attempt + 1))) * 1000);
   }
 }
 

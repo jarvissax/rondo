@@ -1,5 +1,6 @@
 // FmRadio (fm.h): every chip call on one worker thread, as 1.0.x's FmRadio did; the sound recorded on a
 // thread of its own.
+#include "../core/clock.h"
 #include "fm.h"
 
 #include <fcntl.h>
@@ -104,10 +105,7 @@ void FmRadio::loop() {
   for (;;) {
     pthread_mutex_lock(&mu_);
     while (jobs_.empty()) {
-      timespec until;
-      clock_gettime(CLOCK_REALTIME, &until);
-      until.tv_sec += 1;
-      if (pthread_cond_timedwait(&cv_, &mu_, &until) != 0) break;
+      if (waitUntil(&cv_, &mu_, now_ns() + kSec) != 0) break;
     }
     std::function<void()> job;
     if (!jobs_.empty()) job = std::move(jobs_.front()), jobs_.pop_front();
@@ -227,6 +225,14 @@ void FmRadio::setMuted(bool muted) {
   post([this, muted] { FMR_set_mute(idx_, muted); });
 }
 
+namespace {
+int64_t nowMsFm() {
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
+}
+}  // namespace
+
 void FmRadio::readStatus() {
   FmStatus now = status();
   if (!now.on) return;
@@ -237,6 +243,20 @@ void FmRadio::readStatus() {
   FMR_get_stereomono(idx_, &stereo);
   if (getenv("RONDO_FM_LOG")) fprintf(stderr, "fm: %d rssi %d stereo %d\n", now.frequency, rssi, stereo);
   int signal = rssi >= -60 ? 4 : rssi >= -70 ? 3 : rssi >= -80 ? 2 : rssi >= -90 ? 1 : 0;
+  // the sound watchdog (FmRadio.kt): MediaTek's FM sound switch is one for the whole system, and
+  // the record stream can stall; switched off, or no sound for 2 s, the path starts again, muted
+  if (!now.seeking && !now.scanning && rec_) {
+    int64_t quiet = nowMsFm() - lastSound_.load();
+    android::String8 v = android::AudioSystem::getParameters(0, android::String8("GetFmEnable"));
+    bool off = strstr(v.string(), "=false") != nullptr;
+    if (off || quiet > 2000) {
+      fprintf(stderr, "rondo-player: the FM sound stopped (%s), starting it again\n", off ? "switched off" : "no sound");
+      FMR_set_mute(idx_, 1);
+      stopSound();
+      startSound();
+      FMR_set_mute(idx_, now.muted);
+    }
+  }
   std::string name = now.name, text = now.text;
   if (rds_) {
     uint16_t st = 0;
@@ -269,6 +289,7 @@ void FmRadio::startSound() {
     return;
   }
   rec_ = rec;
+  lastSound_ = nowMsFm();  // the watchdog's count starts now
   recording_ = true;
   sounding_ = true;
   pthread_create(&recThread_, nullptr, recordThread, this);
@@ -278,9 +299,9 @@ void FmRadio::startSound() {
 void FmRadio::stopSound() {
   if (!rec_) return;
   recording_ = false;
-  pthread_join(recThread_, nullptr);
   auto* rec = static_cast<android::AudioRecord*>(rec_);
-  rec->stop();
+  rec->stop();  // first: a read waiting for sound returns
+  pthread_join(recThread_, nullptr);
   rec->decStrong(this);
   rec_ = nullptr;
   sounding_ = false;
@@ -304,6 +325,7 @@ void FmRadio::record() {
       usleep(5000);
       continue;
     }
+    lastSound_ = nowMsFm();
     sound_(buf, size_t(n) / 4);
   }
 }

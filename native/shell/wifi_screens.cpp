@@ -200,7 +200,11 @@ class WifiScreen : public WifiList {
     onOff.title = "Wi-Fi";
     onOff.trailing = enabled ? "On" : s.wifiEnabled == 1 ? "Turning on\xe2\x80\xa6" : "Off";
     onOff.tile = &tiles::wifi;
-    onOff.onSelect = [enabled] { g_core.wifiEnable(!enabled); };
+    onOff.onSelect = [enabled] {
+      g_core.wifiEnable(!enabled);
+      g_prefs.wifiOn = !enabled;  // remembered, as Android's wifi_on was
+      savePrefsNow();
+    };
     rows.push_back(onOff);
     if (enabled) {
       std::string current = s.wifiState > 0 ? s.ssid : "";

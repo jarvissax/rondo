@@ -27,6 +27,7 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+#include "../core/clock.h"
 #include "../platform/aosp_begin.h"
 #include <binder/IPCThreadState.h>
 #include <binder/ProcessState.h>
@@ -717,11 +718,7 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
     if (gen != gen_) return false;
     uint64_t room = kRingFrames - (writeAt_ - readAt_);
     if (room == 0) {
-      timespec until;
-      clock_gettime(CLOCK_REALTIME, &until);
-      until.tv_nsec += 50000000;
-      if (until.tv_nsec >= 1000000000) until.tv_sec++, until.tv_nsec -= 1000000000;
-      pthread_cond_timedwait(&cv_, &mu_, &until);
+      waitUntil(&cv_, &mu_, now_ns() + 50 * kMs);
       continue;
     }
     int n = int(std::min<uint64_t>(room, uint64_t(frames)));

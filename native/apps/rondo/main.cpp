@@ -188,6 +188,7 @@ int main(int argc, char** argv) {
   // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
   if (g_prefs.bluetoothOn) g_core.btPower(true);
+  g_core.wifiEnable(g_prefs.wifiOn);  // as it was left (rondo-core takes over a running supplicant)
   loader.configure(g_config.server.url, g_config.server.token);
   g_player.configure(g_config.server.url, g_config.server.token);
   // Settings › Server connected to another server or took a token: everything that talks to it
@@ -335,7 +336,8 @@ int main(int argc, char** argv) {
     covers.reserve(u(34), u(34), 24);
     for (float v : {140.f, 22.f, 98.f, 24.f}) covers.reserve(u(v), u(v), 3);
   };
-  int64_t lastPeriodic = 0;
+  int64_t lastPeriodic = 0, lastLog = 0;
+  static const bool kWifiLog = getenv("RONDO_WIFI_LOG"), kPlayerLog = getenv("RONDO_PLAYER_LOG");
   // The timers, the cable and the status: on every quiet wake, and every 250 ms while frames follow each
   // other (a video's pictures, a long animation), which never leave the loop quiet.
   auto periodic = [&]() {
@@ -345,7 +347,7 @@ int main(int argc, char** argv) {
     dispatch.tick(now_ns());
     bluetoothTick();
     fmTick();
-    streamsNetwork(readOnline());
+    streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
@@ -355,11 +357,14 @@ int main(int argc, char** argv) {
       if (usbIdle()) changed = true;
     }
     if ((g_player.state().playing != 0) != status.playing) changed = true;
-    if (now_ns() - lastStatus > 2 * kSec) {  // 1.0.x refreshes on its 500 ms tick
+    if (now_ns() - lastStatus >= 500 * kMs) {  // 1.0.x refreshes on its 500 ms tick
       lastStatus = now_ns();
       Status s{false, readOnline(), readBattery()};
       if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f) status = s, changed = true;
-      if (getenv("RONDO_WIFI_LOG")) {
+    }
+    if (now_ns() - lastLog > 2 * kSec) {  // development: what the services say, every 2 s
+      lastLog = now_ns();
+      if (kWifiLog) {
         CoreState cs = g_core.state();
         char ip[16] = "";
         if (cs.ip) snprintf(ip, sizeof(ip), "%u.%u.%u.%u", cs.ip & 0xff, cs.ip >> 8 & 0xff, cs.ip >> 16 & 0xff, cs.ip >> 24);
@@ -372,7 +377,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < cs.savedCount; i++) names += std::string(i ? ", " : "") + std::to_string(cs.saved[i].id) + " " + cs.saved[i].ssid;
         printf("wifi: saved: %s\n", names.c_str());
       }
-      if (getenv("RONDO_PLAYER_LOG")) {
+      if (kPlayerLog) {
         PlayerState ps = g_player.state();
         printf("player: %s %d/%d %lld/%lld ms vol %d %s\n", ps.playing ? "playing" : "paused", ps.pos, ps.count,
                (long long)ps.positionMs, (long long)ps.durationMs, ps.volume, ps.error);
@@ -411,7 +416,7 @@ int main(int argc, char** argv) {
       }
       bool prefetching = covers.sendPrefetches() | covers.topUp();
       int64_t deadline = dispatch.nextDeadline();
-      int timeout = prefetching ? 50 : 1000;
+      int timeout = prefetching ? 50 : screenDrawing() ? 500 : 1000;  // the status bar's 500 ms tick while lit
       if (deadline) timeout = std::max(0, std::min(timeout, int((deadline - now_ns()) / kMs) + 1));
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));

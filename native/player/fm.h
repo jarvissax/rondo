@@ -76,6 +76,7 @@ class FmRadio {
   void* rec_ = nullptr;  // android::AudioRecord
   pthread_t recThread_;
   std::atomic<bool> recording_{false};
+  std::atomic<int64_t> lastSound_{0};  // when the record stream last gave sound (ms, monotonic)
 };
 
 }  // namespace rondo

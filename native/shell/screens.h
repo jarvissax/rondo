@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../core/api.h"
+#include "../core/version.h"
 #include "app.h"
 
 namespace rondo::shell {
@@ -72,7 +73,7 @@ void serverState(std::function<void(const std::string&)> done);
 void checkAccounts();
 extern std::function<void()> g_onServerChanged;  // the server's address or token changed: everything that talks to it
 // Software update (SoftwareUpdate.kt): this Y1's firmware number, GET /update's version, and which is newer
-constexpr const char* kVersion = "2.0.0";
+constexpr const char* kVersion = kRondoVersion;  // core/version.h (tools/set-version.sh)
 int firmwareLevel();
 std::string updateVersion(const std::string& json);
 bool isNewerVersion(const std::string& latest, const std::string& current);

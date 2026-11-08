@@ -2,6 +2,7 @@
 // hardware, and each picture is rendered into "rondo.video" when the sound's clock reaches it. As in s2,
 // with two differences: the samples come from FFmpeg (their NAL lengths replaced by start codes, the
 // avcC turned into csd-0 and csd-1), and the time a picture is shown is the sound's, not a wall clock.
+#include "../core/clock.h"
 #include "video.h"
 
 #include <stdio.h>
@@ -301,11 +302,7 @@ void VideoDecoder::demuxLoop() {
       }
       bool full = queuedBytes_ > kMaxBytes || (packets_.size() > 1 && packets_.back().ptsUs - packets_.front().ptsUs > kAheadUs);
       if (eos || full || rewind) {
-        timespec until;
-        clock_gettime(CLOCK_REALTIME, &until);
-        until.tv_nsec += 100000000;
-        if (until.tv_nsec >= 1000000000) until.tv_sec++, until.tv_nsec -= 1000000000;
-        pthread_cond_timedwait(&cv_, &mu_, &until);
+        waitUntil(&cv_, &mu_, now_ns() + 100 * kMs);
         continue;
       }
       pthread_mutex_unlock(&mu_);

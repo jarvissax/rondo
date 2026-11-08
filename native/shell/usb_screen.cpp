@@ -28,6 +28,12 @@ void rescanCard() {
   g_library.save();
 }
 
+// what plays is a song on the card (streamed songs and videos keep playing: 1.0.x's isLocal)
+bool cardPlaying() {
+  PlayerState s = g_player.state();
+  return s.path[0] && !isStream(s.path);
+}
+
 class UsbDriveScreen : public ShellListScreen {
  public:
   UsbDriveScreen() : ShellListScreen("USB drive") {
@@ -35,9 +41,9 @@ class UsbDriveScreen : public ShellListScreen {
     render();
   }
   bool onAction(Action a, int steps) override {
-    // nothing on the card can play while the computer has it
-    if ((on_ || switching_) && (a == Action::PlayPause || a == Action::Next || a == Action::Prev || a == Action::LongNext ||
-                                a == Action::LongPrev))
+    // nothing on the card can play while the computer has it (a streamed queue goes on)
+    if ((on_ || switching_) && cardPlaying() &&
+        (a == Action::PlayPause || a == Action::Next || a == Action::Prev || a == Action::LongNext || a == Action::LongPrev))
       return true;
     return ShellListScreen::onAction(a, steps);
   }
@@ -83,7 +89,7 @@ class UsbDriveScreen : public ShellListScreen {
   void switchTo(bool on) {
     if (switching_ || g_switch != 0) return;
     // 1.0.x paused the music; here the song's file is closed too, as vold kills whoever keeps one open
-    if (on && g_player.active()) g_player.release();
+    if (on && g_player.active() && cardPlaying()) g_player.release();
     switching_ = true;
     target_ = on;
     render();

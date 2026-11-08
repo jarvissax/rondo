@@ -251,6 +251,7 @@ class MusicSearchScreen : public Screen {
     q = q.substr(a, b - a + 1);
     showing_ = true;
     requests_.cancelAll();
+    loading_ = false;  // a page that was loading went with the cancel
     next_.clear();
     results_.setMessage("Searching \xe2\x80\x9c" + q + "\xe2\x80\x9d\xe2\x80\xa6");
     std::string path = (video_ ? "/video/search?q=" : "/music/search?type=song&q=") + Api::escape(q);

@@ -109,9 +109,19 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
     int sz = e.dp(12);
     e.icons.draw(e.c, Icon::Play, {float(e.dp(10)), float((int(H) - sz) / 2), float(sz), float(sz)}, p.accent);
   }
+  // Wi-Fi (dimmed offline), the percentage and the battery, 10 units from the right
+  char pct[8];
+  snprintf(pct, sizeof(pct), "%d%%", int(floorf(s.battery * 100 + 0.5f)));
+  Label pl = label(e, pct, 11, true);
+  int wifi = e.dp(14), bw = e.dp(24), bh = e.dp(14);
+  int gw = wifi + e.dp(6) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
+  float gx = w - e.dp(10) - gw, gy = float((int(H) - gh) / 2);
+  // The title stays centered and keeps 10 units clear of the icons on the right, the same on the
+  // left; a longer one (a Wi-Fi network's name) ends in an ellipsis (2.0: 1.0.x let it run into them)
+  float side = w - gx + e.dp(10), maxW = std::max(0.0f, w - 2 * side);
   auto drawTitle = [&](const std::string& text, float alpha) {
     if (text.empty() || alpha <= 0) return;
-    Label l = label(e, text, 15, true);
+    Label l = label(e, text, 15, true, maxW);
     float x = float((int(w) - l.w) / 2), top = float((int(H) - l.h) / 2);
     e.c.pushAlpha(alpha);
     if (p.titleShadow >> 24) drawLabel(e, l, x, top + 1, p.titleShadow);  // setShadowLayer(1, 0, 1, white)
@@ -120,13 +130,6 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   };
   drawTitle(title, 1 - t);
   drawTitle(title2, t);
-  // Wi-Fi (dimmed offline), the percentage and the battery, 10 units from the right
-  char pct[8];
-  snprintf(pct, sizeof(pct), "%d%%", int(floorf(s.battery * 100 + 0.5f)));
-  Label pl = label(e, pct, 11, true);
-  int wifi = e.dp(14), bw = e.dp(24), bh = e.dp(14);
-  int gw = wifi + e.dp(6) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
-  float gx = w - e.dp(10) - gw, gy = float((int(H) - gh) / 2);
   e.c.pushAlpha(s.online ? 1 : 0.25f);
   e.icons.draw(e.c, Icon::Wifi, {gx, gy + (gh - wifi) / 2, float(wifi), float(wifi)}, p.icon);
   e.c.popAlpha();

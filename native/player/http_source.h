@@ -35,6 +35,7 @@ class HttpSource {
   int64_t pos_ = 0, size_ = -1;
   std::vector<uint8_t> chunk_;
   int64_t chunkAt_ = -1;
+  bool wideRoots_ = false;  // the bundled roots didn't verify the server: the system's too
 };
 
 }  // namespace rondo

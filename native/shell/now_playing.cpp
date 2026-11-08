@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <sys/resource.h>
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "../core/lyrics.h"
@@ -322,6 +323,7 @@ class NowPlayingScreen : public Screen {
   bool tick(int64_t now) override {
     now_ = now;
     bool changed = scrub_.tick(now);
+    if (artMissing_ && now - artTried_ >= 3000 * kMs) artTried_ = now, changed = true;  // draw: ask again
     PlayerState s = g_player.state();
     Shown v = shownOf(s);
     if (!(v == shown_)) changed = true;
@@ -344,6 +346,7 @@ class NowPlayingScreen : public Screen {
   int64_t wakeAt() const override {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
+    if (artMissing_) sooner(artTried_ + 3000 * kMs);
     if (lyricsOn()) {
       if (loadPending_) sooner(now_ns() + 20 * kMs);  // the loader's answer
       if (lyrics_.layingOut()) sooner(now_ns());  // the next slice of the layout
@@ -365,7 +368,7 @@ class NowPlayingScreen : public Screen {
     if (!path.empty()) {
       // the backdrop: the artwork shrunk to 6 x 6 pixels, stretched over the screen (ArtColor.blurred)
       float a = 0;
-      if (const Texture* t = e.covers.get(artOf(path, 400), 6, 6, -art, e.now, &a)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
+      if (const Texture* t = e.covers.get(artOf(path, 400), 6, 6, -art, e.now, &a, 3 * 1000 * kMs)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
     }
     e.c.fill({0, 0, w, h}, dim);
     if (lyricsOn()) {
@@ -401,9 +404,15 @@ class NowPlayingScreen : public Screen {
     e.c.shape(ar, e.dpf(6), whiteA(70));
     if (!path.empty()) {
       float a = 0;
-      if (const Texture* t = e.covers.get(artOf(path, 400), art, art, 0, e.now, &a)) {
+      // missing artwork is asked again every 3 s, playing or not (NowPlayingScreen's artRetry)
+      if (const Texture* t = e.covers.get(artOf(path, 400), art, art, 0, e.now, &a, 3 * 1000 * kMs)) {
         e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(6), withAlpha(white, a));
+        artMissing_ = false;
+      } else {
+        artMissing_ = isStream(path);
       }
+    } else {
+      artMissing_ = false;
     }
     e.c.layer(6);
     float cx = ax + art + e.dp(14), cw = w - e.dp(12) - cx;
@@ -506,10 +515,12 @@ class NowPlayingScreen : public Screen {
     }
     if (path == lyricsFor_) return;
     lyricsFor_ = path;
-    for (auto& c : cache())
-      if (c.first == path) {
+    for (size_t i = 0; i < cache().size(); i++)
+      if (cache()[i].first == path) {
         loadPending_ = false;
-        lyrics_.show(c.second);
+        // the most recently used last (LruCache): what is dropped is what went unused longest
+        std::rotate(cache().begin() + long(i), cache().begin() + long(i) + 1, cache().end());
+        lyrics_.show(cache().back().second);
         return;
       }
     lyrics_.showMessage("Finding lyrics\xe2\x80\xa6");
@@ -537,7 +548,7 @@ class NowPlayingScreen : public Screen {
                                                   : "Couldn't get lyrics: " + httpProblem(status, q));
     });
   }
-  // LyricsSource's cache: the last 24 songs
+  // LyricsSource's cache: 24 songs, least recently used dropped first
   static std::vector<std::pair<std::string, Lyrics>>& cache() {
     static std::vector<std::pair<std::string, Lyrics>> c;
     return c;
@@ -655,6 +666,8 @@ class NowPlayingScreen : public Screen {
   Requests requests_;
   std::string lyricsFor_;
   bool loadPending_ = false;
+  bool artMissing_ = false;  // a streamed song's artwork didn't come: drawn again every 3 s
+  int64_t artTried_ = 0;
   int64_t now_ = 0;
   bool options_ = false;
   int cursor_ = 0;

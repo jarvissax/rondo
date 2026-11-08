@@ -34,18 +34,18 @@ void fromOldPrefs(Prefs& p) {
   if (const char* v = value("name=\"account_videos\"")) p.accountVideos = strncmp(v, "false", 5) != 0;
 }
 
-// Android's global bluetooth_on: whether Bluetooth was on
-void fromAndroidBluetooth(Prefs& p) {
+// Android's global settings bluetooth_on or wifi_on: whether that radio was on
+void fromAndroidGlobal(const char* name, bool& out) {
   sqlite3* db = nullptr;
   if (sqlite3_open_v2(kAndroidSettings, &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
     sqlite3_close(db);
     return;
   }
   sqlite3_stmt* q = nullptr;
-  if (sqlite3_prepare_v2(db, "SELECT value FROM global WHERE name = 'bluetooth_on'", -1, &q, nullptr) == SQLITE_OK &&
-      sqlite3_step(q) == SQLITE_ROW) {
+  if (sqlite3_prepare_v2(db, "SELECT value FROM global WHERE name = ?", -1, &q, nullptr) == SQLITE_OK &&
+      sqlite3_bind_text(q, 1, name, -1, SQLITE_STATIC) == SQLITE_OK && sqlite3_step(q) == SQLITE_ROW) {
     const char* value = reinterpret_cast<const char*>(sqlite3_column_text(q, 0));
-    if (value) p.bluetoothOn = atoi(value) != 0;
+    if (value) out = atoi(value) != 0;
   }
   sqlite3_finalize(q);
   sqlite3_close(db);
@@ -74,7 +74,8 @@ void fromAndroid(Prefs& p) {
   }
   sqlite3_finalize(q);
   sqlite3_close(db);
-  fromAndroidBluetooth(p);
+  fromAndroidGlobal("bluetooth_on", p.bluetoothOn);
+  fromAndroidGlobal("wifi_on", p.wifiOn);
 }
 
 }  // namespace
@@ -105,7 +106,10 @@ Prefs loadPrefs(const std::string& path) {
   flag("accountVideos", p.accountVideos);
   // a file from before Bluetooth was native: Android's setting, once
   if (yyjson_is_bool(yyjson_obj_get(root, "bluetoothOn"))) flag("bluetoothOn", p.bluetoothOn);
-  else fromAndroidBluetooth(p);
+  else fromAndroidGlobal("bluetooth_on", p.bluetoothOn);
+  // and from before Wi-Fi's switch was remembered here
+  if (yyjson_is_bool(yyjson_obj_get(root, "wifiOn"))) flag("wifiOn", p.wifiOn);
+  else fromAndroidGlobal("wifi_on", p.wifiOn);
   yyjson_doc_free(doc);
   return p;
 }
@@ -114,10 +118,10 @@ bool savePrefs(const std::string& path, const Prefs& p) {
   char json[400];
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
-                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"fmVolume\":%d}\n",
+                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false",
                    p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false", p.bluetoothOn ? "true" : "false",
-                   p.fmVolume);
+                   p.wifiOn ? "true" : "false", p.fmVolume);
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;
