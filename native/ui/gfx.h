@@ -83,6 +83,10 @@ class Canvas {
   // A video frame: an external (GL_TEXTURE_EXTERNAL_OES) texture, its texture transform (the
   // SurfaceTexture's 4x4, column-major) applied to the corners.
   void video(unsigned externalTex, Rect dst, const float* transform);
+  // The video frame showing now, copied into `into` (w x h, made or remade as needed) at once, outside
+  // begin()/end(): what slides away while the next video starts (Shorts). Draw it with uv {0, 1, 1, -1}
+  // (a rendered texture's rows run up). False when the GPU can't render to a texture.
+  bool captureVideo(unsigned externalTex, const float* transform, int w, int h, Texture& into);
   // A glyph from an A8 atlas; uv in 0..1.
   void glyph(const Texture& atlas, Rect dst, Rect uv, Color c);
   // A color glyph (an emoji, premultiplied RGBA): its own colors at the text's opacity (0-255), with the
@@ -132,6 +136,7 @@ class Canvas {
   int vboNext_ = 0;
   size_t vboCap_ = 0;  // vertices each buffer holds: allocated once, filled with glBufferSubData
   GLuint ibo_ = 0;
+  GLuint fbo_ = 0;  // captureVideo's
   std::vector<Vertex> upload_;
   int draws_ = 0, quads_ = 0;
 };

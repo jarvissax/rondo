@@ -401,6 +401,49 @@ void Canvas::video(unsigned externalTex, Rect dst, const float* m) {
   }
 }
 
+bool Canvas::captureVideo(unsigned externalTex, const float* m, int w, int h, Texture& into) {
+  if (!externalTex || w <= 0 || h <= 0) return false;
+  if (into.id && (into.w != w || into.h != h)) destroyTexture(into);
+  if (!into.id) into = createTexture(w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr, true);
+  if (!fbo_) glGenFramebuffers(1, &fbo_);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, into.id, 0);
+  bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  if (ok) {
+    glViewport(0, 0, w, h);
+    glScissor(0, 0, w, h);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    // the whole screen's coordinates fill the viewport: one quad, the frame through its transform
+    Vertex v[4] = {};
+    const float x[4] = {0, float(w_), 0, float(w_)}, y[4] = {0, 0, float(h_), float(h_)};
+    const float tu[4] = {0, 1, 0, 1}, tv[4] = {1, 1, 0, 0};
+    for (int i = 0; i < 4; i++) {
+      v[i].x = x[i], v[i].y = y[i];
+      v[i].u = m[0] * tu[i] + m[4] * tv[i] + m[12];
+      v[i].v = m[1] * tu[i] + m[5] * tv[i] + m[13];
+      v[i].rgba = 0xffffffff;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, 0);  // from memory: four vertices
+    glUseProgram(programs_[kVideo]);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, externalTex);
+    constexpr GLsizei s = sizeof(Vertex);
+    const char* v0 = reinterpret_cast<const char*>(v);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, s, v0 + offsetof(Vertex, x));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, s, v0 + offsetof(Vertex, u));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, s, v0 + offsetof(Vertex, rgba));
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, s, v0 + offsetof(Vertex, lx));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, s, v0 + offsetof(Vertex, hw));
+    glDisable(GL_BLEND);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glEnable(GL_BLEND);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, w_, h_);
+  glScissor(0, 0, w_, h_);
+  return ok;
+}
+
 void Canvas::image(const Texture& t, Rect dst, Rect uv, float radius, Color tint) {
   if (!t.id || dst.w <= 0 || dst.h <= 0) return;
   if (radius <= 0) {  // square: no mask, no padding

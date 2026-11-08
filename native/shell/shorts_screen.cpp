@@ -3,6 +3,8 @@
 // shorts (the swipe of the app), the wheel is the volume as in every player, center pauses, Menu leaves.
 // The list is the server's /video/shorts: popular shorts, then YouTube's endless "watch next" chain.
 // The next shorts' details and streams are asked for while this one plays, so moving on is quick.
+// 2.0: moving between shorts is the phone's swipe: the short slides up and away as the next one comes
+// in from below (Previous: the other way), and the details beside it cross-fade.
 #include <set>
 #include <unordered_map>
 
@@ -18,6 +20,7 @@ class ShortsScreen : public Screen {
  public:
   ShortsScreen() { load(); }
   ~ShortsScreen() override {
+    destroyTexture(outgoing_);
     if (index_ < 0) return;
     if (savedRepeat_ >= 0) g_player.setRepeat(savedRepeat_);
     g_player.stopVideo();
@@ -58,33 +61,47 @@ class ShortsScreen : public Screen {
     return changed;
   }
 
+  bool step(float) override { return sliding(now_ns()); }
+
   void draw(Env& e, float w, float h) override {
+    canvas_ = &e.c;
     PlayerState s = g_player.state();
     shown_ = shown(s, e.now);
     int bw = int(h) * 9 / 16;  // a 9:16 box as tall as the screen
+    boxW_ = bw, boxH_ = int(h);
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, e.p.dark);
     e.c.fill({0, 0, float(bw), h}, 0xff000000);
     const Item* it = current();
+    // the swipe: the incoming short from below (Next) or above (Previous), the outgoing one ahead of it
+    bool moving = sliding(e.now);
+    float t = moving ? slide_.at(e.now) : 1, off = moving ? (1 - t) * h * float(dir_) : 0;
+    e.c.pushClip({0, 0, float(bw), h});
+    if (moving) {
+      e.c.pushOffset(0, off - h * float(dir_));
+      e.c.layer(1);
+      if (outgoingFrame_) {
+        e.c.image(outgoing_, outgoingRect_, {0, 1, 1, -1});
+      } else if (!outgoing_.thumb.empty()) {
+        float a = 0;
+        if (const Texture* tx = e.covers.get(outgoing_.thumb, bw, int(h), 0, e.now, &a)) e.c.image(*tx, {0, 0, float(bw), h}, {0, 0, 1, 1});
+      }
+      e.c.popOffset();
+    }
+    e.c.pushOffset(0, off);
     VideoSurface* v = VideoSurface::made();
     if (shown_.picture) {
-      float sc = std::min(bw / float(v->width()), h / float(v->height()));
-      float vw = floorf(v->width() * sc + 0.5f), vh = floorf(v->height() * sc + 0.5f);
-      e.c.video(v->texture(), {floorf((bw - vw) / 2), floorf((h - vh) / 2), vw, vh}, v->transform());
+      e.c.layer(1);
+      e.c.video(v->texture(), videoRect(*v, bw, h), v->transform());
     } else if (it) {  // the short's first frame, until its video draws
       float a = 0;
-      if (const Texture* t = e.covers.get(it->thumb, bw, int(h), 0, e.now, &a)) {
+      if (const Texture* tx = e.covers.get(it->thumb, bw, int(h), 0, e.now, &a)) {
         e.c.layer(1);
-        e.c.image(*t, {0, 0, float(bw), h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
+        e.c.image(*tx, {0, 0, float(bw), h}, {0, 0, 1, 1}, 0, withAlpha(white, moving ? 1 : a));
       }
     }
-    // the next three's first frames, loading while this one plays
-    for (int k = index_ + 1; k >= 1 && k <= index_ + 3 && k < int(items_.size()); k++) {
-      float a;
-      e.covers.get(items_[size_t(k)].thumb, bw, int(h), 0, e.now, &a);
-    }
     e.c.layer(2);
-    if (shown_.waiting) {
+    if (shown_.waiting && !moving) {
       Label l = label(e, "Loading\xe2\x80\xa6", 12, false);
       drawLabel(e, l, centerText(0, float(bw), l.w), float((int(h) - l.h) / 2), e.p.darkMuted);
     }
@@ -92,9 +109,25 @@ class ShortsScreen : public Screen {
       int p = e.dp(30);
       e.icons.draw(e.c, Icon::Pause, {float((bw - p) / 2), float((int(h) - p) / 2), float(p), float(p)}, 0xdcffffff);
     }
+    e.c.popOffset();
+    e.c.popClip();
+    // the next three's first frames, loading while this one plays
+    for (int k = index_ + 1; k >= 1 && k <= index_ + 3 && k < int(items_.size()); k++) {
+      float a;
+      e.covers.get(items_[size_t(k)].thumb, bw, int(h), 0, e.now, &a);
+    }
+    e.c.layer(2);
     int ph = e.dp(8);
-    progressBar(e, {0, h - ph, float(bw), float(ph)}, 0x50ffffff, e.p.red, shown_.fraction, 0, 3);
-    drawSide(e, float(bw), w, h);
+    progressBar(e, {0, h - ph, float(bw), float(ph)}, 0x50ffffff, e.p.red, moving ? 0 : shown_.fraction, 0, 3);
+    drawHeader(e, float(bw), w);
+    // the details cross-fade: the outgoing short's out in the first half, the new one's in the second
+    if (moving) {
+      float out = clamp01(1 - t * 2), in = clamp01(t * 2 - 1);
+      if (out > 0) drawDetails(e, float(bw), w, h, outgoing_.title, outgoing_.subtitle, outgoing_.pos, out);
+      if (in > 0) drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), position(), in);
+    } else {
+      drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), position(), 1);
+    }
     e.c.layer(0);
   }
 
@@ -136,23 +169,58 @@ class ShortsScreen : public Screen {
     return v;
   }
 
-  void drawSide(Env& e, float x0, float w, float h) {
-    float left = x0 + e.dp(11), right = w - e.dp(10), top = float(e.dp(7)), bottom = h - e.dp(8);
-    float iw = right - left;
-    // the header: the Shorts sign, the name, the status icons
+  // the video fitted into the box
+  static Rect videoRect(VideoSurface& v, int bw, float h) {
+    float sc = std::min(bw / float(v.width()), h / float(v.height()));
+    float vw = floorf(v.width() * sc + 0.5f), vh = floorf(v.height() * sc + 0.5f);
+    return {floorf((bw - vw) / 2), floorf((h - vh) / 2), vw, vh};
+  }
+  bool sliding(int64_t now) const { return dir_ != 0 && slide_.running(now); }
+
+  // what the side shows for the current short
+  std::string detailTitle() const {
+    const Item* it = current();
+    if (!it) return title_;
+    auto d = details_.find(it->id);
+    return d != details_.end() && !d->second.title.empty() ? d->second.title : !it->title.empty() ? it->title : "\xe2\x80\xa6";
+  }
+  std::string detailSubtitle() const {
+    const Item* it = current();
+    if (!it) return subtitle_;
+    auto d = details_.find(it->id);
+    return d != details_.end() && !d->second.subtitle.empty() ? d->second.subtitle : it->subtitle;
+  }
+  std::string position() const {
+    if (!current()) return "";
+    return std::to_string(index_ + 1) + " of " + std::to_string(items_.size()) + (next_.empty() ? "" : "+");
+  }
+
+  int headHeight(Env& e) {
     Label name = label(e, "Shorts", 14, true);
     int icon = e.dp(14);
     int statusH = std::max(e.dp(11), label(e, "0", 10, true).h);
-    int headH = std::max(std::max(icon, name.h), statusH);
-    std::string titleText, subText, posText;
-    if (const Item* it = current()) {
-      auto d = details_.find(it->id);
-      titleText = d != details_.end() && !d->second.title.empty() ? d->second.title : !it->title.empty() ? it->title : "\xe2\x80\xa6";
-      subText = d != details_.end() && !d->second.subtitle.empty() ? d->second.subtitle : it->subtitle;
-      posText = std::to_string(index_ + 1) + " of " + std::to_string(items_.size()) + (next_.empty() ? "" : "+");
-    } else {
-      titleText = title_, subText = subtitle_;
-    }
+    return std::max(std::max(icon, name.h), statusH);
+  }
+  // the header: the Shorts sign, the name, the status icons
+  void drawHeader(Env& e, float x0, float w) {
+    float left = x0 + e.dp(11), right = w - e.dp(10), top = float(e.dp(7));
+    Label name = label(e, "Shorts", 14, true);
+    int icon = e.dp(14), headH = headHeight(e);
+    e.c.layer(2);
+    e.icons.draw(e.c, Icon::Shorts, {left, top + float((headH - icon) / 2), float(icon), float(icon)}, e.p.red);
+    float statusX = right - statusIconsWidth(e, true);
+    drawLabel(e, label(e, "Shorts", 14, true, std::max(0.f, statusX - (left + icon + e.dp(5)))), left + icon + e.dp(5),
+              top + float((headH - name.h) / 2), white);
+    e.c.pushOffset(0, top);
+    statusIcons(e, right, headH, e.p.darkMuted, true);
+    e.c.popOffset();
+  }
+
+  void drawDetails(Env& e, float x0, float w, float h, const std::string& titleText, const std::string& subText,
+                   const std::string& posText, float alpha) {
+    float left = x0 + e.dp(11), right = w - e.dp(10), top = float(e.dp(7)), bottom = h - e.dp(8);
+    float iw = right - left;
+    int headH = headHeight(e);
     std::vector<Label> title = wrap(e, titleText, 15, true, iw, 4), sub = wrap(e, subText, 11, false, iw, 2);
     Label pos = label(e, posText, 10, false, iw);
     Label hint1 = label(e, "Next / Prev: another short", 9, false, iw);
@@ -167,14 +235,7 @@ class ShortsScreen : public Screen {
     int rest = std::max(0, int(bottom - top) - content);
     int gap1 = rest / 2, gap2 = rest - gap1;  // the two spacers share what is left
     e.c.layer(2);
-    e.icons.draw(e.c, Icon::Shorts, {left, top + float((headH - icon) / 2), float(icon), float(icon)}, e.p.red);
-    float statusX = right - statusIconsWidth(e, true);
-    drawLabel(e, label(e, "Shorts", 14, true, std::max(0.f, statusX - (left + icon + e.dp(5)))), left + icon + e.dp(5),
-              top + float((headH - name.h) / 2), white);
-    e.c.pushOffset(0, top);
-    statusIcons(e, right, headH, e.p.darkMuted, true);
-    e.c.popOffset();
-    e.c.layer(2);
+    e.c.pushAlpha(alpha);
     float y = top + headH + gap1;
     for (const Label& l : title) drawLabel(e, l, left, y, white), y += l.h;
     if (title.empty()) y += titleH;
@@ -186,6 +247,7 @@ class ShortsScreen : public Screen {
     y += pos.h + e.dp(3);
     drawLabel(e, hint1, left, y, e.p.darkFaint);
     drawLabel(e, hint2, left, y + hint1.h, e.p.darkFaint);
+    e.c.popAlpha();
   }
 
   void load() {
@@ -221,6 +283,20 @@ class ShortsScreen : public Screen {
 
   void play(int i, int direction) {
     if (i < 0 || i >= int(items_.size())) return;
+    // the one leaving: its picture as it is now (or its first frame), and its details, to slide away
+    if (index_ >= 0 && i != index_ && canvas_ && boxW_ > 0) {
+      const Item* was = current();
+      outgoing_.thumb = was ? was->thumb : "";
+      outgoing_.title = detailTitle(), outgoing_.subtitle = detailSubtitle(), outgoing_.pos = position();
+      outgoingFrame_ = false;
+      VideoSurface* v = VideoSurface::made();
+      if (shown_.picture && v && v->width() > 0 && v->height() > 0) {
+        outgoingRect_ = videoRect(*v, boxW_, float(boxH_));
+        outgoingFrame_ = canvas_->captureVideo(v->texture(), v->transform(), int(outgoingRect_.w), int(outgoingRect_.h), outgoing_);
+      }
+      dir_ = direction > 0 ? 1 : -1;
+      slide_.begin(0, 1, now_ns(), 300 * kMs, easeOutCubic);
+    }
     index_ = i;
     step_ = direction;
     const Item& item = items_[size_t(i)];
@@ -293,6 +369,16 @@ class ShortsScreen : public Screen {
   bool message_ = false;
   Shown shown_;
   Requests requests_;
+  // the swipe between shorts
+  struct Outgoing : Texture {
+    std::string thumb, title, subtitle, pos;
+  } outgoing_;
+  bool outgoingFrame_ = false;  // outgoing_ holds the picture as it was (else its first frame is drawn)
+  Rect outgoingRect_{};
+  Tween slide_;
+  int dir_ = 0;  // 1: the next came from below, -1: the previous from above
+  Canvas* canvas_ = nullptr;
+  int boxW_ = 0, boxH_ = 0;
 };
 
 }  // namespace
