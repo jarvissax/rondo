@@ -226,8 +226,9 @@ bool Library::applyScan() {
     }
   }
   if (gotListing) {
+    uint64_t before = generation_;
     merge(listing);
-    return true;
+    return generation_ != before;
   }
   if (gotBatch) {
     std::unordered_map<std::string, Track*> byPath;
@@ -248,7 +249,7 @@ bool Library::applyScan() {
   scanning_ = false;
   scanEnded_ = now_ns();
   saveAsync();
-  return true;
+  return true;  // "Scanning…" goes
 }
 
 void Library::saveAsync() {
@@ -355,20 +356,26 @@ void Library::merge(std::vector<FileEntry>& found) {
     if (!t.gone) byPath[t.path] = &t;
   std::unordered_map<std::string, bool> now;
   now.reserve(found.size());
+  bool changed = false;
   for (FileEntry& f : found) {
     now[f.path] = true;
     auto it = byPath.find(f.path);
     if (it == byPath.end()) {
       tracks_.push_back(fromName(f.path, f.size, f.modified, f.video));
+      changed = true;
     } else if (it->second->size != f.size || it->second->modified / 1000 != f.modified / 1000) {
       *it->second = fromName(f.path, f.size, f.modified, f.video);
+      changed = true;
     }
   }
   for (Track& t : tracks_)
     if (!t.gone && !now.count(t.path)) {
       t.gone = true;
       removed_.push_back(t.path);
+      changed = true;
     }
+  // the card as it was (most rescans): nothing to sort again, no screen to rebuild
+  if (!changed) return;
   indexed_ = false;
   generation_++;
 }
