@@ -88,8 +88,8 @@ void CoreHost::btConnect(const std::string& a) { send(kBtConnect, a.data(), uint
 void CoreHost::btDisconnect(const std::string& a) { send(kBtDisconnect, a.data(), uint32_t(a.size())); }
 void CoreHost::btForget(const std::string& a) { send(kBtForget, a.data(), uint32_t(a.size())); }
 
-void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token) {
-  std::string b = baseUrl + '\0' + token;
+void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir) {
+  std::string b = baseUrl + '\0' + token + '\0' + cacheDir;
   send(kApiConfigure, b.data(), uint32_t(b.size()));
 }
 

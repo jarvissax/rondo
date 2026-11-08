@@ -86,7 +86,8 @@ class CoreHost {
   // The server's API (core/api.h), fetched by rondo-core: the reply comes to `done` on the UI thread
   // from pump(). cacheMs: answered from rondo-core's memory if fetched that recently.
   using Reply = std::function<void(int status, const std::string& body)>;
-  void apiConfigure(const std::string& baseUrl, const std::string& token);
+  // cacheDir: where the answers kept for a while are on disk too ("": memory only)
+  void apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir = "");
   uint32_t get(const std::string& path, int cacheMs, Reply done);
   uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
   void cancel(uint32_t id);

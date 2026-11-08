@@ -1,15 +1,19 @@
 // rondo-core's main: the command loop and the services (core.h).
 #include <ctype.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <time.h>
 
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -63,10 +67,32 @@ class ApiWorkers {
       while (starting_ >= 0) usleep(1000);  // each thread takes its handle first
     }
   }
-  void configure(const std::string& base, const std::string& token) {
+  void configure(const std::string& base, const std::string& token, const std::string& diskDir) {
     pthread_mutex_lock(&mu_);
     base_ = base, token_ = token, generation_++;
     cache_.clear();
+    disk_ = diskDir;
+    if (!disk_.empty()) {
+      // the answers on disk are this server's and this token's: another pairing starts it empty
+      mkdir(disk_.c_str(), 0700);
+      char owner[24];
+      snprintf(owner, sizeof(owner), "%016llx", (unsigned long long)fnv(base + '\n' + token));
+      std::string mark = disk_ + "/server", had;
+      if (FILE* f = fopen(mark.c_str(), "r")) {
+        char b[32] = {0};
+        if (fgets(b, sizeof(b), f)) had = b;
+        fclose(f);
+      }
+      if (had != owner) {
+        if (DIR* d = opendir(disk_.c_str())) {
+          while (dirent* e = readdir(d))
+            if (e->d_name[0] != '.') unlink((disk_ + "/" + e->d_name).c_str());
+          closedir(d);
+        }
+        int fd = open(mark.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (fd >= 0) (void)!write(fd, owner, strlen(owner)), close(fd);
+      }
+    }
     pthread_mutex_unlock(&mu_);
   }
   void get(uint32_t id, int ttl, std::string path) {
@@ -124,6 +150,10 @@ class ApiWorkers {
         c.status = 200;
         fresh = true;
       }
+      if (!fresh && j.ttl > 0 && fromDisk(j.path, j.ttl, c.body)) {  // a restart within the cache's time
+        c.status = 200;
+        fresh = true;
+      }
       if (!fresh) {
         c.status = api.get(j.path, c.body);
         c.at = nowMs();
@@ -133,6 +163,7 @@ class ApiWorkers {
           if (cache_.size() > 64) cache_.clear();  // metadata only, and little of it
           cache_[j.path] = c;
           pthread_mutex_unlock(&mu_);
+          if (j.ttl > 0) toDisk(j.path, c.body);
         }
       }
       reply(j.id, c.status, c.body);
@@ -182,6 +213,84 @@ class ApiWorkers {
       fclose(f);
     }
   }
+  // The memory cache on disk too (answers only, never media): the same time to live, from the time it
+  // was fetched, so a screen opened within it after a restart opens at once, as it would have before.
+  static uint64_t fnv(const std::string& s) {
+    uint64_t h = 1469598103934665603ULL;
+    for (unsigned char ch : s) h = (h ^ ch) * 1099511628211ULL;
+    return h;
+  }
+  static int64_t wallMs() {
+    timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
+  }
+  std::string diskFile(const std::string& path) {
+    pthread_mutex_lock(&mu_);
+    std::string dir = disk_;
+    pthread_mutex_unlock(&mu_);
+    if (dir.empty()) return "";
+    char name[24];
+    snprintf(name, sizeof(name), "/%016llx", (unsigned long long)fnv(path));
+    return dir + name;
+  }
+  bool fromDisk(const std::string& path, int ttl, std::string& body) {
+    std::string file = diskFile(path);
+    FILE* f = file.empty() ? nullptr : fopen(file.c_str(), "rb");
+    if (!f) return false;
+    // the first line: when it was fetched (ms since 1970) and the path it answers
+    char head[1100] = {0};
+    bool ok = false;
+    if (fgets(head, sizeof(head), f)) {
+      char* sp = strchr(head, ' ');
+      int64_t at = atoll(head);
+      std::string p = sp ? std::string(sp + 1) : "";
+      if (!p.empty() && p.back() == '\n') p.pop_back();
+      int64_t age = wallMs() - at;
+      if (p == path && age >= 0 && age < ttl) {
+        body.clear();
+        char b[16384];
+        size_t n;
+        while ((n = fread(b, 1, sizeof(b), f)) > 0) body.append(b, n);
+        ok = !body.empty();
+      }
+    }
+    fclose(f);
+    return ok;
+  }
+  void toDisk(const std::string& path, const std::string& body) {
+    std::string file = diskFile(path);
+    if (file.empty() || path.size() > 1000) return;
+    std::string tmp = file + ".part";
+    int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);  // the account's feeds: this user only
+    FILE* f = fd >= 0 ? fdopen(fd, "wb") : nullptr;
+    if (!f) {
+      if (fd >= 0) close(fd);
+      return;
+    }
+    fprintf(f, "%lld %s\n", (long long)wallMs(), path.c_str());
+    bool ok = fwrite(body.data(), 1, body.size(), f) == body.size();
+    ok = fclose(f) == 0 && ok;
+    if (!ok || rename(tmp.c_str(), file.c_str()) != 0) {
+      unlink(tmp.c_str());
+      return;
+    }
+    // at most 128 answers: the oldest go
+    std::string dir = file.substr(0, file.rfind('/'));
+    std::vector<std::pair<time_t, std::string>> all;
+    if (DIR* d = opendir(dir.c_str())) {
+      while (dirent* e = readdir(d)) {
+        if (e->d_name[0] == '.' || !strcmp(e->d_name, "server")) continue;
+        struct stat st;
+        std::string p = dir + "/" + e->d_name;
+        if (stat(p.c_str(), &st) == 0) all.push_back({st.st_mtime, p});
+      }
+      closedir(d);
+    }
+    if (all.size() <= 128) return;
+    std::sort(all.begin(), all.end());
+    for (size_t i = 0; i + 96 < all.size(); i++) unlink(all[i].second.c_str());
+  }
   static int64_t nowMs() {
     timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
@@ -194,7 +303,7 @@ class ApiWorkers {
   pthread_cond_t cv_ = PTHREAD_COND_INITIALIZER;
   std::deque<Job> jobs_;
   std::map<std::string, Cached> cache_;
-  std::string base_, token_;
+  std::string base_, token_, disk_;
   int generation_ = 0;
 };
 
@@ -244,9 +353,11 @@ void runCore(int sock, CoreState* shm) {
       case kBtDisconnect: bt.disconnect(std::string(reinterpret_cast<const char*>(p), len)); break;
       case kBtForget: bt.forget(std::string(reinterpret_cast<const char*>(p), len)); break;
       case kApiConfigure: {
+        // the base URL, a zero byte, the token, a zero byte, the cache's folder
         std::string s(reinterpret_cast<const char*>(p), len);
-        size_t z = s.find('\0');
-        api.configure(s.substr(0, z), z == std::string::npos ? "" : s.substr(z + 1));
+        size_t z = s.find('\0'), z2 = z == std::string::npos ? z : s.find('\0', z + 1);
+        std::string token = z == std::string::npos ? "" : s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
+        api.configure(s.substr(0, z), token, z2 == std::string::npos ? "" : s.substr(z2 + 1));
         break;
       }
       case kApiPost: {

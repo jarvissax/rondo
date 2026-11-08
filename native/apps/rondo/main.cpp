@@ -182,7 +182,9 @@ int main(int argc, char** argv) {
   g_prefs = loadPrefs(prefsPath);
   // the screen at its brightness whatever the last owner left (Android's 0, or a dimmed screen)
   applyBrightness(g_prefs.brightness);
-  g_core.apiConfigure(g_config.server.url, g_config.server.token);
+  // the server's answers kept for two minutes, on disk too: beside the prefs
+  const std::string apiCache = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache";
+  g_core.apiConfigure(g_config.server.url, g_config.server.token, apiCache);
   // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
   if (g_prefs.bluetoothOn) g_core.btPower(true);
@@ -190,7 +192,7 @@ int main(int argc, char** argv) {
   g_player.configure(g_config.server.url, g_config.server.token);
   // Settings › Server connected to another server or took a token: everything that talks to it
   g_onServerChanged = [&] {
-    g_core.apiConfigure(g_config.server.url, g_config.server.token);
+    g_core.apiConfigure(g_config.server.url, g_config.server.token, apiCache);
     loader.configure(g_config.server.url, g_config.server.token);
     g_player.configure(g_config.server.url, g_config.server.token);
   };
