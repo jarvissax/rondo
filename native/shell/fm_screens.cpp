@@ -77,7 +77,7 @@ void tune(int f) {
   g_player.fmTune(f);
 }
 // the wheel: ±0.1 MHz a step, wrapping at the band's ends
-void step(int steps) {
+void tuneBy(int steps) {  // (not "step": a screen's own step(float) would hide it)
   int span = bandMax() - bandMin() + 1;
   tune(bandMin() + ((g_config.radio.frequency - bandMin() + steps) % span + span) % span);
 }
@@ -374,7 +374,7 @@ class FmScreen : public Screen {
       case Action::Up:
       case Action::Down: {
         int dir = a == Action::Down ? 1 : -1;
-        if (tuning_ && s.fmOn) step(dir * steps);
+        if (tuning_ && s.fmOn) tuneBy(dir * steps);
         else g_app->changeVolume(dir);
         break;
       }
@@ -386,7 +386,7 @@ class FmScreen : public Screen {
       case Action::Next:
       case Action::Prev: seek(a == Action::Next); break;
       case Action::LongNext:
-      case Action::LongPrev: step(a == Action::LongNext ? 1 : -1); break;
+      case Action::LongPrev: tuneBy(a == Action::LongNext ? 1 : -1); break;
       case Action::SeekEnd: break;
       case Action::PlayPause:
         if (!s.fmOn && !s.fmStarting) startRadio();

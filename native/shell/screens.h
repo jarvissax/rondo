@@ -70,6 +70,8 @@ std::string updateVersion(const std::string& json);
 bool isNewerVersion(const std::string& latest, const std::string& current);
 std::string bluetoothState();
 void bluetoothTick();
+// From the loop: offline pauses a streamed song, online resumes it; a failed stream is tried again
+void streamsNetwork(bool online);
 // the USB drive (usb_screen.cpp): its screen; the cable plugged into a computer or pulled out; the
 // end of a switch nobody watched (true: something to draw again)
 std::unique_ptr<Screen> makeUsbDrive();

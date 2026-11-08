@@ -370,7 +370,6 @@ class SettingsScreen : public ShellListScreen {
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    const Status& st = g_app->status();
     add("Dashboard", "", tiles::dashboard, true, [] { g_app->push(makeDashboard()); });
     add("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); });
     add("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); });

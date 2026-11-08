@@ -1,6 +1,9 @@
 // Songs the server streams, as the player's queue holds them: "/s/<id>/140" paths (1.0.x's
 // audioMediaItem: AAC from YouTube Music through the server's range proxy), with what the screens show
 // about each (title, subtitle, artwork), kept here since the library knows nothing of them.
+#include <stdio.h>
+#include <string.h>
+
 #include <map>
 
 #include "../core/api.h"
@@ -62,6 +65,53 @@ void playStreamsAppend(const Item& item, bool next) {
   registry()[p] = item;
   if (next) g_player.insertNext(p);
   else g_player.append(p);
+}
+
+}  // namespace rondo::shell
+
+namespace rondo::shell {
+
+// 1.0.x's connectivity receiver and recover() (PlayerService.kt), for the songs the server streams
+// (the card doesn't care about Wi-Fi): offline pauses what plays, or what failed for lack of a
+// connection; online again resumes it. A stream that fails while online is tried again where it
+// stopped, three times for the same place (1.0.x: three recoveries a minute, each a few seconds; here
+// each try is the stream's own 20 s of retries).
+void streamsNetwork(bool online) {
+  static bool wasOnline = online, pausedForNetwork = false;
+  static int64_t failKey = -1, triedAt = 0;
+  static int tries = 0;
+  static bool waiting = false;  // a try was asked for: the failure must clear before another
+  PlayerState s = g_player.state();
+  bool streaming = s.index >= 0 && strncmp(s.path, "/s/", 3) == 0;
+  int64_t now = now_ns();
+  if (online != wasOnline) {
+    wasOnline = online;
+    if (streaming && !online && (s.playing || s.failed)) {
+      fprintf(stderr, "rondo: connectivity: offline, paused\n");
+      pausedForNetwork = true;
+      if (s.playing) g_player.pause();
+    } else if (streaming && online && (pausedForNetwork || s.failed)) {
+      fprintf(stderr, "rondo: connectivity: online, playing again\n");
+      pausedForNetwork = false;
+      g_player.play();
+    }
+    return;
+  }
+  if (!streaming) pausedForNetwork = false;
+  if (!s.failed) waiting = false;
+  // recover(): online, a stream that failed
+  if (!streaming || !online || !s.failed || (waiting && now - triedAt < 5 * kSec)) return;
+  int64_t key = int64_t(s.index) * 100000000LL + s.positionMs / 1000;  // the song and the second it stopped at
+  if (key != failKey) failKey = key, tries = 0;
+  if (tries == 3) {
+    fprintf(stderr, "rondo: giving up on the stream after 3 tries\n");
+    tries++;
+  }
+  if (tries > 3) return;
+  tries++;
+  waiting = true, triedAt = now;
+  fprintf(stderr, "rondo: the stream failed: again where it stopped (try %d)\n", tries);
+  g_player.play();
 }
 
 }  // namespace rondo::shell

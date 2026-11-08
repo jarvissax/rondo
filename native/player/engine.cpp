@@ -63,6 +63,7 @@ struct Marker {  // where in the stream a track begins (pos -1: the queue's end)
   uint64_t at;
   int pos;
   int64_t durationMs, startMs;
+  bool failed = false;  // a stream stopped here (the network, the server): playback stops at startMs of pos
 };
 
 class Engine {
@@ -187,6 +188,11 @@ class Engine {
   int64_t heardDuration_ = 0, heardStartMs_ = 0;
   uint64_t heardFrom_ = 0;     // stream frame where the heard track began
   bool ended_ = false;
+  // A song the server streams that couldn't be read (no connection, the server failing): the player
+  // stops where it failed, as 1.0.x's ExoPlayer did, instead of skipping on; Play goes on from there.
+  bool failed_ = false;
+  bool streamFailed_ = false;  // decodeTrack's answer
+  uint64_t trackAt_ = 0;       // where in the stream the track decodeTrack opened begins
   std::string error_;
 
   // the ring: stream frames [readAt_, writeAt_) are decoded and not yet sent to OpenSL
@@ -233,6 +239,7 @@ void Engine::publish() {
   s.videoHeight = videoOn_ ? video_.height() : 0;
   s.bufferedMs = videoOn_ ? std::max(s.positionMs, video_.readMs()) : 0;
   s.videoFailed = videoOn_ && video_.failed();
+  s.failed = failed_;
   FmStatus fm = fm_.status();
   s.fmOn = fm.on, s.fmStarting = fm.starting, s.fmMuted = fm.muted, s.fmSeeking = fm.seeking;
   s.fmScanning = fm.scanning, s.fmStereo = fm.stereo, s.fmSignal = fm.signal, s.fmSpeaker = fmSpeaker_;
@@ -265,6 +272,7 @@ void Engine::restart(int pos, int64_t atMs, bool play) {
   heardStartMs_ = atMs;
   heardDuration_ = 0;
   ended_ = false;
+  failed_ = false;
   error_.clear();
   pos_ = pos;
   pthread_cond_broadcast(&cv_);
@@ -352,20 +360,27 @@ void Engine::command(const std::vector<uint8_t>& m) {
       break;
     }
     case kToggle:
+    case kPlay:
+      if (failed_ && heardPos_ >= 0) {  // a stream that failed: again from where it stopped
+        int64_t at = heardStartMs_ + int64_t(playedAt_ - heardFrom_) * 1000 / kRate;
+        restart(heardPos_, std::max<int64_t>(0, at), true);
+        break;
+      }
+      if (type == kPlay) {
+        if (released_) {
+          released_ = false;
+          restart(heardPos_, releasedMs_, true);
+        } else if (heardPos_ >= 0 && !playing_) {
+          setPlaying(true);
+        }
+        break;
+      }
       if (released_) {
         released_ = false;
         restart(heardPos_, releasedMs_, true);
       } else if (heardPos_ >= 0) {
         if (ended_) restart(heardPos_, 0, true);
         else setPlaying(!playing_);
-      }
-      break;
-    case kPlay:
-      if (released_) {
-        released_ = false;
-        restart(heardPos_, releasedMs_, true);
-      } else if (heardPos_ >= 0 && !playing_) {
-        setPlaying(true);
       }
       break;
     case kConfigure: {
@@ -695,6 +710,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   if (ok && gen == gen_) {
     int64_t duration = fmt->duration > 0 ? fmt->duration / 1000 : 0;
     markers_.push_back({writeAt_, pos, duration, seekMs});
+    trackAt_ = writeAt_;
     if (heardPos_ == pos && readAt_ == markers_.back().at) heardDuration_ = duration;
     // a video's sound again (Repeat): the picture's next pass starts where this one does on the clock
     if (videoOn_ && videoPasses_++ > 0) video_.loop(restartMs_ * 1000 + int64_t(writeAt_) * 1000000 / kRate);
@@ -723,8 +739,13 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     pthread_mutex_unlock(&mu_);
     return kept;
   };
+  bool readFailed = false;
   while (ok && !interrupted) {
     int r = av_read_frame(fmt, pkt);
+    if (r < 0 && streamed && r != AVERROR_EOF) {  // the stream broke off (HttpSource tried for 20 s)
+      readFailed = true;
+      break;
+    }
     if (r < 0) {  // the end: drain the decoder and the resampler
       avcodec_send_packet(dec, nullptr);
       while (avcodec_receive_frame(dec, frame) == 0)
@@ -748,6 +769,13 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   avcodec_free_context(&dec);
   avformat_close_input(&fmt);
   pthread_mutex_lock(&mu_);
+  if (streamed && gen == gen_ && !interrupted && (!ok || readFailed)) {
+    streamFailed_ = true;
+    if (readFailed) {
+      error_ = "Can't play this song";
+      fprintf(stderr, "rondo-player: the stream broke off\n");
+    }
+  }
   return !interrupted && gen == gen_;
 }
 
@@ -769,8 +797,18 @@ void Engine::decodeLoop() {
     startPos_ = -1;
     // one track after another into the same stream: gapless
     for (int tries = 0; pos >= 0 && gen == gen_;) {
+      uint64_t before = writeAt_;
+      bool opened = false;
+      trackAt_ = UINT64_MAX;
       bool done = decodeTrack(pos, seekMs, gen);
       if (gen != gen_) break;
+      if (streamFailed_) {  // stop where it failed (heard once what was read before plays out)
+        streamFailed_ = false;
+        opened = trackAt_ != UINT64_MAX;
+        int64_t at = opened ? seekMs + int64_t(writeAt_ - trackAt_) * 1000 / kRate : seekMs;
+        markers_.push_back({opened ? writeAt_ : before, pos, 0, at, true});
+        break;
+      }
       seekMs = 0;
       if (!done && !error_.empty()) {  // can't be played: skip it (skipBroken)
         if (++tries > int(order_.size())) break;
@@ -826,6 +864,16 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
   while (!markers_.empty() && markers_.front().at <= playedAt_) {
     Marker m = markers_.front();
     markers_.pop_front();
+    if (m.failed) {  // a stream failed here: stopped at that place of that song, Play goes on from it
+      failed_ = true;
+      playing_ = false;
+      if (heardPos_ != m.pos) heardDuration_ = 0;
+      heardPos_ = pos_ = m.pos;
+      heardFrom_ = m.at;
+      heardStartMs_ = m.startMs;
+      pthread_cond_broadcast(&cv_);
+      break;
+    }
     if (m.pos < 0) {  // the queue ended
       ended_ = true;
       playing_ = false;

@@ -40,6 +40,7 @@ struct PlayerState {
   int32_t videoHeight;   // the picture's height (0 until known)
   int64_t bufferedMs;    // how far the video's picture has been read
   int32_t videoFailed;   // the video's picture can't be shown (its sound may still play)
+  int32_t failed;        // a streamed song stopped where it couldn't be read: Play goes on from there
   // FM radio (player/fm.h): it plays instead of music (music is paused meanwhile)
   int32_t fmOn, fmStarting, fmMuted, fmSeeking, fmScanning, fmStereo, fmSignal, fmSpeaker;
   int32_t fmError;      // 1: no wired headphones (the antenna), 2: the chip didn't start

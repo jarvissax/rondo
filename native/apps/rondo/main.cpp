@@ -343,6 +343,7 @@ int main(int argc, char** argv) {
     dispatch.tick(now_ns());
     bluetoothTick();
     fmTick();
+    streamsNetwork(readOnline());
     if (app.tick(now_ns())) changed = true;
     if (now_ns() - lastUsb > kSec) {  // the cable, once a second
       lastUsb = now_ns();
