@@ -7,6 +7,7 @@ import { type Browse, registerBrowseRoutes } from "./browse.js";
 import { TvAccount } from "./tv.js";
 import type { Config } from "./config.js";
 import { registerCors } from "./cors.js";
+import { EqService, registerEqRoutes } from "./eq.js";
 import { Health } from "./health.js";
 import { type LyricsDeps, LyricsService, lrclibGet, registerLyricsRoutes } from "./lyrics.js";
 import { execRunner, Resolver, type YtdlpRunner } from "./resolver.js";
@@ -25,7 +26,7 @@ export interface App {
 
 export async function buildApp(
   config: Config,
-  opts: { ytdlpRunner?: YtdlpRunner; upstreamTiming?: UpstreamTiming; lyrics?: Partial<LyricsDeps>; newCode?: () => string; tv?: TvAccount; updates?: Updates; serverUpdate?: ServerUpdate } = {},
+  opts: { ytdlpRunner?: YtdlpRunner; upstreamTiming?: UpstreamTiming; lyrics?: Partial<LyricsDeps>; newCode?: () => string; tv?: TvAccount; updates?: Updates; serverUpdate?: ServerUpdate; eq?: EqService } = {},
 ): Promise<App> {
   const logs = new LogRing();
   const app = Fastify({
@@ -88,6 +89,7 @@ export async function buildApp(
     ...opts.lyrics,
   });
   registerLyricsRoutes(app, { lyrics });
+  registerEqRoutes(app, opts.eq ?? new EqService()); // Rondo 2.0: Settings › Sound › Headphone match
 
   return { app, health, resolver, admin, tv };
 }

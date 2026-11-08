@@ -4,6 +4,10 @@
 // the output in use needs, again whenever that output changes.
 #include <math.h>
 #include <stdio.h>
+#include <yyjson.h>
+
+#include <memory>
+
 
 #include "../core/sound.h"
 #include "../platform/power.h"
@@ -25,6 +29,12 @@ struct Output {
 
 // the output music plays on: Bluetooth headphones connected, else wired headphones in, else the speaker
 Output currentOutput() {
+  // development: RONDO_SOUND_OUTPUT=headphones, or bt:<a name> (a Bluetooth device by that name)
+  if (const char* o = getenv("RONDO_SOUND_OUTPUT")) {
+    std::string v = o;
+    if (v.compare(0, 3, "bt:") == 0) return {"bt:test", v.substr(3)};
+    if (v == "headphones") return {"headphones", "Headphones"};
+  }
   CoreState s = g_core.state();
   for (int i = 0; i < s.btCount; i++)
     if (s.bt[i].a2dp == 2) return {std::string("bt:") + s.bt[i].address, btName(s.bt[i])};
@@ -219,6 +229,151 @@ class EqualizerScreen : public Screen {
   int band_ = 5;  // 1 kHz
 };
 
+// Headphone match: AutoEq's correction for the model (through the server, /eq/search and
+// /eq/preset), looked up by the Bluetooth device's name or by a name typed in; the one picked is kept
+// with the output.
+class HeadphoneMatchScreen : public ShellListScreen {
+ public:
+  explicit HeadphoneMatchScreen(Output o) : ShellListScreen("Headphone match"), out_(std::move(o)) {
+    if (out_.key.compare(0, 3, "bt:") == 0) lookUp(out_.label);
+    else render();
+  }
+  ~HeadphoneMatchScreen() override { *alive_ = false; }
+
+ private:
+  struct Found {
+    std::string id, name, source;
+  };
+  void lookUp(const std::string& q) {
+    query_ = q, state_ = "Looking\xe2\x80\xa6", found_.clear();
+    render();
+    auto alive = alive_;
+    g_core.get("/eq/search?q=" + Api::escape(q), 60000, [this, alive](int status, const std::string& body) {
+      if (!*alive) return;
+      found_.clear();
+      if (status == 404) state_ = "This server can't look headphones up yet: update it";
+      else if (status != 200) state_ = "The server didn't answer";
+      else if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+        size_t i, n;
+        yyjson_val* e;
+        yyjson_arr_foreach(yyjson_obj_get(yyjson_doc_get_root(d), "items"), i, n, e) {
+          auto str = [e](const char* k) {
+            yyjson_val* v = yyjson_obj_get(e, k);
+            return std::string(yyjson_is_str(v) ? yyjson_get_str(v) : "");
+          };
+          found_.push_back({str("id"), str("name"), str("source")});
+        }
+        yyjson_doc_free(d);
+        state_ = found_.empty() ? "No model by that name" : "";
+      }
+      fresh_ = true;  // new answers: the first of them picked
+      render();
+    });
+  }
+  void pick(Found f) {  // a copy: the row holding it goes as the list is drawn again
+    state_ = "Getting " + f.name + "\xe2\x80\xa6", found_.clear();
+    render();
+    auto alive = alive_;
+    std::string key = out_.key;
+    g_core.get("/eq/preset?id=" + Api::escape(f.id), 0, [this, alive, key, f](int status, const std::string& body) {
+      SoundProfile p = profile(key);
+      bool ok = false;
+      if (status == 200)
+        if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+          yyjson_val* r = yyjson_doc_get_root(d);
+          yyjson_val* pre = yyjson_obj_get(r, "preampDb");
+          p.autoEq.clear();
+          size_t i, n;
+          yyjson_val* e;
+          yyjson_arr_foreach(yyjson_obj_get(r, "filters"), i, n, e) {
+            yyjson_val* t = yyjson_obj_get(e, "type");
+            std::string type = yyjson_is_str(t) ? yyjson_get_str(t) : "";
+            Filter flt;
+            flt.type = type == "LSC" ? FilterType::LowShelf : type == "HSC" ? FilterType::HighShelf
+                       : type == "LPQ" ? FilterType::LowPass : type == "HPQ" ? FilterType::HighPass : FilterType::Peak;
+            flt.freq = float(yyjson_get_num(yyjson_obj_get(e, "freq")));
+            flt.gainDb = float(yyjson_get_num(yyjson_obj_get(e, "gainDb")));
+            flt.q = float(yyjson_get_num(yyjson_obj_get(e, "q")));
+            if (flt.freq > 0 && p.autoEq.size() < 16) p.autoEq.push_back(flt);
+          }
+          p.autoEqPreamp = yyjson_is_num(pre) ? float(yyjson_get_num(pre)) : 0;
+          yyjson_doc_free(d);
+          ok = !p.autoEq.empty();
+        }
+      if (ok) {
+        p.autoEqName = f.name, p.autoEqSource = f.source, p.preset = "autoeq";
+        profile(key) = p;
+        changed();
+        saveNow();
+      }
+      if (!*alive) return;
+      if (ok) {
+        g_app->pop();
+        return;
+      }
+      state_ = status == 0 ? "The server didn't answer" : "That model's correction didn't come";
+      render();
+    });
+  }
+  void render() {
+    std::vector<Row> rows;
+    const SoundProfile& p = profile(out_.key);
+    if (!p.autoEq.empty()) {
+      Row now;
+      now.title = p.autoEqName;
+      now.subtitle = "In use, measured by " + p.autoEqSource;
+      now.trailing = p.preset == "autoeq" ? "Current" : "";
+      std::string key = out_.key;
+      now.onSelect = [key] {
+        profile(key).preset = "autoeq";
+        changed();
+        g_app->pop();
+      };
+      rows.push_back(now);
+    }
+    if (!query_.empty()) {
+      Row h;
+      h.header = true;
+      h.title = "For \xe2\x80\x9c" + query_ + "\xe2\x80\x9d";
+      rows.push_back(h);
+    }
+    if (!state_.empty()) {
+      Row r;
+      r.title = state_;
+      r.enabled = false;
+      rows.push_back(r);
+    }
+    for (const Found& f : found_) {
+      Row r;
+      r.title = f.name;
+      r.subtitle = "Measured by " + f.source;
+      r.onSelect = [this, f] { pick(f); };
+      rows.push_back(r);
+    }
+    Row search;
+    search.title = "Search by model";
+    search.subtitle = "From AutoEq's measurements of about 9,000 headphones";
+    search.chevron = true;
+    auto alive = alive_;
+    search.onSelect = [this, alive] {
+      g_app->push(makeTextEntry(
+          "Headphone model", query_, "Search", "Like Sennheiser HD 650 or AirPods Pro", 60, nullptr,
+          [](const std::string& q, std::function<void(const std::string&)> answer) { answer(q.empty() ? "Type a model" : ""); },
+          [this, alive](const std::string& q) {
+            if (*alive) lookUp(q);
+          }));
+    };
+    rows.push_back(search);
+    list_.setRows(std::move(rows), !fresh_);
+    fresh_ = false;
+  }
+  Output out_;
+  std::string query_, state_;
+  bool fresh_ = false;
+  std::vector<Found> found_;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+};
+
 class SoundScreen : public ShellListScreen {
  public:
   SoundScreen() : ShellListScreen("Sound") { render(); }
@@ -258,6 +413,7 @@ class SoundScreen : public ShellListScreen {
       std::vector<std::pair<std::string, std::string>> c;
       for (const EqPreset& e : eqPresets()) c.push_back({e.name, e.id});
       for (const UserPreset& u : g_sound.userPresets) c.push_back({u.name, "user:" + u.name});
+      if (!profile(key).autoEq.empty()) c.push_back({profile(key).autoEqName, "autoeq"});
       c.push_back({"Custom", "custom"});
       g_app->push(makeChoice(
           "Equalizer", c, [key] { return profile(key).preset; },
@@ -268,7 +424,7 @@ class SoundScreen : public ShellListScreen {
           [](const std::string& v) {
             for (const EqPreset& e : eqPresets())
               if (v == e.id) return std::string(e.note);
-            return std::string(v == "custom" ? "your own bands" : "");
+            return std::string(v == "custom" ? "your own bands" : v == "autoeq" ? "headphone match" : "");
           }));
     };
     rows.push_back(eq);
@@ -279,6 +435,14 @@ class SoundScreen : public ShellListScreen {
     Output o = out_;
     edit.onSelect = [o] { g_app->push(std::unique_ptr<Screen>(new EqualizerScreen(o))); };
     rows.push_back(edit);
+    if (key != "speaker") {  // headphones, wired or Bluetooth
+      Row match;
+      match.title = "Headphone match";
+      match.subtitle = p.autoEq.empty() ? "A correction for your model (AutoEq)" : p.autoEqName;
+      match.chevron = true;
+      match.onSelect = [o] { g_app->push(std::unique_ptr<Screen>(new HeadphoneMatchScreen(o))); };
+      rows.push_back(match);
+    }
     Row boost;
     boost.title = "Loudness boost";
     boost.subtitle = "Louder; the peaks are held, never clipped";

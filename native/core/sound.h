@@ -29,9 +29,13 @@ struct UserPreset {
 };
 
 struct SoundProfile {  // one output's sound
-  std::string preset = "flat";  // a built-in id, "custom", or "user:<name>"
+  std::string preset = "flat";  // a built-in id, "custom", "user:<name>", or "autoeq"
   std::array<float, kEqBands> custom{};  // the custom equalizer, dB
   int boostDb = 0;                       // the loudness boost: 0, 3, 6, 9 or 12
+  // Headphone match: AutoEq's correction for a model, as the server gave it (kept: it works offline)
+  std::string autoEqName, autoEqSource;
+  float autoEqPreamp = 0;
+  std::vector<Filter> autoEq;
 };
 
 struct SoundConfig {

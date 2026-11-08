@@ -84,6 +84,7 @@ const std::vector<EqPreset>& eqPresets() {
 
 std::string presetName(const SoundConfig& c, const SoundProfile& p) {
   if (p.preset == "custom") return "Custom";
+  if (p.preset == "autoeq" && !p.autoEq.empty()) return p.autoEqName;
   if (const UserPreset* u = userPreset(c, p.preset)) return u->name;
   for (const EqPreset& e : eqPresets())
     if (p.preset == e.id) return e.name;
@@ -94,6 +95,14 @@ std::array<float, kEqBands> presetGains(const SoundConfig& c, const SoundProfile
   std::array<float, kEqBands> g{};
   if (p.preset == "custom") return p.custom;
   if (const UserPreset* u = userPreset(c, p.preset)) return u->gains;
+  if (p.preset == "autoeq" && !p.autoEq.empty()) {  // the correction's curve, read off at the ten bands
+    for (int i = 0; i < kEqBands; i++) {
+      float db = 0;  // the shape: the preamp only keeps it from clipping
+      for (const Filter& f : p.autoEq) db += Dsp::responseDb(f, kEqFreqs[i]);
+      g[size_t(i)] = std::max(-12.f, std::min(12.f, roundf(db)));
+    }
+    return g;
+  }
   if (const TenBand* t = rondoPreset(p.preset)) {
     std::copy(t->gains, t->gains + kEqBands, g.begin());
     return g;
@@ -110,13 +119,16 @@ std::array<float, kEqBands> presetGains(const SoundConfig& c, const SoundProfile
 
 SoundSettings resolveSound(const SoundConfig& c, const SoundProfile& p, bool speaker) {
   SoundSettings s;
-  if (const FiveBand* f = androidPreset(p.preset)) {
+  s.gainDb = float(p.boostDb);
+  if (p.preset == "autoeq" && !p.autoEq.empty()) {
+    s.filters = p.autoEq;
+    s.gainDb += p.autoEqPreamp;
+  } else if (const FiveBand* f = androidPreset(p.preset)) {
     for (int k = 0; k < 5; k++) s.filters.push_back({FilterType::Peak, kAndroidFreqs[k], f->gains[k], 0.96f});
   } else {
     std::array<float, kEqBands> g = presetGains(c, p);
     for (int i = 0; i < kEqBands; i++) s.filters.push_back({FilterType::Peak, kEqFreqs[i], g[size_t(i)], 1.41f});
   }
-  s.gainDb = float(p.boostDb);
   s.leveling = c.leveling;
   s.levelingTargetDb = 4;  // ReplayGain's -18 LUFS reference, raised to the -14 LUFS of the streaming services
   if (speaker && s.active()) s.filters.insert(s.filters.begin(), {FilterType::HighPass, 180, 0, 0.707f});
@@ -146,6 +158,25 @@ SoundConfig loadSound(const std::string& path) {
     gains(yyjson_obj_get(o, "custom"), p.custom);
     yyjson_val* b = yyjson_obj_get(o, "boostDb");
     if (yyjson_is_int(b)) p.boostDb = std::max(0, std::min(12, int(yyjson_get_int(b))));
+    yyjson_val* a = yyjson_obj_get(o, "autoEq");
+    if (yyjson_is_obj(a)) {
+      yyjson_val* v;
+      if (yyjson_is_str(v = yyjson_obj_get(a, "name"))) p.autoEqName = yyjson_get_str(v);
+      if (yyjson_is_str(v = yyjson_obj_get(a, "source"))) p.autoEqSource = yyjson_get_str(v);
+      if (yyjson_is_num(v = yyjson_obj_get(a, "preampDb"))) p.autoEqPreamp = float(yyjson_get_num(v));
+      size_t fi, fn;
+      yyjson_val* e;
+      yyjson_arr_foreach(yyjson_obj_get(a, "filters"), fi, fn, e) {
+        Filter flt;
+        yyjson_val* t = yyjson_obj_get(e, "type");
+        if (!yyjson_is_int(t)) continue;
+        flt.type = FilterType(std::min<int64_t>(yyjson_get_int(t), int64_t(FilterType::LowPass)));
+        if (yyjson_is_num(v = yyjson_obj_get(e, "freq"))) flt.freq = float(yyjson_get_num(v));
+        if (yyjson_is_num(v = yyjson_obj_get(e, "gainDb"))) flt.gainDb = float(yyjson_get_num(v));
+        if (yyjson_is_num(v = yyjson_obj_get(e, "q"))) flt.q = float(yyjson_get_num(v));
+        if (p.autoEq.size() < 16) p.autoEq.push_back(flt);
+      }
+    }
     c.outputs[yyjson_get_str(k)] = p;
   }
   yyjson_val* users = yyjson_obj_get(root, "userPresets");
@@ -178,6 +209,23 @@ bool saveSound(const std::string& path, const SoundConfig& c) {
     yyjson_mut_obj_add_strcpy(doc, o, "preset", p.preset.c_str());
     yyjson_mut_obj_add_val(doc, o, "custom", gains(p.custom));
     yyjson_mut_obj_add_int(doc, o, "boostDb", p.boostDb);
+    if (!p.autoEq.empty()) {
+      yyjson_mut_val* a = yyjson_mut_obj(doc);
+      yyjson_mut_obj_add_strcpy(doc, a, "name", p.autoEqName.c_str());
+      yyjson_mut_obj_add_strcpy(doc, a, "source", p.autoEqSource.c_str());
+      yyjson_mut_obj_add_real(doc, a, "preampDb", double(p.autoEqPreamp));
+      yyjson_mut_val* fs = yyjson_mut_arr(doc);
+      for (const Filter& flt : p.autoEq) {
+        yyjson_mut_val* e = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, e, "type", int(flt.type));
+        yyjson_mut_obj_add_real(doc, e, "freq", double(flt.freq));
+        yyjson_mut_obj_add_real(doc, e, "gainDb", double(flt.gainDb));
+        yyjson_mut_obj_add_real(doc, e, "q", double(flt.q));
+        yyjson_mut_arr_append(fs, e);
+      }
+      yyjson_mut_obj_add_val(doc, a, "filters", fs);
+      yyjson_mut_obj_add_val(doc, o, "autoEq", a);
+    }
     yyjson_mut_obj_add(outs, yyjson_mut_strcpy(doc, key.c_str()), o);
   }
   yyjson_mut_obj_add_val(doc, root, "outputs", outs);
