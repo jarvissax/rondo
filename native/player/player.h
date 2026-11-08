@@ -105,6 +105,7 @@ class PlayerHost {
   void analyzeAllowed(bool on);
   // the Y1's amplifier, louder or as shipped; backup: where the shipped table is kept
   void amplifier(bool louder, const std::string& backup);
+  void wired(int jack);  // the headphone jack (power::headset()): the audio policy routes to it
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

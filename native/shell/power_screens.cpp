@@ -196,6 +196,8 @@ bool powerTick(int64_t now) {
   static int headset = -1;
   int jack = power::headset();
   if (headset > 0 && jack == 0 && s.playing) g_player.pause();
+  // the audio policy is told, as Android's WiredAccessoryManager did: sound goes to the jack
+  if (jack != headset) g_player.wired(jack);
   headset = jack;
   power::hold(s.playing || s.fmOn || s.fmStarting);
   // the timeout (Settings › Screen off after); the video player and Shorts keep the screen on

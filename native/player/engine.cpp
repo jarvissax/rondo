@@ -487,6 +487,18 @@ void Engine::command(const std::vector<uint8_t>& m) {
       radio = [this, m] { fm_.setMuted(m); };
       break;
     }
+    case kWired: {  // the jack: the policy learns of a wired headset (0x4) or headphones (0x8)
+      int jack = len ? p[0] : 0;
+      radio = [jack] {
+        using android::AudioSystem;
+        for (audio_devices_t d : {AUDIO_DEVICE_OUT_WIRED_HEADSET, AUDIO_DEVICE_OUT_WIRED_HEADPHONE}) {
+          bool on = (jack == 1 && d == AUDIO_DEVICE_OUT_WIRED_HEADSET) || (jack == 2 && d == AUDIO_DEVICE_OUT_WIRED_HEADPHONE);
+          AudioSystem::setDeviceConnectionState(d, on ? AUDIO_POLICY_DEVICE_STATE_AVAILABLE : AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE, "");
+        }
+        if (getenv("RONDO_PLAYER_LOG")) printf("player: the jack: %s\n", jack == 1 ? "a headset" : jack == 2 ? "headphones" : "nothing");
+      };
+      break;
+    }
     case kAmplifier: {  // u8 louder, then where the shipped table is kept: NVRAM, outside the lock
       bool up = len && p[0];
       std::string backup = len > 1 ? std::string(reinterpret_cast<const char*>(p + 1), len - 1) : "";

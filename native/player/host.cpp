@@ -155,6 +155,10 @@ void PlayerHost::amplifier(bool louder, const std::string& backup) {
   b += backup;
   send(kAmplifier, b.data(), uint32_t(b.size()));
 }
+void PlayerHost::wired(int jack) {
+  uint8_t v = uint8_t(jack);
+  send(kWired, &v, 1);
+}
 void PlayerHost::analyzeAllowed(bool on) {
   uint8_t v = on;
   send(kAnalyzeAllowed, &v, 1);
