@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <algorithm>
+
 // MediaTek's AudioSystem extensions (libmedia): static, so plain functions by their symbols
 extern "C" int rondoGetAudioData(int what, unsigned size, void* data) __asm__("_ZN7android11AudioSystem12GetAudioDataEijPv");
 extern "C" int rondoSetAudioData(int what, unsigned size, void* data) __asm__("_ZN7android11AudioSystem12SetAudioDataEijPv");
@@ -34,35 +36,35 @@ bool read(std::vector<uint8_t>& table) {
   return false;
 }
 
-bool louder(const std::vector<uint8_t>& t) {
-  return int(t.size()) == kTable && t[kHeadset] >= kLouderHeadset && t[kSpeaker] >= kLouderSpeaker;
+int level(const std::vector<uint8_t>& t) {
+  if (int(t.size()) != kTable) return 0;
+  int b = std::min<int>(t[kHeadset], 152), reg = 7 - ((152 - b) / 4) / 2;  // the HAL's arithmetic
+  return std::max(0, std::min(kLevels - 1, reg - 4));
 }
 
-bool set(bool up, const std::string& backup, std::string& why) {
+bool set(int lvl, const std::string& backup, std::string& why) {
+  lvl = std::max(0, std::min(kLevels - 1, lvl));
   std::vector<uint8_t> t;
   if (!read(t)) return why = "the volume table can't be read", false;
-  if (louder(t) == up) return true;
   std::vector<uint8_t> shipped;
   bool haveBackup = readFile(backup, shipped);
-  if (up && !haveBackup) {  // the table as it came, before anything changes it
+  uint8_t headset = kHeadsetAt[lvl], speaker = kSpeakerAt[lvl];
+  if (lvl == 0 && haveBackup) headset = shipped[kHeadset], speaker = shipped[kSpeaker];  // exactly as it came
+  if (t[kHeadset] == headset && t[kSpeaker] == speaker) return true;
+  if (lvl > 0 && !haveBackup) {  // the table as it came, before anything changes it
     int fd = open(backup.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     bool ok = fd >= 0 && write(fd, t.data(), t.size()) == ssize_t(t.size()) && fsync(fd) == 0;
     if (fd >= 0) close(fd);
     if (!ok) return why = "the shipped table can't be kept", false;
   }
-  if (up) {
-    t[kHeadset] = kLouderHeadset;
-    t[kSpeaker] = kLouderSpeaker;
-  } else {
-    // the kept table's values, else this firmware's own defaults (libcustom_nvram.so's
-    // audio_ver1_custom_default, what this Y1 came with)
-    t[kHeadset] = haveBackup ? shipped[kHeadset] : 124;
-    t[kSpeaker] = haveBackup ? shipped[kSpeaker] : 118;
-  }
+  // level 0 without the kept table: this firmware's own defaults (libcustom_nvram.so's
+  // audio_ver1_custom_default, what this Y1 came with), kHeadsetAt[0] and kSpeakerAt[0]
+  t[kHeadset] = headset;
+  t[kSpeaker] = speaker;
   rondoSetAudioData(kSetVer1, kTable, t.data());  // NVRAM, then the HAL applies it
   std::vector<uint8_t> now;
   if (!read(now) || now[kHeadset] != t[kHeadset] || now[kSpeaker] != t[kSpeaker]) return why = "the HAL didn't take it", false;
-  fprintf(stderr, "rondo-player: amplifier %s: headphones %d, speaker %d\n", up ? "louder" : "standard", now[kHeadset], now[kSpeaker]);
+  fprintf(stderr, "rondo-player: amplifier level %d: headphones %d, speaker %d\n", lvl, now[kHeadset], now[kSpeaker]);
   return true;
 }
 

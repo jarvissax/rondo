@@ -150,8 +150,8 @@ void PlayerHost::analyzeList(const std::vector<std::string>& paths) {
   for (const std::string& p : paths) all += p + "\n";
   send(kAnalyzeList, all.data(), uint32_t(all.size()));
 }
-void PlayerHost::amplifier(bool louder, const std::string& backup) {
-  std::string b(1, char(louder));
+void PlayerHost::amplifier(int level, const std::string& backup) {
+  std::string b(1, char(level));
   b += backup;
   send(kAmplifier, b.data(), uint32_t(b.size()));
 }

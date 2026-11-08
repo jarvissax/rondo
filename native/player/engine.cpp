@@ -224,7 +224,7 @@ class Engine {
   // Volume leveling's measurements: as songs play (from their start, to their end), and of the
   // library while the Y1 charges (analyzeLoop, a thread at the lowest priority)
   LoudnessCache loudness_;
-  int ampState_ = -1;  // the Y1's amplifier: -1 not known, 0 as shipped, 1 louder (amplifier.h)
+  int ampState_ = -1;  // the Y1's amplifier: -1 not known, else its level 0..3 (amplifier.h)
   LoudnessMeter meter_;  // the decode thread's
   std::vector<std::string> analyzeList_;
   bool analyzeAllowed_ = false;
@@ -499,15 +499,15 @@ void Engine::command(const std::vector<uint8_t>& m) {
       };
       break;
     }
-    case kAmplifier: {  // u8 louder, then where the shipped table is kept: NVRAM, outside the lock
-      bool up = len && p[0];
+    case kAmplifier: {  // u8 level, then where the shipped table is kept: NVRAM, outside the lock
+      int lvl = len ? p[0] : 0;
       std::string backup = len > 1 ? std::string(reinterpret_cast<const char*>(p + 1), len - 1) : "";
-      radio = [this, up, backup] {
+      radio = [this, lvl, backup] {
         std::string why;
-        bool ok = !backup.empty() && amp::set(up, backup, why);
+        bool ok = !backup.empty() && amp::set(lvl, backup, why);
         if (!ok) fprintf(stderr, "rondo-player: amplifier not changed: %s\n", why.c_str());
         std::vector<uint8_t> t;
-        int state = amp::read(t) ? int(amp::louder(t)) : -1;
+        int state = amp::read(t) ? amp::level(t) : -1;
         pthread_mutex_lock(&mu_);
         ampState_ = state;
         publish();
@@ -1167,12 +1167,12 @@ void Engine::main() {
   {  // the amplifier as NVRAM has it
     std::vector<uint8_t> t;
     if (amp::read(t)) {
-      ampState_ = amp::louder(t);
+      ampState_ = amp::level(t);
       if (const char* dump = getenv("RONDO_AMP_DUMP")) {  // development: the table as the HAL gives it
         if (FILE* f = fopen(dump, "wb")) fwrite(t.data(), 1, t.size(), f), fclose(f);
       }
       if (getenv("RONDO_PLAYER_LOG"))
-        printf("player: amplifier table: headphones %d, speaker %d (%s)\n", t[amp::kHeadset], t[amp::kSpeaker], ampState_ ? "louder" : "as shipped");
+        printf("player: amplifier table: headphones %d, speaker %d (level %d)\n", t[amp::kHeadset], t[amp::kSpeaker], ampState_);
     }
   }
   // A buffer handed to OpenSL is heard two output latencies later: measured on the Y1, the AudioTrack

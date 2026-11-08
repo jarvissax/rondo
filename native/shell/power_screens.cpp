@@ -4,8 +4,8 @@
 // - The screen dims, then goes off, after Settings' "Screen off after" without input (Android's dim:
 //   the last fifth, at most 7 s, at brightness 10); the video player and Shorts keep it on.
 // - Black or asleep, any press (center, which is also the Y1's power button, any other button, the
-//   wheel) only wakes the screen: that press and its release do nothing else (Emin's rule, Nov 7: no
-//   lyrics opening, no song skipped). The wheel, center and Menu are also swallowed for 600 ms after
+//   wheel) only wakes the screen: that press and its release do nothing else (no lyrics opening, no song
+//   skipped). The wheel, center and Menu are also swallowed for 600 ms after
 //   waking. Power (KEY_POWER, if it comes) turns the screen off; held, it opens the Power screen.
 // - Off, the backlight goes first (a key brings it back at once); 10 s later early suspend. A wakelock
 //   is held while anything plays.

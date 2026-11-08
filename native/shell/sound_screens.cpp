@@ -1,4 +1,4 @@
-// Settings › Sound (new in 2.0, Emin's request of Nov 7: the stock Y1 is quiet and flat): an
+// Settings › Sound (new in 2.0: the stock Y1 is quiet and flat): an
 // equalizer, a loudness boost and volume leveling, each output keeping its own (the speaker, wired
 // headphones, every Bluetooth device). rondo-player does the work (player/dsp.h); this sends it what
 // the output in use needs, again whenever that output changes.
@@ -479,12 +479,24 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(level);
     PlayerState ps = g_player.state();
     if (ps.amplifier >= 0) {  // the Y1's own amplifier (player/amplifier.h)
+      static const char* const kNames[4] = {"Standard", "+2 dB", "+4 dB", "+6 dB"};
       Row amp;
       amp.title = "Amplifier";
-      amp.subtitle = ps.amplifier ? "About 6 dB more on headphones and the speaker" : "As the Y1 ships; Louder adds about 6 dB";
-      amp.trailing = ps.amplifier ? "Louder" : "Standard";
-      bool louder = ps.amplifier == 1;
-      amp.onSelect = [louder] { g_player.amplifier(!louder, g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin"); };
+      amp.subtitle = "The Y1's own, for headphones and the speaker";
+      amp.trailing = kNames[std::max(0, std::min(3, int(ps.amplifier)))];
+      amp.chevron = true;
+      amp.onSelect = [] {
+        std::vector<std::pair<std::string, std::string>> c;
+        for (int i = 0; i < 4; i++) c.push_back({kNames[i], std::to_string(i)});
+        g_app->push(makeChoice(
+            "Amplifier", c, [] { return std::to_string(g_player.state().amplifier); },
+            [](const std::string& v) {
+              g_player.amplifier(atoi(v.c_str()), g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin");
+            },
+            [](const std::string& v) {
+              return std::string(v == "0" ? "as the Y1 ships, the cleanest" : v == "3" ? "the loudest, more hiss" : "");
+            }));
+      };
       rows.push_back(amp);
     }
     amp_ = ps.amplifier;
