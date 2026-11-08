@@ -35,6 +35,8 @@
 #include "../../platform/usb_drive.h"
 #include "../../platform/power.h"
 #include "../../platform/haptics.h"
+#include "../../shell/dashboard.h"
+#include "../../shell/main_queue.h"
 #include "../../platform/video_frame.h"
 #include "../../platform/video_surface.h"
 #include "../../services/core.h"
@@ -152,6 +154,13 @@ int main(int argc, char** argv) {
   if (FILE* pf = fopen("/data/local/tmp/rondo/rondo.pid", "w")) {
     fprintf(pf, "%d\n", getpid());
     fclose(pf);
+  }
+  mainQueueInit();  // this is the UI thread
+  // the dashboard's page beside the fonts' folder (<dir>/fonts, <dir>/dashboard)
+  {
+    std::string r = regular;
+    std::string dir = r.substr(0, r.rfind('/'));
+    g_dashboardAssets = dir.substr(0, dir.rfind('/'));
   }
   // first, while this is the only thread: it forks the decoding process
   ui::setFrameGrabber(grabVideoFrame);  // card videos' artwork: a frame (in rondo-media)
@@ -370,8 +379,8 @@ int main(int argc, char** argv) {
   while (!g_stop) {
     if (!moving && !g_shot) {
       VideoSurface* video = VideoSurface::made();  // a video's pictures wake the loop as input does
-      pollfd p[5] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0},
-                     {video ? video->fd() : -1, POLLIN, 0}, {power::wakeFd(), POLLIN, 0}};
+      pollfd p[6] = {{input->waitFd(), POLLIN, 0}, {loader.waitFd(), POLLIN, 0}, {g_core.fd(), POLLIN, 0},
+                     {video ? video->fd() : -1, POLLIN, 0}, {power::wakeFd(), POLLIN, 0}, {mainQueueFd(), POLLIN, 0}};
       if (!warmed) {
         // the icons, the fonts' characters, the bubble's digits, a slice at a time
         if (warmStage == 0 && warmIcons()) warmStage = 1, text.resetWarm();
@@ -403,12 +412,14 @@ int main(int argc, char** argv) {
       if (g_player.active()) timeout = std::min(timeout, 250);  // the position, the play state
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = powerWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
-      int r = poll(p, 5, timeout);
+      if (int64_t wake = mainQueueWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
+      int r = poll(p, 6, timeout);
+      if (runMainQueue()) moving = true;  // the dashboard's requests, on this thread
       if (r > 0 && (p[4].revents & POLLIN)) {  // drawing may start again after a suspend
         uint64_t n;
         (void)!read(p[4].fd, &n, sizeof(n));
       }
-      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents | p[4].revents)) continue;  // half a reply
+      if (r > 0 && (p[2].revents & POLLIN) && !g_core.pump() && !(p[0].revents | p[1].revents | p[3].revents | p[4].revents) && !moving) continue;  // half a reply
       if (r < 0 && errno == EINTR) continue;
       if (r == 0) {
         if (periodic()) moving = true;
@@ -416,6 +427,7 @@ int main(int argc, char** argv) {
       }
     }
     g_core.pump();  // the server's replies, on this thread, before the frame
+    runMainQueue();
     if (now_ns() - lastPeriodic > 250 * kMs) periodic();
     if (!screenDrawing()) {  // the screen is off: input only (Power wakes it), nothing drawn, no refresh waited for
       input->acknowledge();

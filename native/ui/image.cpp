@@ -120,6 +120,36 @@ bool png(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
 
 }  // namespace
 
+bool imageSize(const uint8_t* data, size_t size, int& w, int& h) {
+  if (size > 3 && data[0] == 0xff && data[1] == 0xd8) {
+    tjhandle tj = tj3Init(TJINIT_DECOMPRESS);
+    bool ok = tj && tj3DecompressHeader(tj, data, size) == 0;
+    if (ok) w = tj3Get(tj, TJPARAM_JPEGWIDTH), h = tj3Get(tj, TJPARAM_JPEGHEIGHT);
+    tj3Destroy(tj);
+    return ok;
+  }
+  if (size > 24 && !memcmp(data, "\x89PNG", 4)) {  // IHDR: width and height, big-endian, at 16
+    w = int(uint32_t(data[16]) << 24 | data[17] << 16 | data[18] << 8 | data[19]);
+    h = int(uint32_t(data[20]) << 24 | data[21] << 16 | data[22] << 8 | data[23]);
+    return w > 0 && h > 0;
+  }
+  return false;
+}
+
+bool encodeJpeg(const Pixels& px, int quality, std::vector<uint8_t>& out) {
+  tjhandle tj = tj3Init(TJINIT_COMPRESS);
+  if (!tj) return false;
+  tj3Set(tj, TJPARAM_QUALITY, quality);
+  tj3Set(tj, TJPARAM_SUBSAMP, TJSAMP_420);
+  unsigned char* buf = nullptr;
+  size_t len = 0;
+  bool ok = tj3Compress8(tj, px.rgba.data(), px.w, 0, px.h, TJPF_RGBA, &buf, &len) == 0;
+  if (ok) out.assign(buf, buf + len);
+  tj3Free(buf);
+  tj3Destroy(tj);
+  return ok;
+}
+
 bool decodeImage(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
   if (size > 3 && data[0] == 0xff && data[1] == 0xd8) return jpeg(data, size, w, h, out);
   if (size > 8 && !memcmp(data, "\x89PNG", 4)) return png(data, size, w, h, out);

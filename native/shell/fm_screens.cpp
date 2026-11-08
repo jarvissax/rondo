@@ -579,3 +579,31 @@ void fmTick() {
 }
 
 }  // namespace rondo::shell
+
+namespace rondo::shell {
+
+// The radio from the dashboard (FmRadio's calls in 1.0.x), on the UI thread
+void radioStart() { startRadio(); }
+void radioTune(int frequency) { tune(frequency); }
+void radioSeek(bool up) { seek(up); }
+void radioScan() {
+  PlayerState s = g_player.state();
+  if (s.fmOn && !s.fmScanning) g_player.fmScan(bandMin(), bandMax());
+}
+void radioSetBand(const std::string& band) {
+  g_config.radio.band = band;
+  g_config.radio.found.clear();
+  saveRadio();
+  tune(g_config.radio.frequency);
+}
+void radioSetSpeaker(bool on) {
+  g_config.radio.speaker = on;
+  saveRadio();
+  g_player.fmSpeaker(on);
+}
+int radioMin() { return bandMin(); }
+int radioMax() { return bandMax(); }
+std::string radioHeardName(int frequency) { return heardName(frequency); }
+void radioSaved() { saveRadio(); }
+
+}  // namespace rondo::shell

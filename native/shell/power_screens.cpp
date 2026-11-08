@@ -133,6 +133,14 @@ void shutDownFor(const char* why) {
 
 std::unique_ptr<Screen> makePower() { return std::unique_ptr<Screen>(new PowerScreen()); }
 
+// the dashboard's Shut down and Restart: the Power screen with its message, then off
+void powerAction(bool restart) {
+  if (g_stage >= kOff) wake(now_ns());
+  PowerScreen* p = powerScreenOnTop();
+  if (!p) g_app->push(std::unique_ptr<Screen>(p = new PowerScreen()));
+  p->go(restart ? "Restarting\xe2\x80\xa6" : "Shutting down\xe2\x80\xa6", restart);
+}
+
 bool powerFilter(const InputEvent& ev) {
   int64_t now = ev.time ? ev.time : now_ns();
   if (ev.key == Key::Power) {

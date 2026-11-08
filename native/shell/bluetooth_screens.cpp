@@ -200,6 +200,11 @@ class BluetoothScreen : public BluetoothList {
 
 std::unique_ptr<Screen> makeBluetooth() { return std::unique_ptr<Screen>(new BluetoothScreen()); }
 
+// for the dashboard: Bt.name, Bt.kind and Bt.isAudio
+std::string btName(const BtDevice& d) { return nameOf(d); }
+std::string btKind(uint32_t cod) { return kind(cod); }
+bool btIsAudio(uint32_t cod) { return isAudio(cod); }
+
 // Settings' row: the headphones music plays on, else on or off
 std::string bluetoothState() {
   CoreState s = g_core.state();

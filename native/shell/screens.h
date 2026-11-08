@@ -58,6 +58,8 @@ void fmTick();
 std::unique_ptr<Screen> makeBluetooth();
 // Settings › Server, its row's state ("OK · signed in", "Unreachable"…), and the main menu's account check
 std::unique_ptr<Screen> makeServer();
+std::unique_ptr<Screen> makeDashboard();  // Settings › Dashboard
+extern std::string g_dashboardAssets;     // <dir>/dashboard and <dir>/fonts
 void serverState(std::function<void(const std::string&)> done);
 void checkAccounts();
 extern std::function<void()> g_onServerChanged;  // the server's address or token changed: everything that talks to it
@@ -119,4 +121,23 @@ bool artColor(Env& e, const std::string& path, int sourcePx, Color* out);
 float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true, bool hidePercent = false);
 float statusIconsWidth(Env& e, bool showWifi);
 
+}  // namespace rondo::shell
+
+namespace rondo::shell {
+// The dashboard's hooks into the screens' logic (on the UI thread): the radio as FmRadio's calls,
+// Bluetooth's names, the Power screen's shut down and restart.
+void radioStart();
+void radioTune(int frequency);
+void radioSeek(bool up);
+void radioScan();
+void radioSetBand(const std::string& band);
+void radioSetSpeaker(bool on);
+int radioMin();
+int radioMax();
+std::string radioHeardName(int frequency);
+void radioSaved();  // config.json now (presets changed)
+std::string btName(const BtDevice& d);
+std::string btKind(uint32_t cod);
+bool btIsAudio(uint32_t cod);
+void powerAction(bool restart);
 }  // namespace rondo::shell

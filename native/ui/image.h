@@ -20,6 +20,10 @@ struct Pixels {
 };
 
 bool decodeImage(const uint8_t* data, size_t size, int w, int h, Pixels& out);
+// A JPEG's or PNG's size without decoding it.
+bool imageSize(const uint8_t* data, size_t size, int& w, int& h);
+// RGBA as a JPEG (the dashboard's artwork; 1.0.x compressed at 85).
+bool encodeJpeg(const Pixels& px, int quality, std::vector<uint8_t>& out);
 // A still from a video file at atUs, as RGBA at its own size: the platform's (on the Y1, Android's
 // MediaMetadataRetriever, as 1.0.x's ImageLoader used it). Set before the loader starts.
 using FrameGrabber = bool (*)(const char* path, int64_t atUs, Pixels& out);
