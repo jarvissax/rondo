@@ -1,8 +1,9 @@
 # Finishes a release once it's published (or the latest one again, by hand from the Actions tab):
 #
-# 1. checks that its tag, the project's versions (tools/set-version.sh) and its rondo-<version>.apk
-#    agree, the APK's firmware number included;
-# 2. builds the firmware from that APK with firmware/build.sh and attaches it as rom.zip, the file
+# 1. checks that its tag, the project's versions (tools/set-version.sh) and its Rondo agree: Rondo
+#    2.0's rondo-<version>.rondo (its VERSION, and its signature against the bundle key's public half
+#    in native/core/bundle.h), or 1.0.x's rondo-<version>.apk (the APK's firmware number included);
+# 2. builds the firmware from it with firmware/build.sh and attaches it as rom.zip, the file
 #    Innioasis Updater CE installs, with updater.png, its picture;
 # 3. builds the server's image and its updater's (infra/Dockerfile, infra/updater.Dockerfile) for
 #    x86-64 and 64-bit ARM and publishes them on GitHub's registry as <version> and latest, which
@@ -46,11 +47,42 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.tag }}
-      - name: The release's APK
+      - name: The release's Rondo (2.0's signed bundle, or 1.0.x's APK)
+        id: file
         env:
           TAG: ${{ steps.release.outputs.tag }}
-        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-${TAG#v}.apk" --dir release
-      - name: Versions agree
+        run: |
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-${TAG#v}.rondo" --dir release; then
+            echo "file=release/rondo-${TAG#v}.rondo" >> "$GITHUB_OUTPUT"
+          else
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-${TAG#v}.apk" --dir release
+            echo "file=release/rondo-${TAG#v}.apk" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Versions agree (bundle)
+        if: endsWith(steps.file.outputs.file, '.rondo')
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          FILE: ${{ steps.file.outputs.file }}
+        run: |
+          version="${TAG#v}"
+          tools/set-version.sh --check "$version"
+          inside="$(tail -c +73 "$FILE" | tar -xzOf - ./VERSION)"
+          [ "$inside" = "$version" ] || { echo "::error::The bundle is Rondo $inside, not $version"; exit 1; }
+          # signed with the bundle key (its public half is in native/core/bundle.h)
+          node -e '
+            const fs = require("fs"), crypto = require("crypto");
+            const hex = fs.readFileSync("native/core/bundle.h", "utf8").match(/kPublicKey\[32\] = \{([^}]*)\}/)[1].match(/0x[0-9a-f]{2}/g).map((h) => h.slice(2)).join("");
+            const der = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(hex, "hex")]);
+            const key = crypto.createPublicKey({ key: der, format: "der", type: "spki" });
+            const b = fs.readFileSync(process.argv[1]);
+            if (b.subarray(0, 8).toString() !== "RONDOB1\n") throw new Error("not a Rondo bundle");
+            const digest = crypto.createHash("sha256").update(b.subarray(72)).digest();
+            if (!crypto.verify(null, digest, key, b.subarray(8, 72))) throw new Error("the bundle is not signed with the bundle key");
+            console.log("signed with the bundle key");
+          ' "$FILE"
+          echo "Rondo $version, firmware $(sed -n 's/.*kFirmwareNeeded = \([0-9][0-9]*\).*/\1/p' native/core/version.h)"
+      - name: Versions agree (APK)
+        if: endsWith(steps.file.outputs.file, '.apk')
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
@@ -73,8 +105,8 @@ jobs:
         run: sudo apt-get install -y -q e2fsprogs zip unzip
       - name: Build the firmware
         env:
-          TAG: ${{ steps.release.outputs.tag }}
-        run: firmware/build.sh "release/rondo-${TAG#v}.apk" "$PWD/release/rom.zip"
+          FILE: ${{ steps.file.outputs.file }}
+        run: firmware/build.sh "$FILE" "$PWD/release/rom.zip"
       - name: Attach rom.zip and updater.png
         env:
           TAG: ${{ steps.release.outputs.tag }}
@@ -170,17 +202,25 @@ jobs:
           cache-dependency-path: web-updater/package-lock.json
       - run: npm ci
       - run: npm run build
-      - name: The release's APK and latest.json
+      - name: The release's Rondo and latest.json
         run: |
           version="${TAG#v}"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-$version.apk" --dir apk
-          cp "apk/rondo-$version.apk" dist/rondo.apk
           export VERSION="$version"
-          export SIZE="$(stat -c %s dist/rondo.apk)"
-          export FIRMWARE="$(sed -n 's/^val firmwareLevel = \([0-9][0-9]*\).*/\1/p' ../app/app/build.gradle.kts)"
           export NOTES="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
           export PUBLISHED="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json publishedAt --jq .publishedAt)"
-          node -e 'const e = process.env; console.log(JSON.stringify({ version: e.VERSION, file: "rondo.apk", size: Number(e.SIZE), firmware: Number(e.FIRMWARE), notes: e.NOTES, published: e.PUBLISHED }))' > dist/latest.json
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-$version.rondo" --dir apk; then
+            # Rondo 2.0: the bundle, as rondo.rondo ("file" too: the dashboard and this page take it)
+            cp "apk/rondo-$version.rondo" dist/rondo.rondo
+            export SIZE="$(stat -c %s dist/rondo.rondo)"
+            export FIRMWARE="$(sed -n 's/.*kFirmwareNeeded = \([0-9][0-9]*\).*/\1/p' ../native/core/version.h)"
+            node -e 'const e = process.env; console.log(JSON.stringify({ version: e.VERSION, file: "rondo.rondo", size: Number(e.SIZE), bundle: "rondo.rondo", bundleSize: Number(e.SIZE), firmware: Number(e.FIRMWARE), notes: e.NOTES, published: e.PUBLISHED }))' > dist/latest.json
+          else
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "rondo-$version.apk" --dir apk
+            cp "apk/rondo-$version.apk" dist/rondo.apk
+            export SIZE="$(stat -c %s dist/rondo.apk)"
+            export FIRMWARE="$(sed -n 's/^val firmwareLevel = \([0-9][0-9]*\).*/\1/p' ../app/app/build.gradle.kts)"
+            node -e 'const e = process.env; console.log(JSON.stringify({ version: e.VERSION, file: "rondo.apk", size: Number(e.SIZE), firmware: Number(e.FIRMWARE), notes: e.NOTES, published: e.PUBLISHED }))' > dist/latest.json
+          fi
           cat dist/latest.json
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -4,7 +4,7 @@
 import { Adb, AdbDaemonTransport } from "@yume-chan/adb";
 import AdbWebCredentialStore from "@yume-chan/adb-credential-web";
 import { AdbDaemonWebUsbDeviceManager } from "@yume-chan/adb-daemon-webusb";
-import { checkDevice, installApk, UpdateError, waitForRondo } from "./updater.js";
+import { checkDevice, installApk, installBundle, UpdateError, waitForRondo } from "./updater.js";
 
 const $ = (id) => document.getElementById(id);
 const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
@@ -61,7 +61,7 @@ async function loadBundledApk() {
     if (!res.ok) throw new Error(String(res.status));
     apk = { bytes: new Uint8Array(await res.arrayBuffer()), label: `Rondo ${info.version}`, version: info.version, firmware: Number(info.firmware) || 1 };
   } catch {
-    $("apkLine").textContent = "Couldn't load Rondo from this page. Download rondo-<version>.apk from GitHub's Releases page and choose it with \"Use an APK file\".";
+    $("apkLine").textContent = "Couldn't load Rondo from this page. Download rondo-<version>.rondo (Rondo 2.0) or rondo-<version>.apk (1.0) from GitHub's Releases page and choose it with \"Use a file\".";
   }
   refreshUpdate();
 }
@@ -69,7 +69,7 @@ async function loadBundledApk() {
 $("apkFile").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
-  apk = { bytes: new Uint8Array(await file.arrayBuffer()), label: file.name, version: file.name.match(/rondo-([\w.]+)\.apk$/i)?.[1] };
+  apk = { bytes: new Uint8Array(await file.arrayBuffer()), label: file.name, version: file.name.match(/rondo-([\w.]+)\.(apk|rondo)$/i)?.[1] };
   refreshUpdate();
 });
 
@@ -129,12 +129,18 @@ async function update() {
   bar.style.width = "0";
   try {
     status("updateStatus", "Copying Rondo to the Y1…");
-    await installApk(adb, apk.bytes, (p) => {
+    // Rondo 2.0's firmware takes a bundle (a file that begins "RONDOB1"), 1.0.x an APK
+    const native = (device?.firmware ?? 1) >= 2;
+    const isBundle = apk.bytes.length > 8 && new TextDecoder().decode(apk.bytes.subarray(0, 8)) === "RONDOB1\n";
+    if (native !== isBundle) {
+      throw new UpdateError("other-build", native ? "This Y1 runs Rondo 2.0: choose a rondo-<version>.rondo file." : "This Y1 runs Rondo 1.0: choose a rondo-<version>.apk file.");
+    }
+    await (native ? installBundle : installApk)(adb, apk.bytes, (p) => {
       bar.style.width = `${Math.round(p * 100)}%`;
       if (p >= 1) status("updateStatus", "Installing… this takes about 10 seconds.");
     });
     status("updateStatus", "Installed. Waiting for Rondo to start again…");
-    const back = await waitForRondo(adb);
+    const back = await waitForRondo(adb, native);
     $("doneText").textContent = back
       ? `Rondo is updated and running again, with your settings, Wi-Fi, playlists and music as they were.`
       : `Rondo is updated. If the Y1's screen is dark, press a button to wake it.`;

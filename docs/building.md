@@ -251,6 +251,32 @@ Rondo firmware (1.0.0) has no number and counts as 1.
    The first time the images are published, set both packages to **Public** on GitHub (your
    profile › Packages › the package › Package settings), or servers can't download them.
 
+### Rondo 2.0 (the native firmware)
+
+A 2.0 release carries a signed bundle instead of an APK. Steps 1, 4 and 5 are the same; in place of
+steps 2 and 3:
+
+- Build and sign the bundle. The key is an Ed25519 key kept outside the repo, like the APK's
+  (`~/Desktop/rondo-signing/bundle-ed25519.pem` by default, or `RONDO_BUNDLE_KEY`); its public half
+  is in `native/core/bundle.h`, and a Rondo installs only bundles signed with it:
+
+  ```bash
+  tools/native/bundle.sh
+  ```
+
+  That writes `native/build/bundle/rondo-<version>.rondo`: the binary, FFmpeg's libraries, the fonts,
+  the advance and kerning tables, the dashboard's page and `firmware/rondo/start`, with an Ed25519
+  signature over the archive's SHA-256.
+- Try it on a Y1 running the 2.0 firmware: `adb push` it to `/data/rondo/update.rondo`, then
+  `LD_LIBRARY_PATH=/system/rondo/lib /system/rondo/rondo --install /data/rondo/update.rondo /data/rondo`
+  (Rondo checks the signature and puts it in place; it runs from the next start). The firmware itself:
+  `firmware/build.sh native/build/bundle/rondo-<version>.rondo`.
+- Attach **`rondo-<version>.rondo`** to the GitHub release (no APK). The workflow checks its version
+  and signature, builds `rom.zip` from it (no Java layer: init starts Rondo,
+  `tools/firmware/BootImage.java`), and publishes it on the update page as `rondo.rondo`, with
+  `latest.json`'s `bundle` naming it. 1.0.x Rondos then hear of it as a release for a newer
+  firmware and point their owners to Innioasis Updater CE.
+
 Innioasis Updater CE lists every release of this repository that has a `rom.zip`, so a new one
 shows up there by itself (the Updater keeps its list for up to a day). Every APK has to be signed with the same key, or it won't install over
 the previous Rondo. Keep the key backed up somewhere safe.

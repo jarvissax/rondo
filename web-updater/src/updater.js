@@ -1,7 +1,9 @@
 // The update steps: check that this is a Y1 running the Rondo firmware, copy the new Rondo over
 // and install it over the firmware's copy (`pm install -r`, which keeps every setting). Android
 // accepts only an APK signed with the same key as the firmware's Rondo, then restarts Rondo by
-// itself. Works on any Tango `Adb`, in the browser or in Node.
+// itself. Rondo 2.0 (firmware 2) takes a signed bundle (rondo-<version>.rondo) instead: Rondo itself
+// checks and installs it (`rondo --install`), and starts again on it. Works on any Tango `Adb`, in the
+// browser or in Node.
 import { ReadableStream } from "@yume-chan/stream-extra";
 
 export const PACKAGE = "com.jarvissax.rondo";
@@ -43,7 +45,13 @@ export async function checkDevice(adb) {
     throw new UpdateError("no-firmware", "This Y1 doesn't run the Rondo firmware yet. Install it with Innioasis Updater CE first (see the install guide), then come back for updates.");
   }
   const firmware = Number(await getProp(adb, "ro.rondo.firmware")) || 1;
-  return { model, firmware, installed: await installedVersion(adb) };
+  return { model, firmware, installed: firmware >= 2 ? await nativeVersion(adb) : await installedVersion(adb) };
+}
+
+// Rondo 2.0's version: the update it runs, else the firmware's own copy
+export async function nativeVersion(adb) {
+  const out = await shell(adb, 'v=$(cat /data/rondo/current 2>/dev/null); cat /data/rondo/$v/VERSION 2>/dev/null || cat /system/rondo/VERSION');
+  return out.trim().split("\n").pop() || null;
 }
 
 // the version of Rondo on the Y1, or null
@@ -81,10 +89,47 @@ export async function installApk(adb, bytes, onProgress = () => {}) {
   throw new UpdateError("install", `Android didn't install it (${reason}).`);
 }
 
-// Android restarts Rondo by itself after the update; true once it's on screen again
-export async function waitForRondo(adb) {
+// Rondo 2.0: the bundle to /data/rondo, checked and put in place by Rondo, which then starts again on it
+const TMP_BUNDLE = "/data/rondo/update.rondo";
+export async function installBundle(adb, bytes, onProgress = () => {}) {
+  const CHUNK = 64 * 1024;
+  let sent = 0;
+  const file = new ReadableStream({
+    pull(controller) {
+      if (sent >= bytes.length) return controller.close();
+      const end = Math.min(sent + CHUNK, bytes.length);
+      controller.enqueue(bytes.subarray(sent, end));
+      sent = end;
+      onProgress(sent / bytes.length);
+    },
+  });
+  const sync = await adb.sync();
+  try {
+    await sync.write({ filename: TMP_BUNDLE, file, permission: 0o600 });
+  } finally {
+    await sync.dispose();
+  }
+  const out = await shell(adb, `LD_LIBRARY_PATH=/system/rondo/lib /system/rondo/rondo --install ${TMP_BUNDLE} /data/rondo; rm -f ${TMP_BUNDLE}`);
+  const ok = out.match(/installed (\S+)/);
+  if (!ok) {
+    const why = out.match(/not installed: (.*)/)?.[1] ?? out.trim().split("\n").pop();
+    throw new UpdateError("install", `Rondo didn't install it (${why}).`);
+  }
+  // the running Rondo ends; /system/rondo/start runs the new one at once
+  await shell(adb, "kill $(cat /data/rondo/rondo.pid)");
+  return ok[1];
+}
+
+// Android restarts Rondo by itself after the update (2.0: its start script does); true once it's
+// running again
+export async function waitForRondo(adb, native = false) {
   for (let i = 0; i < 20; i++) {
     await sleep(1000);
+    if (native) {
+      const pid = (await shell(adb, "cat /data/rondo/rondo.pid")).trim();
+      if (pid && (await shell(adb, `ls /proc/${pid}/cmdline 2>/dev/null`)).includes("cmdline")) return true;
+      continue;
+    }
     if ((await shell(adb, "dumpsys window | grep mCurrentFocus")).includes(PACKAGE)) return true;
   }
   return false;
