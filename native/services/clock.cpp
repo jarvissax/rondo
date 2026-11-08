@@ -54,7 +54,7 @@ time_t parseDate(const std::string& s) {
     if (!strcmp(mon, kMonths[i])) m = i;
   if (m < 0 || y < 2024) return 0;
   // days from 1970 to the date (the civil-from-days inverse), no time zone involved
-  int yy = y - (m < 2), era = yy / 400, yoe = yy - era * 400, mp = (m + 9) % 12;
+  int yy = y - (m < 2), era = yy / 400, yoe = yy - era * 400, mp = (m + 10) % 12;  // m from 0: March is 0
   int doy = (153 * mp + 2) / 5 + d - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
   long long days = (long long)era * 146097 + doe - 719468;
   return time_t(days * 86400 + h * 3600 + mi * 60 + se);

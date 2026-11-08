@@ -295,7 +295,9 @@ class ShortsScreen : public Screen {
         outgoingFrame_ = canvas_->captureVideo(v->texture(), v->transform(), int(outgoingRect_.w), int(outgoingRect_.h), outgoing_);
       }
       dir_ = direction > 0 ? 1 : -1;
-      slide_.begin(0, 1, now_ns(), 300 * kMs, easeOutCubic);
+      // development: RONDO_SHORTS_SLIDE_MS slows it down, to look at it frame by frame
+      static const int64_t ms = g_development && getenv("RONDO_SHORTS_SLIDE_MS") ? atoi(getenv("RONDO_SHORTS_SLIDE_MS")) : 300;
+      slide_.begin(0, 1, now_ns(), ms * kMs, easeOutCubic);
     }
     index_ = i;
     step_ = direction;

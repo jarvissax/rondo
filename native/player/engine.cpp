@@ -735,6 +735,8 @@ void Engine::fmVolumes(bool on) {
 // FmRadio.setSpeaker(): the radio out of the speaker (1.0.x's FM force-use; Rondo's radio is music's
 // output, so media's)
 void Engine::fmSpeakerApply(bool on) {
+  // the policy's own setting, not a copy: rondo-core clears it when Bluetooth audio connects
+  speakerForced_ = android::AudioSystem::getForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA) == AUDIO_POLICY_FORCE_SPEAKER;
   if (on == speakerForced_) return;
   android::AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, on ? AUDIO_POLICY_FORCE_SPEAKER : AUDIO_POLICY_FORCE_NONE);
   speakerForced_ = on;
@@ -1243,6 +1245,8 @@ void Engine::main() {
   if (android::defaultServiceManager()->checkService(android::String16("permission")) == nullptr)
     rondo::PermissionService::publish();
   restoreVolumes();
+  // the radio's speaker left forced by a player that ended mid-broadcast: media goes where it should
+  fmSpeakerApply(false);
   readVolume();
   if (!openOutput()) fprintf(stderr, "rondo-player: no audio output\n");
   {  // the amplifier as NVRAM has it

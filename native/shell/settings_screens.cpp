@@ -1,7 +1,6 @@
 // Settings (SettingsScreen.kt and ThemeScreens.kt in 1.0.x), ported 1:1: the list, the choice
-// screens, Theme with its accent, text size and main menu order, and About. Wi-Fi and Bluetooth lead to
-// their screens; the other system services (Dashboard, Server, Software update, Shut down) are drawn as
-// in 1.0.x, their screens come with N4's services.
+// screens, Theme with its accent, text size and main menu order, and About; each system service
+// (Wi-Fi, Bluetooth, Dashboard, Server, Software update, Sound, Shut down) leads to its screen.
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -416,7 +415,7 @@ class SettingsScreen : public ShellListScreen {
               if (abs(v - g_prefs.screenTimeoutMs) < abs(best - g_prefs.screenTimeoutMs)) best = v;
             return std::to_string(best);
           },
-          [](const std::string& v) {  // the screen turning off itself comes with N4's sleep
+          [](const std::string& v) {  // power_screens.cpp turns the screen off after it
             g_prefs.screenTimeoutMs = atoi(v.c_str());
             savePrefsNow();
           },

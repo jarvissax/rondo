@@ -9,6 +9,9 @@
 #include "screens.h"
 
 namespace rondo::shell {
+namespace {
+const bool kBtLog = getenv("RONDO_BT_LOG") != nullptr;  // development: every Bluetooth message
+}  // namespace
 
 namespace {
 
@@ -235,7 +238,7 @@ void bluetoothTick() {
   }
   bool connected = false;
   for (int i = 0; i < s.btCount; i++) connected |= s.bt[i].a2dp == 2;
-  if (connected != wasConnected && getenv("RONDO_BT_LOG"))
+  if (connected != wasConnected && kBtLog)
     printf("bt: the UI sees the headphones %s (playing %d)\n", connected ? "connected" : "gone", g_player.state().playing);
   if (wasConnected && !connected && g_player.state().playing) g_player.pause();
   wasConnected = connected;

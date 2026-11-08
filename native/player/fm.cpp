@@ -43,6 +43,9 @@ int FMR_get_rt(int idx, uint8_t** rt, int* len);
 
 namespace rondo {
 namespace {
+const bool kFmLog = getenv("RONDO_FM_LOG") != nullptr;  // development: the radio's steps
+}  // namespace
+namespace {
 
 // RDS text is ISO-8859-1, padded with NULs and spaces: UTF-8, single-spaced, trimmed
 std::string rdsText(const uint8_t* p, int len) {
@@ -179,7 +182,7 @@ void FmRadio::seek(bool up, int min, int max) {
     int found = 0;
     int from = status().frequency;
     int r = FMR_seek(idx_, from * 10, up ? 1 : 0, &found);
-    if (getenv("RONDO_FM_LOG")) fprintf(stderr, "fm: seek %s from %d -> %d, found %d\n", up ? "up" : "down", from, r, found);
+    if (kFmLog) fprintf(stderr, "fm: seek %s from %d -> %d, found %d\n", up ? "up" : "down", from, r, found);
     int f = int(lroundf(found / 10.f));
     if (f >= min && f <= max) {
       FMR_tune(idx_, f);
@@ -241,7 +244,7 @@ void FmRadio::readStatus() {
   int rssi = -120, stereo = 0;
   FMR_get_rssi(idx_, &rssi);
   FMR_get_stereomono(idx_, &stereo);
-  if (getenv("RONDO_FM_LOG")) fprintf(stderr, "fm: %d rssi %d stereo %d\n", now.frequency, rssi, stereo);
+  if (kFmLog) fprintf(stderr, "fm: %d rssi %d stereo %d\n", now.frequency, rssi, stereo);
   int signal = rssi >= -60 ? 4 : rssi >= -70 ? 3 : rssi >= -80 ? 2 : rssi >= -90 ? 1 : 0;
   // the sound watchdog (FmRadio.kt): MediaTek's FM sound switch is one for the whole system, and
   // the record stream can stall; switched off, or no sound for 2 s, the path starts again, muted
