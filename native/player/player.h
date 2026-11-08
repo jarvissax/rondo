@@ -43,6 +43,7 @@ struct PlayerState {
   int64_t bufferedMs;    // how far the video's picture has been read
   int32_t videoFailed;   // the video's picture can't be shown (its sound may still play)
   int32_t failed;        // a streamed song stopped where it couldn't be read: Play goes on from there
+  int32_t loudnessKnown, loudnessTotal;  // Volume leveling: the library's songs measured, of all
   // FM radio (player/fm.h): it plays instead of music (music is paused meanwhile)
   int32_t fmOn, fmStarting, fmMuted, fmSeeking, fmScanning, fmStereo, fmSignal, fmSpeaker;
   int32_t fmError;      // 1: no wired headphones (the antenna), 2: the chip didn't start
@@ -97,6 +98,10 @@ class PlayerHost {
   void fmSpeaker(bool on);
   void click();  // the wheel's click sound
   void sound(const SoundSettings& s);  // Settings › Sound for the output in use
+  // Volume leveling's measurements: their file, the library's songs, whether measuring them may run
+  void loudnessFile(const std::string& path);
+  void analyzeList(const std::vector<std::string>& paths);
+  void analyzeAllowed(bool on);
 
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {

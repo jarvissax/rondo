@@ -42,6 +42,7 @@ extern "C" {
 #include "player.h"
 #include "click.h"
 #include "dsp.h"
+#include "loudness.h"
 #include "fm.h"
 #include "protocol.h"
 #include "video.h"
@@ -115,6 +116,11 @@ class Engine {
   static void* decodeThread(void* self) {
     setpriority(PRIO_PROCESS, 0, -4);
     static_cast<Engine*>(self)->decodeLoop();
+    return nullptr;
+  }
+  static void* analyzeThread(void* self) {
+    setpriority(PRIO_PROCESS, 0, 19);  // this thread only (Linux): behind everything else
+    static_cast<Engine*>(self)->analyzeLoop();
     return nullptr;
   }
   void decodeLoop();
@@ -214,6 +220,22 @@ class Engine {
   Click click_;
   Dsp dsp_;                  // Settings › Sound, on what goes out (under mu_, in fill())
   float heardGainDb_ = NAN;  // the ReplayGain of the track heard now
+  // Volume leveling's measurements: as songs play (from their start, to their end), and of the
+  // library while the Y1 charges (analyzeLoop, a thread at the lowest priority)
+  LoudnessCache loudness_;
+  LoudnessMeter meter_;  // the decode thread's
+  std::vector<std::string> analyzeList_;
+  bool analyzeAllowed_ = false;
+  size_t analyzeAt_ = 0;
+  int analyzeKnown_ = 0;
+  pthread_cond_t analyzeCv_ = PTHREAD_COND_INITIALIZER;
+  void analyzeLoop();
+  float measureFile(const std::string& path);
+  void countKnown() {
+    analyzeKnown_ = 0;
+    float l;
+    for (const std::string& p : analyzeList_) analyzeKnown_ += loudness_.find(p, l);
+  }
   int16_t buffers_[kBuffers][kBufferFrames * 2];
   int next_ = 0;
   int volume_ = 0, volumeMax_ = 13;  // MediaTek's STREAM_MUSIC has 13 steps (the policy's index max, Nov 7)
@@ -245,6 +267,7 @@ void Engine::publish() {
   s.bufferedMs = videoOn_ ? std::max(s.positionMs, video_.readMs()) : 0;
   s.videoFailed = videoOn_ && video_.failed();
   s.failed = failed_;
+  s.loudnessKnown = analyzeKnown_, s.loudnessTotal = int32_t(analyzeList_.size());
   FmStatus fm = fm_.status();
   s.fmOn = fm.on, s.fmStarting = fm.starting, s.fmMuted = fm.muted, s.fmSeeking = fm.seeking;
   s.fmScanning = fm.scanning, s.fmStereo = fm.stereo, s.fmSignal = fm.signal, s.fmSpeaker = fmSpeaker_;
@@ -461,6 +484,29 @@ void Engine::command(const std::vector<uint8_t>& m) {
       radio = [this, m] { fm_.setMuted(m); };
       break;
     }
+    case kLoudness: {  // the measurements' file
+      loudness_.open(std::string(reinterpret_cast<const char*>(p), len));
+      countKnown();
+      break;
+    }
+    case kAnalyzeList: {  // the library's songs, a line each
+      analyzeList_.clear();
+      std::string all(reinterpret_cast<const char*>(p), len);
+      for (size_t at = 0; at < all.size();) {
+        size_t nl = all.find('\n', at);
+        if (nl == std::string::npos) nl = all.size();
+        if (nl > at) analyzeList_.push_back(all.substr(at, nl - at));
+        at = nl + 1;
+      }
+      analyzeAt_ = 0;
+      countKnown();
+      pthread_cond_broadcast(&analyzeCv_);
+      break;
+    }
+    case kAnalyzeAllowed:
+      analyzeAllowed_ = len && p[0];
+      pthread_cond_broadcast(&analyzeCv_);
+      break;
     case kSound: {
       SoundSettings snd;
       if (decodeSound(p, len, snd)) {
@@ -739,6 +785,9 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
           rg = float(atof(e->value));
           break;
         }
+    // no tags: the loudness measured when it played before (ReplayGain's reference is -18 LUFS)
+    float lufs;
+    if (std::isnan(rg) && loudness_.find(path, lufs)) rg = -18.f - lufs;
     if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
     markers_.push_back({writeAt_, pos, duration, seekMs, false, rg});
     trackAt_ = writeAt_;
@@ -754,6 +803,8 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   AVStream* st = ok ? fmt->streams[stream] : nullptr;
   std::vector<int16_t> out(size_t(8192) * 2);
   bool interrupted = false;
+  bool measuring = ok && seekMs <= 0, reachedEnd = false;  // a song played from its start is measured
+  if (measuring) meter_.reset();
   auto emit = [&](AVFrame* f) {
     // after a seek, drop what comes before the target (the seek lands on the previous key frame)
     if (seekMs > 0 && f && f->pts != AV_NOPTS_VALUE) {
@@ -765,6 +816,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     uint8_t* o = reinterpret_cast<uint8_t*>(out.data());
     int n = swr_convert(swr, &o, max, f ? (const uint8_t**)f->extended_data : nullptr, f ? f->nb_samples : 0);
     if (n <= 0) return true;
+    if (measuring) meter_.add(out.data(), n);
     pthread_mutex_lock(&mu_);
     bool kept = write(out.data(), n, gen);
     pthread_mutex_unlock(&mu_);
@@ -782,6 +834,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
       while (avcodec_receive_frame(dec, frame) == 0)
         if (!emit(frame)) interrupted = true;
       if (!interrupted && !emit(nullptr)) interrupted = true;
+      reachedEnd = !interrupted;
       break;
     }
     if (pkt->stream_index == stream && avcodec_send_packet(dec, pkt) == 0) {
@@ -800,6 +853,16 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   avcodec_free_context(&dec);
   avformat_close_input(&fmt);
   pthread_mutex_lock(&mu_);
+  if (measuring && reachedEnd && !readFailed && gen == gen_) {
+    float l = meter_.integrated();
+    if (!std::isnan(l)) {
+      bool listed = std::find(analyzeList_.begin(), analyzeList_.end(), path) != analyzeList_.end();
+      float had;
+      if (listed && !loudness_.find(path, had)) analyzeKnown_++;
+      loudness_.put(path, l);
+      if (getenv("RONDO_PLAYER_LOG")) printf("player: measured %.2f LUFS: %s\n", l, path.c_str());
+    }
+  }
   if (streamed && gen == gen_ && !interrupted && (!ok || readFailed)) {
     streamFailed_ = true;
     if (readFailed) {
@@ -808,6 +871,85 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     }
   }
   return !interrupted && gen == gen_;
+}
+
+// The library measured in the background (Volume leveling, while the Y1 charges): a song at a time,
+// those without a measurement, stopping as soon as it isn't allowed any more.
+void Engine::analyzeLoop() {
+  pthread_mutex_lock(&mu_);
+  for (;;) {
+    float l;
+    while (analyzeAllowed_ && analyzeAt_ < analyzeList_.size() && loudness_.find(analyzeList_[analyzeAt_], l)) analyzeAt_++;
+    if (!analyzeAllowed_ || analyzeAt_ >= analyzeList_.size()) {
+      pthread_cond_wait(&analyzeCv_, &mu_);
+      continue;
+    }
+    std::string path = analyzeList_[analyzeAt_];
+    pthread_mutex_unlock(&mu_);
+    int64_t t0 = monoNs();
+    float lufs = measureFile(path);
+    pthread_mutex_lock(&mu_);
+    if (analyzeAt_ < analyzeList_.size() && analyzeList_[analyzeAt_] == path) analyzeAt_++;
+    if (!std::isnan(lufs) && !loudness_.find(path, l)) {
+      loudness_.put(path, lufs);
+      analyzeKnown_++;
+      publish();
+    }
+    if (getenv("RONDO_PLAYER_LOG"))
+      printf("player: measured %.2f LUFS in %.1f s (%d of %zu): %s\n", lufs, (monoNs() - t0) / 1e9, analyzeKnown_,
+             analyzeList_.size(), path.c_str());
+  }
+}
+
+// A file decoded only to be measured: NAN when it can't be read or the measuring was stopped
+float Engine::measureFile(const std::string& path) {
+  AVFormatContext* fmt = nullptr;
+  if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) < 0) return NAN;
+  float lufs = NAN;
+  const AVCodec* codec = nullptr;
+  int si = avformat_find_stream_info(fmt, nullptr) >= 0 ? av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0) : -1;
+  for (unsigned i = 0; i < fmt->nb_streams; i++)
+    if (int(i) != si) fmt->streams[i]->discard = AVDISCARD_ALL;
+  AVCodecContext* ctx = si >= 0 ? avcodec_alloc_context3(codec) : nullptr;
+  SwrContext* swr = nullptr;
+  AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
+  if (ctx && avcodec_parameters_to_context(ctx, fmt->streams[si]->codecpar) >= 0 && avcodec_open2(ctx, codec, nullptr) >= 0 &&
+      swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &ctx->ch_layout, ctx->sample_fmt, ctx->sample_rate, 0,
+                          nullptr) >= 0 &&
+      swr_init(swr) >= 0) {
+    LoudnessMeter meter;
+    std::vector<int16_t> out(8192 * 2);
+    AVPacket* pkt = av_packet_alloc();
+    AVFrame* frame = av_frame_alloc();
+    bool stopped = false;
+    auto drain = [&] {
+      while (avcodec_receive_frame(ctx, frame) >= 0) {
+        int max = swr_get_out_samples(swr, frame->nb_samples);
+        if (max > int(out.size() / 2)) out.resize(size_t(max) * 2);
+        uint8_t* o = reinterpret_cast<uint8_t*>(out.data());
+        int n = swr_convert(swr, &o, max, const_cast<const uint8_t**>(frame->extended_data), frame->nb_samples);
+        if (n > 0) meter.add(out.data(), n);
+      }
+    };
+    while (!stopped && av_read_frame(fmt, pkt) >= 0) {
+      if (pkt->stream_index == si && avcodec_send_packet(ctx, pkt) >= 0) drain();
+      av_packet_unref(pkt);
+      pthread_mutex_lock(&mu_);
+      stopped = !analyzeAllowed_;
+      pthread_mutex_unlock(&mu_);
+    }
+    if (!stopped) {
+      avcodec_send_packet(ctx, nullptr);
+      drain();
+      lufs = meter.integrated();
+    }
+    av_frame_free(&frame);
+    av_packet_free(&pkt);
+  }
+  swr_free(&swr);
+  avcodec_free_context(&ctx);
+  avformat_close_input(&fmt);
+  return lufs;
 }
 
 void Engine::decodeLoop() {
@@ -1001,6 +1143,8 @@ void Engine::main() {
   if (getenv("RONDO_VIDEO_LOG")) printf("video: output latency %u ms, pictures %lld ms after the clock\n", latency, (long long)syncMs);
   pthread_t t;
   pthread_create(&t, nullptr, &Engine::decodeThread, this);
+  pthread_t a;
+  pthread_create(&a, nullptr, &Engine::analyzeThread, this);
   pthread_mutex_lock(&mu_);
   publish();
   pthread_mutex_unlock(&mu_);

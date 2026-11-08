@@ -34,6 +34,9 @@ enum PlayerCommand : uint32_t {
   kFmSpeaker,   // u8
   kClick,       // the wheel's click (Settings › Click sound)
   kSound,       // Settings › Sound for the output in use: SoundSettings (dsp.h encodeSound)
+  kLoudness,    // the measurements' file (Volume leveling)
+  kAnalyzeList,  // the library's songs, a line each, to measure while allowed
+  kAnalyzeAllowed,  // u8: measuring the library may run (leveling on, the Y1 charging)
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

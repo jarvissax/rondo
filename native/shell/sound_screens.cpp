@@ -64,6 +64,35 @@ void saveNow() {
   if (!saveSound(g_soundPath, g_sound)) fprintf(stderr, "rondo: sound: can't write %s\n", g_soundPath.c_str());
 }
 
+// Volume leveling's measuring of the library: allowed while leveling is on and the Y1 charges
+void leveling(int64_t now) {
+  static bool told = false, allowed = false;
+  static size_t songs = SIZE_MAX;
+  static int64_t lastList = 0;
+  if (!told) {
+    told = true;
+    g_player.loudnessFile(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "loudness.tsv");
+  }
+  if (now - lastList > 30 * kSec) {  // the library's songs, again when their number changes
+    lastList = now;
+    std::vector<const Track*> all = g_library.songs();
+    std::vector<std::string> paths;
+    for (const Track* t : all)
+      if (!t->gone) paths.push_back(t->path);
+    if (paths.size() != songs) songs = paths.size(), g_player.analyzeList(paths);
+  }
+  bool on = g_sound.leveling && power::battery().plugged;
+  if (on != allowed) allowed = on, g_player.analyzeAllowed(on);
+}
+
+std::string levelingNote() {
+  PlayerState s = g_player.state();
+  if (!g_sound.leveling || s.loudnessTotal <= 0) return "Songs at one loudness, measured as they play";
+  std::string n = std::to_string(s.loudnessKnown) + " of " + std::to_string(s.loudnessTotal) + " songs measured";
+  if (s.loudnessKnown < s.loudnessTotal) n += power::battery().plugged ? ", measuring" : ", the rest while charging";
+  return n;
+}
+
 std::string boostName(int db) { return db ? "+" + std::to_string(db) + " dB" : "Off"; }
 
 std::string freqName(float f) {
@@ -200,7 +229,8 @@ class SoundScreen : public ShellListScreen {
   void onHide() override { saveNow(); }
   bool tick(int64_t) override {
     Output o = currentOutput();
-    if (o.key == out_.key) return false;
+    std::string note = levelingNote();
+    if (o.key == out_.key && note == note_) return false;
     out_ = o;
     render();
     return true;
@@ -274,7 +304,8 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(h);
     Row level;
     level.title = "Volume leveling";
-    level.subtitle = "Songs at one loudness, from their ReplayGain tags";
+    note_ = levelingNote();
+    level.subtitle = note_;
     level.trailing = g_sound.leveling ? "On" : "Off";
     level.onSelect = [this] {
       g_sound.leveling = !g_sound.leveling;
@@ -285,6 +316,7 @@ class SoundScreen : public ShellListScreen {
     list_.setRows(std::move(rows), true);
   }
   Output out_;
+  std::string note_;
 };
 
 }  // namespace
@@ -294,6 +326,7 @@ std::unique_ptr<Screen> makeSound() { return std::unique_ptr<Screen>(new SoundSc
 // From the loop: the output in use changing brings its sound; a change is written a second later
 void soundTick() {
   apply();
+  leveling(now_ns());
   if (g_dirtyAt && now_ns() - g_dirtyAt > 1000 * kMs) saveNow();
 }
 

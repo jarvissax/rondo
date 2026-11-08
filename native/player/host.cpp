@@ -144,6 +144,16 @@ void PlayerHost::fmSpeaker(bool on) {
   send(kFmSpeaker, &v, 1);
 }
 void PlayerHost::click() { send(kClick); }
+void PlayerHost::loudnessFile(const std::string& path) { send(kLoudness, path.data(), uint32_t(path.size())); }
+void PlayerHost::analyzeList(const std::vector<std::string>& paths) {
+  std::string all;
+  for (const std::string& p : paths) all += p + "\n";
+  send(kAnalyzeList, all.data(), uint32_t(all.size()));
+}
+void PlayerHost::analyzeAllowed(bool on) {
+  uint8_t v = on;
+  send(kAnalyzeAllowed, &v, 1);
+}
 void PlayerHost::sound(const SoundSettings& s) {
   std::vector<uint8_t> b = encodeSound(s);
   send(kSound, b.data(), uint32_t(b.size()));
