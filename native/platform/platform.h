@@ -26,7 +26,11 @@ class Display {
 std::unique_ptr<Display> openDisplay();
 
 // The Y1's controls. The wheel sends one pulse per detent, cw or ccw.
-enum class Key : uint8_t { None, WheelCw, WheelCcw, Center, Menu, Play, Next, Prev, Power };
+enum class Key : uint8_t {
+  None, WheelCw, WheelCcw, Center, Menu, Play, Next, Prev, Power,
+  // a wired headset's buttons (event1, ACCDET): media keys, not the Y1's own
+  HeadsetPlay, HeadsetNext, HeadsetPrev, HeadsetVolumeUp, HeadsetVolumeDown
+};
 
 struct InputEvent {
   Key key = Key::None;

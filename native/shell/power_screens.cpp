@@ -141,8 +141,31 @@ void powerAction(bool restart) {
   p->go(restart ? "Restarting\xe2\x80\xa6" : "Shutting down\xe2\x80\xa6", restart);
 }
 
+// A wired headset's buttons (PlayerService.onMediaButton): they act on what plays whether the screen
+// is on or not, and never wake it (they aren't the Y1's own buttons); the volume shows its panel
+// only while the screen is lit
+void headsetButton(Key k) {
+  switch (k) {
+    case Key::HeadsetPlay: g_player.togglePlay(); break;
+    case Key::HeadsetNext: g_player.next(); break;
+    case Key::HeadsetPrev: g_player.previous(); break;
+    case Key::HeadsetVolumeUp:
+    case Key::HeadsetVolumeDown: {
+      int dir = k == Key::HeadsetVolumeUp ? 1 : -1;
+      if (g_stage <= kDim) g_app->changeVolume(dir);
+      else g_player.changeVolume(dir);
+      break;
+    }
+    default: break;
+  }
+}
+
 bool powerFilter(const InputEvent& ev) {
   int64_t now = ev.time ? ev.time : now_ns();
+  if (ev.key >= Key::HeadsetPlay) {
+    if (ev.down) headsetButton(ev.key);
+    return false;
+  }
   if (ev.key == Key::Power) {
     if (ev.down) {
       if (g_stage >= kOff) {

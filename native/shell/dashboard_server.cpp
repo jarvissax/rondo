@@ -503,7 +503,7 @@ std::string g_joining, g_joinError;
 bool g_scanning = false;
 uint64_t g_rescanToken = 0;
 // Bluetooth searches while the page polls: every GET keeps it going, 30 s without one stops it
-int64_t g_btPolledAt = 0;
+int64_t g_btPolledAt = 0, g_btSearchedAt = 0;
 bool g_btSession = false;
 
 void rescan() {
@@ -1222,7 +1222,7 @@ std::string radioJson() {
       {"muted", boolean(s.fmMuted)},
       // the radio's own volume, not the music volume
       {"volume", num(int64_t(s.fmOn ? s.volume : std::max(0, g_prefs.fmVolume)))},
-      {"maxVolume", num(int64_t(13))},
+      {"maxVolume", num(int64_t(s.volumeMax > 0 ? s.volumeMax : 13))},  // the step count the player measured
       {"speaker", boolean(r.speaker)},
       {"seeking", boolean(s.fmSeeking)},
       {"scanning", boolean(s.fmScanning)}};
@@ -1295,8 +1295,10 @@ std::string putPresets(const Body& b) {
 std::string bluetoothJson() {
   CoreState s = g_core.state();
   if (s.btPower < 0) return obj({{"available", "false"}});
-  if (!g_btSession) {
+  // the page polls: searching while it does, and again every 20 s (DashboardServer.kt)
+  if (!g_btSession || (!s.btSearching && monoNs() - g_btSearchedAt > 20 * 1000000000LL)) {
     g_btSession = true;
+    g_btSearchedAt = monoNs();
     g_core.btSearch(true);
   }
   g_btPolledAt = monoNs();
