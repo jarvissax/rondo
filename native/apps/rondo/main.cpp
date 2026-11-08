@@ -82,6 +82,8 @@ void applyBrightness(int value) {
 App* g_app = nullptr;
 bool g_traceSlow = false;
 bool g_development = false;
+volatile sig_atomic_t g_restart = 0;
+void requestRestart() { g_restart = 1; }
 }  // namespace rondo::shell
 
 namespace rondo {
@@ -396,6 +398,11 @@ int main(int argc, char** argv) {
     // a helper process that died (a crash): Rondo ends too, with the queue kept, and init starts it
     // again (back in about a second, playing on)
     const char* died = !g_player.alive() ? "rondo-player" : !g_core.alive() ? "rondo-core" : !loader.alive() ? "rondo-media" : nullptr;
+    if (g_restart) g_stop = 1;  // an update in place: init starts the new one
+    // up for 30 s: not a crash loop (/system/rondo/start counts the starts and falls back to the
+    // firmware's own copy after three quick ones in a row)
+    static bool steady = false;
+    if (!dev && !steady && now_ns() - t0 > 30 * kSec) steady = true, unlink((data + "/crashes").c_str());
     if (died) {
       fprintf(stderr, "rondo: %s died: starting again\n", died);
       g_stop = 1;

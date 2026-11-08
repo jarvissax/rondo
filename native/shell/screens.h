@@ -80,6 +80,12 @@ extern std::function<void()> g_onServerChanged;  // the server's address or toke
 // Software update (SoftwareUpdate.kt): this Y1's firmware number, GET /update's version, and which is newer
 constexpr const char* kVersion = kRondoVersion;  // core/version.h (tools/set-version.sh)
 int firmwareLevel();
+std::unique_ptr<Screen> makeSoftwareUpdate();  // update_screen.cpp
+std::string bytes(uint64_t n);                  // "12 MB" (SettingsScreen.kt's bytes())
+// Rondo ends to start again (an update put in place): init runs it anew
+void requestRestart();
+// the firmware's Rondo, which installs bundles (a development run doesn't)
+bool updatesAvailable();
 std::string updateVersion(const std::string& json);
 bool isNewerVersion(const std::string& latest, const std::string& current);
 std::string bluetoothState();

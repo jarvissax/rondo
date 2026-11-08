@@ -4,6 +4,7 @@
 #pragma once
 #include <stdint.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,8 @@ class Api {
   int cached(const std::string& path, std::string& body, int64_t ttlMs = 120000);
   // POST a JSON body to a full URL without the token (pairing: 1.0.x's bare client)
   int post(const std::string& url, const std::string& json, std::string& body);
+  // The path into a file (written as .part, renamed when whole); progress(done, total) as it comes
+  int download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress);
 
   int health(Health& out);
   int musicHome(SectionsPage& out);

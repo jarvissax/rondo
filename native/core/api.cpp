@@ -126,6 +126,82 @@ int Api::get(const std::string& path, std::string& body) {
   return int(status);
 }
 
+namespace {
+struct Sink {
+  FILE* f;
+  int64_t done, total;
+  const std::function<void(int64_t, int64_t)>* progress;
+  int64_t reportedAt;
+};
+size_t toFile(char* data, size_t size, size_t n, void* user) {
+  Sink* s = static_cast<Sink*>(user);
+  size_t len = size * n;
+  if (fwrite(data, 1, len, s->f) != len) return 0;
+  s->done += int64_t(len);
+  if (s->done - s->reportedAt >= 64 * 1024 || s->done == s->total) {
+    s->reportedAt = s->done;
+    (*s->progress)(s->done, s->total);
+  }
+  return len;
+}
+int progressInfo(void* user, curl_off_t total, curl_off_t, curl_off_t, curl_off_t) {
+  Sink* s = static_cast<Sink*>(user);
+  if (total > 0) s->total = int64_t(total);
+  return 0;
+}
+}  // namespace
+
+int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress) {
+  if (!configured()) return 0;
+  std::string part = file + ".part";
+  FILE* f = fopen(part.c_str(), "wb");
+  if (!f) return 0;
+  curl_slist* headers = curl_slist_append(nullptr, auth_.c_str());
+  std::string url = base_ + path;
+  Sink sink{f, 0, -1, &progress, 0};
+  long status = 0;
+  bool wide = false;
+  for (int attempt = 0; attempt < 20; attempt++) {
+    fseek(f, 0, SEEK_SET);
+    sink.done = sink.reportedAt = 0;
+    curl_easy_reset(curl_);
+    curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl_, CURLOPT_USERAGENT, net::userAgent());
+    net::trust(curl_, wide);
+    curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+    curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT_MS, 15000L);
+    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_TIME, 30L);
+    curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, toFile);
+    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &sink);
+    curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION, progressInfo);
+    curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, &sink);
+    CURLcode rc = curl_easy_perform(curl_);
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &status);
+      break;
+    }
+    if (rc == CURLE_PEER_FAILED_VERIFICATION && !wide) {
+      wide = true;
+      continue;
+    }
+    if (!net::retryable(rc)) break;
+    usleep(250000);
+  }
+  curl_slist_free_all(headers);
+  curl_easy_reset(curl_);  // the next request sets what it needs again
+  bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
+  fclose(f);
+  if (status != 200 || !ok || rename(part.c_str(), file.c_str()) != 0) {
+    unlink(part.c_str());
+    return status == 200 ? 0 : int(status);
+  }
+  return 200;
+}
+
 int Api::post(const std::string& url, const std::string& json, std::string& body) {
   curl_slist* headers = curl_slist_append(nullptr, "Content-Type: application/json");
   bool wide = false;  // the system's roots too, once the bundled two didn't verify the server

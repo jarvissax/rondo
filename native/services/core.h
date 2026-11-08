@@ -59,6 +59,10 @@ struct CoreState {
   uint32_t btKeySerial;  // a headset's button (AVRCP): the operation in btKey, the serial moves on
   int32_t btKey;
   BtDevice bt[kMaxBtDevices];  // paired ones and found ones, in the order they came
+  // A download to a file (Software update's bundle): 0 none, 1 running, 2 done, 3 failed
+  int32_t downloadState;
+  int64_t downloadDone, downloadTotal;  // bytes
+  int32_t downloadStatus;               // the HTTP status (0: no connection)
 };
 
 class CoreHost {
@@ -92,6 +96,8 @@ class CoreHost {
   uint32_t get(const std::string& path, int cacheMs, Reply done);
   uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
   void cancel(uint32_t id);
+  // the server's path into a file, the progress in state().download*
+  void download(const std::string& path, const std::string& file);
   // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.
   int fd() const { return sock_; }
   bool pump();

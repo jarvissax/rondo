@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../core/bundle.h"
 #include "../core/clock.h"
 #include "../core/cover.h"
 #include "../platform/power.h"
@@ -770,7 +771,7 @@ Response Server::status() {
                             {"version", str(kVersion)},
                             {"model", str("Innioasis Y1")},
                             {"power", "true"},
-                            {"canUpdate", "false"},  // an update from the page: with the native firmware's update bundle (N6)
+                            {"canUpdate", boolean(updatesAvailable())},  // the firmware's Rondo takes a bundle from the page
                             {"firmware", num(int64_t(firmwareLevel()))}});
   std::string battery = obj({{"level", num(int64_t(bat.level))}, {"charging", boolean(bat.plugged)}});
   auto player = std::make_shared<std::string>(kNull);
@@ -898,7 +899,45 @@ Response Server::upload(Request& r) {
 
 // an update from the page: the native firmware's update bundle comes with N6; until then, as 1.0.x on
 // a firmware without its installer
-Response Server::update(Request& r) { return error(409, "firmware"); }
+// PUT /api/update: a Rondo bundle (rondo-<version>.rondo, core/bundle.h) from the page, checked and put in
+// place as Settings › Software update does; Rondo restarts into it once the answer is out
+Response Server::update(Request& r) {
+  if (!updatesAvailable()) return error(409, "firmware");
+  int64_t length = r.length();
+  if (length < 0) return error(411, "length");
+  std::string dir = g_prefsPath.substr(0, g_prefsPath.rfind('/')), file = dir + "/update.rondo";
+  struct statfs fs;
+  if (statfs(dir.c_str(), &fs) == 0 && int64_t(fs.f_bavail) * int64_t(fs.f_bsize) < length * 3 + 16LL * 1024 * 1024)
+    return error(507, "full");  // the file, then what it unpacks to
+  int fd = open(file.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  if (fd < 0) return error(500, "cannot save");
+  bool ok = streamBody(r, length, [fd](const char* p, size_t n) {
+    while (n) {
+      ssize_t w = write(fd, p, n);
+      if (w <= 0) return false;
+      p += w, n -= size_t(w);
+    }
+    return true;
+  });
+  ok = fsync(fd) == 0 && ok;
+  close(fd);
+  if (!ok) {
+    unlink(file.c_str());
+    return error(500, "upload cut short");
+  }
+  std::string version, why;
+  if (!bundle::install(file, dir, version, why)) {
+    unlink(file.c_str());
+    return error(400, why);
+  }
+  fprintf(stderr, "rondo: dashboard: installed %s: restarting\n", version.c_str());
+  postToMain([] {
+    if (g_player.state().playing) g_player.pause();
+    resumeSaveNow();
+    requestRestart();
+  }, 1500);  // the answer reaches the page first
+  return json(obj({{"version", str(version)}}));
+}
 
 // the address, and either a connect code from the server's admin page or a token typed in
 Response Server::putServer(const Body& b) {
@@ -1507,7 +1546,8 @@ Response Server::api(Request& r, const std::string& path) {
     return okBody();
   }
   if (path == "/update" && m == "GET")
-    return json(obj({{"version", str(kVersion)}, {"canInstall", "false"}, {"firmware", num(int64_t(firmwareLevel()))}, {"problem", kNull}}));
+    return json(obj({{"version", str(kVersion)}, {"canInstall", boolean(updatesAvailable())}, {"firmware", num(int64_t(firmwareLevel()))},
+                     {"problem", updatesAvailable() ? kNull : str("Updates need the Rondo firmware")}}));
   if (path == "/update" && m == "PUT") {
     Response res = update(r);
     if (res.status != 200) res.close = true;

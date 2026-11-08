@@ -31,6 +31,13 @@ bool CoreHost::start() {
   return true;
 }
 
+void CoreHost::download(const std::string& path, const std::string& file) {
+  std::string b = path;
+  b += '\0';
+  b += file;
+  send(kDownload, b.data(), uint32_t(b.size()));
+}
+
 bool CoreHost::alive() {
   if (child_ <= 0) return true;
   int status;

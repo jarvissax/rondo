@@ -61,6 +61,7 @@ class ApiWorkers {
   explicit ApiWorkers(int sock) : sock_(sock) {
     // libcurl's global setup isn't thread-safe: both handles are made here, before the threads
     for (auto& a : apis_) a.reset(new Api());
+    download_.reset(new Api());  // the downloads' own (a bundle takes minutes: requests go on meanwhile)
     for (int i = 0; i < 2; i++) {
       pthread_t t;
       starting_ = i;
@@ -102,6 +103,32 @@ class ApiWorkers {
     jobs_.push_back({id, ttl, std::move(path), false, ""});
     pthread_cond_signal(&cv_);
     pthread_mutex_unlock(&mu_);
+  }
+  // A file from the server (Software update's bundle), on a thread of its own; one at a time
+  void download(std::string path, std::string file) {
+    if (g_shm->downloadState == 1) return;
+    publish([](CoreState& s) { s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0; });
+    pthread_mutex_lock(&mu_);
+    std::string base = base_, token = token_;
+    pthread_mutex_unlock(&mu_);
+    struct Job {
+      ApiWorkers* self;
+      std::string base, token, path, file;
+    };
+    Job* j = new Job{this, base, token, std::move(path), std::move(file)};
+    pthread_t t;
+    pthread_create(&t, nullptr, [](void* p) -> void* {
+      std::unique_ptr<Job> job(static_cast<Job*>(p));
+      prctl(PR_SET_NAME, "rondo-download");
+      Api& api = *job->self->download_;
+      api.configure(job->base, job->token);
+      int status = api.download(job->path, job->file, [](int64_t done, int64_t total) {
+        publish([&](CoreState& s) { s.downloadDone = done, s.downloadTotal = total; });
+      });
+      publish([&](CoreState& s) { s.downloadState = status == 200 ? 2 : 3, s.downloadStatus = status; });
+      return nullptr;
+    }, j);
+    pthread_detach(t);
   }
   void post(uint32_t id, std::string url, std::string body) {
     pthread_mutex_lock(&mu_);
@@ -299,7 +326,7 @@ class ApiWorkers {
     return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
   }
   int sock_;
-  std::unique_ptr<Api> apis_[2];
+  std::unique_ptr<Api> apis_[2], download_;
   std::atomic<int> starting_{-1};
   pthread_mutex_t mu_ = PTHREAD_MUTEX_INITIALIZER, writeMu_ = PTHREAD_MUTEX_INITIALIZER;
   pthread_cond_t cv_ = PTHREAD_COND_INITIALIZER;
@@ -402,6 +429,12 @@ void runCore(int sock, CoreState* shm) {
         size_t z = rest.find('\0');
         if (z == std::string::npos) break;
         api.post(id, rest.substr(0, z), rest.substr(z + 1));
+        break;
+      }
+      case kDownload: {
+        std::string s(reinterpret_cast<const char*>(p), len);
+        size_t z = s.find('\0');
+        if (z != std::string::npos) api.download(s.substr(0, z), s.substr(z + 1));
         break;
       }
       case kApiGet: {

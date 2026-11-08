@@ -271,6 +271,8 @@ std::string wifiAddress() {
   return out;
 }
 
+}  // namespace
+
 std::string bytes(uint64_t n) {
   char b[32];
   if (n >= (1ull << 30)) snprintf(b, sizeof(b), "%.1f GB", double(n) / double(1ull << 30));
@@ -278,6 +280,8 @@ std::string bytes(uint64_t n) {
   else snprintf(b, sizeof(b), "%llu KB", (unsigned long long)(n / 1024));
   return b;
 }
+
+namespace {
 
 bool charging() {
   for (const char* p : {"/sys/class/power_supply/ac/online", "/sys/class/power_supply/usb/online"}) {
@@ -455,7 +459,7 @@ class SettingsScreen : public ShellListScreen {
       render();
     });
     add("Server", server_, tiles::server, true, [] { g_app->push(makeServer()); });
-    add("Software update", latest_.empty() ? "" : latest_ + " is out", tiles::update, true, nullptr);
+    add("Software update", latest_.empty() ? "" : latest_ + " is out", tiles::update, true, [] { g_app->push(makeSoftwareUpdate()); });
     add("About", std::string("Rondo ") + kVersion, tiles::about, true,
         [] { g_app->push(std::unique_ptr<Screen>(new AboutScreen())); });
     add("Shut down", "", tiles::power, true, [] { g_app->push(makePower()); });

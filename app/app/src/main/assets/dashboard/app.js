@@ -622,7 +622,8 @@ function sendUpdate(blob, btn) {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', '/api/update');
     if (S.session) xhr.setRequestHeader('X-Rondo-Session', S.session);
-    xhr.setRequestHeader('Content-Type', 'application/vnd.android.package-archive');
+    // an APK for 1.0.x, a .rondo bundle for Rondo 2.0
+    xhr.setRequestHeader('Content-Type', /\.rondo$/.test(blob.name || '') || (S.status?.device?.firmware ?? 1) >= 2 ? 'application/octet-stream' : 'application/vnd.android.package-archive');
     xhr.upload.onprogress = (e) => { if (btn && e.lengthComputable) btn.textContent = `Sending ${Math.round((e.loaded / e.total) * 100)}%`; };
     xhr.onload = () => {
       let data = null;
