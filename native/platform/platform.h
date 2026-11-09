@@ -13,7 +13,8 @@ class Display {
   virtual ~Display() = default;
   virtual int width() const = 0;
   virtual int height() const = 0;
-  // Nanoseconds between refreshes (the Y1's panel: 23.73 ms, 42.14 Hz).
+  // Nanoseconds between refreshes, as measured when the display opened (the Y1: 16.67 ms at 60 Hz;
+  // 23.73 ms, 42.14 Hz, as it ships).
   virtual int64_t period() const = 0;
   // Blocks until the next refresh starts and returns its time (CLOCK_MONOTONIC). A frame drawn now
   // appears at the refresh after it.

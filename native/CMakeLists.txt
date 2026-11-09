@@ -29,6 +29,7 @@ add_subdirectory(tests)
 
 # Tools that run on the Y1 (tools/perf drives them)
 add_executable(inject tools/inject.cpp)
+add_executable(vsync tools/vsync.cpp)
 
 # Third-party libraries, built for the Y1 by tools/native/deps.sh
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party/y1)
