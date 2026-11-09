@@ -6,8 +6,9 @@
 // In init.rc, zygote becomes disabled (no Java layer), and the "rondo" service runs /system/rondo/start;
 // the kernel sets the panel up at 60 Hz (patchKernel).
 // SurfaceFlinger still starts, to set the panel up as it always has, and the start script stops it
-// before Rondo draws to the framebuffer itself. Everything else (the kernel, its command line, the other
-// files of the ramdisk) stays byte for byte; the header's sizes and SHA-1 are made again.
+// before Rondo draws to the framebuffer itself. Everything else (the kernel apart from the panel's eight
+// words, its command line, the other files of the ramdisk) stays byte for byte; the header's sizes and
+// SHA-1 are made again.
 import java.io.*;
 import java.nio.*;
 import java.nio.charset.StandardCharsets;
