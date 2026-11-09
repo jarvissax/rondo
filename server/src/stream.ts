@@ -7,6 +7,7 @@ import type { Health } from "./health.js";
 import { renderMpd } from "./mpd.js";
 import {
   AUDIO_ITAG,
+  OPUS_ITAG,
   DASH_VIDEO_ITAGS,
   FALLBACK_ITAG,
   InvalidVideoId,
@@ -17,7 +18,7 @@ import {
 import { SidxCache, type SegmentRanges } from "./sidx.js";
 import { fetchRange, type UpstreamResponse } from "./upstream.js";
 
-const STREAM_ITAGS = new Set<number>([...DASH_VIDEO_ITAGS, AUDIO_ITAG, FALLBACK_ITAG]);
+const STREAM_ITAGS = new Set<number>([...DASH_VIDEO_ITAGS, AUDIO_ITAG, OPUS_ITAG, FALLBACK_ITAG]);
 // googlevideo throttles single requests above ~10 MB to playback speed (a 13.4 MB range took
 // 106 s, a 9.1 MB one 0.2 s), so bigger ranges are fetched as consecutive 8 MiB pieces.
 export const UPSTREAM_CHUNK = 8 * 1024 * 1024;

@@ -10,15 +10,17 @@ const run = promisify(execFile);
 
 export const DASH_VIDEO_ITAGS = [136, 135, 134] as const;
 export const AUDIO_ITAG = 140;
+// YouTube's Opus in WebM (about 130-160 kb/s): what the Y1 plays songs as since 2.0.0, falling back to 140
+export const OPUS_ITAG = 251;
 export const FALLBACK_ITAG = 18;
-const WANTED = new Set<number>([...DASH_VIDEO_ITAGS, AUDIO_ITAG]);
+const WANTED = new Set<number>([...DASH_VIDEO_ITAGS, AUDIO_ITAG, OPUS_ITAG]);
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const SAFETY_MS = 10 * 60 * 1000;
 
 export interface StreamFormat {
   itag: number;
   url: string;
-  mimeType: "video/mp4" | "audio/mp4";
+  mimeType: "video/mp4" | "audio/mp4" | "audio/webm";
   codecs: string;
   bitrate: number; // bits per second
   width?: number;
@@ -49,6 +51,7 @@ interface YtdlpFormat {
   url?: string;
   vcodec?: string;
   acodec?: string;
+  ext?: string;
   width?: number | null;
   height?: number | null;
   asr?: number | null;
@@ -69,7 +72,7 @@ function toFormat(f: YtdlpFormat, itag: number): StreamFormat | undefined {
   return {
     itag,
     url: f.url,
-    mimeType: hasVideo ? "video/mp4" : "audio/mp4",
+    mimeType: hasVideo ? "video/mp4" : f.ext === "webm" ? "audio/webm" : "audio/mp4",
     codecs,
     bitrate: Math.round((f.tbr ?? 0) * 1000),
     width: f.width ?? undefined,

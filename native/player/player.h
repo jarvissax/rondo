@@ -57,6 +57,7 @@ struct PlayerState {
   char fmName[64], fmText[128];  // RDS
   char path[512];
   char error[160];
+  char codec[8];  // what the heard track was read as: "Opus", "AAC", "FLAC" … ("" not known yet)
   int32_t order[kMaxQueue];
 };
 

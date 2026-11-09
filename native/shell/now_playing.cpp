@@ -432,7 +432,7 @@ class NowPlayingScreen : public Screen {
     drawLabel(e, album, cx, cy, whiteA(160));
     // from the bottom: the modes row, the song up next, "UP NEXT"
     int iconW = e.dp(15), iconH = e.dp(13);
-    std::string source = path.empty() ? "" : isStream(path) ? "Streaming \xc2\xb7 AAC" : upperExt(path) + " \xc2\xb7 Library";
+    std::string source = path.empty() ? "" : isStream(path) ? std::string("Streaming \xc2\xb7 ") + (s.codec[0] ? s.codec : "AAC") : upperExt(path) + " \xc2\xb7 Library";
     float srcX = cx + iconW + e.dp(12) + iconW;
     Label src = label(e, source, 10, false, cx + cw - srcX);
     int modesH = std::max(iconH, src.h);

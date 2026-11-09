@@ -96,6 +96,14 @@ describe("range proxy", () => {
     expect(seen.at(-1)!.ua).toMatch(/Mozilla/); // yt-dlp's header, not the device's
   });
 
+  it("serves the Opus stream (251) the Y1 plays songs as, and 404s an itag it doesn't serve", async () => {
+    const opus = await app.inject({ url: `/s/${ID}/251`, headers: { ...auth, range: "bytes=0-1023" } });
+    expect(opus.statusCode).toBe(206);
+    expect(opus.rawPayload.length).toBe(1024);
+    const other = await app.inject({ url: `/s/${ID}/250`, headers: { ...auth, range: "bytes=0-1023" } });
+    expect(other.statusCode).toBe(404);
+  });
+
   it("closes open-ended ranges at the end of the file", async () => {
     const res = await app.inject({ url: `/s/${ID}/140`, headers: { ...auth, range: "bytes=50000-" } });
     expect(res.statusCode).toBe(206);

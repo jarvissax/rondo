@@ -7,9 +7,9 @@ const fixture = JSON.parse(readFileSync(new URL("./fixtures/ytdlp-dQw4w9WgXcQ.js
 const config = loadConfig({ API_TOKEN: "t".repeat(64), COOKIES_FILE: "/nonexistent" });
 
 describe("parseYtdlp", () => {
-  it("keeps 134, 135, 136, 140 and the progressive 18 from the plain-https formats", () => {
+  it("keeps 134, 135, 136, 140, 251 and the progressive 18 from the plain-https formats", () => {
     const v = parseYtdlp("dQw4w9WgXcQ", fixture);
-    expect([...v.formats.keys()].sort((a, b) => a - b)).toEqual([18, 134, 135, 136, 140]);
+    expect([...v.formats.keys()].sort((a, b) => a - b)).toEqual([18, 134, 135, 136, 140, 251]);
     expect(v.formats.get(18)).toMatchObject({ mimeType: "video/mp4", codecs: "avc1.42001E,mp4a.40.2" });
     expect(v.duration).toBe(213);
   });
@@ -23,6 +23,7 @@ describe("parseYtdlp", () => {
     expect(f136.expiresAt).toBe(1793370585 * 1000);
     expect(f136.httpHeaders["User-Agent"]).toMatch(/Mozilla/);
     expect(v.formats.get(140)).toMatchObject({ mimeType: "audio/mp4", codecs: "mp4a.40.2", audioSamplingRate: 44100 });
+    expect(v.formats.get(251)).toMatchObject({ mimeType: "audio/webm", codecs: "opus", audioSamplingRate: 48000 });
   });
 
   it("falls back to 18 when no DASH formats exist", () => {

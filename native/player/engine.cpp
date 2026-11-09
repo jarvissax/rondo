@@ -70,7 +70,22 @@ struct Marker {  // where in the stream a track begins (pos -1: the queue's end)
   int64_t durationMs, startMs;
   bool failed = false;  // a stream stopped here (the network, the server): playback stops at startMs of pos
   float gainDb = NAN;   // the track's ReplayGain (Settings › Sound › Volume leveling)
+  char codec[8] = {0};  // what it was read as (PlayerState.codec)
 };
+
+// The streams a queued song can be read from, best first. The queue names a streamed song by its
+// server path, "/s/<id>/140" (1.0.x's AAC), whatever is read. A song: YouTube's Opus (itag 251, about
+// 130-160 kb/s VBR, in WebM) and then that AAC (140, 128 kb/s), which a server without Opus (before
+// 2.0.0), a song without it or a stream that doesn't open falls back to; a video's sound: the AAC its
+// picture was timed against in 1.0.x. tryOpus false: three songs in a row had no Opus (an older
+// server), AAC at once. The one place that knows the server's stream paths, so a direct YouTube
+// client can give its own URLs here.
+std::vector<std::string> streamCandidates(const std::string& path, bool video, bool tryOpus) {
+  size_t slash = path.rfind('/');
+  std::string base = slash == std::string::npos ? path : path.substr(0, slash + 1);
+  if (video || !tryOpus || path.compare(slash + 1, std::string::npos, "140") != 0) return {path};
+  return {base + "251", path};
+}
 
 class Engine {
  public:
@@ -223,6 +238,8 @@ class Engine {
   Click click_;
   Dsp dsp_;                  // Settings › Sound, on what goes out (under mu_, in fill())
   float heardGainDb_ = NAN;  // the ReplayGain of the track heard now
+  char heardCodec_[8] = {0};
+  int opusMisses_ = 0;  // streams in a row with no Opus: three, and AAC is asked for at once
   // Volume leveling's measurements: as songs play (from their start, to their end), and of the
   // library while the Y1 charges (analyzeLoop, a thread at the lowest priority)
   LoudnessCache loudness_;
@@ -292,6 +309,7 @@ void Engine::publish() {
   if (s.index >= 0) snprintf(s.path, sizeof(s.path), "%s", items_[size_t(s.index)].c_str());
   else s.path[0] = 0;
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
+  memcpy(s.codec, heardCodec_, sizeof(s.codec));
   size_t n = std::min(order_.size(), size_t(kMaxQueue));
   for (size_t i = 0; i < n; i++) s.order[i] = order_[i];
   __atomic_add_fetch(&s.seq, 1, __ATOMIC_ACQ_REL);  // even: consistent
@@ -780,6 +798,7 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
 // Decodes one track into the ring; false when a restart interrupted it.
 bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   std::string path = items_[size_t(order_[size_t(pos)])];
+  bool video = videoOn_;
   pthread_mutex_unlock(&mu_);
   AVFormatContext* fmt = nullptr;
   AVCodecContext* dec = nullptr;
@@ -789,39 +808,55 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   bool ok = false;
   int stream = -1;
   const AVCodec* codec = nullptr;
-  // A song's cover is a video stream FFmpeg can't decode (no picture decoders are built), and finding its
-  // size made avformat_find_stream_info read up to 5 MB: half a megabyte is enough for every audio format.
-  AVDictionary* opts = nullptr;
-  av_dict_set(&opts, "probesize", "524288", 0);
-  av_dict_set(&opts, "analyzeduration", "1000000", 0);
-  // a song the server streams: read through HttpSource; a file on the card: FFmpeg's own file input
+  // a song the server streams: read through HttpSource, from the first of its streams that opens; a file
+  // on the card: FFmpeg's own file input
   bool streamed = path.compare(0, 3, "/s/") == 0;
+  std::vector<std::string> tries{path};
+  if (streamed) tries = streamCandidates(path, video, opusMisses_ < 3);
   std::unique_ptr<HttpSource> source;
-  if (streamed) {
-    if (!curl_) curl_ = curl_easy_init();  // one handle for every song: its connection stays open
-    pthread_mutex_lock(&mu_);
-    std::string url = base_ + path, token = token_;
-    pthread_mutex_unlock(&mu_);
-    source.reset(new HttpSource(curl_, url, token, [this, gen] { return gen != gen_; }));
-    fmt = avformat_alloc_context();
-    fmt->pb = source->avio();
-    fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
+  for (size_t t = 0; t < tries.size() && !ok && gen == gen_; t++) {
+    if (t > 0) {  // the one before didn't open: closed, the next tried
+      swr_free(&swr);
+      avcodec_free_context(&dec);
+      avformat_close_input(&fmt);
+      source.reset();
+      stream = -1, codec = nullptr;
+    }
+    // A song's cover is a video stream FFmpeg can't decode (no picture decoders are built), and finding
+    // its size made avformat_find_stream_info read up to 5 MB: half a megabyte is enough for every audio
+    // format.
+    AVDictionary* opts = nullptr;
+    av_dict_set(&opts, "probesize", "524288", 0);
+    av_dict_set(&opts, "analyzeduration", "1000000", 0);
+    if (streamed) {
+      if (!curl_) curl_ = curl_easy_init();  // one handle for every song: its connection stays open
+      pthread_mutex_lock(&mu_);
+      std::string url = base_ + tries[t], token = token_;
+      pthread_mutex_unlock(&mu_);
+      source.reset(new HttpSource(curl_, url, token, [this, gen] { return gen != gen_; }));
+      fmt = avformat_alloc_context();
+      fmt->pb = source->avio();
+      fmt->flags |= AVFMT_FLAG_CUSTOM_IO;
+    }
+    int opened = avformat_open_input(&fmt, streamed ? "" : path.c_str(), nullptr, &opts);
+    av_dict_free(&opts);
+    if (opened == 0)
+      for (unsigned i = 0; i < fmt->nb_streams; i++)
+        if (fmt->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) fmt->streams[i]->discard = AVDISCARD_ALL;
+    if (opened == 0 && avformat_find_stream_info(fmt, nullptr) >= 0 &&
+        (stream = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0)) >= 0 && codec) {
+      dec = avcodec_alloc_context3(codec);
+      AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
+      if (avcodec_parameters_to_context(dec, fmt->streams[stream]->codecpar) >= 0 && avcodec_open2(dec, codec, nullptr) == 0 &&
+          swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0,
+                              nullptr) == 0 &&
+          swr_init(swr) == 0)
+        ok = true;
+    }
+    if (streamed && tries.size() > 1 && t == 0) opusMisses_ = ok ? 0 : opusMisses_ + 1;
+    if (!ok && t + 1 < tries.size()) fprintf(stderr, "rondo-player: %s didn't open: %s next\n", tries[t].c_str(), tries[t + 1].c_str());
   }
-  int opened = avformat_open_input(&fmt, streamed ? "" : path.c_str(), nullptr, &opts);
-  av_dict_free(&opts);
-  if (opened == 0)
-    for (unsigned i = 0; i < fmt->nb_streams; i++)
-      if (fmt->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) fmt->streams[i]->discard = AVDISCARD_ALL;
-  if (opened == 0 && avformat_find_stream_info(fmt, nullptr) >= 0 &&
-      (stream = av_find_best_stream(fmt, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0)) >= 0 && codec) {
-    dec = avcodec_alloc_context3(codec);
-    AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
-    if (avcodec_parameters_to_context(dec, fmt->streams[stream]->codecpar) >= 0 && avcodec_open2(dec, codec, nullptr) == 0 &&
-        swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0,
-                            nullptr) == 0 &&
-        swr_init(swr) == 0)
-      ok = true;
-  }
+  const char* codecName = !ok ? "" : codec->id == AV_CODEC_ID_OPUS ? "Opus" : codec->id == AV_CODEC_ID_AAC ? "AAC" : "";
   pthread_mutex_lock(&mu_);
   if (!ok) {
     error_ = streamed ? "Can't play this song" : "Can't play " + path.substr(path.rfind('/') + 1);
@@ -850,8 +885,12 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     if (std::isnan(rg) && loudness_.find(path, lufs)) rg = -18.f - lufs;
     if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
     markers_.push_back({writeAt_, pos, duration, seekMs, false, rg});
+    snprintf(markers_.back().codec, sizeof(markers_.back().codec), "%s", codecName);
     trackAt_ = writeAt_;
-    if (heardPos_ == pos && readAt_ == markers_.back().at) heardDuration_ = duration;
+    if (heardPos_ == pos && readAt_ == markers_.back().at) {
+      heardDuration_ = duration;
+      memcpy(heardCodec_, markers_.back().codec, sizeof(heardCodec_));
+    }
     // a video's sound again (Repeat): the picture's next pass starts where this one does on the clock
     if (videoOn_ && videoPasses_++ > 0) video_.loop(restartMs_ * 1000 + int64_t(writeAt_) * 1000000 / kRate);
   }
@@ -1120,6 +1159,7 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     heardStartMs_ = m.startMs;
     heardDuration_ = m.durationMs;
     heardGainDb_ = m.gainDb;
+    memcpy(heardCodec_, m.codec, sizeof(heardCodec_));
     pos_ = m.pos;
   }
   int16_t* b = buffers_[next_];
