@@ -96,6 +96,10 @@ class CoreHost {
   uint32_t get(const std::string& path, int cacheMs, Reply done);
   uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
   void cancel(uint32_t id);
+  // Requests sent from now on have ids from this; true while one of those is unanswered (a screen
+  // that just opened waits a moment for its first answer, main.cpp)
+  uint32_t nextRequestId() const { return nextId_; }
+  bool pendingSince(uint32_t id) const { return pending_.lower_bound(id) != pending_.end(); }
   // the server's path into a file, the progress in state().download*
   void download(const std::string& path, const std::string& file);
   // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.

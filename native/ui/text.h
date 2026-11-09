@@ -58,8 +58,9 @@ class Text {
   // Draws a run with its origin (left end of the baseline) at x, baseline. New glyphs are rasterized
   // here and reach the GPU in flush().
   void draw(Canvas& c, const TextRun& run, float x, float baseline, Color color);
-  // Sends this frame's new glyphs to the atlas texture; call before Canvas::end().
-  void flush();
+  // Sends this frame's new glyphs to the atlas texture it draws from; call before Canvas::end(). idle:
+  // to both textures at once (no frame on the GPU: the warm-up, a screen drawn unseen).
+  void flush(bool idle = false);
   // atlas rows the last flush() uploaded (0: none)
   int flushedRows() const { return flushedRows_; }
 
@@ -80,10 +81,14 @@ class Text {
     bool ok = false;
   };
   Mask addMask(int w, int h, const uint8_t* a8);
-  const Texture& atlas() const { return atlas_; }
+  const Texture& atlas() const { return atlases_[cur_]; }
   uint32_t atlasGeneration() const { return generation_; }
   int glyphsRasterizedLastFrame() const { return rasterizedFrame_; }
-  void frameDone() { rasterizedFrame_ = 0; }
+  void frameDone() { cur_ ^= 1, rasterizedFrame_ = 0,shapedFrame_ = 0, shapeNsFrame_ = 0, rasterNsFrame_ = 0; }
+  // this frame so far: lines shaped (cache misses) and the time in shaping and in rasterizing (RONDO_SLOW)
+  int shapedThisFrame() const { return shapedFrame_; }
+  double shapeMsThisFrame() const { return shapeNsFrame_ / 1e6; }
+  double rasterMsThisFrame() const { return rasterNsFrame_ / 1e6; }
   // An atlas filled up and started again while this frame was drawn: the glyphs drawn before that point
   // at what was cleared, so the frame is drawn once more (rare: a screen of new emoji or sizes)
   bool takeResetInFrame() {
@@ -150,19 +155,32 @@ class Text {
   hb_buffer_t* buffer_ = nullptr;
 
   static constexpr int kAtlasW = 1024, kAtlasH = 2048;  // 2 MB: every warmed size fits with room
-  Texture atlas_;
+  // Each atlas is two textures with the same glyphs, used on alternate frames: new glyphs go into the
+  // one the last frame didn't use (the frame before that one is on the panel, so done with it), and
+  // into the other one a frame later. A texture changed while a frame still draws from it made the
+  // next frame wait a whole refresh (N5 log).
+  Texture atlases_[2];
+  int cur_ = 0;
+  struct Range {
+    int y0, y1;
+    void add(int a, int b) { y0 = a < y0 ? a : y0, y1 = b > y1 ? b : y1; }
+  };
+  Range pend_[2] = {{kAtlasH, 0}, {kAtlasH, 0}}, cPend_[2] = {{kAtlasH, 0}, {kAtlasH, 0}};
+  void upload(int which);
   uint32_t generation_ = 0;
   std::vector<uint8_t> pixels_;  // the atlas, kept on the CPU: new glyphs go up as one update
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
   int dirtyY0_ = kAtlasH, dirtyY1_ = 0;
   // color glyphs (emoji), premultiplied RGBA, packed the same way
   static constexpr int kColorW = 512, kColorH = 512;
-  Texture colorAtlas_;
+  Texture colorAtlases_[2];
   std::vector<uint8_t> colorPixels_;
   int cShelfX_ = 0, cShelfY_ = 0, cShelfH_ = 0;
   int cDirtyY0_ = kColorH, cDirtyY1_ = 0;
   int flushedRows_ = 0;
   int rasterizedFrame_ = 0;
+  int shapedFrame_ = 0;
+  int64_t shapeNsFrame_ = 0, rasterNsFrame_ = 0;
   bool resetInFrame_ = false;
   size_t warmFont_ = 0, warmChar_ = 0;
   struct Advances {

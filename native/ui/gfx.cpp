@@ -206,7 +206,7 @@ bool Canvas::init(int width, int height) {
   return true;
 }
 
-void Canvas::begin(Color clear) {
+void Canvas::discard() {
   for (auto& l : layers_) {
     l.verts.clear();
     l.cmds.clear();
@@ -216,6 +216,10 @@ void Canvas::begin(Color clear) {
   offY_.assign(1, 0);
   alpha_.assign(1, 1);
   clip_.assign(1, Clip{0, 0, int16_t(w_), int16_t(h_)});
+}
+
+void Canvas::begin(Color clear) {
+  discard();
   glViewport(0, 0, w_, h_);
   glScissor(0, 0, w_, h_);
   glClearColor(((clear >> 16) & 0xff) / 255.f, ((clear >> 8) & 0xff) / 255.f, (clear & 0xff) / 255.f, 1);

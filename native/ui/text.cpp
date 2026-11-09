@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -19,6 +20,11 @@
 
 namespace rondo::ui {
 namespace {
+int64_t clockNs() {
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return int64_t(t.tv_sec) * 1000000000 + t.tv_nsec;
+}
 
 uint32_t decodeUtf8(const char*& p, const char* end) {
   uint8_t c = uint8_t(*p++);
@@ -122,10 +128,10 @@ bool Text::init(const char* fontDir, const char* regular, const char* emoji) {
   }
   buffer_ = hb_buffer_create();
   pixels_.assign(size_t(kAtlasW) * kAtlasH, 0);
-  atlas_ = createTexture(kAtlasW, kAtlasH, GL_ALPHA, GL_UNSIGNED_BYTE, pixels_.data(), true);
+  for (Texture& t : atlases_) t = createTexture(kAtlasW, kAtlasH, GL_ALPHA, GL_UNSIGNED_BYTE, pixels_.data(), true);
   if (emoji_ >= 0) {
     colorPixels_.assign(size_t(kColorW) * kColorH * 4, 0);
-    colorAtlas_ = createTexture(kColorW, kColorH, GL_RGBA, GL_UNSIGNED_BYTE, colorPixels_.data(), true);
+    for (Texture& t : colorAtlases_) t = createTexture(kColorW, kColorH, GL_RGBA, GL_UNSIGNED_BYTE, colorPixels_.data(), true);
   }
   return true;
 }
@@ -319,25 +325,39 @@ bool Text::rasterize(Slot& s) {
   return true;
 }
 
-void Text::flush() {
-  flushedRows_ = 0;
+void Text::flush(bool idle) {
+  // what changed since the last flush is owed to both textures
   if (cDirtyY1_ > cDirtyY0_) {
-    glBindTexture(GL_TEXTURE_2D, colorAtlas_.id);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, cDirtyY0_, kColorW, cDirtyY1_ - cDirtyY0_, GL_RGBA, GL_UNSIGNED_BYTE,
-                    &colorPixels_[size_t(cDirtyY0_) * kColorW * 4]);
-    flushedRows_ += cDirtyY1_ - cDirtyY0_;
+    for (Range& r : cPend_) r.add(cDirtyY0_, cDirtyY1_);
     cDirtyY0_ = kColorH;
     cDirtyY1_ = 0;
   }
-  if (dirtyY1_ <= dirtyY0_) return;
-  flushedRows_ = dirtyY1_ - dirtyY0_;
-  glBindTexture(GL_TEXTURE_2D, atlas_.id);
+  if (dirtyY1_ > dirtyY0_) {
+    for (Range& r : pend_) r.add(dirtyY0_, dirtyY1_);
+    dirtyY0_ = kAtlasH;
+    dirtyY1_ = 0;
+  }
+  flushedRows_ = 0;
+  upload(cur_);
+  if (idle) upload(cur_ ^ 1);
+}
+
+void Text::upload(int which) {
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirtyY0_, kAtlasW, dirtyY1_ - dirtyY0_, GL_ALPHA, GL_UNSIGNED_BYTE,
-                  &pixels_[size_t(dirtyY0_) * kAtlasW]);
-  dirtyY0_ = kAtlasH;
-  dirtyY1_ = 0;
+  Range& c = cPend_[which];
+  if (c.y1 > c.y0 && colorAtlases_[which].id) {
+    glBindTexture(GL_TEXTURE_2D, colorAtlases_[which].id);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, c.y0, kColorW, c.y1 - c.y0, GL_RGBA, GL_UNSIGNED_BYTE, &colorPixels_[size_t(c.y0) * kColorW * 4]);
+    flushedRows_ += c.y1 - c.y0;
+  }
+  c = {kAtlasH, 0};
+  Range& a = pend_[which];
+  if (a.y1 > a.y0) {
+    glBindTexture(GL_TEXTURE_2D, atlases_[which].id);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, a.y0, kAtlasW, a.y1 - a.y0, GL_ALPHA, GL_UNSIGNED_BYTE, &pixels_[size_t(a.y0) * kAtlasW]);
+    flushedRows_ += a.y1 - a.y0;
+  }
+  a = {kAtlasH, 0};
 }
 
 void Text::shapeInto(TextRun& out, int font, std::string_view s) {
@@ -481,12 +501,19 @@ const TextRun& Text::run(int font, std::string_view utf8, float maxWidth) {
     uint32_t cut = ages[ages.size() / 2];
     for (auto e = runs_.begin(); e != runs_.end();) e = e->second.used < cut ? runs_.erase(e) : std::next(e);
   }
+  int64_t s0 = clockNs();
   CachedRun& c = runs_[key];
   c.text.assign(utf8.data(), utf8.size());
   c.font = font;
   c.maxWidth = maxWidth;
   c.used = useClock_;
   shapeInto(c.run, font, utf8);
+  shapedFrame_++;
+  struct Add {
+    int64_t& to;
+    int64_t from;
+    ~Add() { to += clockNs() - from; }
+  } add{shapeNsFrame_, s0};
   if (maxWidth > 0 && c.run.width > maxWidth && !c.run.glyphs.empty()) {
     TextRun dots;
     shapeInto(dots, font, "\xe2\x80\xa6");
@@ -519,11 +546,15 @@ const TextRun& Text::run(int font, std::string_view utf8, float maxWidth) {
 void Text::draw(Canvas& c, const TextRun& run, float x, float baseline, Color color) {
   for (const TextRun::Glyph& g : run.glyphs) {
     Slot& s = slots_[g.slot];
-    if (!s.ready) rasterize(s);
+    if (!s.ready) {
+      int64_t r0 = clockNs();
+      rasterize(s);
+      rasterNsFrame_ += clockNs() - r0;
+    }
     if (!s.w) continue;
     float gx = x + g.x + s.left, gy = baseline + g.y - s.top;
-    if (s.color) c.colorGlyph(colorAtlas_, {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color >> 24);
-    else c.glyph(atlas_, {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color);
+    if (s.color) c.colorGlyph(colorAtlases_[cur_], {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color >> 24);
+    else c.glyph(atlases_[cur_], {gx, gy, float(s.w), float(s.h)}, {s.u0, s.v0, s.u1 - s.u0, s.v1 - s.v0}, color);
   }
 }
 

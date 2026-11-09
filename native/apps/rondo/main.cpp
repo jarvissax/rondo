@@ -93,6 +93,8 @@ void slowTrace(const char* fmt, ...) {
   va_end(ap);
   g_slowLines += b;
 }
+static int64_t g_traceT0 = 0;
+double traceMs() { return (now_ns() - g_traceT0) / 1e6; }
 void slowTraceFlush() {
   if (g_slowLines.empty()) return;
   fputs(g_slowLines.c_str(), stdout);
@@ -240,6 +242,7 @@ int main(int argc, char** argv) {
   if (!g_player.start(data, dev)) return 1;  // rondo-player, also before any thread
   if (!g_core.start()) return 1;    // rondo-core, the system services, the same
   int64_t t0 = now_ns();
+  g_traceT0 = t0;
   g_traceSlow = getenv("RONDO_SLOW") != nullptr;
   g_config = loadConfig(configPath);
   g_configPath = configPath, g_prefsPath = prefsPath;
@@ -327,6 +330,9 @@ int main(int argc, char** argv) {
   FrameLog log(display->period());
   const int64_t period = display->period();
   bool moving = true, wasMoving = false;
+  uint32_t seenTransitions = 0;  // the slides whose first frame was prepared
+  uint32_t settleFrom = 0;       // an opening's first request (0: none waited for)
+  int64_t settleUntil = 0;
   int prevGlyphs = 0, prevRows = 0, prevUploads = 0;  // for RONDO_SLOW
   int64_t prevSpan = 0;
   int64_t lastPresent = 0, lastStatus = now_ns(), menuDown = 0;
@@ -503,12 +509,12 @@ int main(int argc, char** argv) {
           canvas.begin(pal.shellBg);
           Env env{canvas, text, icons, covers, pal, now_ns()};
           np->draw(env, float(display->width()), float(display->height()));
-          text.flush();
+          text.flush(true);
           canvas.end();
           glFinish();
         }
         warmed = warmStage == 4;
-        text.flush();  // to the GPU now, not in a moving frame
+        text.flush(true);  // to the GPU now (both atlas textures), not in a moving frame
         pollfd q[1] = {{input->waitFd(), POLLIN, 0}};
         if (poll(q, 1, 0) == 0) continue;
       }
@@ -551,6 +557,7 @@ int main(int argc, char** argv) {
     int64_t present = vs + period;
     app.setNow(present);
     int64_t a = now_ns();  // the frame's work starts with the input: a screen opening counts
+    uint32_t firstRequest = g_core.nextRequestId();  // what the input sends for comes after this
     input->acknowledge();
     InputEvent ev;
     int64_t oldest = -1;
@@ -564,12 +571,44 @@ int main(int argc, char** argv) {
       }
     }
     dispatch.tick(now_ns());
-    // Opening a screen can take 10 ms. A frame finished that late reaches the panel a refresh late and holds
-    // up the next one (N5 log), so such a refresh draws nothing: the slide starts cleanly on the next.
-    // (Nov 9: Library, Songs and Now Playing open in 1.3 to 2.2 ms, so this is for the rare slow one; letting
-    // a 7 ms opening draw gave 12 ms of work, and the next frame waited a whole refresh for the GPU.)
+    // A screen that opens or closes (and the first one, at startup) is drawn here once without the GPU:
+    // its text is shaped and its new glyphs rasterized before the slide's first frame. A frame whose work
+    // passes 6 ms reaches the panel a refresh late and holds up the next one (N5 log; YouTube's home,
+    // Nov 9: a 12 ms first frame, then a 24 ms wait), so then this refresh only sends the glyphs and
+    // draws nothing: the slide starts cleanly on the next.
+    //
+    // A screen that sends for its content as it opens waits up to two refreshes for the answer, so its
+    // first frame has it: YouTube Music's home comes from rondo-core's cache within two, and arriving
+    // mid-slide YouTube's cost a 14 ms frame and a 24 ms wait (Nov 9). A slower answer (the network)
+    // lets the slide start with "Loading…".
+    int64_t ahead = 0;
+    if (app.transitions() != seenTransitions) {
+      if (!settleFrom && !app.closing() && app.top()->waitsForContent() && g_core.pendingSince(firstRequest)) settleFrom = firstRequest, settleUntil = present + 2 * period;
+      if (settleFrom && g_core.pendingSince(settleFrom) && present < settleUntil) {
+        app.delay(period);
+        lastPresent = present;
+        wasMoving = false;
+        moving = true;
+        continue;
+      }
+      if (settleFrom && g_traceSlow) slowTrace("slow: [its answer %s after %.0f ms]\n", g_core.pendingSince(settleFrom) ? "still out" : "came",
+                                               (present - (settleUntil - 2 * period)) / 1e6);
+      settleFrom = 0;
+      seenTransitions = app.transitions();
+      int64_t d0 = now_ns();
+      canvas.discard();
+      Env env{canvas, text, icons, covers, pal, present};
+      status.playing = g_player.state().playing != 0;
+      app.draw(env, float(display->width()), float(display->height()), status);
+      canvas.discard();
+      text.takeResetInFrame();
+      ahead = now_ns() - d0;
+    }
     if (now_ns() - a > 6 * kMs) {
-      if (g_traceSlow) slowTrace("slow: the input took %.1f ms (a screen opening): this refresh is skipped\n", (now_ns() - a) / 1e6);
+      if (g_traceSlow)
+        slowTrace("slow: an opening took %.1f ms (%.1f of it drawn ahead): this refresh only sends its glyphs\n", (now_ns() - a) / 1e6,
+                  ahead / 1e6);
+      text.flush();
       app.delay(period);
       lastPresent = present;
       // the next frame starts the motion: it doesn't continue the idle frame before the press (the
@@ -595,9 +634,11 @@ int main(int argc, char** argv) {
     }
     int64_t b = now_ns();
     if (g_traceSlow && b - a > 8 * kMs)
-      slowTrace("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (the frame before: %d glyphs, "
-             "%d atlas rows, %d covers uploaded, presented %.1f ms after its vsync)\n",
-             (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6, (a3 - a2) / 1e6, (b - a3) / 1e6, prevGlyphs, prevRows, prevUploads, prevSpan / 1e6);
+      slowTrace("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (%d lines shaped in %.1f, %d glyphs "
+                "rasterized in %.1f; the frame before: %d glyphs, %d atlas rows, %d covers uploaded, presented %.1f ms after its vsync)\n",
+                (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6, (a3 - a2) / 1e6, (b - a3) / 1e6, text.shapedThisFrame(),
+                text.shapeMsThisFrame(), text.glyphsRasterizedLastFrame(), text.rasterMsThisFrame(), prevGlyphs, prevRows, prevUploads,
+                prevSpan / 1e6);
     text.flush();
     bool more = covers.pump(present, 2);
     prevGlyphs = text.glyphsRasterizedLastFrame(), prevRows = text.flushedRows(), prevUploads = covers.uploadedLast();

@@ -57,6 +57,7 @@ class MusicListScreen : public Screen {
   explicit MusicListScreen(std::string title) : title_(std::move(title)) { list_.style = RowStyle::Music; }
   std::string title() const override { return title_; }
   bool statusBar() const override { return false; }
+  bool waitsForContent() const override { return true; }
   bool onAction(Action a, int steps) override;
   bool step(float dt) override;
   bool tick(int64_t now) override;

@@ -55,6 +55,7 @@ class Canvas {
   int height() const { return h_; }
 
   void begin(Color clear);
+  void discard();  // what was recorded since begin(), dropped, with no GL call (a dry run of a frame)
   void end();  // uploads and draws everything recorded since begin()
 
   void layer(int n) { layer_ = n < kLayers ? n : kLayers - 1; }

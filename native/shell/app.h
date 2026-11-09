@@ -40,6 +40,7 @@ extern bool g_traceSlow;
 // milliseconds and would be timed with the frame)
 void slowTrace(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void slowTraceFlush();
+double traceMs();  // since the start, for the trace
 // a development run (from /data/local/tmp): the development switches work (RONDO_* variables, Menu held
 // 2 s quits); the firmware's copy ignores them
 extern bool g_development;
@@ -66,6 +67,9 @@ class Screen {
   // changed (the player's position, a timer running out).
   virtual bool tick(int64_t now) { return false; }
   virtual int64_t wakeAt() const { return 0; }
+  // true: what it shows comes from the server, so its slide waits a moment for the first answer (a
+  // cached one comes within two refreshes, main.cpp)
+  virtual bool waitsForContent() const { return false; }
 };
 
 // ShellActivity: one stack of screens; the main menu is its bottom and never closes.
@@ -80,6 +84,7 @@ class App {
       stack_.back()->onShow();
       if (g_traceSlow && now_ns() - t0 > 2 * kMs) slowTrace("slow: %s's onShow took %.1f ms\n", stack_.back()->title().c_str(), (now_ns() - t0) / 1e6);
       transition_.begin(0, 1, now_, 250 * kMs);
+      began("opens");
       popping_ = false;
     }
   }
@@ -91,6 +96,7 @@ class App {
     stack_.pop_back();
     stack_.back()->onShow();
     transition_.begin(0, 1, now_, 250 * kMs);
+    began("back to");
     popping_ = true;
   }
   // ShellActivity.popTo(): back to the nearest screen titled `title` in one slide (the screens between
@@ -106,6 +112,7 @@ class App {
     stack_.resize(size_t(at) + 1);
     stack_.back()->onShow();
     transition_.begin(0, 1, now_, 250 * kMs);
+    began("back to");
     popping_ = true;
   }
   // set by the loop: the palette and the warmed sizes follow the theme
@@ -222,6 +229,9 @@ class App {
   // A frame skipped (see the loop): what started moving starts one refresh later instead of jumping.
  public:
   void delay(int64_t by) { transition_.start += by; }
+  // grows with every slide that begins (a screen opening or closing): main.cpp prepares its first frame
+  uint32_t transitions() const { return transitions_; }
+  bool closing() const { return popping_; }  // the last slide was back to a screen
 
  private:
   void drawVolume(Env& e, float W, float H);
@@ -235,6 +245,11 @@ class App {
   std::vector<std::unique_ptr<Screen>> stack_;
   std::unique_ptr<Screen> leaving_;
   Tween transition_;
+  uint32_t transitions_ = 0;
+  void began(const char* how) {
+    transitions_++;
+    if (g_traceSlow) slowTrace("slow: [%s %s at %.0f ms]\n", how, stack_.back()->title().c_str(), traceMs());
+  }
   bool popping_ = false;
   int64_t now_ = 0;
   Status status_;
