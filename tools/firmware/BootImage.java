@@ -48,6 +48,16 @@ public class BootImage {
     String edited = editInitRc(text);
     rc.data = edited.getBytes(StandardCharsets.UTF_8);
     rc.fields[6] = rc.data.length;  // c_filesize
+    // the services a Y1 without Android has no use for, in the files a normal boot reads
+    int off = 0;
+    for (Entry e : entries) {
+      if (!e.name.equals("init.rc") && !e.name.equals("init.modem.rc")) continue;
+      String[] r = disableServices(new String(e.data, StandardCharsets.UTF_8));
+      e.data = r[0].getBytes(StandardCharsets.UTF_8);
+      e.fields[6] = e.data.length;
+      off += Integer.parseInt(r[1]);
+    }
+    if (off != UNUSED.size()) throw new IllegalStateException("found " + off + " of the " + UNUSED.size() + " unused services");
 
     ByteArrayOutputStream z = new ByteArrayOutputStream();
     try (GZIPOutputStream out = new GZIPOutputStream(z) {{ def.setLevel(Deflater.BEST_COMPRESSION); }}) {
@@ -82,8 +92,33 @@ public class BootImage {
     if (second.length > 0) writePadded(o, second, page);
     o.write(tail);
     Files.write(Paths.get(args[1]), o.toByteArray());
-    System.out.println("init.rc: zygote disabled, the rondo service added; ramdisk " + ramdiskSize + " -> "
+    System.out.println("init.rc: zygote and " + UNUSED.size() + " unused services disabled, the rondo service added; ramdisk " + ramdiskSize + " -> "
         + newRamdisk.length + " bytes");
+  }
+
+  // Measured on the Y1 with the Java layer gone (Nov 9): Wi-Fi, Bluetooth, sound, FM, the card and
+  // NVRAM work with all of these stopped, and 4.5 MB more is free. The Y1 has no modem, SIM, GPS or TV
+  // tuner, and no apps to install, sign or play protected media for.
+  static final java.util.List<String> UNUSED = java.util.Arrays.asList(
+      "ccci_fsd", "ccci_mdinit", "gsm0710muxd", "ril-daemon", "mdlogger",  // the modem
+      "agpsd", "matv", "DMAgent", "netdiag",                               // GPS, TV, device management, diagnostics
+      "drm", "installd", "keystore");                                        // Android's apps
+
+  // "disabled" under each unused service; returns the text and how many were found
+  static String[] disableServices(String text) {
+    StringBuilder out = new StringBuilder();
+    String[] lines = text.split("\n", -1);
+    int found = 0;
+    for (int i = 0; i < lines.length; i++) {
+      out.append(lines[i]);
+      if (i < lines.length - 1) out.append('\n');
+      String[] w = lines[i].trim().split("\\s+");
+      if (w.length >= 2 && w[0].equals("service") && UNUSED.contains(w[1])) {
+        out.append("    disabled  # Rondo 2.0: not needed on the Y1 without Android\n");
+        found++;
+      }
+    }
+    return new String[] {out.toString(), Integer.toString(found)};
   }
 
   static String editInitRc(String text) {
