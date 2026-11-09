@@ -298,7 +298,11 @@ struct Worker {
     else unlink(tmp.c_str());
   }
 
-  // blur < 0: 1.0.x's backdrop (ArtColor.blurred): the picture decoded at -blur pixels, then scaled to w x h
+  // blur < 0: the picture decoded at a size of its own, then scaled to w x h: -blur is that size, square,
+  // or width | height << 12 (a video row's 104 x 58: its color is taken from the row's own picture)
+  static int srcW(const Msg& r) { return r.blur < 0 ? (-r.blur) & 0xfff : r.w; }
+  static int srcH(const Msg& r) { return r.blur < 0 ? ((-r.blur) >> 12 ? (-r.blur) >> 12 : (-r.blur) & 0xfff) : r.h; }
+  // 1.0.x's backdrop (ArtColor.blurred): the picture decoded at -blur pixels, then scaled to w x h
   // with bilinear filtering, as Bitmap.createScaledBitmap(bitmap, 6, 6, true) does
   static void bilinearDown(const Pixels& src, int w, int h, Pixels& out) {
     out.w = w, out.h = h;
@@ -324,7 +328,7 @@ struct Worker {
     pthread_mutex_lock(&mu);
     if (apiGeneration != generation) apiGeneration = generation, api.configure(base, token);
     pthread_mutex_unlock(&mu);
-    int w = r.blur < 0 ? -r.blur : r.w, h = r.blur < 0 ? -r.blur : r.h;
+    int w = srcW(r), h = srcH(r);
     std::string body;
     std::string path = std::string(r.path) + "&w=" + std::to_string(w) + "&h=" + std::to_string(h);
     if (api.get(path, body) != 200 || body.empty()) return false;
@@ -359,7 +363,7 @@ struct Worker {
     }
     if (r.blur < 0) {
       Pixels big;
-      if (bytes.empty() || !decodeImage(bytes.data(), bytes.size(), -r.blur, -r.blur, big)) return false;
+      if (bytes.empty() || !decodeImage(bytes.data(), bytes.size(), srcW(r), srcH(r), big)) return false;
       bilinearDown(big, r.w, r.h, px);
       return true;
     }
@@ -394,7 +398,7 @@ struct Worker {
   // width (bilinear), then the ImageView's center crop, drawn with bilinear filtering. The backdrops
   // (blur) take it the way they take a picture.
   static bool fit(const Pixels& src, const Msg& r, Pixels& px) {
-    int w = r.blur < 0 ? -r.blur : r.w, h = r.blur < 0 ? -r.blur : r.h;
+    int w = srcW(r), h = srcH(r);
     if (w <= 0 || h <= 0 || size_t(w) * h * 4 > kSlotBytes * 4) return false;
     if (r.blur != 0) {
       float aspect = float(w) / h, cw = float(src.w), ch = float(src.h);

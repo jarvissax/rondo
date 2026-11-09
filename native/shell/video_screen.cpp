@@ -56,7 +56,8 @@ class VideoScreen : public MusicListScreen {
     now_ = e.now;
     // the selected row's artwork, also while the pills have the focus (RowList.selectedEntry() in 1.0.x)
     const Row* sel = list_.selectedRow();
-    ambient_.follow(e, sel ? sel->thumb : "", e.dp(104));
+    // the color of the row's own 104 x 58 picture (RowList.rowArt in 1.0.x): no second thumbnail
+    ambient_.follow(e, sel ? sel->thumb : "", e.dp(104), e.dp(58));
     ambient_.draw(e, {0, 0, w, h});
     header(e, w);
     float top = float(e.dp(31));

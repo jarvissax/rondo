@@ -18,7 +18,8 @@ void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Colo
 class Ambient {
  public:
   // The artwork shown for the selection (decoded at artPx); "" for none.
-  void follow(Env& e, const std::string& thumb, int artPx);
+  // artPxH: the picture's height as its row shows it (0: square)
+  void follow(Env& e, const std::string& thumb, int artPx, int artPxH = 0);
   void draw(Env& e, Rect r);
   bool fading(int64_t now) const { return fade_.running(now); }
 

@@ -145,6 +145,8 @@ void FmRadio::start(int frequency) {
       s.on = true, s.starting = false, s.muted = false;
       s.name.clear(), s.text.clear();
     });
+    // the headphones (the antenna) came out while it turned on: it stops, as 1.0.x did (on or starting)
+    if (!headphonesIn()) stop();
   });
 }
 

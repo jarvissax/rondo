@@ -177,13 +177,14 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hi
   return gx;
 }
 
-bool artColor(Env& e, const std::string& path, int sourcePx, Color* out) {
+bool artColor(Env& e, const std::string& path, int sourcePx, Color* out, int sourceH) {
   static std::unordered_map<std::string, Color> known;
-  std::string key = path + '\n' + std::to_string(sourcePx);
+  std::string key = path + '\n' + std::to_string(sourcePx) + 'x' + std::to_string(sourceH);
   auto it = known.find(key);
   if (it != known.end()) return *out = it->second, true;
   // the artwork as the view decodes it, then Bitmap.createScaledBitmap(bitmap, 12, 12, true)
-  const uint8_t* px = e.covers.pixels(path, 12, 12, -sourcePx);
+  int source = sourceH > 0 && sourceH != sourcePx ? sourcePx | sourceH << 12 : sourcePx;  // ui/image.cpp's encoding
+  const uint8_t* px = e.covers.pixels(path, 12, 12, -source);
   if (!px) return false;
   long r = 0, g = 0, b = 0;
   for (int i = 0; i < 144; i++) r += px[i * 4], g += px[i * 4 + 1], b += px[i * 4 + 2];

@@ -136,7 +136,8 @@ SongInfo songInfo(const std::string& path);
 std::pair<std::string, std::string> firstAndRest(const std::string& subtitle);
 // ArtColor.dominant(): the artwork's average color from a 12 x 12 sample, more saturated, of medium
 // brightness, from the picture decoded at sourcePx (the view showing it); false while it loads.
-bool artColor(Env& e, const std::string& path, int sourcePx, Color* out);
+// sourceH: a picture decoded at sourcePx x sourceH (0: square), as the row that shows it decodes it
+bool artColor(Env& e, const std::string& path, int sourcePx, Color* out, int sourceH = 0);
 // StatusIcons: Wi-Fi (dimmed offline), the percentage and the battery, ending at `right` in a row
 // rowH tall; returns its left edge.
 // hidePercent: a header that runs out of room (YouTube's three pills) keeps the battery only

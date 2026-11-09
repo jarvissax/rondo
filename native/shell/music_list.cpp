@@ -32,11 +32,11 @@ void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Colo
   drawLabel(e, t, x, float((h - t.h) / 2), titleColor);
 }
 
-void Ambient::follow(Env& e, const std::string& thumb, int artPx) {
+void Ambient::follow(Env& e, const std::string& thumb, int artPx, int artPxH) {
   bool has = false;
   Color c = 0;
   if (!thumb.empty()) {
-    if (!artColor(e, thumb, artPx, &c)) return;  // not decoded yet: the current color stays
+    if (!artColor(e, thumb, artPx, &c, artPxH)) return;  // not decoded yet: the current color stays
     has = true;
   }
   if (has == has_ && (!has || c == shown_)) return;
