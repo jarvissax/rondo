@@ -394,6 +394,7 @@ void runCore(int sock, CoreState* shm) {
     switch (head[1]) {
       case kWifiEnable: wifi.enable(len && p[0]); break;
       case kWifiScan: wifi.scan(); break;
+      case kScreen: wifi.screen(len && p[0]); break;
       case kWifiConnect: wifi.connect(i32()); break;
       case kWifiJoin: {
         if (len < 1) break;

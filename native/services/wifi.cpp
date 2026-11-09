@@ -163,8 +163,9 @@ void Wifi::workLoop() {
     std::function<void()> job;
     pthread_mutex_lock(&mu_);
     while (jobs_.empty()) {
-      // every 3 s while connected: the signal and the speed; the DHCP lease renewed halfway
-      if (waitUntil(&cv_, &mu_, now_ns() + 3 * kSec) != 0) break;
+      // every 3 s while connected and the screen is on: the signal and the speed; every 60 s with it
+      // off, the route and the DHCP lease (renewed halfway)
+      if (waitUntil(&cv_, &mu_, now_ns() + (screenOn_ ? 3 : 60) * kSec) != 0) break;
     }
     if (!jobs_.empty()) {
       job = std::move(jobs_.front());
@@ -211,6 +212,7 @@ void Wifi::attached() {
     pthread_detach(t);
   }
   readSaved();
+  driverSetup();
   // where the supplicant is now: joined (with an address or still needing one), or not
   std::string st;
   command("STATUS", &st);
@@ -329,6 +331,20 @@ void Wifi::eventLoop() {
   }
 }
 
+// While DHCP runs (a lease or its renewal): out of suspend mode and power save, so the answer isn't
+// missed (WifiStateMachine's handlePreDhcpSetup and handlePostDhcpSetup)
+struct Wifi::Dhcp {
+  Wifi& w;
+  explicit Dhcp(Wifi& wifi) : w(wifi) {
+    if (!w.screenOn_) w.suspendMode(false);
+    w.command("SET ps 0");
+  }
+  ~Dhcp() {
+    w.command("SET ps 1");
+    if (!w.screenOn_) w.suspendMode(true);
+  }
+};
+
 // DHCP (libnetutils starts dhcpcd_wlan0), then the address, route and DNS
 void Wifi::getAddress() {
   update([](CoreState& s) { s.wifiState = 3; });
@@ -336,6 +352,7 @@ void Wifi::getAddress() {
   char ip[PROPERTY_VALUE_MAX], gw[PROPERTY_VALUE_MAX], dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX],
       server[PROPERTY_VALUE_MAX], vendor[PROPERTY_VALUE_MAX];
   uint32_t prefix = 0, lease = 0;
+  Dhcp awake(*this);
   if (dhcp_do_request(kIface, ip, gw, &prefix, dns1, dns2, server, &lease, vendor) != 0) {
     fprintf(stderr, "rondo-core: DHCP failed: %s\n", dhcp_get_errmsg());
     update([](CoreState& s) { s.wifiState = 1; });
@@ -418,11 +435,14 @@ void Wifi::poll() {
   CoreState now = snapshot_();
   if (now.wifiEnabled != 2 || now.wifiState != 4) return;
   std::string r;
-  int rssi = 0, speed = 0;
-  if (command("SIGNAL_POLL", &r) && !field(r, "RSSI").empty()) {
+  int rssi = now.rssi, speed = now.linkSpeed;
+  if (!screenOn_) {
+    // no signal to show: only the route and the lease
+  } else if (command("SIGNAL_POLL", &r) && !field(r, "RSSI").empty()) {
     rssi = atoi(field(r, "RSSI").c_str()), speed = atoi(field(r, "LINKSPEED").c_str());
   } else {
     // MediaTek's supplicant has the older driver commands instead: "<ssid> rssi -45", "LinkSpeed 65"
+    rssi = speed = 0;
     if (command("DRIVER RSSI", &r)) {
       size_t at = r.rfind("rssi ");
       if (at != std::string::npos) rssi = atoi(r.c_str() + at + 5);
@@ -444,6 +464,7 @@ void Wifi::poll() {
     char ip[PROPERTY_VALUE_MAX], gw[PROPERTY_VALUE_MAX], dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX],
         server[PROPERTY_VALUE_MAX], vendor[PROPERTY_VALUE_MAX];
     uint32_t prefix = 0, lease = 0;
+    Dhcp awake(*this);
     if (dhcp_do_request_renew(kIface, ip, gw, &prefix, dns1, dns2, server, &lease, vendor) == 0) {
       configure(ip, gw, prefix, dns1, dns2);
       renewAt_ = nowMs() + int64_t(lease ? lease : 3600) * 500;
@@ -524,6 +545,42 @@ void Wifi::enable(bool on) {
     CoreState s = snapshot_();
     if (on && s.wifiEnabled == 0) turnOn();
     else if (!on && s.wifiEnabled == 2) turnOff();
+  });
+}
+
+// What WifiStateMachine set once the supplicant was up (SupplicantStartedState, DriverStartedState): the
+// supplicant's scan every 15 s while not joined (config_wifi_supplicant_scan_interval; its own default
+// is 5 s), IPv4 multicast filtered and IPv6 multicast let through (router advertisements) while the
+// driver is in suspend mode, power save on.
+void Wifi::driverSetup() {
+  command("SCAN_INTERVAL 15");
+  command("DRIVER RXFILTER-STOP");
+  command("DRIVER RXFILTER-ADD 3");
+  command("DRIVER RXFILTER-START");
+  command("DRIVER RXFILTER-STOP");
+  command("DRIVER RXFILTER-REMOVE 2");
+  bool filters = command("DRIVER RXFILTER-START");
+  bool ps = command("SET ps 1");
+  fprintf(stderr, "rondo-core: Wi-Fi set up: scans every 15 s, multicast filter %s, power save %s\n", filters ? "on" : "refused",
+          ps ? "on" : "refused");
+  if (!screenOn_) suspendMode(true);
+}
+
+// WifiNative.setSuspendOptimizations(): "DRIVER SETSUSPENDMODE 1" with the screen off
+void Wifi::suspendMode(bool on) {
+  bool ok = command(on ? "DRIVER SETSUSPENDMODE 1" : "DRIVER SETSUSPENDMODE 0");
+  static int said = -1;
+  if (said != int(ok)) fprintf(stderr, "rondo-core: Wi-Fi suspend mode %s%s\n", on ? "on" : "off", ok ? "" : " (refused)");
+  said = int(ok);
+}
+
+void Wifi::screen(bool on) {
+  post([this, on] {
+    if (screenOn_ == on) return;
+    screenOn_ = on;
+    if (snapshot_().wifiEnabled != 2) return;
+    suspendMode(!on);
+    if (on) poll();  // the signal now, for the status bar
   });
 }
 

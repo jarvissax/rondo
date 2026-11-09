@@ -24,6 +24,9 @@ class Wifi {
   void connect(int id);
   void join(const std::string& ssid, WifiSecurity security, const std::string& password);
   void forget(int id);
+  // WifiStateMachine.handleScreenStateChanged(): with the screen off the driver's suspend mode is on
+  // (it drops what the filters leave out and sleeps between beacons) and the signal isn't polled
+  void screen(bool on);
 
  private:
   // one worker runs every job in order (the command loop never blocks); the event thread waits for
@@ -44,6 +47,9 @@ class Wifi {
   void poll();
   void readScanResults();
   void readSaved();
+  void driverSetup();
+  void suspendMode(bool on);
+  struct Dhcp;
 
   Publish publish_;
   pthread_mutex_t mu_ = PTHREAD_MUTEX_INITIALIZER;
@@ -53,6 +59,7 @@ class Wifi {
   bool enableAllOnConnect_ = false;
   std::string eventSsid_;  // the network named by the last state change (the event thread's)
   int64_t renewAt_ = 0;
+  std::atomic<bool> screenOn_{true};
 };
 
 }  // namespace rondo

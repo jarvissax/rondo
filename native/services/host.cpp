@@ -72,6 +72,10 @@ void CoreHost::wifiEnable(bool on) {
   uint8_t v = on;
   send(kWifiEnable, &v, 1);
 }
+void CoreHost::screen(bool on) {
+  uint8_t v = on;
+  send(kScreen, &v, 1);
+}
 void CoreHost::wifiScan() { send(kWifiScan); }
 void CoreHost::wifiConnect(int id) {
   int32_t v = id;

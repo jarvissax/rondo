@@ -73,6 +73,8 @@ class CoreHost {
   CoreState state() const;  // a consistent copy
 
   void wifiEnable(bool on);
+  // the screen on or off: with it off the Wi-Fi chip saves power and the signal is not polled
+  void screen(bool on);
   void wifiScan();
   void wifiConnect(int id);  // a saved network
   void wifiJoin(const std::string& ssid, WifiSecurity security, const std::string& password);

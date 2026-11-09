@@ -51,10 +51,12 @@ void goToSleep(int64_t now) {
   g_offAt = now;
   power::setBacklight(0);
   if (g_onSleep) g_onSleep();
+  g_core.screen(false);  // Wi-Fi saves power (Android's suspend optimizations)
 }
 
 void wake(int64_t now) {
   if (g_stage == kSuspended) power::suspend(false);  // the panel comes back with late resume (0.54 s)
+  if (g_stage >= kOff) g_core.screen(true);
   g_stage = kOn;
   g_wokeAt = g_activity = now;
   g_backlightPending = true;  // once a frame of what is there now has been drawn
