@@ -155,7 +155,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
     state_ = kChecking;
     render();
     auto alive = alive_;
-    g_core.get("/update?native=1&firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
+    g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
       if (!*alive) return;
       UpdateInfo info;
       if (status != 200 || !parseUpdate(body, info)) {

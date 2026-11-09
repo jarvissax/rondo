@@ -90,7 +90,8 @@ describe("update routes", () => {
   it("names a release for a newer firmware with its number, so the Rondo can point to Innioasis Updater CE", async () => {
     const app = await appWith(new Updates(async () => latest("2.0.0", { firmware: 2 })));
     expect((await app.inject({ url: "/update?firmware=1" })).json()).toMatchObject({ version: "2.0.0", firmware: 2 });
-    expect((await app.inject({ url: "/update?firmware=2" })).json()).toMatchObject({ version: "2.0.0", firmware: 2 });
+    // firmware 2 is Rondo 2.0, which installs bundles only: an APK is nothing for it
+    expect((await app.inject({ url: "/update?firmware=2" })).json()).toEqual({ version: null });
   });
 
   it("keeps a Rondo from before firmware numbers (1.0.0) to first-firmware releases", async () => {
@@ -100,10 +101,10 @@ describe("update routes", () => {
     expect((await second.inject({ url: "/update" })).json()).toEqual({ version: null });
   });
 
-  it("names a 2.0 release's bundle to a native Rondo, and tells 1.0.x it needs the new firmware", async () => {
-    const native = { version: "2.0.0", file: "rondo.rondo", size: 31000000, bundle: "rondo.rondo", bundleSize: 31000000, firmware: 2 };
-    const app = await appWith(new Updates(async () => native));
-    expect((await app.inject({ url: "/update?native=1&firmware=2" })).json()).toEqual({
+  it("names a 2.0 release's bundle to Rondo 2.0 (firmware 2), and tells 1.0.x it needs the new firmware", async () => {
+    const two = { version: "2.0.0", file: "rondo.rondo", size: 31000000, bundle: "rondo.rondo", bundleSize: 31000000, firmware: 2 };
+    const app = await appWith(new Updates(async () => two));
+    expect((await app.inject({ url: "/update?firmware=2" })).json()).toEqual({
       version: "2.0.0",
       size: 31000000,
       notes: "https://github.com/jarvissax/rondo/releases/tag/v2.0.0",

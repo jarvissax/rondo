@@ -132,8 +132,8 @@ export class Updates {
 }
 
 // Settings › Software update on the Rondo (device token, like every route after the auth hook).
-// GET /update names the newest Rondo with an update for the asker: Rondo 1.0.x (an APK) or, with
-// ?native=1, Rondo 2.0 (a signed bundle). GET /update/rondo.apk and /update/rondo.rondo pass the file
+// GET /update names the newest Rondo with an update for the asker: by its ?firmware=N, Rondo 1.0.x (1:
+// an APK) or Rondo 2.0 (2 and up: a signed bundle). GET /update/rondo.apk and /update/rondo.rondo pass the file
 // through as it downloads, so the Y1 talks only to its server; Android installs an APK only when it's
 // signed with the firmware copy's key, Rondo 2.0 a bundle only with the bundle key's signature.
 // ?firmware=N is the Rondo's firmware: a release that needs a newer one comes with its firmware
@@ -141,13 +141,13 @@ export class Updates {
 // 2.0, which has no APK, and says how to move). A Rondo that doesn't say (1.0.0) hears only of
 // first-firmware ones.
 export function registerUpdateRoutes(app: FastifyInstance, updates: Updates | undefined): void {
-  app.get<{ Querystring: { firmware?: string; native?: string } }>("/update", async (req) => {
+  app.get<{ Querystring: { firmware?: string } }>("/update", async (req) => {
     const r = await updates?.latest();
     if (!r) return { version: null };
     const firmware = r.firmware ?? 1;
     const asked = Number(req.query.firmware) || 0;
     if (!asked && firmware > 1) return { version: null };
-    const file = req.query.native ? r.bundle : r.apk;
+    const file = asked >= 2 ? r.bundle : r.apk;
     if (file) return { version: r.version, size: file.size, notes: r.url, firmware };
     // nothing this Rondo can install, but a newer firmware's release: it says so, with the way to move
     if (r.bundle && firmware > asked) return { version: r.version, size: 0, notes: r.url, firmware };
