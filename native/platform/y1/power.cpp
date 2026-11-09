@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <string>
 
 #include <cutils/properties.h>
 
@@ -102,6 +103,36 @@ Battery battery() {
 }
 
 int headset() { return readInt("/sys/class/switch/h2w/state", 0); }
+
+namespace {
+bool writeFile(const char* path, const char* value) {
+  int fd = open(path, O_WRONLY);
+  if (fd < 0) return false;
+  bool ok = write(fd, value, strlen(value)) == ssize_t(strlen(value));
+  close(fd);
+  return ok;
+}
+constexpr const char* kHotplug = "/sys/devices/system/cpu/cpufreq/hotplug/";
+std::string hp(const char* name) { return std::string(kHotplug) + name; }
+bool g_boosted = false;
+}  // namespace
+
+void cpuSetup() {
+  writeFile(hp("cpu_hotplug_disable").c_str(), "0");      // the second core when there is work
+  writeFile("/proc/cpufreq/cpufreq_state", "1");          // DVFS: the clock follows the load
+  writeFile("/proc/cpufreq/usb_raise_freq", "0");         // a cable doesn't pin it at the top
+  writeFile(hp("cpu_num_base").c_str(), "1");
+  writeFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq", "598000");
+  g_boosted = false;
+}
+
+void cpuBoost(bool on) {
+  if (on == g_boosted) return;
+  g_boosted = on;
+  // the floor at the top step, and both cores in at once (the governor would take 300 ms to add one)
+  writeFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq", on ? "1001000" : "598000");
+  writeFile(hp("cpu_num_base").c_str(), on ? "2" : "1");
+}
 
 void shutdown() {
   sync();

@@ -392,6 +392,15 @@ int main(int argc, char** argv) {
     for (float v : {140.f, 22.f, 98.f, 24.f}) covers.reserve(u(v), u(v), 3);
   };
   int64_t lastPeriodic = 0, lastLog = 0;
+  // both cores at full speed while anything moves, a video plays or the card is read, and a second
+  // after (power.h): the first frames of a slide never wait for the governor to ramp up
+  power::cpuSetup();
+  int64_t boostUntil = 0;
+  auto boost = [&](bool busy) {
+    int64_t now = now_ns();
+    if (busy) boostUntil = now + kSec;
+    power::cpuBoost(now < boostUntil);
+  };
   static const bool kWifiLog = getenv("RONDO_WIFI_LOG"), kPlayerLog = getenv("RONDO_PLAYER_LOG");
   // The timers, the cable and the status: on every quiet wake, and every 250 ms while frames follow each
   // other (a video's pictures, a long animation), which never leave the loop quiet.
@@ -410,6 +419,7 @@ int main(int argc, char** argv) {
     // again (back in about a second, playing on)
     const char* died = !g_player.alive() ? "rondo-player" : !g_core.alive() ? "rondo-core" : !loader.alive() ? "rondo-media" : nullptr;
     if (g_restart) g_stop = 1;  // an update in place: init starts the new one
+    boost(g_player.state().video || g_library.scanning());  // and the release once it's quiet
     // up for 30 s: not a crash loop (/system/rondo/start counts the starts and falls back to the
     // firmware's own copy after three quick ones in a row)
     static bool steady = false;
@@ -585,6 +595,7 @@ int main(int argc, char** argv) {
     text.frameDone();
     lastPresent = present;
     moving = anim || more || dispatch.nextDeadline() != 0;
+    boost(moving);
     if (moving) loader.active(present);
     wasMoving = moving;
   }
