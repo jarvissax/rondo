@@ -6,6 +6,7 @@
 # be 0 first.
 set -euo pipefail
 source "$(dirname "$0")/y1.sh"
+trap y1_rondo_again EXIT
 y1_push rondo inject
 adb shell "getprop init.svc.surfaceflinger" | grep -q stopped || y1_stop_android
 

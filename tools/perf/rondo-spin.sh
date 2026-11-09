@@ -3,6 +3,7 @@
 # Library menu and Artists. Prints rondo's frame report; the per-frame CSV goes to private/perf/.
 set -euo pipefail
 source "$(dirname "$0")/y1.sh"
+trap y1_rondo_again EXIT
 y1_push rondo inject
 adb shell "getprop init.svc.surfaceflinger" | grep -q stopped || y1_stop_android
 adb shell "kill \$(cat $DIR/rondo.pid) 2>/dev/null; sleep 0.5; cd $DIR; rm -f frames.csv; (RONDO_USB_PROMPT=0 ./run.sh --csv $DIR/frames.csv > rondo.log 2>&1 </dev/null &); sleep 2.5"

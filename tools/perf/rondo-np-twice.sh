@@ -3,6 +3,7 @@
 # turned on Now Playing): tells a first-use cost from one every opening has. Prints the slow frames.
 set -euo pipefail
 source "$(dirname "$0")/y1.sh"
+trap y1_rondo_again EXIT
 y1_push rondo inject
 adb shell "getprop init.svc.surfaceflinger" | grep -q stopped || y1_stop_android
 adb shell "kill \$(cat $DIR/rondo.pid) 2>/dev/null; sleep 0.5; cd $DIR; (RONDO_USB_PROMPT=0 RONDO_SLOW=1 ./run.sh > rondo.log 2>&1 </dev/null &); sleep 2.5"

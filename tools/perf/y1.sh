@@ -22,6 +22,9 @@ y1_push() {
 }
 y1_stop_android() { adb shell 'stop zygote; sleep 2; stop surfaceflinger; sleep 1'; }
 y1_start_android() { adb shell 'start surfaceflinger; sleep 1; start zygote'; }
+# Rondo running again as usual (no trace, no USB prompt): a scenario ends by stopping it for its report,
+# which leaves the Y1 frozen on its last picture otherwise
+y1_rondo_again() { adb shell "cd $DIR; (RONDO_USB_PROMPT=0 ./run.sh > rondo-after.log 2>&1 </dev/null &); sleep 2"; }  # (the sleep: a shell that ends at once takes it along)
 y1_shot() {
   adb shell "kill -USR1 \$(cat $DIR/uitest.pid)"
   sleep 0.5
