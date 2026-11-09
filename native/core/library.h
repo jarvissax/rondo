@@ -74,6 +74,11 @@ class Library {
   using Group = std::pair<std::string, std::vector<const Track*>>;
   std::vector<Group> artists() const;  // songs by artist ("Unknown artist"), by album, track, title
   std::vector<Group> albums() const;
+  // how many of each, without copying them (the Library screen's counts)
+  size_t songCount() const { index(); return songs_.size(); }
+  size_t videoCount() const { index(); return videos_.size(); }
+  size_t artistCount() const { index(); return artists_.size(); }
+  size_t albumCount() const { index(); return albums_.size(); }
 
   struct Found {
     std::vector<Group> artists, albums;

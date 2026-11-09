@@ -686,7 +686,10 @@ void openNowPlaying() {
   PlayerState s = g_player.state();
   if (s.fmOn && !s.playing) return g_app->push(makeFm());
   if (!g_player.active()) return;
-  g_app->push(std::make_unique<NowPlayingScreen>());
+  int64_t t0 = now_ns();
+  auto np = std::make_unique<NowPlayingScreen>();
+  if (g_traceSlow && now_ns() - t0 > 2 * kMs) slowTrace("slow: Now Playing took %.1f ms to make\n", (now_ns() - t0) / 1e6);
+  g_app->push(std::move(np));
 }
 
 }  // namespace rondo::shell

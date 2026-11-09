@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +84,20 @@ void applyBrightness(int value) {
 }
 App* g_app = nullptr;
 bool g_traceSlow = false;
+static std::string g_slowLines;
+void slowTrace(const char* fmt, ...) {
+  char b[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(b, sizeof(b), fmt, ap);
+  va_end(ap);
+  g_slowLines += b;
+}
+void slowTraceFlush() {
+  if (g_slowLines.empty()) return;
+  fputs(g_slowLines.c_str(), stdout);
+  g_slowLines.clear();
+}
 bool g_development = false;
 volatile sig_atomic_t g_restart = 0;
 void requestRestart() { g_restart = 1; }
@@ -401,6 +416,7 @@ int main(int argc, char** argv) {
     int64_t now = now_ns();
     if (busy) boostUntil = now + kSec;
     power::cpuBoost(now < boostUntil);
+    power::cpuBothCores(screenDrawing() || now < boostUntil);  // out only with the screen off
   };
   static const bool kWifiLog = getenv("RONDO_WIFI_LOG"), kPlayerLog = getenv("RONDO_PLAYER_LOG");
   // The timers, the cable and the status: on every quiet wake, and every 250 ms while frames follow each
@@ -550,8 +566,10 @@ int main(int argc, char** argv) {
     dispatch.tick(now_ns());
     // Opening a screen can take 10 ms. A frame finished that late reaches the panel a refresh late and holds
     // up the next one (N5 log), so such a refresh draws nothing: the slide starts cleanly on the next.
+    // (Nov 9: Library, Songs and Now Playing open in 1.3 to 2.2 ms, so this is for the rare slow one; letting
+    // a 7 ms opening draw gave 12 ms of work, and the next frame waited a whole refresh for the GPU.)
     if (now_ns() - a > 6 * kMs) {
-      if (g_traceSlow) printf("slow: the input took %.1f ms (a screen opening): this refresh is skipped\n", (now_ns() - a) / 1e6);
+      if (g_traceSlow) slowTrace("slow: the input took %.1f ms (a screen opening): this refresh is skipped\n", (now_ns() - a) / 1e6);
       app.delay(period);
       lastPresent = present;
       // the next frame starts the motion: it doesn't continue the idle frame before the press (the
@@ -577,7 +595,7 @@ int main(int argc, char** argv) {
     }
     int64_t b = now_ns();
     if (g_traceSlow && b - a > 8 * kMs)
-      printf("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (the frame before: %d glyphs, "
+      slowTrace("slow: frame at %.0f ms: input %.1f, step %.1f, clear %.1f, draw %.1f ms (the frame before: %d glyphs, "
              "%d atlas rows, %d covers uploaded, presented %.1f ms after its vsync)\n",
              (vs - t0) / 1e6, (a1 - a) / 1e6, (a2 - a1) / 1e6, (a3 - a2) / 1e6, (b - a3) / 1e6, prevGlyphs, prevRows, prevUploads, prevSpan / 1e6);
     text.flush();
@@ -603,8 +621,10 @@ int main(int argc, char** argv) {
     moving = anim || more || dispatch.nextDeadline() != 0;
     boost(moving);
     if (moving) loader.active(present);
+    else slowTraceFlush();  // quiet now: the trace can go to the log
     wasMoving = moving;
   }
+  slowTraceFlush();
   resumeSaveNow();  // where the queue was, to the second
   printf("rondo: ending (%s%d)\n", g_signal ? "signal " : "code ", g_signal ? int(g_signal) : g_exitCode);
   log.report(stdout, csv);

@@ -30,11 +30,14 @@ void shutdown();  // init's sys.powerctl
 // The CPU (both cores of the Cortex-A7). After a cold boot the Y1 keeps the second core off and the
 // clock pinned at 1.0 GHz until Android's framework says otherwise (measured Nov 9): without it,
 // cpuSetup() lets MediaTek's hotplug governor bring the second core in under load and scale the clock
-// (598 MHz idle, 1.0 GHz busy), and stops USB pinning the top clock. cpuBoost(true) holds both cores
-// at full speed for motion, video and scans (no ramp-up in the first frames of a slide); false gives
-// the governor back its say.
+// (598 MHz idle, 1.0 GHz busy), and stops USB pinning the top clock. cpuBoost(true) holds the clock
+// at the top for motion, video and scans (no ramp-up in the first frames of a slide); false gives the
+// governor back its say. cpuBothCores(true) keeps the second core in: the governor
+// taking it out or back costs the whole system 10 to 25 ms (a missed refresh in a slide, Nov 9), so
+// that happens only with the screen off.
 void cpuSetup();
 void cpuBoost(bool on);
+void cpuBothCores(bool on);
 void reboot();
 
 }  // namespace rondo::power

@@ -121,17 +121,22 @@ void cpuSetup() {
   writeFile(hp("cpu_hotplug_disable").c_str(), "0");      // the second core when there is work
   writeFile("/proc/cpufreq/cpufreq_state", "1");          // DVFS: the clock follows the load
   writeFile("/proc/cpufreq/usb_raise_freq", "0");         // a cable doesn't pin it at the top
-  writeFile(hp("cpu_num_base").c_str(), "1");
   writeFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq", "598000");
   g_boosted = false;
+  cpuBothCores(true);  // the screen is on
 }
 
 void cpuBoost(bool on) {
   if (on == g_boosted) return;
   g_boosted = on;
-  // the floor at the top step, and both cores in at once (the governor would take 300 ms to add one)
-  writeFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq", on ? "1001000" : "598000");
-  writeFile(hp("cpu_num_base").c_str(), on ? "2" : "1");
+  writeFile("/sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq", on ? "1001000" : "598000");  // the floor at the top step
+}
+
+void cpuBothCores(bool on) {
+  static int both = -1;
+  if (int(on) == both) return;
+  both = on;
+  writeFile(hp("cpu_num_base").c_str(), on ? "2" : "1");  // the governor keeps at least this many in
 }
 
 void shutdown() {

@@ -434,14 +434,13 @@ class DeviceScreen : public ShellListScreen {
 
  private:
   void render() {
-    auto songs = g_library.songs();
-    auto videos = g_library.videos();
-    if (songs.empty() && videos.empty() && !scanning_) {
+    // the counts only (copying the groups cost 3 ms of the opening)
+    size_t songs = g_library.songCount(), videos = g_library.videoCount();
+    if (!songs && !videos && !scanning_) {
       list_.setMessage("No music or videos on the card.\nCopy files to the card over USB.");
       return;
     }
-    auto artists = g_library.artists();
-    auto albums = g_library.albums();
+    size_t artists = g_library.artistCount(), albums = g_library.albumCount();
     std::vector<Row> rows;
     auto add = [&](const char* title, const Tile& tile, std::string trailing, bool chevron, bool enabled,
                    std::function<void()> on) {
@@ -450,7 +449,7 @@ class DeviceScreen : public ShellListScreen {
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    add("Shuffle songs", tiles::shuffle, std::to_string(songs.size()), false, !songs.empty(), [] {
+    add("Shuffle songs", tiles::shuffle, std::to_string(songs), false, songs != 0, [] {
       std::vector<std::string> paths;
       for (const Track* t : g_library.songs()) paths.push_back(t->path);
       static std::mt19937 rng(uint32_t(time(nullptr)));
@@ -462,20 +461,20 @@ class DeviceScreen : public ShellListScreen {
     size_t playlists = g_playlists.all().size();
     add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true,
         [] { g_app->push(makePlaylists()); });
-    add("Songs", tiles::songs, std::to_string(songs.size()), true, !songs.empty(), [] {
+    add("Songs", tiles::songs, std::to_string(songs), true, songs != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Songs", g_library.songs(), true, true)));
     });
-    add("Artists", tiles::artists, std::to_string(artists.size()), true, !artists.empty(), [] {
+    add("Artists", tiles::artists, std::to_string(artists), true, artists != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Artists", g_library.artists(), Scope::Artists)));
     });
-    add("Albums", tiles::albums, albums.empty() ? "reading tags\xe2\x80\xa6" : std::to_string(albums.size()), true,
-        !albums.empty(), [] {
+    add("Albums", tiles::albums, albums == 0 ? "reading tags\xe2\x80\xa6" : std::to_string(albums), true,
+        albums != 0, [] {
           g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Albums", g_library.albums(), Scope::Albums)));
         });
-    add("Recently added", tiles::recent, "", true, !songs.empty(), [] {
+    add("Recently added", tiles::recent, "", true, songs != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Recently added", recent(), false, true)));
     });
-    add("Videos", tiles::videos, std::to_string(videos.size()), true, !videos.empty(),
+    add("Videos", tiles::videos, std::to_string(videos), true, videos != 0,
         [] { g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen())); });
     Row rescan;
     rescan.title = "Rescan the card";

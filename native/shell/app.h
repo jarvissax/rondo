@@ -36,6 +36,10 @@ void themeChanged();
 void applyBrightness(int value);
 // RONDO_SLOW=1: frames over 8 ms print where their time went (main.cpp, App::draw)
 extern bool g_traceSlow;
+// its lines, kept in memory until the loop is quiet (a write to the log mid-frame can block for
+// milliseconds and would be timed with the frame)
+void slowTrace(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void slowTraceFlush();
 // a development run (from /data/local/tmp): the development switches work (RONDO_* variables, Menu held
 // 2 s quits); the firmware's copy ignores them
 extern bool g_development;
@@ -72,7 +76,9 @@ class App {
       finishTransition();
       if (!stack_.empty()) stack_.back()->onHide();
       stack_.push_back(std::move(s));
+      int64_t t0 = now_ns();
       stack_.back()->onShow();
+      if (g_traceSlow && now_ns() - t0 > 2 * kMs) slowTrace("slow: %s's onShow took %.1f ms\n", stack_.back()->title().c_str(), (now_ns() - t0) / 1e6);
       transition_.begin(0, 1, now_, 250 * kMs);
       popping_ = false;
     }
@@ -184,7 +190,7 @@ class App {
       e.c.pushClip({0, 0, W, H - y});
       int64_t d0 = g_traceSlow ? now_ns() : 0;
       s->draw(e, W, H - y);
-      if (g_traceSlow && now_ns() - d0 > 4 * kMs) printf("slow: screen %s drew in %.1f ms\n", s->title().c_str(), (now_ns() - d0) / 1e6);
+      if (g_traceSlow && now_ns() - d0 > 4 * kMs) slowTrace("slow: screen %s drew in %.1f ms\n", s->title().c_str(), (now_ns() - d0) / 1e6);
       e.c.popClip();
       e.c.popOffset();
       if (!fixedBar && s->statusBar()) {
