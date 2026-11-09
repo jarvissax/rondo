@@ -128,3 +128,11 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 - `GET /update/rondo.apk` → that APK (the update page's `rondo.apk`), passed through as it downloads
   (`application/vnd.android.package-archive`), so the Y1 never talks to anyone but its server.
   Android on the Y1 installs it only when it's signed with the same key as the firmware's Rondo.
+
+## Time zone for the Rondo (device token)
+
+- `GET /timezone` → `{"timezone": "Europe/Lisbon"}`, or `{"timezone": null}` when no lookup service could
+  tell. The zone of the public address the request came from (`X-Forwarded-For` behind a proxy),
+  asked of ipwho.is, then ipapi.co; a private address (a Rondo on the server's network) is looked up
+  by the server's own public address. Kept 12 hours per address (a miss 10 minutes). Rondo 2.0 asks
+  once per Wi-Fi connection and sets the zone when its firmware's tzdata has it.

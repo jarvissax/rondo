@@ -191,4 +191,10 @@ The server doesn't store audio or video; it passes streams through as they play.
 the code sign-in stay on the server's Docker volume, readable only by the server, and are never
 shown or written to the logs. The Y1 talks only to your server, never to Google.
 
+Rondo 2.0 sets its time zone from your server: once each time the Y1 joins Wi-Fi, the server asks
+[ipwho.is](https://ipwho.is) (or, if that fails, [ipapi.co](https://ipapi.co)) which time zone the
+Y1's public IP address is in. Only that address is sent; a Y1 on the same network as the server is
+looked up by the server's own address. Answers are kept for 12 hours. Until the server has named a
+zone, the Y1 uses UTC.
+
 How the server works, and its API, are described in [docs/dev/server-api.md](dev/server-api.md).
