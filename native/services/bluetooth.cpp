@@ -239,19 +239,31 @@ void Bluetooth::search(bool on) {
   });
 }
 
+// A search running (the Bluetooth screen keeps one going) is cancelled first, and the pairing is sent
+// once mtkbt says the cancel is done: sent at once, mtkbt refused it (result 1, Nov 9).
 void Bluetooth::pair(const std::string& address) {
   post([this, address] {
     uint8_t a[8];
     if (power_ != 2 || !parseAddr(address, a)) return;
+    bool cancelling = searching_ || cancels_ > 0;
     stopSearch();
     Dev& d = add(a);
     d.pairing = true;
-    static uint8_t m[kIlm];
-    memset(m, 0, kIlm);
-    memcpy(m + 0x20, a, 8);
-    sendGap(0x7e, m, 0x88);
+    if (cancelling) {
+      pendingPair_ = address;
+      pendingPairSince_ = nowMs();
+    } else {
+      sendPair(a);
+    }
     publish();
   });
+}
+
+void Bluetooth::sendPair(const uint8_t* a) {
+  static uint8_t m[kIlm];
+  memset(m, 0, kIlm);
+  memcpy(m + 0x20, a, 8);
+  sendGap(0x7e, m, 0x88);
 }
 
 void Bluetooth::connect(const std::string& address) {
@@ -337,6 +349,19 @@ void Bluetooth::loop() {
     bool changed = false;
     if ((power_ == 1 || power_ == 3) && now - powerSince_ > 15000) power_ = power_ == 1 ? 0 : 2, changed = true;
     if (searching_ && now - searchSince_ > 90000) searching_ = false, changed = true;
+    // a cancel that never said it was done: the pairing goes out anyway after 3 s
+    if (!pendingPair_.empty() && now - pendingPairSince_ > 3000) {
+      uint8_t a[8];
+      if (parseAddr(pendingPair_, a)) sendPair(a);
+      pendingPair_.clear();
+      cancels_ = 0;
+    }
+    if (searchAfterCancel_ && now - searchSince_ > 1500) {  // the same for a search
+      searchAfterCancel_ = false;
+      searching_ = false;
+      if (wantSearch_ && power_ == 2) startSearch();
+      changed = true;
+    }
     if (autoConnectAt_ && now >= autoConnectAt_) {
       autoConnectAt_ = 0;
       bool any = std::any_of(devs_.begin(), devs_.end(), [](const Dev& x) { return x.a2dp != 0; });
@@ -429,18 +454,32 @@ void Bluetooth::onGap(uint8_t* m, ssize_t n) {
       break;
     }
     case 0x95:  // the search ended (or couldn't start: one was still running, which a cancel ends)
-      if (m[0x20] && nowMs() - searchSince_ < 2000 && wantSearch_) {
+      // (the new search waits for the cancel to be done: started at once, mtkbt ignored it and the
+      // screen said "searching" for 90 s with nothing found, Nov 9)
+      if (m[0x20] && nowMs() - searchSince_ < 2000 && wantSearch_ && pendingPair_.empty()) {
         memset(r, 0, kIlm);
         sendGap(0x68, r, 0);
         cancels_++;
-        startSearch();
+        searchAfterCancel_ = true;
+        searchSince_ = nowMs();
         break;
       }
       searching_ = false;
       publish();
       break;
-    case 0x96:  // a cancel done
+    case 0x96:  // a cancel done: a pairing or a search that waited for it goes out
       if (cancels_ > 0) cancels_--;
+      if (!pendingPair_.empty()) {
+        uint8_t a[8];
+        if (parseAddr(pendingPair_, a)) sendPair(a);
+        pendingPair_.clear();
+        searchAfterCancel_ = false;
+      } else if (searchAfterCancel_) {
+        searchAfterCancel_ = false;
+        searching_ = false;  // startSearch() does nothing while it is set
+        if (wantSearch_ && power_ == 2) startSearch();
+        publish();
+      }
       break;
     case 0xa3:  // a PIN: headphones that ask for one almost always use 0000
       memset(r, 0, kIlm);
@@ -596,12 +635,15 @@ void Bluetooth::stopSearch() {
   searching_ = false;
 }
 
-// mtkbt's paired devices: devdb's 20 slots of 0x150 bytes after an 8-byte header (an address in a
-// slot's first six bytes), and their classes in cod (40 slots of 12 bytes after a 4-byte count)
+// mtkbt's paired devices: devdb's 20 slots of 0x150 bytes after an 8-byte header whose first byte
+// counts them (an address in a slot's first six bytes), and their classes in cod (40 slots of 12 bytes
+// after a 4-byte count). Only the first `count` slots are paired: forgetting one lowers the count and
+// leaves the slot's old bytes behind (Nov 9: "Forget this device" left the JBL under My devices).
 void Bluetooth::readPaired() {
   std::vector<uint8_t> db = readFile(kDevDb), cod = readFile(kCodDb);
   std::vector<std::array<uint8_t, 8>> paired;
-  for (size_t at = 8; at + 0x150 <= db.size(); at += 0x150) {
+  size_t count = db.empty() ? 0 : db[0];
+  for (size_t at = 8; at + 0x150 <= db.size() && paired.size() < count; at += 0x150) {
     bool any = false;
     for (int i = 0; i < 6; i++) any |= db[at + size_t(i)] != 0;
     if (!any) continue;

@@ -87,6 +87,10 @@ class Bluetooth {
   std::string last_;                          // the headphones last connected
   std::string routed_;                        // the A2DP output given to the audio policy
   std::string pendingConnect_;                // to connect once the other one has gone
+  std::string pendingPair_;  // to pair once the search's cancel is done (mtkbt refuses a pairing mid-search)
+  int64_t pendingPairSince_ = 0;
+  bool searchAfterCancel_ = false;  // a search to start once the cancel is done
+  void sendPair(const uint8_t* a);
   int a2dpStateNow_ = 1;
   int64_t connectSince_ = 0;  // a connection asked for (given up after 25 s)
   int links_ = 0;             // mtkbt's link count (0xba)
