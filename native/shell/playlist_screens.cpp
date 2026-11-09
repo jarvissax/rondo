@@ -378,19 +378,27 @@ class PlaylistScreen : public RenderedList {
                                : std::to_string(items.size()) + (items.size() == 1 ? " song" : " songs") +
                                      " \xc2\xb7 hold center: move or remove";
     rows.push_back(head);
+    // one list shared by every row (a copy each was 821 x 821 strings), and each row's text and
+    // artwork filled in when it is drawn, as Songs does
+    auto shared = std::make_shared<const std::vector<std::string>>(items);
+    first_ = int(rows.size());
+    count_ = int(items.size());
+    rows.resize(rows.size() + items.size());
     for (size_t i = 0; i < items.size(); i++) {
-      const Track* t = g_library.find(items[i]);
-      Row r;
-      SongInfo song = songInfo(items[i]);
+      Row& r = rows[size_t(first_) + i];
+      r.onSelect = [shared, i] { playNow(*shared, int(i)); };
+      r.onLongSelect = [shared, i, name] { g_app->push(makeSongMenu((*shared)[i], name)); };
+    }
+    list_.fill = [this, shared](int i, Row& r) {
+      if (i < first_ || i >= first_ + count_) return;
+      const std::string& path = (*shared)[size_t(i - first_)];
+      const Track* t = g_library.find(path);
+      SongInfo song = songInfo(path);
       r.title = song.title;
       r.subtitle = song.subtitle;
       r.trailing = t && t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-      r.thumb = items[i];
-      r.onSelect = [items, i] { playNow(items, int(i)); };
-      std::string path = items[i];
-      r.onLongSelect = [path, name] { g_app->push(makeSongMenu(path, name)); };
-      rows.push_back(std::move(r));
-    }
+      r.thumb = path;
+    };
     size_t missing = p.paths.size() - items.size();
     if (missing > 0) {
       Row m;
@@ -404,6 +412,7 @@ class PlaylistScreen : public RenderedList {
 
  private:
   std::string name_;
+  int first_ = 0, count_ = 0;  // where the songs' rows are
 };
 
 // PlaylistsScreen: Library › Playlists: New playlist, then every playlist on the card. Hold center for

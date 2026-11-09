@@ -119,8 +119,8 @@ class MusicScreen : public MusicListScreen {
       rows.push_back(h);
       for (const Item& it : s.items) items_.push_back(it);
       // a song plays with its own section as the queue (1.0.x: musicRows' default)
-      std::vector<Item> section = s.items;
-      for (Row& r : musicRows(s.items, [section] { return section; })) rows.push_back(std::move(r));
+      auto section = std::make_shared<const std::vector<Item>>(s.items);  // one copy for all its rows
+      for (Row& r : musicRows(s.items, [section] { return *section; })) rows.push_back(std::move(r));
     }
     return rows;
   }

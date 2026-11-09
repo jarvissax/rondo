@@ -372,8 +372,9 @@ class LibrarySearchScreen : public Screen {
     if (!found_.albums.empty()) header("Albums");
     for (auto& g : found_.albums) rows.push_back(group(g));
     if (!found_.songs.empty()) header("Songs");
-    std::vector<std::string> songs;
-    for (const Track* t : found_.songs) songs.push_back(t->path);
+    // one list for every song row to play from (a copy each grew with the square of the matches)
+    auto songs = std::make_shared<std::vector<std::string>>();
+    for (const Track* t : found_.songs) songs->push_back(t->path);
     for (size_t i = 0; i < found_.songs.size(); i++) {
       const Track* t = found_.songs[i];
       Row r;
@@ -386,7 +387,7 @@ class LibrarySearchScreen : public Screen {
         r.onSelect = [this, path] { add({path}); };
       } else {
         r.onSelect = [songs, i] {
-          g_player.playQueue(songs, int(i));
+          g_player.playQueue(*songs, int(i));
           openNowPlaying();
         };
         r.onLongSelect = [path] { g_app->push(makeSongMenu(path)); };
