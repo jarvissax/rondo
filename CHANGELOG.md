@@ -48,6 +48,12 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
 - The Wi-Fi switch, the music volume of each output and the clock are kept without Android.
+- **A fixed Wi-Fi address.** The Y1 shipped without one, so it showed up on the network as a new
+  device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
+  About shows it.
+- **Your time zone.** The Y1 starts in UTC and takes the time zone of wherever it is online, through
+  your server, each time it joins Wi-Fi (Settings › About shows the zone and the time). It used to
+  stay on China's time zone.
 
 ### Updates
 
@@ -59,6 +65,8 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 
 - The server streams YouTube's Opus audio as well, which 2.0 plays songs as. Update it with
   **Update** on its admin page once 2.0.0 is out; an older server keeps working, with AAC.
+- The server tells the Y1 its time zone, from the Y1's public address
+  ([privacy](docs/server.md#privacy)). With an older server the Y1 stays in UTC.
 
 ## 1.0.2 (November 3, 2026)
 

@@ -56,6 +56,9 @@ class Library {
   // on the UI thread, the file list at once and the tags 40 at a time, and saved there when it ends
   // (the database write on the thread too). Nothing happens if a scan runs already.
   void scanAsync();
+  // which roots are mounted (bit 0 the card, bit 1 the internal storage): one appearing is a reason
+  // to scan (the boot's mount finishing after the start, a card put in)
+  int presentRoots() const;
   // A scan when the last one ended over 30 s ago (1.0.x: Library, its search or a playlist opening)
   void rescanIfStale();
   bool scanning() const { return scanning_; }
@@ -94,7 +97,8 @@ class Library {
  private:
   struct Worker;
   static void list(const std::string& dir, int depth, std::vector<FileEntry>& out);
-  void merge(std::vector<FileEntry>& found);
+  // roots: the folders the listing covers; a file under another stays as it is
+  void merge(std::vector<FileEntry>& found, const std::vector<std::string>& roots);
   void index() const;  // the groups and their folded names, rebuilt after a change
   sqlite3* db_ = nullptr;
   mutable bool indexed_ = false;

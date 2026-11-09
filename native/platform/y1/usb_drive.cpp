@@ -8,12 +8,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <atomic>
+#include <map>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace rondo::usb {
 namespace {
@@ -77,6 +83,23 @@ int cardState() {
   return atoi(list.c_str() + at + strlen(kCard) + 2);
 }
 
+// the paths of the volumes vold lists in a state ("110 <seq> <label> <path> <state>")
+std::vector<std::string> volumesIn(int state) {
+  std::vector<std::string> paths;
+  std::string list;
+  if (vold("volume list", &list) != 200) return paths;
+  size_t at = 0;
+  while (at < list.size()) {
+    size_t eol = list.find('\n', at);
+    if (eol == std::string::npos) eol = list.size();
+    int code, seq, st;
+    char label[64], path[128];
+    if (sscanf(list.c_str() + at, "%d %d %63s %127s %d", &code, &seq, label, path, &st) == 5 && code == 110 && st == state) paths.push_back(path);
+    at = eol + 1;
+  }
+  return paths;
+}
+
 bool waitFor(int state, int ms) {
   int64_t until = nowMs() + ms;
   while (nowMs() < until) {
@@ -99,7 +122,35 @@ bool computerConnected() {
 
 bool shared() { return cardState() == 7; }
 
+namespace {
+// a hand-over to or from the computer in progress: the card passes through idle on its way, which the
+// watch leaves alone (on Nov 9's second boot it skipped whenever the cable went to a computer, so a Y1
+// started on the Mac's cable never mounted its card)
+std::atomic<int> g_switching{0};
+struct Switching {
+  Switching() { g_switching++; }
+  ~Switching() { g_switching--; }
+};
+}  // namespace
+
+void watchCard() {
+  std::thread([] {
+    prctl(PR_SET_NAME, "rondo-card");
+    std::map<std::string, int> refused;
+    for (;;) {
+      sleep(2);
+      if (g_switching) continue;
+      std::vector<std::string> idle = volumesIn(1);
+      for (auto it = refused.begin(); it != refused.end();)  // no longer idle: its refusals are forgotten
+        it = std::find(idle.begin(), idle.end(), it->first) == idle.end() ? refused.erase(it) : std::next(it);
+      for (const std::string& v : idle)
+        if (refused[v] < 3 && vold("volume mount " + v) != 200) refused[v]++;
+    }
+  }).detach();
+}
+
 bool setShared(bool on) {
+  Switching busy;
   std::string card = kCard;
   if (on) {
     if (cardState() == 7) return true;

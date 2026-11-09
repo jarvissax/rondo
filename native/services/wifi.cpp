@@ -7,11 +7,15 @@
 #include "wifi.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <cutils/properties.h>
+#include <fcntl.h>
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
@@ -129,7 +133,107 @@ void Wifi::post(std::function<void()> job) {
   pthread_mutex_unlock(&mu_);
 }
 
+// net.hostname as ConnectivityService set it at every boot ("android-" and Android's android_id), which
+// keeps 1.0.x's name on the network. It matters beyond the name: MediaTek's libnetutils builds dhcpcd's
+// start command with its arguments in the wrong order when there is no hostname ("dhcpcd_/system/etc/
+// dhcpcd/dhcpcd.conf:-f wlan0 wlan0", which init has no service for), so without it DHCP never starts
+// (Nov 9's first boot of 2.0: "Timed out waiting for dhcpcd to start"). A Y1 without Android's id
+// (installed without keeping its data) is "rondo".
+// The Wi-Fi's MAC address, fixed (Nov 9). MediaTek's Wi-Fi record in the NVRAM,
+// /data/nvram/APCFG/APRDEB/WIFI, holds none on this Y1 (bytes 4-9 are zeros), so the driver made one
+// up at every load: a new device on the network at every boot. The record is 512 bytes, then 0xAA
+// and a check byte: the record's bytes added (even ones) and XORed (odd ones) in turn, from 0 (the
+// same in BT_Addr and WIFI_CUSTOM). An empty address is filled in, once, with one made from the
+// eMMC's CID, so the same Y1 has the same address after any reflash: locally administered (02:...),
+// as an address not bought from the IEEE must be. The driver reads the record when it starts, so this
+// runs before every load. A record that isn't laid out like this is left alone.
+static uint8_t nvramCheck(const uint8_t* d, size_t n) {
+  uint8_t c = 0;
+  for (size_t i = 0; i < n; i++) c = i % 2 ? uint8_t(c ^ d[i]) : uint8_t(c + d[i]);
+  return c;
+}
+
+static void fixMac() {
+  const char* path = "/data/nvram/APCFG/APRDEB/WIFI";
+  std::vector<uint8_t> b(514);
+  FILE* f = fopen(path, "rb");
+  if (!f) return;
+  size_t n = fread(b.data(), 1, 514, f);
+  bool more = fgetc(f) != EOF;
+  fclose(f);
+  if (n != 514 || more || b[512] != 0xaa || b[513] != nvramCheck(b.data(), 512)) return;
+  bool empty = true, ones = true;
+  for (int i = 4; i < 10; i++) empty = empty && b[i] == 0, ones = ones && b[i] == 0xff;
+  if (!empty && !ones) return;  // an address is there (this one's, or the factory's)
+  std::string id;
+  if (FILE* c = fopen("/sys/block/mmcblk0/device/cid", "r")) {
+    char line[64] = "";
+    if (fgets(line, sizeof(line), c)) id = line;
+    fclose(c);
+  }
+  uint8_t mac[6];
+  if (id.size() >= 16) {
+    uint64_t h = 1469598103934665603ull;  // FNV-1a
+    for (char ch : "rondo wifi " + id) h = (h ^ uint8_t(ch)) * 1099511628211ull;
+    for (int i = 1; i < 6; i++) mac[i] = uint8_t(h >> (8 * i));
+  } else if (FILE* r = fopen("/dev/urandom", "rb")) {  // no CID: a random one, kept in the record all the same
+    size_t got = fread(mac, 1, 6, r);
+    fclose(r);
+    if (got != 6) return;
+  } else {
+    return;
+  }
+  mac[0] = 0x02;
+  // the record as it was, once, for going back: /data/rondo/nvram-WIFI.orig
+  if (access("/data/rondo/nvram-WIFI.orig", F_OK) != 0)
+    if (FILE* o = fopen("/data/rondo/nvram-WIFI.orig", "wb")) fwrite(b.data(), 1, 514, o), fclose(o);
+  memcpy(&b[4], mac, 6);
+  b[513] = nvramCheck(b.data(), 512);
+  struct stat st;
+  if (stat(path, &st) != 0) return;
+  std::string tmp = std::string(path) + ".part";
+  int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0660);
+  if (fd < 0) return;
+  bool ok = write(fd, b.data(), 514) == 514 && fchown(fd, st.st_uid, st.st_gid) == 0 && fchmod(fd, st.st_mode & 07777) == 0 && fsync(fd) == 0;
+  close(fd);
+  if (!ok || rename(tmp.c_str(), path) != 0) {
+    unlink(tmp.c_str());
+    fprintf(stderr, "rondo-core: the Wi-Fi MAC address couldn't be written\n");
+    return;
+  }
+  fprintf(stderr, "rondo-core: Wi-Fi MAC address fixed: %02x:%02x:%02x:%02x:%02x:%02x (the NVRAM had none)\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+static void setHostname() {
+  char now[PROPERTY_VALUE_MAX] = "";
+  property_get("net.hostname", now, "");
+  if (now[0]) return;
+  std::string name = "rondo", why = "no Android id";
+  sqlite3* db = nullptr;
+  int rc = sqlite3_open_v2("/data/data/com.android.providers.settings/databases/settings.db", &db, SQLITE_OPEN_READONLY, nullptr);
+  if (rc == SQLITE_OK) {
+    sqlite3_stmt* q = nullptr;
+    rc = sqlite3_prepare_v2(db, "SELECT value FROM secure WHERE name = 'android_id'", -1, &q, nullptr);
+    if (rc == SQLITE_OK) rc = sqlite3_step(q);
+    if (rc == SQLITE_ROW) {
+      const char* id = reinterpret_cast<const char*>(sqlite3_column_text(q, 0));
+      bool hex = id && id[0] && strlen(id) <= 16;
+      for (const char* c = id; hex && *c; c++) hex = isxdigit((unsigned char)*c) != 0;
+      if (hex) name = std::string("android-") + id, why = "Android's id";
+    } else if (rc != SQLITE_DONE) {
+      why = std::string("settings.db: ") + sqlite3_errmsg(db);
+    }
+    sqlite3_finalize(q);
+  } else {
+    why = std::string("settings.db: ") + sqlite3_errstr(rc);
+  }
+  sqlite3_close(db);
+  property_set("net.hostname", name.c_str());
+  fprintf(stderr, "rondo-core: network name %s (%s)\n", name == "rondo" ? "rondo" : "android-<id>", why.c_str());
+}
+
 void Wifi::start() {
+  setHostname();
   pthread_t t;
   pthread_create(&t, nullptr, [](void* self) -> void* {
     static_cast<Wifi*>(self)->workLoop();
@@ -137,14 +241,24 @@ void Wifi::start() {
   }, this);
   pthread_detach(t);
   post([this] {
-    // the supplicant still running (Android left Wi-Fi on): take over; else off until the UI says
-    // (it sends the switch as it was left: prefs wifiOn)
-    if (wifi_connect_to_supplicant(kIface) == 0) {
+    // the supplicant still running (a development run after Android left Wi-Fi on): take over; else
+    // off until the UI says (it sends the switch as it was left: prefs wifiOn). Asked only when init
+    // says it runs: MediaTek's connect waits 3 s for a supplicant that isn't there (Nov 9's first boot)
+    char running[PROPERTY_VALUE_MAX] = "";
+    property_get("init.svc.p2p_supplicant", running, "");
+    if (!strcmp(running, "running") && wifi_connect_to_supplicant(kIface) == 0) {
       attached();
     } else {
       update([](CoreState& s) { s.wifiEnabled = 0; });
     }
   });
+}
+
+bool Wifi::jobsWaiting() {
+  pthread_mutex_lock(&mu_);
+  bool waiting = !jobs_.empty();
+  pthread_mutex_unlock(&mu_);
+  return waiting;
 }
 
 void Wifi::update(const std::function<void(CoreState&)>& f) { publish_(f); }
@@ -180,7 +294,19 @@ void Wifi::workLoop() {
 // the driver loaded, the supplicant started and reached
 void Wifi::turnOn() {
   update([](CoreState& s) { s.wifiEnabled = 1; });
-  bool ok = wifi_load_driver() == 0;
+  // the driver: at a cold boot the combo chip is ready for Wi-Fi only about 9 s after the start (its
+  // firmware through 6620_launcher; Nov 9's first boot: hald's Set "/dev/wmtWifi" [1] failed at 8 s,
+  // wlanLoader had the chip's version a second later), so a refusal is asked again every second for up
+  // to 30 s, unless the UI asks for something else meanwhile
+  fixMac();
+  bool ok = false;
+  for (int i = 0; i < 30 && !ok; i++) {
+    if (i) {
+      usleep(1000000);
+      if (jobsWaiting()) break;
+    }
+    ok = wifi_load_driver() == 0;
+  }
   // MediaTek's supplicant crashes started for wlan0 alone: it runs as Android runs it, p2p_supplicant,
   // which needs p2p0 loaded first (S6)
   if (ok) ok = hald("hal load p2p");
@@ -345,20 +471,47 @@ struct Wifi::Dhcp {
   }
 };
 
+// dhcpcd's saved lease when it was for another MAC address: the Y1's Wi-Fi NVRAM holds none, so the
+// driver makes one up at every load, and dhcpcd asking for the last boot's address under the new one
+// earns a NAK, after which that dhcpcd's requests went unanswered until it gave up (Nov 9, every boot of
+// 2.0: the first DHCP failed, the next one 10 s later worked at once). The lease is a BOOTP message:
+// the client's address at byte 28.
+static void dropForeignLease() {
+  const char* lease = "/data/misc/dhcp/dhcpcd-wlan0.lease";
+  unsigned m[6];
+  FILE* a = fopen("/sys/class/net/wlan0/address", "r");
+  if (!a) return;
+  bool ok = fscanf(a, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) == 6;
+  fclose(a);
+  FILE* f = ok ? fopen(lease, "rb") : nullptr;
+  if (!f) return;
+  unsigned char got[6];
+  bool same = fseek(f, 28, SEEK_SET) == 0 && fread(got, 1, 6, f) == 6;
+  fclose(f);
+  for (int i = 0; same && i < 6; i++) same = got[i] == m[i];
+  if (!same) unlink(lease);
+}
+
 // DHCP (libnetutils starts dhcpcd_wlan0), then the address, route and DNS
 void Wifi::getAddress() {
   update([](CoreState& s) { s.wifiState = 3; });
   dhcp_stop(kIface);
+  dropForeignLease();
   char ip[PROPERTY_VALUE_MAX], gw[PROPERTY_VALUE_MAX], dns1[PROPERTY_VALUE_MAX], dns2[PROPERTY_VALUE_MAX],
       server[PROPERTY_VALUE_MAX], vendor[PROPERTY_VALUE_MAX];
   uint32_t prefix = 0, lease = 0;
   Dhcp awake(*this);
   if (dhcp_do_request(kIface, ip, gw, &prefix, dns1, dns2, server, &lease, vendor) != 0) {
-    fprintf(stderr, "rondo-core: DHCP failed: %s\n", dhcp_get_errmsg());
+    // asked again while the network stays joined (WifiStateMachine reconnected and asked again): after
+    // 10 s, then twice as long each time, at most every 2 minutes
+    dhcpRetryMs_ = dhcpRetryMs_ ? std::min<int64_t>(dhcpRetryMs_ * 2, 120000) : 10000;
+    dhcpRetryAt_ = nowMs() + dhcpRetryMs_;
+    fprintf(stderr, "rondo-core: DHCP failed: %s (again in %lld s)\n", dhcp_get_errmsg(), (long long)(dhcpRetryMs_ / 1000));
     update([](CoreState& s) { s.wifiState = 1; });
     renewAt_ = 0;
     return;
   }
+  dhcpRetryAt_ = dhcpRetryMs_ = 0;
   configure(ip, gw, prefix, dns1, dns2);
   renewAt_ = nowMs() + int64_t(lease ? lease : 3600) * 500;  // halfway through the lease
 }
@@ -433,6 +586,13 @@ void Wifi::lostAddress() {
 
 void Wifi::poll() {
   CoreState now = snapshot_();
+  // joined without an address (a DHCP that failed): asked again. (Not through STATUS: MediaTek's
+  // supplicant answers it with a CONNECTED event, which asks for an address itself.)
+  if (now.wifiEnabled == 2 && now.wifiState == 1 && now.ssid[0] && dhcpRetryAt_ && nowMs() > dhcpRetryAt_) {
+    dhcpRetryAt_ = 0;
+    getAddress();
+    return;
+  }
   if (now.wifiEnabled != 2 || now.wifiState != 4) return;
   std::string r;
   int rssi = now.rssi, speed = now.linkSpeed;
@@ -551,7 +711,10 @@ void Wifi::enable(bool on) {
 // What WifiStateMachine set once the supplicant was up (SupplicantStartedState, DriverStartedState): the
 // supplicant's scan every 15 s while not joined (config_wifi_supplicant_scan_interval; its own default
 // is 5 s), IPv4 multicast filtered and IPv6 multicast let through (router advertisements) while the
-// driver is in suspend mode, power save on.
+// driver is in suspend mode. Power save goes on once DHCP is done (struct Dhcp), as handlePostDhcpSetup
+// did, and not here: switched on before joining (as here until Nov 9), the first DHCP after every boot
+// had its offer and then no answer to any of its requests for 30 s, and the next one, 10 s later, was
+// answered at once.
 void Wifi::driverSetup() {
   command("SCAN_INTERVAL 15");
   command("DRIVER RXFILTER-STOP");
@@ -560,9 +723,7 @@ void Wifi::driverSetup() {
   command("DRIVER RXFILTER-STOP");
   command("DRIVER RXFILTER-REMOVE 2");
   bool filters = command("DRIVER RXFILTER-START");
-  bool ps = command("SET ps 1");
-  fprintf(stderr, "rondo-core: Wi-Fi set up: scans every 15 s, multicast filter %s, power save %s\n", filters ? "on" : "refused",
-          ps ? "on" : "refused");
+  fprintf(stderr, "rondo-core: Wi-Fi set up: scans every 15 s, multicast filter %s, power save once joined\n", filters ? "on" : "refused");
   if (!screenOn_) suspendMode(true);
 }
 

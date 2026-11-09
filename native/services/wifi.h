@@ -32,6 +32,7 @@ class Wifi {
   // one worker runs every job in order (the command loop never blocks); the event thread waits for
   // the supplicant's events
   void post(std::function<void()> job);
+  bool jobsWaiting();  // a job posted meanwhile (the UI asking for something)
   void workLoop();
   void eventLoop();
   bool command(const std::string& c, std::string* reply = nullptr);
@@ -59,6 +60,7 @@ class Wifi {
   bool enableAllOnConnect_ = false;
   std::string eventSsid_;  // the network named by the last state change (the event thread's)
   int64_t renewAt_ = 0;
+  int64_t dhcpRetryAt_ = 0, dhcpRetryMs_ = 0;  // after a failed DHCP: when to ask again, and the wait before that
   std::atomic<bool> screenOn_{true};
 };
 

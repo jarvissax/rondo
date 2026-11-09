@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <linux/ioctl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -11,9 +12,12 @@
 #include <unistd.h>
 
 #include <curl/curl.h>
+#include <cutils/properties.h>
 #include <openssl/ssl.h>
 #include <openssl/x509_vfy.h>
+#include <yyjson.h>
 
+#include "../core/api.h"
 #include "../core/net.h"
 
 namespace rondo {
@@ -98,6 +102,70 @@ bool syncClock(const std::string& baseUrl) {
     close(fd);
   }
   fprintf(stderr, "rondo-core: the clock was %lld s off: set from the server\n", (long long)(here - server));
+  return true;
+}
+
+namespace {
+
+const char* kZoneFile = "/data/rondo/timezone";
+
+bool firmware2() {
+  char fw[PROPERTY_VALUE_MAX] = "";
+  property_get("ro.rondo.firmware", fw, "");
+  return atoi(fw) >= 2;
+}
+
+// whether the firmware's tzdata has the zone (Android 4.2's zoneinfo.idx: a 40-byte name padded with
+// zeros, then three 32-bit numbers, for each zone)
+bool knownZone(const std::string& name) {
+  if (name.empty() || name.size() >= 40) return false;
+  FILE* f = fopen("/system/usr/share/zoneinfo/zoneinfo.idx", "rb");
+  if (!f) return false;
+  char e[52];
+  bool found = false;
+  while (!found && fread(e, 1, sizeof(e), f) == sizeof(e)) found = strnlen(e, 40) == name.size() && memcmp(e, name.data(), name.size()) == 0;
+  fclose(f);
+  return found;
+}
+
+void setZone(const std::string& name, const char* why) {
+  char now[PROPERTY_VALUE_MAX] = "";
+  property_get("persist.sys.timezone", now, "");
+  if (name != now) {
+    property_set("persist.sys.timezone", name.c_str());
+    fprintf(stderr, "rondo-core: time zone %s (%s)\n", name.c_str(), why);
+  }
+  std::string tmp = std::string(kZoneFile) + ".part";
+  if (FILE* f = fopen(tmp.c_str(), "w")) {
+    bool ok = fprintf(f, "%s\n", name.c_str()) > 0;
+    ok = fflush(f) == 0 && ok;
+    fclose(f);
+    if (ok) rename(tmp.c_str(), kZoneFile);
+  }
+}
+
+}  // namespace
+
+void timeZoneDefault() {
+  if (firmware2() && access(kZoneFile, F_OK) != 0) setZone("Etc/UTC", "the default until the server names one");
+}
+
+bool timeZoneFromServer(Api& api) {
+  if (!firmware2()) return true;  // 1.0.x's firmware: Android's own setting
+  std::string body;
+  int status = api.get("/timezone", body);
+  if (status == 0 || status >= 500) return false;
+  if (status != 200) return true;  // an older server, without /timezone
+  yyjson_doc* doc = yyjson_read(body.data(), body.size(), 0);
+  yyjson_val* tz = doc ? yyjson_obj_get(yyjson_doc_get_root(doc), "timezone") : nullptr;
+  std::string name = yyjson_is_str(tz) ? yyjson_get_str(tz) : "";
+  yyjson_doc_free(doc);
+  if (name.empty()) return true;  // the server couldn't tell: the zone stays
+  if (!knownZone(name)) {
+    fprintf(stderr, "rondo-core: time zone %s isn't in this firmware's tzdata: left as it was\n", name.c_str());
+    return true;
+  }
+  setZone(name, "from the server");
   return true;
 }
 

@@ -34,12 +34,17 @@ constexpr unsigned long kMtkVsyncWait = 0x5601;  // /dev/mtkfb_vsync: returns at
 // shifted the picture), so the link runs faster instead: the MIPI PLL's divider 4 -> 2 and its
 // multiplier fractional, for about 300 Mb/s a lane, and the D-PHY timings worked out again with
 // MediaTek's own formulas (DSI_PHY_TIMCONFIG) for that byte clock. The 2.0 firmware's kernel has these
-// values in its panel driver (tools/firmware/BootImage.java), so the kernel itself sets them at every
-// wake. Here they are set once at startup when the panel still has the bootloader's stock timing (and
-// on 1.0.x's firmware, for development, where a deep sleep brings the stock timing back): through the
-// display driver's debugfs (dispsys regw), only when every register holds this panel's stock or 60 Hz
-// value, and measured after. The DSI clock moves from 104 MHz (inside the FM band) to 150 MHz; 100
-// pings to the router lost nothing at either rate. RONDO_HZ=42 (development) keeps the stock timing.
+// values in its panel driver (tools/firmware/BootImage.java): it sets the PLL itself at boot and at
+// every wake, and leaves the D-PHY timing registers as they held (the bootloader's stock ones at boot).
+// Here, at startup, whatever is still stock is set: through the display driver's debugfs (dispsys regw),
+// only when every register holds this panel's stock or 60 Hz value, and measured after. The PLL is
+// switched only where the kernel hasn't set it (1.0.x's firmware, for development, where a deep sleep
+// brings the stock timing back): on 2.0's firmware the kernel brings its PLL back at the next wake
+// whatever is done here, so nothing is put back there either (Nov 9's first boot put the stock values
+// back after a wrong measurement, and the next wake left the kernel's PLL over the stock timings, at
+// 60.30 Hz). At a cold boot the PLL is switched again (rate()). The DSI clock moves from 104 MHz (inside the FM band) to
+// 150 MHz; 100 pings to the router lost nothing at either rate. RONDO_HZ=42 (development) keeps the
+// stock timing.
 namespace panel {
 
 constexpr const char* kDebug = "/sys/kernel/debug/dispsys";
@@ -89,31 +94,37 @@ bool get(uint32_t addr, uint32_t& v) {
   v = uint32_t(strtoul(text.c_str() + at + strlen(want), nullptr, 16));
   return true;
 }
-// what the registers hold: 1 all fast, 0 each stock or fast (to be set: after a deep sleep the kernel
-// sets the PLL up again but restores the DSI's own registers from what they held), -1 anything else
-// (another panel: left alone)
-int state() {
+// what the registers hold: the PLL 0 (stock), 1 (60 Hz) or -1 (anything else), and the D-PHY timings
+// 1 (all 60 Hz), 0 (each stock or 60 Hz: to be set; after a deep sleep the kernel sets the PLL up again
+// but restores the DSI's own registers from what they held) or -1 (anything else); false when they
+// can't be read or the porches aren't this panel's (another panel: left alone)
+bool state(int& pll, int& timings) {
   uint32_t con0, con2, vbp, vfp;
-  if (!get(kPllCon0, con0) || !get(kPllCon2, con2) || !get(kVbp, vbp) || !get(kVfp, vfp)) return -1;
-  if (vbp != 100 || vfp != 100) return -1;
-  bool pllStock = con0 == kStockCon0 && con2 == kStockCon2, pllFast = con0 == kFastCon0 && con2 == kFastCon2;
-  if (!pllStock && !pllFast) return -1;
-  bool fast = pllFast;
+  if (!get(kPllCon0, con0) || !get(kPllCon2, con2) || !get(kVbp, vbp) || !get(kVfp, vfp)) return false;
+  if (vbp != 100 || vfp != 100) return false;
+  pll = con0 == kStockCon0 && con2 == kStockCon2 ? 0 : con0 == kFastCon0 && con2 == kFastCon2 ? 1 : -1;
+  timings = 1;
   for (const Reg& r : kTiming) {
     uint32_t v;
-    if (!get(r.addr, v) || (v != r.stock && v != r.fast)) return -1;
-    fast = fast && v == r.fast;
+    if (!get(r.addr, v)) return false;
+    if (v != r.stock && v != r.fast) {
+      timings = -1;
+      break;
+    }
+    if (v != r.fast) timings = 0;
   }
-  return fast ? 1 : 0;
+  return true;
 }
-// the PLL off, its new multiplier, on with the new divider, the multiplier taken (SDM_PCW_CHG), then
-// the D-PHY timings; the multiplier only takes effect with the PLL switched on again
-void set(bool fast) {
+// the PLL off, its new multiplier, on with the new divider, the multiplier taken (SDM_PCW_CHG); the
+// multiplier only takes effect with the PLL switched on again
+void setPll(bool fast) {
   put(kPllCon0, (fast ? kFastCon0 : kStockCon0) & ~1u);
   put(kPllCon2, fast ? kFastCon2 : kStockCon2);
   put(kPllCon0, fast ? kFastCon0 : kStockCon0);
   put(kPllCon1, 0x01b10003);
   put(kPllCon1, 0x01b10007);
+}
+void setTimings(bool fast) {
   for (const Reg& r : kTiming) put(r.addr, fast ? r.fast : r.stock);
 }
 
@@ -198,43 +209,73 @@ class FbDisplay : public Display {
  private:
   // the panel's rate: 60 Hz when its registers are this panel's stock ones, checked by measuring
   void rate() {
-    // Only on 2.0's firmware (ro.rondo.firmware 2 and up), whose kernel sets 60 Hz itself at every wake.
-    // 1.0.x's kernel would bring its PLL back over 60 Hz's timings after a deep sleep, which stalls the
-    // link (Nov 9): development runs there stay at 42 Hz unless RONDO_HZ=60 asks for it (until the
-    // first deep sleep), and RONDO_HZ=42 keeps the stock timing anywhere.
+    // Only on 2.0's firmware (ro.rondo.firmware 2 and up), whose kernel sets its PLL to 60 Hz itself at
+    // boot and at every wake. 1.0.x's kernel would bring its PLL back over 60 Hz's timings after a deep
+    // sleep, which stalls the link (Nov 9): development runs there stay at 42 Hz unless RONDO_HZ=60 asks
+    // for it (until the first deep sleep), and RONDO_HZ=42 keeps the stock timing anywhere.
     char fw[PROP_VALUE_MAX] = "";
     __system_property_get("ro.rondo.firmware", fw);
+    const bool kernel = atoi(fw) >= 2;
     const char* hz = getenv("RONDO_HZ");
-    bool want = hz ? strcmp(hz, "42") != 0 : atoi(fw) >= 2;
+    bool want = hz ? strcmp(hz, "42") != 0 : kernel;
     if (access(panel::kDebug, F_OK) != 0) mount("none", "/sys/kernel/debug", "debugfs", 0, nullptr);
     // the display wakes in the background after "on" (vsync every 30 ms until it has): its registers
     // are read once it is up
-    for (int i = 0; i < 10 && measure() > 26000000; i++) usleep(50000);
-    int st = panel::state();
-    if (st == 0 && want) panel::set(true), st = 1;
-    if (st == 1 && !want) panel::set(false), st = 0;
+    for (int i = 0; i < 10 && measure(2) > 26000000; i++) usleep(50000);
+    int pll = -1, timings = -1;
+    bool known = panel::state(pll, timings) && pll >= 0 && timings >= 0;
+    int st = !known ? -1 : pll == 1 && timings == 1 ? 1 : 0;
+    const char* found = !known                      ? "unknown"
+                        : pll == 1 && timings == 1  ? "60 Hz"
+                        : pll == 0 && timings == 0  ? "stock"
+                        : pll == 1                  ? "the kernel's PLL over stock timings"
+                                                    : "the stock PLL over 60 Hz timings";
+    if (st == 0 && want) {  // the PLL only where the kernel hasn't set it
+      if (pll != 1) panel::setPll(true);
+      if (timings != 1) panel::setTimings(true);
+      st = 1;
+    }
+    if (st == 1 && !want) panel::setPll(false), panel::setTimings(false), st = 0;
     period_ = measure();
     fast_ = st == 1;
-    if (fast_ && (period_ < 16200000 || period_ > 17200000)) {  // not what was measured on the Y1: back to stock
-      fprintf(stderr, "display: the panel refreshed every %.2f ms at 60 Hz's settings: back to its own\n", period_ / 1e6);
-      panel::set(false);
-      fast_ = false;
+    auto off = [](int64_t p) { return p < 16200000 || p > 17200000; };  // not what was measured on the Y1
+    if (fast_ && off(period_)) {
+      // At a cold boot of 2.0's firmware the registers hold the kernel's 60 Hz words, yet the panel
+      // refreshes every 13.79 ms (72.5 Hz; Nov 9's first two boots), and at 60.00 after the first
+      // wake with the same words: the multiplier only takes effect when the PLL is switched on again,
+      // which the kernel does at a wake but not when it takes the panel over from the bootloader. The
+      // PLL switched again here, as at a wake.
+      fprintf(stderr, "display: the panel refreshed every %.2f ms at 60 Hz's settings: the PLL switched again\n", period_ / 1e6);
+      panel::setPll(true);
+      panel::setTimings(true);
+      usleep(100000);
       period_ = measure();
+      if (off(period_) && !kernel) {  // back to stock, which 1.0.x's kernel brings back at its next wake anyway
+        fprintf(stderr, "display: the panel refreshed every %.2f ms at 60 Hz's settings: back to its own\n", period_ / 1e6);
+        panel::setPll(false);
+        panel::setTimings(false);
+        fast_ = false, st = 0;
+        period_ = measure();
+      } else if (off(period_)) {  // kept: the kernel brings its PLL back at the next wake whatever is done here
+        fprintf(stderr, "display: still every %.2f ms (16.67 expected): kept, the kernel holds the settings\n", period_ / 1e6);
+      }
     }
-    printf("display: %.2f Hz (%s)\n", 1e9 / double(period_), fast_ ? "60 Hz settings" : st == 0 ? "the panel's own" : "unknown panel, left alone");
+    printf("display: %.2f Hz (%s; found %s)\n", 1e9 / double(period_), fast_ ? "60 Hz settings" : st == 0 ? "the panel's own" : "unknown panel, left alone",
+           found);
   }
-  // the median of four refreshes
-  int64_t measure() {
+  // the median of n refreshes (six: one disturbed interval, and the short one after it, don't count)
+  int64_t measure(int n = 6) {
     ioctl(vsync_, kMtkVsyncWait);
-    int64_t last = now_ns(), d[4];
-    for (int64_t& x : d) {
+    int64_t last = now_ns(), d[8];
+    n = std::min(std::max(n, 2), 8);
+    for (int i = 0; i < n; i++) {
       ioctl(vsync_, kMtkVsyncWait);
       int64_t t = now_ns();
-      x = t - last;
+      d[i] = t - last;
       last = t;
     }
-    std::sort(d, d + 4);
-    return (d[1] + d[2]) / 2;
+    std::sort(d, d + n);
+    return (d[(n - 1) / 2] + d[n / 2]) / 2;
   }
   int64_t period_ = 23730000;
   bool fast_ = false;

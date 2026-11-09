@@ -274,7 +274,9 @@ int main(int argc, char** argv) {
   };
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
+  int roots = g_library.presentRoots();  // which of the card and the internal storage are mounted now
   g_library.scanAsync();  // the card read again on the library's thread; what is indexed shows at once
+  usb::watchCard();       // and mounted, when nobody has
   g_library.artists();  // builds the groups now, not when Library opens
   int64_t tLib = now_ns();
 
@@ -454,11 +456,17 @@ int main(int argc, char** argv) {
       g_exitCode = 1;
     }
     if (app.tick(now_ns())) changed = true;
-    if (now_ns() - lastUsb > kSec) {  // the cable, once a second
+    if (now_ns() - lastUsb > kSec) {  // the cable and the card, once a second
       lastUsb = now_ns();
       bool c = usb::computerConnected();
       if (c != usbComputer) usbComputer = c, usbCableChanged(c), changed = true;
       if (usbIdle()) changed = true;
+      // a card mounted since (the boot's mount finishing after the start, one put in): read
+      int m = g_library.presentRoots();
+      if (m != roots && !g_library.scanning()) {
+        if (m & ~roots) g_library.scanAsync();
+        roots = m;
+      }
     }
     if ((g_player.state().playing != 0) != status.playing) changed = true;
     if (now_ns() - lastStatus >= 500 * kMs) {  // 1.0.x refreshes on its 500 ms tick

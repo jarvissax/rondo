@@ -30,6 +30,25 @@ const char* kAudio[] = {"flac", "mp3", "m4a", "aac", "ogg", "wav", "opus"};
 const char* kVideo[] = {"mp4", "m4v", "mkv", "3gp", "webm"};
 const char* kSkip[] = {"android", "lost.dir", "dcim", ".thumbnails"};
 const char* kGenericFolders[] = {"music", "video", "videos", "movies", "sdcard0", "sdcard1"};
+const char* kRoots[] = {"/storage/sdcard0", "/storage/sdcard1"};  // the card, the internal storage
+
+// whether something is mounted at this path (/proc/mounts' second field)
+bool mounted(const char* path) {
+  FILE* f = fopen("/proc/mounts", "r");
+  if (!f) return false;
+  char line[512], dev[256], at[256];
+  bool found = false;
+  while (!found && fgets(line, sizeof(line), f))
+    if (sscanf(line, "%255s %255s", dev, at) == 2 && !strcmp(at, path)) found = true;
+  fclose(f);
+  return found;
+}
+
+bool under(const std::string& path, const std::vector<std::string>& roots) {
+  for (const std::string& r : roots)
+    if (path.size() > r.size() && path[r.size()] == '/' && path.compare(0, r.size(), r) == 0) return true;
+  return false;
+}
 
 bool in(const char* const* list, size_t n, const std::string& s) {
   for (size_t i = 0; i < n; i++)
@@ -119,6 +138,7 @@ struct Library::Worker {
   // what the running scan found, for the UI thread
   bool listed = false, tagsDone = false;
   std::vector<FileEntry> listing;
+  std::vector<std::string> roots;  // the roots the listing covers
   std::deque<std::vector<TagResult>> batches;
 
   void post(std::function<void()> job) {
@@ -172,8 +192,15 @@ void Library::scanAsync() {
     if (!t.gone && t.tagged) (*known)[t.path] = {t.size, t.modified / 1000};
   Worker* w = worker_.get();
   w->post([w, known] {
+    // a root that isn't mounted (the card's mount still to come at boot, no card in) is an empty
+    // folder: its files aren't gone, so it is left out of what the listing covers
     std::vector<FileEntry> found;
-    for (const char* root : {"/storage/sdcard0", "/storage/sdcard1"}) list(root, 0, found);
+    std::vector<std::string> roots;
+    for (const char* root : kRoots) {
+      size_t before = found.size();
+      list(root, 0, found);
+      if (found.size() > before || mounted(root)) roots.push_back(root);
+    }
     std::vector<FileEntry> need;
     for (const FileEntry& f : found) {
       auto it = known->find(f.path);
@@ -182,6 +209,7 @@ void Library::scanAsync() {
     {
       std::lock_guard<std::mutex> l(w->mu);
       w->listing = std::move(found);
+      w->roots = std::move(roots);
       w->listed = true;
     }
     // the tags, 40 files at a time (LocalLibrary.kt's batches): the list redraws as they come
@@ -204,16 +232,25 @@ void Library::rescanIfStale() {
   if (!scanning_ && (scanEnded_ == 0 || now_ns() - scanEnded_ > 30 * kSec)) scanAsync();
 }
 
+int Library::presentRoots() const {
+  int bits = 0;
+  for (size_t i = 0; i < sizeof(kRoots) / sizeof(kRoots[0]); i++)
+    if (mounted(kRoots[i])) bits |= 1 << i;
+  return bits;
+}
+
 bool Library::applyScan() {
   if (!scanning_) return false;
   Worker* w = worker_.get();
   std::vector<FileEntry> listing;
+  std::vector<std::string> roots;
   std::vector<TagResult> batch;
   bool gotListing = false, gotBatch = false, done = false;
   {
     std::lock_guard<std::mutex> l(w->mu);
     if (w->listed) {
       listing.swap(w->listing);
+      roots.swap(w->roots);
       w->listed = false;
       gotListing = true;
     } else if (!w->batches.empty()) {
@@ -227,7 +264,7 @@ bool Library::applyScan() {
   }
   if (gotListing) {
     uint64_t before = generation_;
-    merge(listing);
+    merge(listing, roots);
     return generation_ != before;
   }
   if (gotBatch) {
@@ -346,10 +383,10 @@ void Library::list(const std::string& dir, int depth, std::vector<FileEntry>& ou
   closedir(d);
 }
 
-void Library::merge(std::vector<FileEntry>& found) {
+void Library::merge(std::vector<FileEntry>& found, const std::vector<std::string>& roots) {
   // in place: a track stays where it is (screens hold pointers to it), a changed file is updated where
   // it is (named from its file again, its tags read again), a new one is added at the end, one that
-  // left the card is marked gone
+  // left the card is marked gone (one under a root the listing didn't cover stays)
   std::unordered_map<std::string, Track*> byPath;
   byPath.reserve(tracks_.size());
   for (Track& t : tracks_)
@@ -369,7 +406,7 @@ void Library::merge(std::vector<FileEntry>& found) {
     }
   }
   for (Track& t : tracks_)
-    if (!t.gone && !now.count(t.path)) {
+    if (!t.gone && !now.count(t.path) && under(t.path, roots)) {
       t.gone = true;
       removed_.push_back(t.path);
       changed = true;
@@ -383,7 +420,7 @@ void Library::merge(std::vector<FileEntry>& found) {
 void Library::scan(const std::vector<std::string>& roots) {
   std::vector<FileEntry> found;
   for (const std::string& r : roots) list(r, 0, found);
-  merge(found);
+  merge(found, roots);
 }
 
 int Library::readTags(int max) {

@@ -34,6 +34,11 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   kernel, waking with 60 Hz timings left in place gives the stock PLL plus the fast timings, and the
   link stalls (the driver falls back to a 33 ms software vsync). The 2.0 firmware's kernel has the
   60 Hz values in its panel driver (`tools/firmware/BootImage.java`, eight instruction words).
+- **At a cold boot of the 2.0 firmware** the registers already hold those 60 Hz values, but the panel
+  refreshes every 13.79 ms (72.5 Hz) until the PLL is switched off and on again: the kernel writes
+  the multiplier when it takes the panel over from the bootloader without re-enabling the PLL. After
+  the first wake it is 60.00 Hz with the same values. Rondo measures at startup and switches the PLL
+  again when it finds 13.79 ms (`native/platform/y1/display.cpp`); every boot since gives 60.00 Hz.
 - **Interrupt latency matters at 60 Hz:** the display's blanking is 6.1 ms instead of 8.7. A kernel
   log line on the first core (the battery driver logs every read of `BatteryNotify`) held up the
   display interrupt long enough to miss a refresh; read such files from a thread on the second core.
@@ -113,6 +118,34 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   `-START`) and IPv4 multicast filtered (`-STOP`, `-REMOVE 2`, `-START`), `SET ps 1` (0 while DHCP
   runs), and `DRIVER SETSUSPENDMODE 1` with the screen off, which MediaTek's driver refuses: its own
   early-suspend handler does that part. All the others answer OK.
+- **`SET ps 1` only after DHCP:** set before joining a network, the first DHCP after the join got its
+  offer and then no answer to its requests for 30 s (every boot of the 2.0 firmware, Nov 9). The
+  next DHCP 10 s later was answered at once. With power save switched on after DHCP, as Android's
+  `handlePostDhcpSetup` did, the first DHCP takes 3.5 s.
+- **`net.hostname` must be set before DHCP.** MediaTek's `libnetutils.so` builds dhcpcd's start
+  command as `%s_%s:-f %s -h %s %s` with a hostname, and without one as `%s_%s:-f %s %s` with its
+  arguments in the wrong order: `dhcpcd_/system/etc/dhcpcd/dhcpcd.conf:-f wlan0 wlan0`, which init has
+  no service for (`init: no such service` in the kernel log), so `dhcp_do_request` times out
+  ("Timed out waiting for dhcpcd to start"). Android's ConnectivityService set it at every boot
+  (`android-` and the secure setting `android_id`). Without Android, Rondo sets it the same way.
+  (`/system/etc/dhcpcd/dhcpcd.conf` doesn't exist; dhcpcd runs on its defaults.)
+- **No MAC address in the Wi-Fi NVRAM as shipped:** bytes 4-9 of `/data/nvram/APCFG/APRDEB/WIFI` are
+  zeros, so the driver made up an address under MediaTek's `00:08:22` at every load (six boots of 2.0
+  on Nov 9 gave five different ones), and MediaTek listed a fake network, `NVRAM WARNING: Err = 0x10`,
+  in the scan results. Since Nov 9 Rondo fills the empty address in once, before the driver loads,
+  with a locally administered one (`02:` and five bytes from a hash of the eMMC's CID, so the same
+  Y1 gets the same address after any reflash). The driver takes it at its next load, the fake
+  network is gone, and the router gives the same lease at every boot. The record as it was is kept in
+  `/data/rondo/nvram-WIFI.orig`. A lease saved for another MAC is still deleted before DHCP (it
+  earns a NAK).
+- **MediaTek's NVRAM files** (`/data/nvram/APCFG/APRDEB/*`, owner `nvram`, mode 0660) end in `0xAA` and
+  a check byte over the record before it: from 0, the even-index bytes added and the odd-index bytes
+  XORed, in turn (`WIFI` 512 + 2 bytes, `BT_Addr` 30 + 2, `WIFI_CUSTOM` 4 + 2). `WIFI`: two version
+  words, the MAC address at 4-9.
+- **Time zone:** bionic's `localtime` reads `persist.sys.timezone` at each call, so setting the
+  property changes the time zone at once in every process, and it outlasts a reboot. The firmware's
+  tzdata is 2012h (`/system/usr/share/zoneinfo/zoneinfo.idx`: a 40-byte name and three 32-bit numbers
+  per zone; it has `Etc/UTC` but no bare `UTC`). The stock firmware ships `Asia/Shanghai`.
 
 ## Power
 
@@ -179,6 +212,16 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   - Then `AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, available, address)`,
     and `setForceUse(FOR_MEDIA, NONE)`: mediaserver keeps the last "no A2DP" otherwise.
   - Paired devices are in `/data/@btmtk/devdb`.
+- **Storage:** vold mounts nothing by itself; Android's MountService asked it to. On the 2.0
+  firmware vold starts listening, and then lists its volumes (`vdc volume list`: the card
+  `/storage/sdcard0`, vold's `sdcard2`, and the internal storage `/storage/sdcard1`), a few seconds
+  into the boot. A boot script that asks once can find no answer yet, or the volumes still
+  initializing (both happened on Nov 9: the card stayed unmounted and the Library was empty).
+  `firmware/rondo/start` asks until each is mounted or 20 s have passed, in the background. Rondo also
+  mounts any volume vold lists as idle every 2 s (a card put in later), except while it hands the
+  card to a computer. A Y1 started on a computer's cable must still mount its card: the USB drive
+  prompt only offers sharing it.
+- **net.hostname** (ConnectivityService's job) is needed before DHCP; see Wi-Fi.
 
 ## Keeping frames on time (measured with the N1 UI engine)
 

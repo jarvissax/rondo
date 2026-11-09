@@ -338,28 +338,35 @@ class ApiWorkers {
 
 }  // namespace
 
-// The clock (clock.h): set from the server once each Wi-Fi connection is up, tried again a minute
-// after a failure
-std::string g_clockBase;
+// The clock and the time zone (clock.h): set from the server once each Wi-Fi connection is up, each
+// tried again a minute after a failure
+std::string g_clockBase, g_clockToken;
 pthread_mutex_t g_clockMu = PTHREAD_MUTEX_INITIALIZER;
+Api* g_zoneApi = nullptr;  // made before the thread (libcurl's setup isn't thread-safe)
 void* clockLoop(void*) {
   prctl(PR_SET_NAME, "rondo-clock");
-  uint32_t syncedFor = 0;  // the address of the connection the clock was set on
-  int64_t retryAt = 0;
+  uint32_t syncedFor = 0, zonedFor = 0;  // the address of the connection the clock, the zone was set on
+  int64_t retryAt = 0, zoneRetryAt = 0;
   for (;;) {
     sleep(5);
     uint32_t ip = g_shm->wifiState == 4 ? g_shm->ip : 0;
     if (!ip) {
-      syncedFor = 0;
+      syncedFor = zonedFor = 0;
       continue;
     }
-    if (ip == syncedFor || now_ns() < retryAt) continue;
     pthread_mutex_lock(&g_clockMu);
-    std::string base = g_clockBase;
+    std::string base = g_clockBase, token = g_clockToken;
     pthread_mutex_unlock(&g_clockMu);
     if (base.empty()) continue;
-    if (syncClock(base)) syncedFor = ip;
-    else retryAt = now_ns() + 60 * kSec;
+    if (ip != syncedFor && now_ns() >= retryAt) {
+      if (syncClock(base)) syncedFor = ip;
+      else retryAt = now_ns() + 60 * kSec;
+    }
+    if (ip != zonedFor && now_ns() >= zoneRetryAt) {
+      g_zoneApi->configure(base, token);
+      if (timeZoneFromServer(*g_zoneApi)) zonedFor = ip;
+      else zoneRetryAt = now_ns() + 60 * kSec;
+    }
   }
   return nullptr;
 }
@@ -376,6 +383,8 @@ void runCore(int sock, CoreState* shm) {
   wifi.start();
   ApiWorkers api(sock);
   Bluetooth bt(publish);
+  timeZoneDefault();
+  g_zoneApi = new Api();
   pthread_t clockThread;
   pthread_create(&clockThread, nullptr, clockLoop, nullptr);
   pthread_detach(clockThread);
@@ -418,7 +427,7 @@ void runCore(int sock, CoreState* shm) {
         std::string token = z == std::string::npos ? "" : s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
         api.configure(s.substr(0, z), token, z2 == std::string::npos ? "" : s.substr(z2 + 1));
         pthread_mutex_lock(&g_clockMu);
-        g_clockBase = s.substr(0, z);
+        g_clockBase = s.substr(0, z), g_clockToken = token;
         pthread_mutex_unlock(&g_clockMu);
         break;
       }

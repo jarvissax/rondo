@@ -11,6 +11,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/statfs.h>
+#include <sys/system_properties.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <deque>
@@ -295,6 +297,37 @@ bool charging() {
   return false;
 }
 
+// the Wi-Fi's address while it's on, else the one in its NVRAM record (bytes 4-9; none: "")
+std::string macAddress() {
+  char s[32] = "";
+  if (FILE* f = fopen("/sys/class/net/wlan0/address", "r")) {
+    if (!fgets(s, sizeof(s), f)) s[0] = 0;
+    fclose(f);
+  }
+  std::string mac = s;
+  while (!mac.empty() && (mac.back() == '\n' || mac.back() == ' ')) mac.pop_back();
+  if (mac.size() == 17) return mac;
+  unsigned char b[10] = {};
+  FILE* f = fopen("/data/nvram/APCFG/APRDEB/WIFI", "rb");
+  bool ok = f && fread(b, 1, sizeof(b), f) == sizeof(b);
+  if (f) fclose(f);
+  if (!ok || !(b[4] | b[5] | b[6] | b[7] | b[8] | b[9])) return "";
+  snprintf(s, sizeof(s), "%02x:%02x:%02x:%02x:%02x:%02x", b[4], b[5], b[6], b[7], b[8], b[9]);
+  return s;
+}
+
+// "Europe/Lisbon · 17:52": the zone and the time in it
+std::string timeZone() {
+  char zone[PROP_VALUE_MAX] = "";
+  __system_property_get("persist.sys.timezone", zone);
+  time_t now = time(nullptr);
+  struct tm t;
+  localtime_r(&now, &t);
+  char clock[8];
+  strftime(clock, sizeof(clock), "%H:%M", &t);
+  return std::string(zone[0] ? zone : "UTC") + " \xc2\xb7 " + clock;
+}
+
 // AboutScreen: what the dashboard's Overview shows about the device; battery and Wi-Fi every 10 s
 class AboutScreen : public ShellListScreen {
  public:
@@ -329,6 +362,10 @@ class AboutScreen : public ShellListScreen {
     add("Wi-Fi", wifiName());
     std::string ip = wifiAddress();
     if (!ip.empty()) add("IP address", ip);
+    // 2.0: the Wi-Fi's fixed address and the time zone the server named (wifi.cpp, clock.h)
+    std::string mac = macAddress();
+    if (!mac.empty()) add("Wi-Fi MAC address", mac);
+    add("Time zone", timeZone());
     std::string server = g_config.server.url;
     for (const char* p : {"https://", "http://"})
       if (server.compare(0, strlen(p), p) == 0) server = server.substr(strlen(p));

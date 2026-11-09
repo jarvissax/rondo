@@ -18,7 +18,12 @@ chmod 0700 $D
 #   in every development run on 1.0.x's firmware.
 # - The sound: mediaserver up before Rondo opens its output.
 # - The storage: vold mounts nothing by itself (MountService asked it to): the card and the internal
-#   storage, each once vold has found it (state 1, idle).
+#   storage, each volume vold lists as idle (state 1), until each is mounted (state 4) or 20 s have
+#   passed. vold starts listening, and then finds its volumes, a few seconds into the boot: on Nov 9's
+#   first boot it wasn't listening yet, and on the second it still listed them as initializing, and
+#   both times the card stayed unmounted. This runs in the background (a mount takes vold a second or
+#   two for its check): Rondo starts meanwhile with its index, reads the card once it is mounted, and
+#   mounts whatever vold lists as idle later on itself (a card put in, a mount this missed).
 #   SurfaceFlinger registers its service once its setup (readyToRun) is done, and turns the panel on in
 #   the message right after: its registration and 0.3 s more, at most 10 s (a fixed 1.5 s before Nov 9;
 #   restarted on the Y1 it registers 20 ms after it runs).
@@ -28,18 +33,24 @@ sleep 0.3
 stop surfaceflinger
 i=0
 while [ $i -lt 50 ] && ! service check media.audio_flinger | grep -q found; do sleep 0.2; i=$((i + 1)); done
-i=0
-while [ $i -lt 50 ]; do
-  left=0
-  vdc volume list | while read code n label path state; do
-    [ "$code" = 110 ] || continue
-    [ "$state" = 1 ] && vdc volume mount $path > /dev/null 2>&1
+(
+  i=0
+  while [ $i -lt 100 ]; do
+    vols=$(vdc volume list 2>/dev/null | while read code n label path state; do [ "$code" = 110 ] && echo "$path=$state"; done)
+    left=0
+    [ -n "$vols" ] || left=1
+    for v in $vols; do
+      case "${v#*=}" in
+        4) ;;
+        1) vdc volume mount ${v%=*} > /dev/null 2>&1; left=1 ;;
+        *) left=1 ;;
+      esac
+    done
+    [ $left = 0 ] && break
+    sleep 0.2
+    i=$((i + 1))
   done
-  for path in $(vdc volume list | while read code n label path state; do [ "$code" = 110 ] && [ "$state" != 4 ] && echo $path; done); do left=1; done
-  [ $left = 0 ] && break
-  sleep 0.2
-  i=$((i + 1))
-done
+) &
 
 while true; do
   dir=/system/rondo
