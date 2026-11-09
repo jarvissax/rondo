@@ -19,9 +19,12 @@ chmod 0700 $D
 # - The sound: mediaserver up before Rondo opens its output.
 # - The storage: vold mounts nothing by itself (MountService asked it to): the card and the internal
 #   storage, each once vold has found it (state 1, idle).
+#   SurfaceFlinger registers its service once its setup (readyToRun) is done, and turns the panel on in
+#   the message right after: its registration and 0.3 s more, at most 10 s (a fixed 1.5 s before Nov 9;
+#   restarted on the Y1 it registers 20 ms after it runs).
 i=0
-while [ $i -lt 50 ] && [ "$(getprop init.svc.surfaceflinger)" != running ]; do sleep 0.2; i=$((i + 1)); done
-sleep 1.5
+while [ $i -lt 100 ] && ! service check SurfaceFlinger | grep -q found; do sleep 0.1; i=$((i + 1)); done
+sleep 0.3
 stop surfaceflinger
 i=0
 while [ $i -lt 50 ] && ! service check media.audio_flinger | grep -q found; do sleep 0.2; i=$((i + 1)); done
