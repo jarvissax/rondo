@@ -640,7 +640,7 @@ int main(int argc, char** argv) {
                 text.shapeMsThisFrame(), text.glyphsRasterizedLastFrame(), text.rasterMsThisFrame(), prevGlyphs, prevRows, prevUploads,
                 prevSpan / 1e6);
     text.flush();
-    bool more = covers.pump(present, 2);
+    bool more = covers.pump(present, 1);  // one a frame: two in one frame made the next wait a refresh at 60 Hz
     prevGlyphs = text.glyphsRasterizedLastFrame(), prevRows = text.flushedRows(), prevUploads = covers.uploadedLast();
     canvas.end();
     int64_t c = now_ns();

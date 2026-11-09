@@ -26,7 +26,7 @@ open() { I key center; sleep 1.3; I key menu; sleep 0.9; }   # the selected row,
 down() { [ \$1 -gt 0 ] && I wheel \$1 300; sleep 0.5; }
 top() { I wheel 9 120 ccw; sleep 0.5; }
 kill \$(cat \$D/rondo.pid) 2>/dev/null; sleep 0.5; cd \$D
-(RONDO_USB_PROMPT=0 RONDO_SLOW=1 ./run.sh > rondo.log 2>&1 </dev/null &); sleep 2.5
+(${RONDO_HZ:+RONDO_HZ=$RONDO_HZ }RONDO_USB_PROMPT=0 RONDO_SLOW=1 ./run.sh > rondo.log 2>&1 </dev/null &); sleep 2.5
 if [ $lib -ge 0 ]; then
   top; down $lib; I key center; sleep 1.2                      # Library
   top; down 1; open; down 1; open; down 2; open                # Search, Playlists, Artists

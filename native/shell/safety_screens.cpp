@@ -14,11 +14,15 @@
 //   The warning comes back on every reading while the fault lasts (Snooze: until the next one), Dismiss
 //   keeps that one quiet until a restart, and the charger's two close when it's unplugged.
 #include <fcntl.h>
+#include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include <atomic>
 
 #include "../platform/haptics.h"
 #include "../platform/power.h"
@@ -160,6 +164,23 @@ int readNotify() {
   return n > 0 ? atoi(b) : 0;
 }
 
+// The driver logs every reading of the file, and the log holds up the core it runs on for long enough
+// that the display's interrupt (the first core's) came a refresh late: a missed refresh every 10 s at
+// 60 Hz (Nov 9). So it is read on its own thread on the second core, which is in while the screen is
+// on (power.h); with the screen off (one core) nothing is drawn.
+std::atomic<int> g_notify{0};
+void* notifyLoop(void*) {
+  cpu_set_t second;
+  CPU_ZERO(&second);
+  CPU_SET(1, &second);
+  for (;;) {
+    sched_setaffinity(0, sizeof(second), &second);  // again each time: the core may have been out
+    g_notify = readNotify();
+    sleep(10);
+  }
+  return nullptr;
+}
+
 bool topIs(Screen* s) { return s && g_app->top() == s; }
 
 }  // namespace
@@ -170,6 +191,9 @@ void safetyStart(bool firmware) {
   sa.sa_sigaction = onThermal;
   sa.sa_flags = SA_SIGINFO | SA_RESTART;
   sigaction(SIGIO, &sa, nullptr);
+  pthread_t t;
+  pthread_create(&t, nullptr, notifyLoop, nullptr);
+  pthread_detach(t);
   g_acceptUserSignal = !firmware;
   if (!firmware) return;  // on 1.0.x's firmware its own thermald keeps the registration
   // what MediaTek's ServiceStarter did at boot, then the registration thermald made (its pid, decimal)
@@ -208,7 +232,7 @@ bool safetyTick(int64_t now) {
   static int64_t lastRead = 0;
   if (now - lastRead >= 10 * kSec) {
     lastRead = now;
-    int v = readNotify();
+    int v = g_notify;
     int type = -1;
     for (int i = 0; i < 5; i++)
       if (kFaults[i].value == v) type = i;
