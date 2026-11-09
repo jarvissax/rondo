@@ -16,7 +16,7 @@ extern const char kRootCerts[];  // generated from app/app/src/main/res/raw/*.pe
 namespace net {
 
 const char* userAgent() {
-  static const std::string ua = std::string("Rondo/") + kRondoVersion + " (Innioasis Y1; native)";
+  static const std::string ua = std::string("Rondo/") + kRondoVersion + " (Innioasis Y1)";
   return ua.c_str();
 }
 

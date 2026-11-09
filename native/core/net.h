@@ -5,7 +5,7 @@
 
 namespace rondo::net {
 
-// "Rondo/<version> (Innioasis Y1; native)"
+// "Rondo/<version> (Innioasis Y1)"
 const char* userAgent();
 // The two bundled roots (ISRG Root X1 and YR, kept as extra trusted roots), or with wide, Android's
 // system roots as well: a server whose certificate isn't Let's Encrypt's. A request that fails
