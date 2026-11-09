@@ -3,8 +3,9 @@
 //
 //   java tools/firmware/BootImage.java in.img out.img
 //
-// In init.rc, zygote and surfaceflinger become disabled (Rondo draws to the framebuffer itself), and the
-// "rondo" service runs /system/rondo/start. Everything else (the kernel, its command line, the other
+// In init.rc, zygote becomes disabled (no Java layer), and the "rondo" service runs /system/rondo/start.
+// SurfaceFlinger still starts, to set the panel up as it always has, and the start script stops it
+// before Rondo draws to the framebuffer itself. Everything else (the kernel, its command line, the other
 // files of the ramdisk) stays byte for byte; the header's sizes and SHA-1 are made again.
 import java.io.*;
 import java.nio.*;
@@ -81,7 +82,7 @@ public class BootImage {
     if (second.length > 0) writePadded(o, second, page);
     o.write(tail);
     Files.write(Paths.get(args[1]), o.toByteArray());
-    System.out.println("init.rc: zygote and surfaceflinger disabled, the rondo service added; ramdisk " + ramdiskSize + " -> "
+    System.out.println("init.rc: zygote disabled, the rondo service added; ramdisk " + ramdiskSize + " -> "
         + newRamdisk.length + " bytes");
   }
 
@@ -93,12 +94,12 @@ public class BootImage {
       out.append(lines[i]);
       if (i < lines.length - 1) out.append('\n');
       String l = lines[i].trim();
-      if (l.startsWith("service zygote ") || l.startsWith("service surfaceflinger ")) {
-        out.append("    disabled  # Rondo 2.0: no Java layer, no compositor\n");
+      if (l.startsWith("service zygote ")) {
+        out.append("    disabled  # Rondo 2.0: no Java layer\n");
         disabled++;
       }
     }
-    if (disabled != 2) throw new IllegalStateException("zygote and surfaceflinger not both found in init.rc");
+    if (disabled != 1) throw new IllegalStateException("zygote not found in init.rc");
     if (text.contains("service rondo ")) throw new IllegalStateException("init.rc already has Rondo");
     out.append("\n# Rondo 2.0: the player itself, drawn straight to the framebuffer (tools/firmware/BootImage.java).\n"
         + "# /system/rondo/start runs the newest update in /data/rondo or the firmware's own copy, and runs it\n"

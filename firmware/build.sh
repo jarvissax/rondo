@@ -6,7 +6,8 @@
 #
 # Rondo 2.0 (a bundle from tools/native/bundle.sh) runs without Android's Java layer: no app is left in
 # /system/app, Rondo goes in as /system/rondo, and the boot image's init.rc starts it instead of zygote
-# and SurfaceFlinger (tools/firmware/BootImage.java). The boot logo shows until Rondo's first frame.
+# (tools/firmware/BootImage.java); SurfaceFlinger only sets the panel up, then firmware/rondo/start stops
+# it. The boot logo shows until Rondo's first frame.
 #
 # It starts from the community's base ROM (stock Android 4.2.2 with the Y1's radios enabled) and
 # takes out everything that isn't Rondo or Android's own background services: Rockbox, the stock
@@ -170,6 +171,8 @@ say "5/7  System properties"
 debugfs -R "dump /build.prop $WORK/build.prop" "$SYS" 2>/dev/null
 sed -i.bak -e "s/^ro.build.display.id=.*/ro.build.display.id=Rondo${RONDO_VERSION:+ $RONDO_VERSION}/" -e '/^ro.rondo.firmware=/d' "$WORK/build.prop"
 echo "ro.rondo.firmware=$FIRMWARE_LEVEL" >> "$WORK/build.prop"
+# 2.0: SurfaceFlinger only sets the panel up at boot (firmware/rondo/start), with no boot animation
+[[ $NATIVE == 1 ]] && echo "debug.sf.nobootanimation=1" >> "$WORK/build.prop"
 put "$SYS" "$WORK/build.prop" /build.prop
 echo "Build name: $(grep ro.build.display.id "$WORK/build.prop"), firmware $FIRMWARE_LEVEL"
 
@@ -187,7 +190,7 @@ if [[ $NATIVE == 1 ]]; then
   exists "$SYS" /rondo/rondo || fail "/system/rondo/rondo is missing"
   exists "$SYS" /rondo/start || fail "/system/rondo/start is missing"
   [[ -z "$left" ]] || fail "/system/app still holds $left"
-  echo "Rondo 2.0 is in /system/rondo; init.rc starts it (BootImage.java checked zygote and SurfaceFlinger are off)."
+  echo "Rondo 2.0 is in /system/rondo; init.rc starts it (BootImage.java checked zygote is off)."
 fi
 echo "File systems are clean; only Rondo and Android's core are left."
 

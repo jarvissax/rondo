@@ -1,7 +1,7 @@
 #!/system/bin/sh
-# Rondo 2.0 at boot: init's "rondo" service (firmware/build-native.sh puts it in init.rc) runs this, and
-# this runs Rondo, again at once whenever it ends (an update put in place, a crash: back in about a
-# second, with the queue it kept).
+# Rondo 2.0 at boot: init's "rondo" service (firmware/build.sh puts it in init.rc) runs this, and this
+# runs Rondo, again at once whenever it ends (an update put in place, a crash: back in about a second,
+# with the queue it kept).
 #
 # Which Rondo: the update named in /data/rondo/current (native/core/bundle.h unpacks it into
 # /data/rondo/<version>), else the firmware's own copy in /system/rondo. Rondo clears
@@ -10,12 +10,34 @@
 D=/data/rondo
 mkdir -p $D
 chmod 0700 $D
-# init starts the main class together: the sound (mediaserver) first, and the card, so the library
-# isn't read before vold has mounted it (each 10 s at most)
+
+# What Android's Java layer did at boot, which nothing else does without it:
+#
+# - The display: SurfaceFlinger starts with init's main class and sets the panel up (its boot animation
+#   is off: debug.sf.nobootanimation); once it has, it stops, and Rondo draws to the framebuffer, as
+#   in every development run on 1.0.x's firmware.
+# - The sound: mediaserver up before Rondo opens its output.
+# - The storage: vold mounts nothing by itself (MountService asked it to): the card and the internal
+#   storage, each once vold has found it (state 1, idle).
+i=0
+while [ $i -lt 50 ] && [ "$(getprop init.svc.surfaceflinger)" != running ]; do sleep 0.2; i=$((i + 1)); done
+sleep 1.5
+stop surfaceflinger
 i=0
 while [ $i -lt 50 ] && ! service check media.audio_flinger | grep -q found; do sleep 0.2; i=$((i + 1)); done
 i=0
-while [ $i -lt 50 ] && ! grep -q " /storage/sdcard0 " /proc/mounts; do sleep 0.2; i=$((i + 1)); done
+while [ $i -lt 50 ]; do
+  left=0
+  vdc volume list | while read code n label path state; do
+    [ "$code" = 110 ] || continue
+    [ "$state" = 1 ] && vdc volume mount $path > /dev/null 2>&1
+  done
+  for path in $(vdc volume list | while read code n label path state; do [ "$code" = 110 ] && [ "$state" != 4 ] && echo $path; done); do left=1; done
+  [ $left = 0 ] && break
+  sleep 0.2
+  i=$((i + 1))
+done
+
 while true; do
   dir=/system/rondo
   n=0
