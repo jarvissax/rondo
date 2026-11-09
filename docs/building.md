@@ -251,7 +251,7 @@ Rondo firmware (1.0.0) has no number and counts as 1.
    The first time the images are published, set both packages to **Public** on GitHub (your
    profile › Packages › the package › Package settings), or servers can't download them.
 
-### Rondo 2.0 (the native firmware)
+### Rondo 2.0
 
 A 2.0 release carries a signed bundle instead of an APK. Steps 1, 4 and 5 are the same; in place of
 steps 2 and 3:

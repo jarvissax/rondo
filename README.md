@@ -19,7 +19,7 @@ FM radio, all from the wheel.**
 
 The Innioasis Y1 is a small music player with an iPod-style click wheel. Underneath, it runs
 Android 4.2. Rondo is a firmware for it, built from the community's Android 4.2 base: Android's
-whole app layer is taken out, and the Y1 starts straight into Rondo, a native program with menus
+whole app layer is taken out, and the Y1 starts straight into Rondo, with menus
 made for the wheel. Play the music on
 your microSD card, stream YouTube Music and YouTube, and listen to FM radio, all without a
 touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or the Y1's
@@ -174,7 +174,7 @@ through to the Y1 in a form it can play. The Y1 only ever talks to your server.
 
 | Folder | What's in it |
 | --- | --- |
-| `native/` | Rondo 2.0 itself: the native program the firmware runs (C++ with the NDK, its own GLES2 UI, FFmpeg) |
+| `native/` | Rondo 2.0 itself: the program the firmware runs (C++ with the NDK, its own GLES2 UI, FFmpeg) |
 | `app/` | Rondo 1.0, the Android app 2.0 replaces (Kotlin, classic Views, ExoPlayer 2), kept as the reference for every screen |
 | `firmware/` | The script that builds the firmware (`rom.zip`) from the community's base ROM, and Rondo's start script |
 | `server/` | The Rondo server (Node 22, TypeScript, Fastify) |

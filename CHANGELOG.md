@@ -11,7 +11,7 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 
 ### Rondo, rebuilt
 
-- **Native, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
+- **Rebuilt, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
   the screen, so it starts sooner and every screen opens and scrolls more smoothly. Everything looks
   and works as in 1.0.
 - **60 frames a second.** The screen refreshes at 60 Hz instead of 42, so scrolling and slides are
