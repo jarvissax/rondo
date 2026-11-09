@@ -32,6 +32,19 @@ class Keyboard {
   void clear() { typed_.clear(); }
   void setTyped(std::string s) { typed_ = std::move(s); }
   const std::string& typed() const { return typed_; }
+  // At most n characters (InputFilter.LengthFilter in 1.0.x): a key typed past it is taken back
+  void keepAtMost(size_t n) {
+    while (characters(typed_) > n && !typed_.empty()) {
+      while (!typed_.empty() && (uint8_t(typed_.back()) & 0xc0) == 0x80) typed_.pop_back();
+      if (!typed_.empty()) typed_.pop_back();
+    }
+  }
+  // the characters (code points) of UTF-8 text
+  static size_t characters(const std::string& s) {
+    size_t n = 0;
+    for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
+    return n;
+  }
   bool step(float dt);  // true while the highlight moves
   // bigPx, smallPx: the label sizes (1.0.x: dp(15) and dp(12), whole pixels)
   void draw(Canvas& c, Text& text, const Palette& p, Rect area, int bigPx, int smallPx);

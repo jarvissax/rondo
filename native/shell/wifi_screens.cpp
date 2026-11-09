@@ -120,7 +120,7 @@ class WifiPasswordScreen : public Screen {
         Keyboard::Result r = kb_.press();
         if (r == Keyboard::Result::Action) {
           size_t minimum = security_ == WifiSecurity::Psk ? 8 : 1;
-          if (length(kb_.typed()) < minimum) {
+          if (Keyboard::characters(kb_.typed()) < minimum) {
             note_ = "At least " + std::to_string(minimum) + " characters";
             return true;
           }
@@ -128,12 +128,7 @@ class WifiPasswordScreen : public Screen {
           g_app->pop();
           return true;
         }
-        if (r == Keyboard::Result::Typed && length(kb_.typed()) > 63) {
-          std::string t = kb_.typed();
-          while (!t.empty() && (uint8_t(t.back()) & 0xc0) == 0x80) t.pop_back();
-          if (!t.empty()) t.pop_back();
-          kb_.setTyped(t);
-        }
+        if (r == Keyboard::Result::Typed) kb_.keepAtMost(63);  // WPA's longest passphrase
         note_.clear();
         return true;
       }
@@ -164,11 +159,6 @@ class WifiPasswordScreen : public Screen {
   }
 
  private:
-  static size_t length(const std::string& s) {
-    size_t n = 0;
-    for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
-    return n;
-  }
   std::string ssid_, note_;
   WifiSecurity security_;
   Keyboard kb_;

@@ -12,42 +12,15 @@ namespace {
 
 constexpr Color white = 0xffffffff;
 
-class MusicScreen : public MusicListScreen {
+class MusicScreen : public TabbedListScreen {
  public:
-  MusicScreen() : MusicListScreen("YouTube Music") {
+  MusicScreen() : TabbedListScreen("YouTube Music") {
     // Library only when the server has an account (Accounts.kt); signed out it's Home and search
     tabs_ = {"Home"};
     if (g_prefs.accountMusic) tabs_.push_back("Library");
-    list_.onTopReached = [this] {
-      focused_ = active_;
-      list_.active = false;
-      return true;
-    };
+    focusTabsFromTop();
     list_.onNearEnd = [this] { more(); };
     load(0);
-  }
-  bool onAction(Action a, int steps) override {
-    if (focused_ < 0) {
-      if (list_.rows().empty() && a == Action::Select) {  // a message: center tries again
-        load(active_);
-        return true;
-      }
-      return MusicListScreen::onAction(a, steps);
-    }
-    int search = int(tabs_.size());
-    switch (a) {
-      case Action::Up: focused_ = (focused_ + search) % (search + 1); return true;
-      case Action::Down: focused_ = (focused_ + 1) % (search + 1); return true;
-      case Action::Select: {
-        int f = focused_;
-        focused_ = -1;
-        list_.active = true;
-        if (f == search) g_app->push(makeMusicSearch());
-        else load(f);
-        return true;
-      }
-      default: return false;
-    }
   }
   void draw(Env& e, float w, float h) override {
     now_ = e.now;
@@ -55,7 +28,7 @@ class MusicScreen : public MusicListScreen {
     const Row* sel = list_.selectedRow();
     ambient_.follow(e, sel ? sel->thumb : "", e.dp(34));
     ambient_.draw(e, {0, 0, w, h});
-    header(e, w);
+    header(e, w, h);
     float top = float(e.dp(31));
     bool mini = miniPlayerShown();
     float bottom = mini ? float(e.dp(kMiniPlayer)) : 0;
@@ -66,8 +39,9 @@ class MusicScreen : public MusicListScreen {
   }
 
  private:
+  void openSearch() override { g_app->push(makeMusicSearch()); }
   // the header: the logo, "Music", a pill per tab, the search button, the battery
-  void header(Env& e, float w) {
+  void header(Env& e, float w, float h) {
     int H = e.dp(31);
     float x = float(e.dp(10));
     e.c.layer(4);
@@ -77,39 +51,10 @@ class MusicScreen : public MusicListScreen {
     Label name = label(e, "Music", 15, true);
     drawLabel(e, name, x, float((H - name.h) / 2), white);
     x += name.w + e.dp(10);
-    int ph = e.dp(21), py = (H - ph) / 2;
-    for (int i = 0; i < int(tabs_.size()); i++) {
-      bool active = i == active_, ring = i == focused_;
-      Label l = label(e, tabs_[i], 12.5f, active);
-      int pw = l.w + 2 * e.dp(10);
-      pill(e, {x, float(py), float(pw), float(ph)}, active ? white : 0x3cffffff, ring);
-      e.c.layer(4);
-      drawLabel(e, l, centerText(x, float(pw), l.w), float(py + ((ph - l.h) >> 1)), active ? e.p.dark : white);
-      x += pw + e.dp(5);
-    }
-    // the search button: a round pill with the magnifier
-    pill(e, {x, float(py), float(ph), float(ph)}, 0x3cffffff, focused_ == int(tabs_.size()));
-    e.c.layer(4);
-    int s = e.dp(11);
-    e.icons.draw(e.c, Icon::Search, {x + float((ph - s) / 2), float(py + (ph - s) / 2), float(s), float(s)}, white);
+    drawPills(e, x, H, h);
     // battery only: the pills leave no room for Wi-Fi
     statusIcons(e, w - e.dp(10), H, e.p.darkMuted, false);
   }
-  // Pill: rounded 12 units (a capsule at 21), a 2-unit red ring when focused
-  void pill(Env& e, Rect r, Color fill, bool ring) {
-    float radius = std::min(e.dpf(12), r.h / 2);
-    e.c.layer(2);
-    if (ring) {
-      int t = e.dp(2);
-      e.c.shape(r, radius, e.p.red);
-      e.c.shape({r.x + t, r.y + t, r.w - 2 * t, r.h - 2 * t}, std::max(0.f, radius - t), mixOver(fill));
-    } else {
-      e.c.shape(r, radius, fill);
-    }
-  }
-  // a translucent fill drawn inside the ring: what it looks like over the dark header
-  static Color mixOver(Color fill) { return (fill >> 24) == 0xff ? fill : 0xff2a2a2a; }
-
   std::vector<Row> sectionRows(const std::vector<Section>& sections) {
     std::vector<Row> rows;
     for (const Section& s : sections) {
@@ -124,7 +69,7 @@ class MusicScreen : public MusicListScreen {
     }
     return rows;
   }
-  void load(int tab) {
+  void load(int tab) override {
     active_ = tab;
     requests_.cancelAll();
     items_.clear();
@@ -176,8 +121,6 @@ class MusicScreen : public MusicListScreen {
     });
   }
 
-  std::vector<std::string> tabs_;
-  int active_ = 0, focused_ = -1;  // the pills, then the search button at tabs_.size()
   std::vector<Item> items_;        // what is loaded so far: the queue around a chosen song
   std::string next_;
   bool loading_ = false;

@@ -20,12 +20,6 @@ std::string trimmed(const std::string& s) {
   return a == std::string::npos ? "" : s.substr(a, b - a + 1);
 }
 
-size_t codepoints(const std::string& s) {
-  size_t n = 0;
-  for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
-  return n;
-}
-
 void playNow(const std::vector<std::string>& paths, int start) {
   g_player.playQueue(paths, start);
   openNowPlaying();
@@ -93,11 +87,8 @@ class TextEntryScreen : public Screen {
         Keyboard::Result r = kb_.press();
         if (r == Keyboard::Result::Action) {
           finish();
-        } else if (r == Keyboard::Result::Typed && codepoints(kb_.typed()) > max_) {
-          std::string t = kb_.typed();
-          while (!t.empty() && (uint8_t(t.back()) & 0xc0) == 0x80) t.pop_back();
-          if (!t.empty()) t.pop_back();
-          kb_.setTyped(t);
+        } else if (r == Keyboard::Result::Typed) {
+          kb_.keepAtMost(size_t(max_));
         }
         if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) line_ = note_, problem_ = false;
         return true;

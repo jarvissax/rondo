@@ -57,6 +57,16 @@ void Ambient::fill(Env& e, Rect r, bool has, Color c, float alpha) {
   e.c.popAlpha();
 }
 
+Color Ambient::colorAt(Env& e, float y, float h) const {
+  auto at = [&](bool has, Color c) -> Color {
+    if (!has) return e.p.dark;
+    float half = floorf(h / 2);
+    return y < half ? mix(darker(c, 0.55f), darker(c, 0.22f), y / half) : mix(darker(c, 0.22f), e.p.dark, (y - half) / (h - half));
+  };
+  Color now = at(has_, shown_);
+  return fade_.running(e.now) ? mix(at(hadFrom_, from_), now, fade_.at(e.now)) : now;
+}
+
 void Ambient::draw(Env& e, Rect r) {
   e.c.layer(0);
   if (fade_.running(e.now)) {
@@ -168,6 +178,74 @@ bool MusicListScreen::onAction(Action a, int steps) {
     case Action::LongSelect: return list_.longSelect();
     default: return false;
   }
+}
+
+void TabbedListScreen::focusTabsFromTop() {
+  list_.onTopReached = [this] {
+    focused_ = active_;
+    list_.active = false;
+    return true;
+  };
+}
+
+bool TabbedListScreen::onAction(Action a, int steps) {
+  if (focused_ < 0) {
+    if (list_.rows().empty() && a == Action::Select) {  // a message: center tries again
+      load(active_);
+      return true;
+    }
+    return MusicListScreen::onAction(a, steps);
+  }
+  int search = int(tabs_.size());
+  switch (a) {
+    case Action::Up: focused_ = (focused_ + search) % (search + 1); return true;
+    case Action::Down: focused_ = (focused_ + 1) % (search + 1); return true;
+    case Action::Select: {
+      int f = focused_;
+      focused_ = -1;
+      list_.active = true;
+      if (f == search) openSearch();
+      else load(f);
+      return true;
+    }
+    default: return false;
+  }
+}
+
+float TabbedListScreen::drawPills(Env& e, float x, int H, float screenH) {
+  int ph = e.dp(21), py = (H - ph) / 2;
+  // Pill (Widgets.kt): GradientDrawable, rounded 12 units, white when active, else white at 60/255;
+  // focused, a 2-unit red stroke over it. Inside the ring the fill is drawn over what is behind the
+  // header there (the ambient color), as Android blends it.
+  const Color translucent = 0x3cffffff;
+  Color behind = ambient_.colorAt(e, float(H) / 2, screenH);
+  Color inside = mix(behind, rgb(0xffffff), 60.f / 255.f);
+  auto pill = [&](Rect r, bool active, bool ring) {
+    float radius = std::min(e.dpf(12), r.h / 2);
+    e.c.layer(2);
+    if (ring) {
+      int t = e.dp(2);
+      e.c.shape(r, radius, e.p.red);
+      e.c.shape({r.x + t, r.y + t, r.w - 2 * t, r.h - 2 * t}, std::max(0.f, radius - t), active ? rgb(0xffffff) : inside);
+    } else {
+      e.c.shape(r, radius, active ? rgb(0xffffff) : translucent);
+    }
+  };
+  for (int i = 0; i < int(tabs_.size()); i++) {
+    bool active = i == active_;
+    Label l = label(e, tabs_[size_t(i)], 12.5f, active);
+    int pw = l.w + 2 * e.dp(10);
+    pill({x, float(py), float(pw), float(ph)}, active, i == focused_);
+    e.c.layer(4);
+    drawLabel(e, l, centerText(x, float(pw), l.w), float(py + ((ph - l.h) >> 1)), active ? e.p.dark : rgb(0xffffff));
+    x += pw + e.dp(5);
+  }
+  // the search button: a round pill with the magnifier
+  pill({x, float(py), float(ph), float(ph)}, false, focused_ == int(tabs_.size()));
+  e.c.layer(4);
+  int s = e.dp(11);
+  e.icons.draw(e.c, Icon::Search, {x + float((ph - s) / 2), float(py + (ph - s) / 2), float(s), float(s)}, rgb(0xffffff));
+  return x + ph;
 }
 
 bool MusicListScreen::step(float dt) { return list_.step(dt) || ambient_.fading(now_); }

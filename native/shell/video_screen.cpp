@@ -7,50 +7,22 @@
 namespace rondo::shell {
 namespace {
 
-constexpr Color white = 0xffffffff;
 
-class VideoScreen : public MusicListScreen {
+class VideoScreen : public TabbedListScreen {
  public:
   // no mini player here: a song playing behind it doesn't redraw the list
   bool tick(int64_t now) override {
     now_ = now;
     return false;
   }
-  VideoScreen() : MusicListScreen("YouTube") {
+  VideoScreen() : TabbedListScreen("YouTube") {
     list_.style = RowStyle::Video;
     // Subscriptions and History only when the server has an account (Accounts.kt)
     tabs_ = {"Home"};
     if (g_prefs.accountVideos) tabs_.insert(tabs_.end(), {"Subscriptions", "History"});
-    list_.onTopReached = [this] {
-      focused_ = active_;
-      list_.active = false;
-      return true;
-    };
+    focusTabsFromTop();
     list_.onNearEnd = [this] { more(); };
     load(0);
-  }
-  bool onAction(Action a, int steps) override {
-    if (focused_ < 0) {
-      if (list_.rows().empty() && a == Action::Select) {
-        load(active_);
-        return true;
-      }
-      return MusicListScreen::onAction(a, steps);
-    }
-    int search = int(tabs_.size());
-    switch (a) {
-      case Action::Up: focused_ = (focused_ + search) % (search + 1); return true;
-      case Action::Down: focused_ = (focused_ + 1) % (search + 1); return true;
-      case Action::Select: {
-        int f = focused_;
-        focused_ = -1;
-        list_.active = true;
-        if (f == search) g_app->push(makeVideoSearch());
-        else load(f);
-        return true;
-      }
-      default: return false;
-    }
   }
   void draw(Env& e, float w, float h) override {
     now_ = e.now;
@@ -59,7 +31,7 @@ class VideoScreen : public MusicListScreen {
     // the color of the row's own 104 x 58 picture (RowList.rowArt in 1.0.x): no second thumbnail
     ambient_.follow(e, sel ? sel->thumb : "", e.dp(104), e.dp(58));
     ambient_.draw(e, {0, 0, w, h});
-    header(e, w);
+    header(e, w, h);
     float top = float(e.dp(31));
     list_.layout(e, w, h - top);
     list_.draw(e, 0, top);
@@ -67,43 +39,20 @@ class VideoScreen : public MusicListScreen {
   }
 
  private:
-  void header(Env& e, float w) {
+  void openSearch() override { g_app->push(makeVideoSearch()); }
+  void header(Env& e, float w, float h) {
     int H = e.dp(31);
     float x = float(e.dp(10));
     e.c.layer(4);
     int lw = e.dp(22), lh = e.dp(15);
     e.icons.videoLogo(e.c, {x, float((H - lh) / 2), float(lw), float(lh)});
     x += lw + e.dp(9);
-    int ph = e.dp(21), py = (H - ph) / 2;
-    for (int i = 0; i < int(tabs_.size()); i++) {
-      bool active = i == active_, ring = i == focused_;
-      Label l = label(e, tabs_[size_t(i)], 12.5f, active);
-      int pw = l.w + 2 * e.dp(10);
-      pill(e, {x, float(py), float(pw), float(ph)}, active ? white : 0x3cffffff, ring);
-      e.c.layer(4);
-      drawLabel(e, l, centerText(x, float(pw), l.w), float(py + ((ph - l.h) >> 1)), active ? e.p.dark : white);
-      x += pw + e.dp(5);
-    }
-    pill(e, {x, float(py), float(ph), float(ph)}, 0x3cffffff, focused_ == int(tabs_.size()));
-    e.c.layer(4);
-    int s = e.dp(11);
-    e.icons.draw(e.c, Icon::Search, {x + float((ph - s) / 2), float(py + (ph - s) / 2), float(s), float(s)}, white);
+    float pillsEnd = drawPills(e, x, H, h);
     // battery only; with three pills the percentage goes too when there is no room (StatusIcons.onLayout)
-    float right = w - e.dp(10), searchEnd = x + ph + e.dp(10);
+    float right = w - e.dp(10), searchEnd = pillsEnd + e.dp(10);
     statusIcons(e, right, H, e.p.darkMuted, false, right - statusIconsWidth(e, false) < searchEnd);
   }
-  void pill(Env& e, Rect r, Color fill, bool ring) {
-    float radius = std::min(e.dpf(12), r.h / 2);
-    e.c.layer(2);
-    if (ring) {
-      int t = e.dp(2);
-      e.c.shape(r, radius, e.p.red);
-      e.c.shape({r.x + t, r.y + t, r.w - 2 * t, r.h - 2 * t}, std::max(0.f, radius - t), (fill >> 24) == 0xff ? fill : 0xff474747);
-    } else {
-      e.c.shape(r, radius, fill);
-    }
-  }
-  void load(int tab) {
+  void load(int tab) override {
     static const char* feeds[] = {"/video/home", "/video/subscriptions", "/video/history"};
     active_ = tab;
     requests_.cancelAll();
@@ -151,8 +100,6 @@ class VideoScreen : public MusicListScreen {
     });
   }
 
-  std::vector<std::string> tabs_;
-  int active_ = 0, focused_ = -1;
   std::string next_;
   bool loading_ = false;
   Requests requests_;

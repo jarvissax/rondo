@@ -192,12 +192,7 @@ class MusicSearchScreen : public Screen {
       case Action::Select: {
         Keyboard::Result r = kb_.press();
         if (r == Keyboard::Result::Action) search();
-        else if (r == Keyboard::Result::Typed && length(kb_.typed()) > 60) {
-          std::string t = kb_.typed();
-          while (!t.empty() && (uint8_t(t.back()) & 0xc0) == 0x80) t.pop_back();
-          if (!t.empty()) t.pop_back();
-          kb_.setTyped(t);
-        }
+        else if (r == Keyboard::Result::Typed) kb_.keepAtMost(60);
         return true;
       }
       default: return false;
@@ -239,11 +234,6 @@ class MusicSearchScreen : public Screen {
   }
 
  private:
-  static size_t length(const std::string& s) {
-    size_t n = 0;
-    for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
-    return n;
-  }
   void search() {
     std::string q = kb_.typed();
     size_t a = q.find_first_not_of(' '), b = q.find_last_not_of(' ');

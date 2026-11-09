@@ -232,12 +232,7 @@ class LibrarySearchScreen : public Screen {
             results_.setRows(rows(), true);
           }
         } else if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) {
-          if (r == Keyboard::Result::Typed && codepoints(kb_.typed()) > 40) {  // 1.0.x keeps 40
-            std::string t = kb_.typed();
-            while (!t.empty() && (uint8_t(t.back()) & 0xc0) == 0x80) t.pop_back();
-            if (!t.empty()) t.pop_back();
-            kb_.setTyped(t);
-          }
+          if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);  // 1.0.x keeps 40
           search();
         }
         return true;
@@ -281,11 +276,6 @@ class LibrarySearchScreen : public Screen {
   }
 
  private:
-  static size_t codepoints(const std::string& s) {
-    size_t n = 0;
-    for (char c : s) n += (uint8_t(c) & 0xc0) != 0x80;
-    return n;
-  }
   bool nothingFound() const {
     return found_.artists.empty() && found_.albums.empty() && found_.songs.empty() && found_.videos.empty() &&
            playlists_.empty();

@@ -22,6 +22,8 @@ class Ambient {
   void follow(Env& e, const std::string& thumb, int artPx, int artPxH = 0);
   void draw(Env& e, Rect r);
   bool fading(int64_t now) const { return fade_.running(now); }
+  // the background's color at height y of a screen h tall (what a translucent fill over it comes to)
+  Color colorAt(Env& e, float y, float h) const;
 
  private:
   void fill(Env& e, Rect r, bool has, Color c, float alpha);
@@ -66,6 +68,23 @@ class MusicListScreen : public Screen {
   Ambient ambient_;
   int64_t now_ = 0;
   std::string miniSig_;
+};
+
+// YouTube Music's and YouTube's screens (MusicScreen.kt, VideoScreens.kt): a pill per tab and the round
+// search button in the header, which take the wheel when it turns up past the first row
+class TabbedListScreen : public MusicListScreen {
+ public:
+  using MusicListScreen::MusicListScreen;
+  bool onAction(Action a, int steps) override;
+
+ protected:
+  virtual void load(int tab) = 0;
+  virtual void openSearch() = 0;
+  void focusTabsFromTop();  // the list's top hands the wheel to the pills (call once rows are set up)
+  // the pills from x in a header H tall; returns where the search button ends
+  float drawPills(Env& e, float x, int H, float screenH);
+  std::vector<std::string> tabs_;
+  int active_ = 0, focused_ = -1;  // the pills, then the search button at tabs_.size()
 };
 
 }  // namespace rondo::shell
