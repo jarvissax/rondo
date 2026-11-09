@@ -88,7 +88,7 @@ use only standard `KeyEvent`s; neither reads `/dev/input` or uses motion events.
 
 480 × 360 px at density 160, so the `mdpi` bucket with 1 dp = 1 px, but the panel is about
 250 ppi, so mdpi sizes come out tiny. Rondo scales everything sized with `dp()` (1.4× by
-default). Android reports 36.43 fps, but the panel's hardware vsync comes every 23.73 ms, so it really refreshes at 42.14 Hz ([native code on the Y1](native.md)). Sources: `dumpsys-display.txt`, `lcd-density.txt`.
+default). Android reports 36.43 fps, but the panel's hardware vsync comes every 23.73 ms, so it really refreshes at 42.14 Hz; Rondo 2.0 runs it at 60 Hz ([native code on the Y1](native.md#display)). Sources: `dumpsys-display.txt`, `lcd-density.txt`.
 `wm` doesn't exist on 4.2 (`wm-size.txt`, `wm-density.txt`).
 
 ## Software

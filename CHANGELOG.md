@@ -14,6 +14,8 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Native, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
   the screen, so it starts sooner and every screen opens and scrolls more smoothly. Everything looks
   and works as in 1.0.
+- **60 frames a second.** The screen refreshes at 60 Hz instead of 42, so scrolling and slides are
+  smoother and videos at 30 frames a second play evenly.
 - **Motion like an iPod.** Screens slide in and out, lists glide, and artwork fades in.
 - **Shorts swipe like on a phone:** the short slides up and away as the next one comes in.
 - **Pocket-safe wake.** With the screen off, any press only wakes it; nothing else happens.
@@ -27,9 +29,22 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Headphone match:** a correction for your headphone model, from AutoEq, through your server.
 - **Loudness boost** (peaks held, never clipped) and **volume leveling** (songs at one loudness).
 - **Amplifier:** the Y1's own amplifier, as it ships or 2, 4 or 6 dB louder.
+- **Opus for YouTube Music:** songs stream as YouTube's Opus where your server and the song offer it
+  (Now Playing says "Streaming · Opus"), else AAC as before. Needs the 2.0.0 server.
+
+### Battery and safety
+
+- **Both processor cores, at the speed the work needs:** the second core and the lower clock steps
+  are used again, as Android used them.
+- **Wi-Fi saves power** with the screen off, and scans less often while it isn't connected.
+- **Overheating and charger warnings are back:** "Too hot" shuts the Y1 down to cool off, and the
+  charger and battery warnings (voltage too high, battery too hot, charging too long) appear as they
+  did on the stock firmware, in the Y1's words.
 
 ### Smaller changes
 
+- It starts about a second sooner, and screens open without a stutter, also when their content
+  arrives as they slide in.
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
 - The Wi-Fi switch, the music volume of each output and the clock are kept without Android.
@@ -39,6 +54,11 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - Updates are now signed Rondo bundles (`rondo-<version>.rondo`): Settings › Software update, the
   dashboard and the update page install them. An update that fails to start three times in a row is
   set aside and the firmware's own Rondo runs.
+
+### Server
+
+- The server streams YouTube's Opus audio as well, which 2.0 plays songs as. Update it with
+  **Update** on its admin page once 2.0.0 is out; an older server keeps working, with AAC.
 
 ## 1.0.2 (November 3, 2026)
 

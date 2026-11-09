@@ -6,8 +6,37 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
 
 ## Display
 
-- **The panel refreshes at 42.14 Hz** (a vsync every 23.73 ms). Android reports 36.42 Hz
+- **The panel refreshes at 42.14 Hz as it ships** (a vsync every 23.73 ms). Android reports 36.42 Hz
   (`dumpsys display`, `dumpsys SurfaceFlinger`: `refresh=27457442`), which is not what the panel does.
+  Rondo 2.0 runs it at **60.00 Hz** (below).
+- **The panel:** an ST7701 driven over two MIPI DSI lanes in sync-pulse video mode (the kernel's and
+  the bootloader's `st7701_hvga_dsi_vdo_boe`, `lcm=0-st7701_hvga_dsi_vdo_boe` on the command line).
+  Its parameters: 360 lines with 8 of sync, 100 of back porch and 100 of front porch; 480 pixels with
+  10 + 80 + 80; RGB888; `pll_div1` 2, `pll_div2` 0, `fbk_div` 15 (208 Mb/s a lane, a 26 MHz byte
+  clock). The kernel has a second panel driver with 60-line porches (`fbk_div` 13).
+- **Registers** (kernel virtual addresses; the physical ones are 0x1400c000 and 0x10011000): the DSI
+  at `0xf400c000` (`+0x20..0x2c` VSA, VBP, VFP, VACT lines; `+0x50..0x58` HSA, HBP, HFP byte counts;
+  `+0x110..0x11c` the D-PHY timings TIMCON0-3, in byte clocks), the MIPI transmitter at `0xf0011000`
+  (`+0x50` PLL_CON0: enable, TXDIV0 in bits 4:3, TXDIV1 in 6:5; `+0x54` PLL_CON1; `+0x58` PLL_CON2:
+  the multiplier, integer in bits 30:24 and a 24-bit fraction). Read and write them with
+  `echo regr:<addr> > /sys/kernel/debug/dispsys` (the answer is in the kernel log) and `regw:<addr>,<value>`
+  after `mount -t debugfs none /sys/kernel/debug`. **mtkfb's own `regr`/`regw` take the same virtual
+  addresses but read zeros; a physical address there crashes the kernel** (Nov 9: the Y1 rebooted).
+  `echo reg:dsi > /sys/kernel/debug/mtkfb` dumps the DSI and the transmitter to the kernel log.
+- **60 Hz:** a shorter front porch alone (VFP 11: 49.97 Hz) shifted the picture: the panel's own
+  settings expect 100-line porches. Running the link faster works: TXDIV0 1 (÷2), the multiplier
+  43.197 (`PLL_CON2` 0x2b326100) and the D-PHY timings MediaTek's `DSI_PHY_TIMCONFIG` works out for
+  it (0x0d050302, 0x140a0308, 0x0d0e0000, 0x00041402): 16.667 ms ± 0.02, about 300 Mb/s a lane. The
+  multiplier only takes effect when the PLL is switched on again (PLL_CON0 bit 0). The DSI clock
+  moves from 104 MHz (inside the FM band) to 150 MHz; Wi-Fi lost no pings at either rate.
+- **The kernel programs the PLL from the panel parameters at every wake** (and the DSI's own
+  registers come back from its backup), so a runtime change doesn't last past a deep sleep. On 1.0.x's
+  kernel, waking with 60 Hz timings left in place gives the stock PLL plus the fast timings, and the
+  link stalls (the driver falls back to a 33 ms software vsync). The 2.0 firmware's kernel has the
+  60 Hz values in its panel driver (`tools/firmware/BootImage.java`, eight instruction words).
+- **Interrupt latency matters at 60 Hz:** the display's blanking is 6.1 ms instead of 8.7. A kernel
+  log line on the first core (the battery driver logs every read of `BatteryNotify`) held up the
+  display interrupt long enough to miss a refresh; read such files from a thread on the second core.
 - **Hardware vsync:** `ioctl(open("/dev/mtkfb_vsync"), 0x5601)` returns at the next vsync. This is how
   MediaTek's hardware composer (`hwcomposer.mt6572.so`, `VSyncThread::threadLoop`) waits. Two waiters
   on it at once disturb each other.
@@ -79,6 +108,11 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   comes from `resolver setifdns` and `resolver setdefaultif`. The address and default route are set
   with libnetutils' `ifc_configure` after `dhcp_do_request`.
 - **Timing:** a cold start to a working connection took 7.4 s, 4.7 s of it DHCP.
+- **What Android 4.2 set** (`framework.odex`'s WifiNative, Nov 9): `SCAN_INTERVAL 15` (the
+  supplicant's own default is 5 s), IPv6 multicast let through (`DRIVER RXFILTER-STOP`, `-ADD 3`,
+  `-START`) and IPv4 multicast filtered (`-STOP`, `-REMOVE 2`, `-START`), `SET ps 1` (0 while DHCP
+  runs), and `DRIVER SETSUSPENDMODE 1` with the screen off, which MediaTek's driver refuses: its own
+  early-suspend handler does that part. All the others answer OK.
 
 ## Power
 
@@ -94,6 +128,18 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   blocks until late resume allows drawing again.
 - **Waking takes 0.6 s,** because the display driver's late resume (`mtkfb_late_resume`) takes about
   540 ms. Keys on `/dev/input/event0` (Power, Center) still arrive during early suspend.
+- **The CPU without Android's framework** (Nov 9): after a cold boot `cpu_hotplug_disable` is 1 (the
+  second core stays off) and `/proc/cpufreq/cpufreq_state` says DVFS is off with `usb_raise_freq`
+  pinning 1.0 GHz. With `cpu_hotplug_disable` 0, `cpufreq_state` 1 and `usb_raise_freq` 0 the clock
+  runs 598 MHz idle and 1.0 GHz busy and the governor adds the second core under load. Taking the
+  second core out or back in stalls the whole system 10–25 ms (a missed refresh in a slide), so Rondo
+  keeps `cpu_num_base` at 2 while the screen is lit. The GPU has one operating point (416 MHz).
+- **MediaTek's safety signals:** the thermal policy (init's `thermal_manager`) sends SIGIO with
+  `si_code` 1 to the pid written to `/proc/driver/mtk_cl_sd_pid` when the chip must cool down (write
+  1 to `/proc/driver/mtk_cl_sd_rst` at boot first); the battery driver's
+  `/sys/devices/platform/mt-battery/BatteryNotify` holds 1 (charger over voltage), 2 (battery too
+  hot), 4 (over current), 8 (battery over voltage) or 16 (charging too long). MediaTek's daemons read
+  them for Android's warning dialogs; without Android, Rondo does.
 
 ## Bluetooth
 
