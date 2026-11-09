@@ -13,9 +13,8 @@
 
 ### The Y1 stays dark after installing
 
-It doesn't switch itself on after an install. Press the Power button. The first start takes a
-couple of minutes; after the Rondo logo you'll see a spinning click wheel until the main menu
-appears.
+It doesn't switch itself on after an install. Press and hold the center button (it's also the
+power button). Rondo's logo shows until the main menu appears.
 
 ### Rondo isn't in the Updater's list, or has nothing to install
 
@@ -44,10 +43,16 @@ Without a server, update [from the dashboard or over USB](install.md#updating-ro
   for the Y1; without it, the browser can't see it.
 - **Linux:** give your user access to USB ID `0bb4:0c03` with a udev rule.
 
-### "That APK isn't signed by Rondo's key"
+### "The update's signature isn't Rondo's" (or "That APK isn't signed by Rondo's key")
 
 Only Rondo's own releases install over the Rondo in the firmware. A build you made yourself is
 signed with your key; put it in a firmware of your own instead ([Building Rondo](building.md)).
+
+### Rondo went back to an older version after an update
+
+An update that ends three times in a row within half a minute is set aside, and the Rondo that
+came with the firmware runs instead, so the Y1 stays usable. Install the update again from
+Settings › Software update, or report it with the log in `/data/rondo/rondo.log` (adb).
 
 ## YouTube Music and YouTube
 

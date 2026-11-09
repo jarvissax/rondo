@@ -26,9 +26,9 @@ After that, updates take a minute and keep everything (see [Updating](#updating-
 3. In the software list, choose **Rondo**, then **Install**.
 4. Do what the Updater asks: switch the Y1 completely off, then plug it in. The Updater installs
    Rondo by itself in about 7 minutes. Don't unplug anything until it says it's done.
-5. **Press the Y1's Power button** to switch it on. The first start takes a couple of minutes
-   (Android prepares every app once); later ones take about 30 seconds. You'll see Rondo's logo,
-   its spinning click wheel, and then the main menu.
+5. **Press and hold the Y1's center button** (it's also the power button) to switch it on. Rondo's
+   logo shows until the main menu appears: Rondo starts by itself, without Android's apps in
+   between.
 
 ### From a file
 
@@ -40,6 +40,14 @@ The same thing, with the file downloaded by hand:
 3. Press **Install / Restore** and follow steps 4 and 5 above.
 
 The Updater deletes the `rom.zip` once it has unpacked it, so download it again if you need it later.
+
+### Moving from Rondo 1.0
+
+Rondo 2.0 is a new firmware, so it installs with Innioasis Updater CE like the first time (an
+update over Wi-Fi can't do it; Rondo 1.0 says so in Settings › Software update). If the Updater
+offers **Keep Data**, choose it: on its first start Rondo 2.0 takes over 1.0's settings, server
+connection, theme and radio stations, and your Wi-Fi networks and paired Bluetooth headphones stay.
+Without it they start fresh. Your music and playlists on the card are never touched.
 
 ## First start
 
@@ -67,16 +75,18 @@ handiest:
   itself. This needs a [Rondo server](server.md).
 - **From the dashboard, over Wi-Fi:** open **Settings › Dashboard** on the Y1 and the page on
   your phone or computer. The Overview says when a newer Rondo is out; press **Install**. No
-  server needed. **Update from a file**, under the Rondo row, installs an APK you downloaded.
+  server needed. **Update from a file**, under the Rondo row, installs a `rondo-<version>.rondo`
+  you downloaded (Rondo 1.0: a `rondo-<version>.apk`).
 - **Over USB:** open **[jarvissax.github.io/rondo](https://jarvissax.github.io/rondo/)** in
   Chrome or Edge, plug the Y1 in, press **Connect Y1**, then **Update**. Nothing to install on the
-  computer. With adb, it's `adb install -r rondo-<version>.apk`.
+  computer.
 
-Only Rondo's own releases install this way: Android checks that an update is signed with the same
-key as the Rondo in the firmware.
+Only Rondo's own releases install this way: Rondo checks that an update carries Rondo's signature
+(Rondo 1.0: Android checks the APK's key). An update that fails to start three times in a row is
+set aside, and the Rondo that came with the firmware starts instead.
 
-Now and then a release also changes the firmware around Rondo (a new permission, the boot screen
-or Android's settings, for example). The Y1, the dashboard and the update page recognize such a
+Now and then a release also changes the firmware around Rondo (the system it runs on, or the boot
+screen, for example). The Y1, the dashboard and the update page recognize such a
 release: instead of **Install**, they say it needs a new firmware. Install it with Innioasis
 Updater CE, [the same way as the first time](#install-with-innioasis-updater-ce). If the Updater
 offers **Keep Data**, choose it and your settings, Wi-Fi and server connection stay too; without

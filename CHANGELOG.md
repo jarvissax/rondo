@@ -4,6 +4,42 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
+## 2.0.0 (not released yet)
+
+A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to keep your settings
+([moving from 1.0](docs/install.md#moving-from-rondo-10)).
+
+### Rondo, rebuilt
+
+- **Native, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
+  the screen, so it starts sooner and every screen opens and scrolls more smoothly. Everything looks
+  and works as in 1.0.
+- **Motion like an iPod.** Screens slide in and out, lists glide, and artwork fades in.
+- **Shorts swipe like on a phone:** the short slides up and away as the next one comes in.
+- **Pocket-safe wake.** With the screen off, any press only wakes it; nothing else happens.
+- **Wired headset buttons** work: play/pause, next, previous and volume, screen on or off.
+- **Back where you were.** After a restart, the queue and the place in the song come back.
+
+### Sound
+
+- **Settings › Sound:** an equalizer with presets or ten bands of your own, kept for each output (the
+  speaker, wired headphones, each Bluetooth device).
+- **Headphone match:** a correction for your headphone model, from AutoEq, through your server.
+- **Loudness boost** (peaks held, never clipped) and **volume leveling** (songs at one loudness).
+- **Amplifier:** the Y1's own amplifier, as it ships or 2, 4 or 6 dB louder.
+
+### Smaller changes
+
+- Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
+- Emoji in titles show in color, and long titles wrap without breaking them apart.
+- The Wi-Fi switch, the music volume of each output and the clock are kept without Android.
+
+### Updates
+
+- Updates are now signed Rondo bundles (`rondo-<version>.rondo`): Settings › Software update, the
+  dashboard and the update page install them. An update that fails to start three times in a row is
+  set aside and the firmware's own Rondo runs.
+
 ## 1.0.2 (November 3, 2026)
 
 Nothing changes on the Y1 itself; this release is about the server.

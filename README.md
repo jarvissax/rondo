@@ -18,8 +18,9 @@ FM radio, all from the wheel.**
 </p>
 
 The Innioasis Y1 is a small music player with an iPod-style click wheel. Underneath, it runs
-Android 4.2. Rondo is a firmware for it, built from the community's Android 4.2 base: everything
-else is taken out, and the Y1 starts straight into menus made for the wheel. Play the music on
+Android 4.2. Rondo is a firmware for it, built from the community's Android 4.2 base: Android's
+whole app layer is taken out, and the Y1 starts straight into Rondo, a native program with menus
+made for the wheel. Play the music on
 your microSD card, stream YouTube Music and YouTube, and listen to FM radio, all without a
 touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or the Y1's
 original software, and you can always go back.
@@ -173,16 +174,17 @@ through to the Y1 in a form it can play. The Y1 only ever talks to your server.
 
 | Folder | What's in it |
 | --- | --- |
-| `app/` | Rondo itself, the Android app at the heart of the firmware (Kotlin, classic Views, ExoPlayer 2) |
-| `firmware/` | The script that builds the firmware (`rom.zip`) from the community's base ROM |
+| `native/` | Rondo 2.0 itself: the native program the firmware runs (C++ with the NDK, its own GLES2 UI, FFmpeg) |
+| `app/` | Rondo 1.0, the Android app 2.0 replaces (Kotlin, classic Views, ExoPlayer 2), kept as the reference for every screen |
+| `firmware/` | The script that builds the firmware (`rom.zip`) from the community's base ROM, and Rondo's start script |
 | `server/` | The Rondo server (Node 22, TypeScript, Fastify) |
 | `infra/` | Docker and Caddy files for running the server |
 | `web-updater/` | The update page (WebUSB), published on GitHub Pages |
 | `tools/` | Mock servers for UI work, the boot screen generator, the version script |
 | `docs/` | Guides, plus [notes on the Y1's internals](docs/device/README.md) and [API references](docs/dev/) |
 
-Every release is built the same way: the signed app goes up, and GitHub Actions builds the
-firmware from it and publishes the update page. To build it yourself, start with
+Every release is built the same way: the signed Rondo (2.0's bundle) goes up, and GitHub Actions
+builds the firmware from it and publishes the update page. To build it yourself, start with
 **[Building Rondo](docs/building.md)**.
 
 ## Feedback and contributing

@@ -27,7 +27,8 @@ is, the Wi-Fi network and Rondo's version, with **Restart** and **Shut down** bu
 
 When a newer Rondo is out, a row says so, with **Install**: your browser downloads the update and
 sends it to the Y1, which installs it and restarts with everything kept (the dashboard stops with
-it). **Update from a file**, under the Rondo row, does the same with an APK you downloaded.
+it). **Update from a file**, under the Rondo row, does the same with a `rondo-<version>.rondo` you
+downloaded (Rondo 1.0: an APK).
 
 ## Library
 

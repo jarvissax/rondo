@@ -16,8 +16,9 @@ screens give them an extra meaning.
 | **Hold Next / Previous** | Fast-forward or rewind. |
 | **Power** | Switches the screen off and on. **Hold it** to shut down or restart. |
 
-When the screen is off, the first press only wakes it. Play/Pause and Next/Previous still
-work without looking, like an iPod.
+When the screen is off, any press (a button, center or the wheel) only wakes it: nothing else
+happens, so a press in your pocket never skips a song. A **wired headset's buttons** (play/pause,
+next, previous, volume) work with the screen on or off, like Bluetooth headphones' buttons.
 
 ## Main menu
 
@@ -74,8 +75,9 @@ with the wheel.
 
 YouTube's home page starts with **Shorts**: one short at a time, looping, picked from your
 account's shorts when the server has one. **Next / Previous** move to the next or previous short,
-the **wheel** is the volume and **center** pauses. The next few shorts load while you watch, so
-moving on takes about a second.
+the **wheel** is the volume and **center** pauses. Moving on slides like on a phone: the short
+slides up and away as the next one comes in from below. The next few shorts load while you watch,
+so moving on takes about a second.
 
 ## Now Playing
 
@@ -123,6 +125,7 @@ turns the radio off.
 | **Dashboard** | Starts the dashboard; see below. |
 | **Wi-Fi** | Join networks. Hold center on a saved network to forget it. |
 | **Bluetooth** | Pair and connect headphones or speakers. |
+| **Sound** | How music sounds, kept for each output: the speaker, wired headphones and each Bluetooth device. An **equalizer** with presets (or ten bands of your own), **Headphone match** (a correction for your headphone model from [AutoEq](https://github.com/jaakkopasanen/AutoEq), looked up through your server), a **loudness boost** whose peaks are held so they never clip, and **volume leveling** (songs at one loudness, measured as they play and while the Y1 charges). **Amplifier** sets the Y1's own amplifier: Standard as it ships, or +2, +4 or +6 dB louder for headphones and the speaker; the loudest steps add some hiss. |
 | **Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
 | **Video quality** | Auto, or a fixed height. |
 | **Brightness**, **Screen off after** | |
