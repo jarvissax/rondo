@@ -224,13 +224,6 @@ int main(int argc, char** argv) {
   if (!loader.start(2, thumbs)) return 1;
   if (!g_player.start(data, dev)) return 1;  // rondo-player, also before any thread
   if (!g_core.start()) return 1;    // rondo-core, the system services, the same
-  // Development: RONDO_WIFI_JOIN="<name><tab><password>" joins a WPA network at startup (scripts, without
-  // typing on the wheel)
-  if (const char* j = dev ? getenv("RONDO_WIFI_JOIN") : nullptr) {
-    std::string s = j;
-    size_t tab = s.find('\t');
-    if (tab != std::string::npos) g_core.wifiJoin(s.substr(0, tab), WifiSecurity::Psk, s.substr(tab + 1));
-  }
   int64_t t0 = now_ns();
   g_traceSlow = getenv("RONDO_SLOW") != nullptr;
   g_config = loadConfig(configPath);
@@ -245,6 +238,13 @@ int main(int argc, char** argv) {
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
   if (g_prefs.bluetoothOn) g_core.btPower(true);
   g_core.wifiEnable(g_prefs.wifiOn);  // as it was left (rondo-core takes over a running supplicant)
+  // Development: RONDO_WIFI_JOIN="<name><tab><password>" joins a WPA network at startup (scripts, without
+  // typing on the wheel), once Wi-Fi is on (rondo-core runs its jobs in order)
+  if (const char* j = dev ? getenv("RONDO_WIFI_JOIN") : nullptr) {
+    std::string s = j;
+    size_t tab = s.find('\t');
+    if (tab != std::string::npos) g_core.wifiJoin(s.substr(0, tab), WifiSecurity::Psk, s.substr(tab + 1));
+  }
   loader.configure(g_config.server.url, g_config.server.token);
   g_player.configure(g_config.server.url, g_config.server.token);
   resumeRestore();  // the queue as Rondo left it (a restart, a crash)
