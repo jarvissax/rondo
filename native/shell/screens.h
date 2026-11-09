@@ -84,6 +84,13 @@ std::unique_ptr<Screen> makeSoftwareUpdate();  // update_screen.cpp
 std::string bytes(uint64_t n);                  // "12 MB" (SettingsScreen.kt's bytes())
 // Rondo ends to start again (an update put in place): init runs it anew
 void requestRestart();
+// power_screens.cpp: the screen on (a warning to read); the shutdown with its message
+void wakeScreen();
+void shutDownNow(const char* why);
+// safety_screens.cpp: MediaTek's thermal and battery warnings without Android (firmware: register for
+// the kernel's thermal shutdown signal); from the loop, true when a screen changed
+void safetyStart(bool firmware);
+bool safetyTick(int64_t now);
 // the firmware's Rondo, which installs bundles (a development run doesn't)
 bool updatesAvailable();
 std::string updateVersion(const std::string& json);

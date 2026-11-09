@@ -133,6 +133,17 @@ void shutDownFor(const char* why) {
 
 std::unique_ptr<Screen> makePower() { return std::unique_ptr<Screen>(new PowerScreen()); }
 
+void wakeScreen() {
+  int64_t now = now_ns();
+  if (g_stage >= kOff) wake(now);
+  g_activity = now;
+  if (g_stage == kDim) {
+    g_stage = kOn;
+    applyBrightness(g_prefs.brightness);
+  }
+}
+void shutDownNow(const char* why) { shutDownFor(why); }
+
 // the dashboard's Shut down and Restart: the Power screen with its message, then off
 void powerAction(bool restart) {
   if (g_stage >= kOff) wake(now_ns());

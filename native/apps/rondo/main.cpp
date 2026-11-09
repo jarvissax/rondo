@@ -395,6 +395,7 @@ int main(int argc, char** argv) {
   // both cores at full speed while anything moves, a video plays or the card is read, and a second
   // after (power.h): the first frames of a slide never wait for the governor to ramp up
   power::cpuSetup();
+  safetyStart(!dev);  // the thermal shutdown signal and the battery's faults (MediaTek's apps' jobs)
   int64_t boostUntil = 0;
   auto boost = [&](bool busy) {
     int64_t now = now_ns();
@@ -414,6 +415,7 @@ int main(int argc, char** argv) {
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
+    if (safetyTick(now_ns())) changed = true;
     resumeTick(now_ns());  // the queue and where it is, for after a restart
     // a helper process that died (a crash): Rondo ends too, with the queue kept, and init starts it
     // again (back in about a second, playing on)
@@ -549,9 +551,13 @@ int main(int argc, char** argv) {
     // Opening a screen can take 10 ms. A frame finished that late reaches the panel a refresh late and holds
     // up the next one (N5 log), so such a refresh draws nothing: the slide starts cleanly on the next.
     if (now_ns() - a > 6 * kMs) {
+      if (g_traceSlow) printf("slow: the input took %.1f ms (a screen opening): this refresh is skipped\n", (now_ns() - a) / 1e6);
       app.delay(period);
       lastPresent = present;
-      wasMoving = moving = true;
+      // the next frame starts the motion: it doesn't continue the idle frame before the press (the
+      // frame log counted that gap as missed refreshes)
+      wasMoving = false;
+      moving = true;
       continue;
     }
     if (VideoSurface* v = VideoSurface::made()) v->latch();  // the newest picture, for this frame
