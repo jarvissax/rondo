@@ -354,7 +354,6 @@ class NowPlayingScreen : public Screen {
   bool tick(int64_t now) override {
     now_ = now;
     bool changed = scrub_.tick(now);
-    if (g_prefs.visualizer && moveBars(now)) changed = true;
     if (artMissing_ && now - artTried_ >= 3000 * kMs) artTried_ = now, changed = true;  // draw: ask again
     PlayerState s = g_player.state();
     Shown v = shownOf(s);
@@ -374,7 +373,10 @@ class NowPlayingScreen : public Screen {
     }
     return changed;
   }
-  bool step(float) override { return lyricsOn() && lyrics_.animating(now_); }
+  bool step(float dt) override {
+    bool bars = g_prefs.visualizer && !lyricsOn() && moveBars(dt);  // the visualizer: every frame
+    return bars || (lyricsOn() && lyrics_.animating(now_));
+  }
   int64_t wakeAt() const override {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
@@ -711,21 +713,23 @@ class NowPlayingScreen : public Screen {
     }
     e.c.layer(5);
   }
-  // the bars move toward the music's bands: up at once, down slowly (a meter's fall)
-  bool moveBars(int64_t now) {
+  // Every frame (step): the bars glide toward the music's bands, which change every 46 ms (an output
+  // buffer): up quickly, down more slowly, both eased, so they move at the screen's 60 frames a second.
+  // Moved in tick() before (Nov 10), they moved only when the loop woke, about four times a second.
+  bool moveBars(float dt) {
     PlayerState s = g_player.state();
-    float dt = lastBars_ ? std::min(0.1f, float(now - lastBars_) / 1e9f) : 0.016f;
-    lastBars_ = now;
-    bool moving = false;
+    dt = std::min(dt, 0.1f);
+    float up = 1.f - expf(-dt / 0.045f), down = 1.f - expf(-dt / 0.18f);
+    bool any = false;
     for (int i = 0; i < 20; i++) {
       float want = s.playing ? float(s.spectrum[i]) / 255.f : 0.f;
       want = want * want;  // the top of the range is where the music is: spread it out
       float b = bars_[i];
-      b = want > b ? b + (want - b) * std::min(1.f, dt * 30.f) : std::max(want, b - dt * 1.4f);
-      moving |= std::fabs(b - bars_[i]) > 0.001f;
+      b += (want - b) * (want > b ? up : down);
       bars_[i] = b;
+      any |= b > 0.002f;
     }
-    return moving;
+    return s.playing || any;  // frames while music plays, and until the bars have fallen
   }
   void drawOptions(Env& e, float w, float h, PlayerState s) {
     // the player takes a moment to publish a change: until it does, show what was chosen
@@ -762,7 +766,6 @@ class NowPlayingScreen : public Screen {
   bool options_ = false;
   int cursor_ = 0;
   float bars_[20] = {};
-  int64_t lastBars_ = 0;
   int shuffleShown_ = -1, repeatShown_ = -1;
   int64_t optionsAt_ = 0;
   Shown shown_;

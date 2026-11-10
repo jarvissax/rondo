@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -165,6 +166,8 @@ struct Response {
   bool close = false;
   std::string file;  // instead of body: this file, read as it's sent (fileBytes long)
   int64_t fileBytes = 0;
+  // instead of either: written as it comes (server-sent events), then the connection closes
+  std::function<void(int fd)> stream;
 };
 
 const char* reason(int s) {
@@ -609,6 +612,13 @@ void Server::connection(int fd) {
     carry = r.rest;
     auto conn = r.headers.find("connection");
     if (conn != r.headers.end() && strcasecmp(conn->second.c_str(), "close") == 0) res.close = true;
+    if (res.stream) {  // no length: it goes on until the stream or the browser stops
+      std::string h = "HTTP/1.1 200 OK\r\nContent-Type: " + res.type + "\r\n";
+      for (auto& kv : res.headers) h += kv.first + ": " + kv.second + "\r\n";
+      h += "Connection: close\r\n\r\n";
+      if (sendAll(fd, h.data(), h.size())) res.stream(fd);
+      break;
+    }
     char head[256];
     snprintf(head, sizeof(head), "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\n", res.status, reason(res.status),
              res.type.c_str(), (long long)(res.file.empty() ? int64_t(res.body.size()) : res.fileBytes));
@@ -1981,6 +1991,35 @@ Response Server::api(Request& r, const std::string& path) {
     res.type = x == "png" ? "image/png" : "image/jpeg";
     res.file = p, res.fileBytes = st.st_size;
     res.headers.push_back({"Cache-Control", "max-age=3600"});
+    return res;
+  }
+  if (path == "/spectrum/stream" && m == "GET") {
+    // The visualizer's bands as they change (every output buffer, 46 ms) while music plays, once a
+    // second while it doesn't: one connection instead of a request each time (polled over Wi-Fi, they
+    // came unevenly and the bars stuttered). Two minutes at a time; the browser connects again.
+    Response res;
+    res.type = "text/event-stream";
+    res.headers.push_back({"Cache-Control", "no-cache"});
+    res.stream = [this](int fd) {
+      const char retry[] = "retry: 500\n\n";
+      if (!sendAll(fd, retry, sizeof(retry) - 1)) return;
+      uint32_t sent = UINT32_MAX;
+      int64_t start = monoNs(), lastSend = 0;
+      while (!stopping_ && monoNs() - start < 120000000000LL) {
+        PlayerState s = g_player.state();
+        bool playing = s.playing && !s.fmOn;
+        int64_t now = monoNs();
+        if ((playing && s.spectrumSerial != sent) || now - lastSend > 1000000000LL) {
+          std::string line = std::string("data: {\"p\":") + (playing ? "1" : "0") + ",\"b\":[";
+          for (int i = 0; i < 20; i++) line += (i ? "," : "") + std::to_string(playing ? int(s.spectrum[i]) : 0);
+          line += "]}\n\n";
+          if (!sendAll(fd, line.data(), line.size())) return;
+          sent = s.spectrumSerial, lastSend = now;
+          last_ = now;  // a page that watches is a page in use
+        }
+        usleep(playing ? 10000 : 100000);
+      }
+    };
     return res;
   }
   if (path == "/spectrum" && m == "GET") {  // the visualizer's bands of what's heard now (player.h)

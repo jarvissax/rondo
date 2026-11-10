@@ -3222,31 +3222,47 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { cfDrag = null; });
 
 // ---------- the visualizer (Now Playing on the Overview) ----------
-// The Rondo's 20 bands of what's playing, asked about 12 times a second while the Overview shows and
-// music plays, drawn over the dimmed cover. On or off for this browser.
+// The Rondo's 20 bands of what's playing, streamed by it as they change (about 22 a second) while the
+// Overview shows, drawn over the dimmed cover at the screen's rate, each bar easing toward its band.
+// On or off for this browser.
 const vizBtn = $('#npVizBtn'), vizCanvas = $('#npViz');
-let vizOn = false, vizTimer = 0, vizBands = new Array(20).fill(0), vizShown = new Array(20).fill(0), vizRaf = 0;
+let vizOn = false, vizTimer = 0, vizBands = new Array(20).fill(0), vizShown = new Array(20).fill(0), vizRaf = 0, vizSource = null, vizPlaying = false;
 try { vizOn = localStorage.getItem('rondo_viz') === '1'; } catch { /* private window */ }
 function setViz(on) {
   vizOn = on;
   try { localStorage.setItem('rondo_viz', on ? '1' : '0'); } catch { /* private window */ }
   vizBtn.setAttribute('aria-pressed', String(on));
   vizCanvas.hidden = !on;
-  if (on) vizLoop(); else { clearTimeout(vizTimer); cancelAnimationFrame(vizRaf); }
+  if (on) vizLoop(); else { clearTimeout(vizTimer); cancelAnimationFrame(vizRaf); vizRaf = 0; vizClose(); }
 }
 vizBtn.addEventListener('click', (e) => { e.stopPropagation(); setViz(!vizOn); });
-async function vizLoop() {
+function vizClose() {
+  if (vizSource) { vizSource.close(); vizSource = null; }
+  vizPlaying = false;
+  vizBands = vizBands.map(() => 0);
+}
+// the stream open while the Overview shows (checked twice a second); the drawing follows it
+function vizLoop() {
   clearTimeout(vizTimer);
   if (!vizOn) return;
-  const showing = S.route === 'overview' && !document.hidden && S.status?.player?.playing;
-  if (showing) {
-    try { const r = await api('GET', '/api/spectrum', undefined, { timeout: 2000 }); vizBands = r.playing ? r.bands : vizBands.map(() => 0); } catch { /* a dropped one */ }
-    if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
-  } else {
-    vizBands = vizBands.map(() => 0);
+  const showing = S.booted && S.route === 'overview' && !document.hidden && S.online !== false;
+  // a stream the Rondo refused (not paired yet) or lost is closed for good: a new one
+  if (vizSource && vizSource.readyState === EventSource.CLOSED) vizClose();
+  if (showing && !vizSource) {
+    vizSource = new EventSource('/api/spectrum/stream');
+    vizSource.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        vizPlaying = !!d.p;
+        vizBands = d.b;
+        if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
+      } catch { /* a broken line */ }
+    };
+  } else if (!showing && vizSource) {
+    vizClose();
     if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
   }
-  vizTimer = setTimeout(vizLoop, showing ? 80 : 600);
+  vizTimer = setTimeout(vizLoop, 500);
 }
 let vizLast = 0;
 function vizDraw(t) {
@@ -3265,11 +3281,13 @@ function vizDraw(t) {
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3b82f6';
   const n = 20, pad = w * 0.06, gap = w * 0.012, bw = (w - pad * 2 - gap * (n - 1)) / n, hmax = h - pad * 2;
   let moving = false;
+  // eased toward the bands: up quickly, down more slowly (as on the Rondo)
+  const up = 1 - Math.exp(-dt / 0.045), down = 1 - Math.exp(-dt / 0.18);
   for (let i = 0; i < n; i++) {
     const want = (vizBands[i] / 255) ** 2;
     const b = vizShown[i];
-    const nb = want > b ? b + (want - b) * Math.min(1, dt * 30) : Math.max(want, b - dt * 1.4);
-    if (Math.abs(nb - b) > 0.001) moving = true;
+    const nb = b + (want - b) * (want > b ? up : down);
+    if (nb > 0.002) moving = true;
     vizShown[i] = nb;
     const bh = Math.max(2, nb * hmax);
     const grad = g.createLinearGradient(0, h - pad - bh, 0, h - pad);
@@ -3281,7 +3299,7 @@ function vizDraw(t) {
     g.roundRect ? g.roundRect(x, y, bw, bh, [r, r, 0, 0]) : g.rect(x, y, bw, bh);
     g.fill();
   }
-  if (moving || (vizOn && S.status?.player?.playing && S.route === 'overview')) vizRaf = requestAnimationFrame(vizDraw);
+  if (moving || (vizOn && vizPlaying && vizSource)) vizRaf = requestAnimationFrame(vizDraw);
 }
 setViz(vizOn);
 
