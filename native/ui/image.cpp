@@ -226,6 +226,83 @@ bool decodeImage(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
   return false;
 }
 
+int jpegOrientation(const uint8_t* d, size_t n) {
+  if (n < 4 || d[0] != 0xff || d[1] != 0xd8) return 0;
+  size_t at = 2;
+  while (at + 4 <= n && d[at] == 0xff) {
+    uint8_t marker = d[at + 1];
+    size_t len = size_t(d[at + 2]) << 8 | d[at + 3];
+    if (marker == 0xda || len < 2) break;  // the picture itself: no EXIF before it
+    if (marker == 0xe1 && at + 4 + len <= n + 2 && len >= 16 && !memcmp(d + at + 4, "Exif\0\0", 6)) {
+      const uint8_t* t = d + at + 10;  // the TIFF header
+      size_t tn = len - 8;
+      bool le = t[0] == 'I';
+      auto u16 = [&](size_t o) -> unsigned { return o + 2 > tn ? 0 : le ? t[o] | t[o + 1] << 8 : t[o] << 8 | t[o + 1]; };
+      auto u32 = [&](size_t o) -> size_t {
+        return o + 4 > tn ? 0 : le ? size_t(t[o]) | size_t(t[o + 1]) << 8 | size_t(t[o + 2]) << 16 | size_t(t[o + 3]) << 24
+                                   : size_t(t[o]) << 24 | size_t(t[o + 1]) << 16 | size_t(t[o + 2]) << 8 | size_t(t[o + 3]);
+      };
+      size_t ifd = u32(4);
+      unsigned count = u16(ifd);
+      for (unsigned i = 0; i < count && i < 64; i++) {
+        size_t e = ifd + 2 + i * 12;
+        if (u16(e) == 0x0112) return int(u16(e + 8));  // Orientation, a SHORT
+      }
+      return 1;
+    }
+    at += 2 + len;
+  }
+  return 0;
+}
+
+bool photoSize(const uint8_t* data, size_t size, int& w, int& h) {
+  if (!imageSize(data, size, w, h)) return false;
+  int o = jpegOrientation(data, size);
+  if (o >= 5 && o <= 8) std::swap(w, h);
+  return true;
+}
+
+namespace {
+// a quarter turn right (cw) or left, or half a turn
+void turn(Pixels& p, int quarters) {
+  quarters = ((quarters % 4) + 4) % 4;
+  if (!quarters) return;
+  Pixels o;
+  bool swap = quarters != 2;
+  o.w = swap ? p.h : p.w, o.h = swap ? p.w : p.h;
+  o.rgba.resize(p.rgba.size());
+  const uint32_t* s = reinterpret_cast<const uint32_t*>(p.rgba.data());
+  uint32_t* d = reinterpret_cast<uint32_t*>(o.rgba.data());
+  for (int y = 0; y < p.h; y++)
+    for (int x = 0; x < p.w; x++) {
+      int nx, ny;
+      if (quarters == 1) nx = p.h - 1 - y, ny = x;
+      else if (quarters == 2) nx = p.w - 1 - x, ny = p.h - 1 - y;
+      else nx = y, ny = p.w - 1 - x;
+      d[size_t(ny) * o.w + nx] = s[size_t(y) * p.w + x];
+    }
+  p = std::move(o);
+}
+}  // namespace
+
+bool decodePhoto(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
+  int o = jpegOrientation(data, size);
+  bool sideways = o >= 5 && o <= 8;
+  if (!decodeImage(data, size, sideways ? h : w, sideways ? w : h, out)) return false;
+  if (o == 3 || o == 4) turn(out, 2);
+  else if (o == 6 || o == 5) turn(out, 1);
+  else if (o == 8 || o == 7) turn(out, 3);
+  return true;
+}
+
+bool isPhotoName(const std::string& name) {
+  size_t dot = name.rfind('.');
+  if (dot == std::string::npos) return false;
+  std::string x = name.substr(dot + 1);
+  for (char& c : x) c = char(tolower((unsigned char)c));
+  return x == "jpg" || x == "jpeg" || x == "png";
+}
+
 void blur(Pixels& p, int r, int passes) {
   std::vector<uint8_t> tmp(p.rgba.size());
   int w = p.w, h = p.h;
@@ -411,8 +488,7 @@ struct Worker {
     bytes.clear();
     if (transient) *transient = false;
     std::string path = r.path;
-    bool file = path.size() > 4 && (path.compare(path.size() - 4, 4, ".jpg") == 0 ||
-                                    path.compare(path.size() - 4, 4, ".png") == 0);
+    bool file = isPhotoName(path);
     if (remote(r.path)) {
       if (!api || !fetch(*api, *apiGeneration, r, bytes)) return false;
     } else if (file) {
@@ -444,7 +520,8 @@ struct Worker {
       bilinearDown(big, r.w, r.h, px);
       return true;
     }
-    bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes && decodeImage(bytes.data(), bytes.size(), r.w, r.h, px);
+    bool ok = !bytes.empty() && size_t(r.w) * r.h * 4 <= kSlotBytes &&
+              (file ? decodePhoto(bytes.data(), bytes.size(), r.w, r.h, px) : decodeImage(bytes.data(), bytes.size(), r.w, r.h, px));
     if (ok && r.blur > 0) blur(px, r.blur, 3);
     return ok;
   }

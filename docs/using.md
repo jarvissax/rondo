@@ -56,6 +56,10 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
   below them and pick their songs anew each time you open one.
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
   delete it from the card.
+- **Photos** shows the JPEG and PNG pictures on the card and the internal storage, by folder (and
+  all of them, the newest first), as a grid: turn the wheel to pick one, press center to see it full
+  screen. There the wheel (or Next and Prev) goes from one to the next, center shows its name and
+  date, and Play starts or stops a slideshow. Pictures from a camera show the right way up.
 - **Rescan the card** after copying files to it another way than the USB drive.
 - **Organize the card** puts every song in `Music/Artist/Album (Year)/01 - Title` (a `Disc 1`
   folder for each disc of a multi-disc album), episodes in `Shows/Series (Year)/Season 01/` and

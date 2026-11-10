@@ -72,6 +72,8 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
   headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
   between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.
+- **Photos** (Library) on the Y1 and the dashboard: the pictures on the card by folder, full screen,
+  with a slideshow; camera photos turned the right way up.
 - **Cover Flow** (Library) on the Y1 and the dashboard, and a **visualizer** for Now Playing
   (hold center there; on the dashboard, the bars button on the cover).
 - **Crossfade** (Settings › Sound › Playback, and on the dashboard): songs fade into each other over

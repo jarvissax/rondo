@@ -1930,6 +1930,59 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/playlists" && m == "GET") return ui([] { return playlistsJson(); });
   if (path == "/smart" && m == "GET") return ui([] { return smartListJson(); });
   if (path == "/organize" && m == "GET") return ui([] { return organizePlanJson(); });
+  if (path == "/photos" && m == "GET") {  // every photo, the newest first (read again at most every 20 s)
+    static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+    static std::string cached;
+    static int64_t at = 0;
+    pthread_mutex_lock(&mu);
+    if (cached.empty() || monoNs() - at > 20000000000LL) {
+      std::vector<std::pair<std::string, int64_t>> all;
+      findPhotos(all);
+      std::vector<std::string> items;
+      for (auto& p : all) items.push_back(obj({{"path", str(p.first)}, {"modified", num(p.second * 1000)}}));
+      cached = obj({{"photos", arr(items)}});
+      at = monoNs();
+    }
+    std::string body = cached;
+    pthread_mutex_unlock(&mu);
+    return json(body);
+  }
+  if (path == "/photo" && m == "GET") {  // a photo at most size x size, turned as its camera says, JPEG
+    std::string p = r.param("path");
+    int size = std::max(64, std::min(r.hasParam("size") ? atoi(r.param("size").c_str()) : 320, 1600));
+    if (!inside(p) || !ui::isPhotoName(p)) return error(404, "not found");
+    std::string key = "photo:" + p + "#" + std::to_string(size);
+    std::vector<uint8_t> bytes;
+    if (!cachedArt(key, bytes)) {
+      std::vector<uint8_t> file;
+      bool ok;
+      std::string body = readFile(p, ok);
+      file.assign(body.begin(), body.end());
+      int pw, ph;
+      ui::Pixels px;
+      if (!ok || !ui::photoSize(file.data(), file.size(), pw, ph) || pw <= 0 || ph <= 0) return error(404, "not a picture");
+      float scale = std::min(1.f, float(size) / float(std::max(pw, ph)));
+      int tw = std::max(1, int(pw * scale + 0.5f)), th = std::max(1, int(ph * scale + 0.5f));
+      if (!ui::decodePhoto(file.data(), file.size(), tw, th, px) || !ui::encodeJpeg(px, 85, bytes)) return error(404, "not a picture");
+      keepArt(key, bytes);
+    }
+    Response res;
+    res.type = "image/jpeg";
+    res.body.assign(bytes.begin(), bytes.end());
+    res.headers.push_back({"Cache-Control", "max-age=86400"});
+    return res;
+  }
+  if (path == "/files/view" && m == "GET") {  // a picture as it is, to look at in the browser
+    std::string p = r.param("path");
+    struct stat st;
+    if (!inside(p) || !ui::isPhotoName(p) || stat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return error(404, "not found");
+    Response res;
+    std::string x = extOf(p);
+    res.type = x == "png" ? "image/png" : "image/jpeg";
+    res.file = p, res.fileBytes = st.st_size;
+    res.headers.push_back({"Cache-Control", "max-age=3600"});
+    return res;
+  }
   if (path == "/spectrum" && m == "GET") {  // the visualizer's bands of what's heard now (player.h)
     PlayerState s = g_player.state();
     std::vector<std::string> bands;

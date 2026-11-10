@@ -800,8 +800,15 @@ function renderLibrary() {
   const videos = S.libKind === 'videos';
   libEl.classList.toggle('is-videos', videos);
   $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
-  const pls = S.libKind === 'playlists', files = S.libKind === 'files', albumsTab = S.libKind === 'albums';
-  libEl.classList.toggle('is-playlists', pls || files || albumsTab);
+  const pls = S.libKind === 'playlists', files = S.libKind === 'files', albumsTab = S.libKind === 'albums', photosTab = S.libKind === 'photos';
+  libEl.classList.toggle('is-playlists', pls || files || albumsTab || photosTab);
+  if (photosTab) {
+    $('#libSortWrap').hidden = true;
+    $('#libSearch').placeholder = 'Search photos';
+    libList.setAttribute('aria-label', 'Photos');
+    $('#view-library').classList.remove('is-empty');
+    return renderPhotos();
+  }
   if (albumsTab) {
     $('#libSortWrap').hidden = true;
     $('#libSearch').placeholder = 'Search albums';
@@ -858,7 +865,7 @@ function renderLibrary() {
 }
 const CHUNK = 120;
 function appendRows() {
-  if (S.libKind === 'playlists' || S.libKind === 'files' || S.libKind === 'albums') return;  // the songs' rows stay out of the other tabs
+  if (S.libKind !== 'songs' && S.libKind !== 'videos') return;  // the songs' rows stay out of the other tabs
   const end = Math.min(S.libShown + CHUNK, S.libRows.length);
   let html = '';
   for (let i = S.libShown; i < end; i++) html += rowHtml(S.libRows[i]);
@@ -979,6 +986,7 @@ $('#libKind').addEventListener('click', (e) => {
   S.openSmart = null;
   if (S.libKind === 'files') return loadFiles(S.filesDir);
   if (S.libKind === 'albums') S.cfAt = S.cfAt || 0;
+  if (S.libKind === 'photos') return loadPhotos();
   renderLibrary();
   if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
 });
@@ -2964,7 +2972,7 @@ async function loadFiles(dir, quiet = false) {
   }
   renderLibrary();
 }
-const relName = (p) => { for (const r of S.files?.roots || []) if (p === r.path) return r.name; else if (p.startsWith(r.path + '/')) return `${r.name}/${p.slice(r.path.length + 1)}`; return p; };
+const relName = (p) => { for (const r of S.files?.roots || [{ path: '/storage/sdcard0', name: 'Card' }, { path: '/storage/sdcard1', name: 'Internal storage' }]) if (p === r.path) return r.name; else if (p.startsWith(r.path + '/')) return `${r.name}/${p.slice(r.path.length + 1)}`; return p; };
 function renderFiles() {
   const F = S.files;
   if (!F) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(5); return; }
@@ -3276,3 +3284,101 @@ function vizDraw(t) {
   if (moving || (vizOn && S.status?.player?.playing && S.route === 'overview')) vizRaf = requestAnimationFrame(vizDraw);
 }
 setViz(vizOn);
+
+// ---------- Photos (Library › Photos on the Rondo) ----------
+// Every picture on the card by folder, thumbnails the Rondo makes (turned as the camera says), and a
+// lightbox: arrow keys or the buttons go through them, Space starts a slideshow, Esc closes.
+async function loadPhotos() {
+  if (!S.photos) libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4);
+  try { S.photos = (await api('GET', '/api/photos', undefined, { timeout: 60000 })).photos; } catch (e) {
+    if (e.status !== 401 && !S.photos) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t look for photos</h3><p>${esc(reason(e))}</p></div>`;
+    return;
+  }
+  renderLibrary();
+}
+const photoUrl = (p, size) => `/api/photo?path=${encodeURIComponent(p)}&size=${size}`;
+function renderPhotos() {
+  const all = S.photos;
+  if (!all) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4); return; }
+  const q = fold(S.libQuery.trim());
+  const shown = q ? all.filter((p) => fold(p.path).includes(q)) : all;
+  S.photosShown = shown;
+  $('#libSummary').textContent = all.length ? `${plural(all.length, 'photo')} on your Rondo` : 'No photos';
+  if (!shown.length) { libList.innerHTML = `<div class="lib-empty"><h3>${all.length ? 'No matches' : 'No photos'}</h3><p>${all.length ? 'No photo’s name or folder matches.' : 'Upload JPEG or PNG pictures in the Files tab, or copy them to the card.'}</p></div>`; return; }
+  const groups = [];
+  for (let i = 0; i < shown.length; i++) {
+    const dir = shown[i].path.slice(0, shown[i].path.lastIndexOf('/'));
+    let g = groups.find((x) => x.dir === dir);
+    if (!g) groups.push((g = { dir, items: [] }));
+    g.items.push(i);
+  }
+  libList.innerHTML = groups.map((g) => `<div class="lhdr" role="heading" aria-level="3">${esc(relName(g.dir))}<small>${esc(plural(g.items.length, 'photo'))}</small></div>
+    <div class="ph-grid">${g.items.map((i) => `<button class="ph-cell" type="button" data-ph="${i}" aria-label="${esc(fileName(shown[i].path))}"><img alt="" loading="lazy" decoding="async" src="${photoUrl(shown[i].path, 320)}" onload="this.classList.add('ok')" onerror="artRetry(this)"></button>`).join('')}</div>`).join('');
+}
+libList.addEventListener('click', (e) => {
+  if (S.libKind !== 'photos') return;
+  const cell = e.target.closest('[data-ph]');
+  if (!cell) return;
+  e.stopImmediatePropagation();
+  openLightbox(+cell.dataset.ph);
+}, true);
+let lb = null;
+function openLightbox(i) {
+  if (!lb) {
+    lb = document.createElement('div');
+    lb.className = 'lightbox';
+    lb.setAttribute('role', 'dialog');
+    lb.setAttribute('aria-label', 'Photo');
+    lb.innerHTML = `<div class="lb-stage"><img alt=""><button class="lb-nav prev" type="button" data-lb="-1" aria-label="Previous photo">${icon('chevron', 'i flip')}</button>
+      <button class="lb-nav next" type="button" data-lb="1" aria-label="Next photo">${icon('chevron')}</button></div>
+      <div class="lb-bar"><span class="lb-name"></span><span class="lb-meta"></span>
+        <button class="btn btn-sm" type="button" data-lb="show">${icon('play')}<span>Slideshow</span></button>
+        <a class="btn btn-sm" data-lb="save" download>Download</a>
+        <button class="btn btn-sm" type="button" data-lb="close">${icon('close')}<span>Close</span></button></div>`;
+    document.body.append(lb);
+    lb.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-lb]');
+      if (!b) { if (e.target === lb || e.target.classList.contains('lb-stage')) closeLightbox(); return; }
+      if (b.dataset.lb === 'close') closeLightbox();
+      else if (b.dataset.lb === 'show') toggleShow();
+      else if (b.dataset.lb !== 'save') lbGo(lb._i + +b.dataset.lb);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!lb || lb.hidden) return;
+      if (e.key === 'Escape') closeLightbox();
+      else if (e.key === 'ArrowLeft') lbGo(lb._i - 1);
+      else if (e.key === 'ArrowRight') lbGo(lb._i + 1);
+      else if (e.key === ' ') { e.preventDefault(); toggleShow(); }
+    });
+  }
+  lb.hidden = false;
+  lbGo(i);
+}
+function lbGo(i) {
+  const all = S.photosShown || [];
+  if (!all.length) return;
+  i = (i + all.length) % all.length;
+  lb._i = i;
+  const p = all[i], img = $('img', lb);
+  img.style.opacity = '0.25';
+  // the original, at its size (the browser turns it as its camera says); the Rondo's 1600 px one if it can't be shown
+  img.onload = () => { img.style.opacity = '1'; };
+  img.onerror = () => { if (!img.src.includes('/api/photo?')) img.src = photoUrl(p.path, 1600); };
+  img.src = `/api/files/view?path=${encodeURIComponent(p.path)}`;
+  $('.lb-name', lb).textContent = fileName(p.path);
+  $('.lb-meta', lb).textContent = `${new Date(p.modified).toLocaleDateString(undefined, { dateStyle: 'medium' })} · ${i + 1} of ${all.length}`;
+  const save = $('[data-lb="save"]', lb);
+  save.href = `/api/files/download?path=${encodeURIComponent(p.path)}`;
+  save.setAttribute('download', fileName(p.path));
+}
+let showTimer = 0;
+function toggleShow() {
+  const b = $('[data-lb="show"] span', lb);
+  if (showTimer) { clearInterval(showTimer); showTimer = 0; b.textContent = 'Slideshow'; return; }
+  showTimer = setInterval(() => lbGo(lb._i + 1), 4000);
+  b.textContent = 'Stop';
+}
+function closeLightbox() {
+  if (showTimer) toggleShow();
+  lb.hidden = true;
+}

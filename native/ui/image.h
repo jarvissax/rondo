@@ -33,6 +33,13 @@ void setFrameGrabber(FrameGrabber grabber, void (*prepare)() = nullptr);
 // a video's frame at 10 s through that grabber, given up after 8 s (mediaserver's retriever can hang);
 // *later: it failed for now (a hung or unreadable answer), not for good
 bool grabVideoFrameWithin(const std::string& path, Pixels& out, bool* later = nullptr);
+// Photos: a JPEG's EXIF orientation (1 as it is, 3 upside down, 6 a quarter turn right, 8 left; 0 none),
+// its size as it's shown (turned), and a decode to w x h as it's shown (center-cropped like decodeImage)
+int jpegOrientation(const uint8_t* data, size_t size);
+bool photoSize(const uint8_t* data, size_t size, int& w, int& h);
+bool decodePhoto(const uint8_t* data, size_t size, int w, int h, Pixels& out);
+// A file name a photo has: .jpg, .jpeg or .png, any case
+bool isPhotoName(const std::string& name);
 // A box blur repeated `passes` times (3 is close to a Gaussian), in place.
 void blur(Pixels& p, int radius, int passes);
 

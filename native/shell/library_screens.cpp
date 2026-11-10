@@ -502,6 +502,7 @@ class DeviceScreen : public ShellListScreen {
     });
     add("Videos", tiles::videos, std::to_string(videos), true, videos != 0,
         [] { g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen())); });
+    add("Photos", photoTile(), "", true, true, [] { g_app->push(makePhotos()); });
     Row rescan;
     rescan.title = "Rescan the card";
     rescan.subtitle = "After copying files to it";
