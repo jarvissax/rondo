@@ -442,6 +442,25 @@ class PlaylistsScreen : public RenderedList {
       r.onLongSelect = [name] { g_app->push(std::unique_ptr<Screen>(new PlaylistMenuScreen(name))); };
       rows.push_back(std::move(r));
     }
+    // smart playlists (made on the dashboard): their songs worked out as they open
+    std::vector<SmartPlaylist> smart = g_smart.all();
+    if (!smart.empty()) {
+      Row h;
+      h.header = true;
+      h.title = "Smart playlists";
+      rows.push_back(h);
+    }
+    for (const SmartPlaylist& p : smart) {
+      Row r;
+      r.title = p.name;
+      r.subtitle = "Made on the dashboard";
+      r.trailing = std::to_string(SmartPlaylists::songs(p, g_library).size());
+      r.tile = &tiles::recent;
+      r.chevron = true;
+      SmartPlaylist copy = p;
+      r.onSelect = [copy] { g_app->push(makeSongList(copy.name, SmartPlaylists::songs(copy, g_library))); };
+      rows.push_back(std::move(r));
+    }
     list_.setRows(std::move(rows), true);
   }
 };

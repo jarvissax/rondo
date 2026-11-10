@@ -39,7 +39,7 @@ foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson)
 endforeach()
 
 # The core (N2): settings, the card library, later the server client
-add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp)
+add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/smart.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp)
 target_include_directories(rondo_core SYSTEM PUBLIC ${TP}/include)
 target_link_libraries(rondo_core PUBLIC tp_sqlite3 tp_yyjson dl)
 

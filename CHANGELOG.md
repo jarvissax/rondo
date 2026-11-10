@@ -60,6 +60,9 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   Most played, Recently played and Top rated; rate a song in Now Playing (hold center) or on the
   dashboard, which also sorts by genre, year, plays and rating. Rondo reads every song's tags once
   more after the update.
+- **Smart playlists:** songs picked by rules (a genre, a year, a folder, ratings, plays, when they
+  were added or last played), made on the dashboard and played from Library › Playlists. They
+  follow your library as it changes.
 - **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
   headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
   between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.

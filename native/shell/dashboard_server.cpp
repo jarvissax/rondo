@@ -1340,6 +1340,38 @@ std::string playlistJson(const Playlist& p) {
   return obj({{"name", str(p.name)}, {"paths", arr(paths)}, {"missing", num(int64_t(missing))}, {"durationSec", num(int64_t(duration))}});
 }
 
+// Smart playlists (core/smart.h): each with its rules and what they pick now
+std::string smartJson(const SmartPlaylist& p, size_t paths = 0) {
+  std::vector<const Track*> songs = SmartPlaylists::songs(p, g_library);
+  int duration = 0;
+  std::vector<std::string> list;
+  for (const Track* t : songs) {
+    if (t->durationSec > 0) duration += t->durationSec;
+    if (list.size() < paths) list.push_back(str(t->path));
+  }
+  std::string j = SmartPlaylists::toJson(p);
+  while (!j.empty() && (j.back() == '\n' || j.back() == '}')) j.pop_back();
+  return j + ",\"name\":" + str(p.name) + ",\"count\":" + std::to_string(songs.size()) + ",\"durationSec\":" +
+         std::to_string(duration) + (paths ? ",\"paths\":" + arr(list) : std::string()) + "}";
+}
+
+std::string smartListJson() {
+  std::vector<std::string> all;
+  for (const SmartPlaylist& p : g_smart.all()) all.push_back(smartJson(p));
+  return obj({{"playlists", arr(all)}});
+}
+
+// the "playlist" object of a body, as a smart playlist
+bool smartFrom(const Body& b, SmartPlaylist& p) {
+  yyjson_val* v = b.get("playlist");
+  if (!yyjson_is_obj(v)) return false;
+  size_t len = 0;
+  char* text = yyjson_val_write(v, 0, &len);
+  bool ok = text && SmartPlaylists::fromJson(std::string(text, len), p);
+  free(text);
+  return ok;
+}
+
 std::string playlistsJson() {
   std::vector<std::string> all;
   for (const Playlist& p : g_playlists.all()) all.push_back(playlistJson(p));
@@ -1772,6 +1804,41 @@ Response Server::api(Request& r, const std::string& path) {
     return res;
   }
   if (path == "/playlists" && m == "GET") return ui([] { return playlistsJson(); });
+  if (path == "/smart" && m == "GET") return ui([] { return smartListJson(); });
+  if (path == "/smart/songs" && m == "GET") {  // one smart playlist's songs now, every path
+    std::string name = r.param("name");
+    return onUi([name] {
+      SmartPlaylist p;
+      if (!g_smart.get(name, p)) return error(404, "not found");
+      return json(smartJson(p, 5000));
+    });
+  }
+  if (path == "/smart/preview" && m == "POST")  // what rules not saved yet pick
+    return onUi([b] {
+      SmartPlaylist p;
+      if (!smartFrom(*b, p)) return error(400, "playlist");
+      std::string why = SmartPlaylists::problem(p);
+      if (!why.empty()) return error(400, why);
+      return json(smartJson(p, 50));
+    });
+  if (path == "/smart" && m == "PUT")  // saved (oldName: renamed from it)
+    return onUi([b] {
+      SmartPlaylist p;
+      if (!smartFrom(*b, p)) return error(400, "playlist");
+      std::string old;
+      b->text("oldName", old);
+      std::string why = g_smart.save(p, old);
+      if (!why.empty()) return error(400, why);
+      return json(smartListJson());
+    });
+  if (path == "/smart" && m == "DELETE") {
+    std::string name = r.param("name");
+    return onUi([name] {
+      std::string why = g_smart.remove(name);
+      if (!why.empty()) return error(404, why);
+      return json(smartListJson());
+    });
+  }
   if (path == "/playlists" && (m == "POST" || m == "PUT" || m == "DELETE")) {
     std::string name = r.param("name");
     return onUi([b, m, name] {

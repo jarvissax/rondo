@@ -679,6 +679,10 @@ class FolderRootsScreen : public ShellListScreen {
 
 }  // namespace
 
+std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs) {
+  return std::unique_ptr<Screen>(new LocalSongsScreen(title, std::move(songs), false, true));
+}
+
 std::unique_ptr<Screen> makeFolders() {
   struct stat st;  // one root: straight into it
   if (stat("/storage/sdcard1", &st) != 0) return std::unique_ptr<Screen>(new FolderScreen("/storage/sdcard0", "Folders"));

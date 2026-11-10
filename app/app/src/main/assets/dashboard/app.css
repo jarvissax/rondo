@@ -943,3 +943,15 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .rate button { font-size: 22px; line-height: 1; padding: 2px 3px; background: none; border: 0; cursor: pointer; color: var(--text-3); }
 .rate button.on { color: #ffc83d; }
 .rate button:hover { transform: scale(1.12); }
+
+/* the smart playlist editor */
+.sm-form { display: flex; flex-direction: column; gap: 10px; }
+.sm-match { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
+.sm-match input[type="number"] { width: 110px; }
+.sm-rule { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(100px, 1.2fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.sm-rule .select, .sm-rule .select select { width: 100%; }
+.sm-rule input { min-width: 0; height: 40px; }
+.sm-rule:has(.sm-unit) { grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(60px, .7fr) auto auto; }
+.sm-unit { font-size: 13px; color: var(--text-2); }
+.sm-preview { font-size: 14px; color: var(--text); min-height: 1.4em; }
+@media (max-width: 599px) { .sm-rule, .sm-rule:has(.sm-unit) { grid-template-columns: 1fr 1fr; } }

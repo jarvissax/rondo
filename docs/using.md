@@ -49,7 +49,9 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
 - **Playlists:** **New playlist**, then **Add songs** (or hold center on any song and choose
   **Add to playlist**). Hold center on a song in a playlist to move it or take it out, and on a
   playlist to rename or delete it. Playlists are `.m3u8` files in the card's `Playlists` folder,
-  so music players on a computer open them too.
+  so music players on a computer open them too. **Smart playlists**, made on the
+  [dashboard](dashboard.md#library) from rules (a genre, a year, what you play and rate), are listed
+  below them and pick their songs anew each time you open one.
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
   delete it from the card.
 - **Rescan the card** after copying files to it another way than the USB drive.

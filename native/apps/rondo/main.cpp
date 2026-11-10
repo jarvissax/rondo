@@ -60,6 +60,7 @@ Library g_library;
 PlayerHost g_player;
 CoreHost g_core;
 Playlists g_playlists(g_library);
+SmartPlaylists g_smart;
 Prefs g_prefs;
 std::string g_configPath, g_prefsPath;
 

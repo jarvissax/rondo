@@ -44,6 +44,12 @@ rating. A song's details show its tags and plays, with stars to rate it.
 - **Playlists:** make, rename and delete playlists of songs on the card, add songs (from the
   playlist, or **Add to playlist** in a song's details), put them in order and play them on the Y1.
   They're the same playlists as in the Y1's Library: `.m3u8` files in the card's `Playlists` folder.
+- **Smart playlists:** songs picked by rules instead of by hand: a title, artist, album, album
+  artist, genre or folder that is, contains or starts with something; a year, rating, play count or
+  length at least or at most a number; added or last played in the last so many days. Match all
+  rules or any, choose the order (random, by artist, most played, best rated…) and a limit. The Y1
+  works the songs out whenever you open one, so it follows what you add, play and rate; it lists
+  them under **Library › Playlists**. They're `.smart.json` files beside the playlists.
 
 ## Theme
 

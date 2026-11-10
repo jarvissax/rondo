@@ -842,6 +842,7 @@ function renderLibrary() {
 }
 const CHUNK = 120;
 function appendRows() {
+  if (S.libKind === 'playlists') return;  // the songs' rows stay out of the playlists
   const end = Math.min(S.libShown + CHUNK, S.libRows.length);
   let html = '';
   for (let i = S.libShown; i < end; i++) html += rowHtml(S.libRows[i]);
@@ -1094,7 +1095,9 @@ const plTime = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round
 const plSub = (p) => [plural(p.paths.length - p.missing, 'song'), p.durationSec ? plTime(p.durationSec) : '', p.missing ? `${p.missing} not on the card` : ''].filter(Boolean).join(' · ');
 async function loadPlaylists() {
   try {
-    S.playlists = (await api('GET', '/api/playlists')).playlists;
+    const [pl, sm] = await Promise.all([api('GET', '/api/playlists'), api('GET', '/api/smart').catch(() => ({ playlists: [] }))]);
+    S.playlists = pl.playlists;
+    S.smart = sm.playlists || [];
   } catch (e) {
     if (e.status !== 401) toast(`Couldn’t read the playlists. ${reason(e)}`, 'err');
     S.playlists = S.playlists || [];
@@ -1147,6 +1150,7 @@ async function newPlaylist(paths = []) {
 function renderPlaylists() {
   const all = S.playlists;
   if (!all) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(3); return; }
+  if (S.openSmart) return renderSmart();
   if (S.openPlaylist) return renderPlaylist();
   const q = fold(S.libQuery.trim());
   const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.name).includes(w))) : all;
@@ -1155,7 +1159,8 @@ function renderPlaylists() {
     (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art">${icon('playlist')}</span>
       <span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span>
       <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.name)}">${icon('chevron')}</button></span></div>`).join('')
-      : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '');
+      : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '') +
+    smartListHtml(q);
 }
 function renderPlaylist() {
   const p = S.playlists.find((x) => x.name === S.openPlaylist);
@@ -1195,6 +1200,7 @@ async function playPlaylist(p, path) {
   } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
 }
 async function onPlaylistClick(e) {
+  if (await onSmartClick(e)) return;
   const b = e.target.closest('[data-act]'), row = e.target.closest('.song');
   const act = b?.dataset.act || (row?.dataset.pl ? 'pl-open' : row?.dataset.path ? 'pl-song' : '');
   const name = row?.dataset.pl || S.openPlaylist;
@@ -2662,4 +2668,191 @@ function findMatch() {
   });
   input.focus();
   if (input.value) search();
+}
+
+// ---------- smart playlists (core/smart.h on the Rondo) ----------
+// Songs picked by rules (genre is Pop, played in the last 30 days, 4 stars and up…), worked out by the
+// Rondo whenever they're opened: they follow what you add, play and rate. Saved on the card beside
+// the playlists; the Rondo lists and plays them under Library › Playlists.
+const SM_FIELDS = [
+  ['title', 'Title', 'text'], ['artist', 'Artist', 'text'], ['album', 'Album', 'text'], ['albumArtist', 'Album artist', 'text'],
+  ['genre', 'Genre', 'text'], ['folder', 'Folder', 'text'], ['year', 'Year', 'number'], ['rating', 'Rating (stars)', 'number'],
+  ['plays', 'Plays', 'number'], ['length', 'Length (seconds)', 'number'], ['added', 'Added', 'date'], ['lastPlayed', 'Last played', 'date'],
+];
+const SM_OPS = {
+  text: [['contains', 'contains'], ['is', 'is'], ['isNot', 'is not'], ['notContains', 'doesn’t contain'], ['startsWith', 'starts with']],
+  number: [['atLeast', 'is at least'], ['atMost', 'is at most'], ['is', 'is'], ['isNot', 'is not']],
+  date: [['inLast', 'in the last'], ['notInLast', 'not in the last']],
+};
+const SM_SORTS = [['artist', 'Artist'], ['album', 'Album'], ['title', 'Title'], ['random', 'Random'], ['added', 'Recently added'],
+  ['lastPlayed', 'Recently played'], ['plays', 'Most played'], ['rating', 'Best rated'], ['year', 'Newest year']];
+const smKind = (field) => (SM_FIELDS.find((x) => x[0] === field) || SM_FIELDS[0])[2];
+function smRuleText(r) {
+  const fl = (SM_FIELDS.find((x) => x[0] === r.field) || [r.field, r.field])[1].replace(/ \(.*\)/, '').toLowerCase();
+  const op = ((SM_OPS[smKind(r.field)] || []).find((x) => x[0] === r.op) || [r.op, r.op])[1];
+  const v = smKind(r.field) === 'date' ? plural(r.value, 'day') : smKind(r.field) === 'text' ? `“${r.value}”` : r.value;
+  return `${fl} ${op} ${v}`;
+}
+const smSub = (p) => `${plural(p.count, 'song')}${p.durationSec ? ` · ${fmtDur(p.durationSec)}` : ''} · ${p.rules.map(smRuleText).join(p.match === 'any' ? ' or ' : ', ')}`;
+function smartListHtml(q) {
+  const all = S.smart || [];
+  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.name).includes(w))) : all;
+  return `<div class="lhdr" role="heading" aria-level="3">Smart playlists</div>
+    <div class="song pl-row pl-new" role="listitem" data-act="sm-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New smart playlist</span><span class="s-sub">Songs picked by rules: a genre, a year, what you play and rate</span></span></div>` +
+    shown.map((p) => `<div class="song pl-row" role="listitem" data-sm="${esc(p.name)}"><span class="art">${icon('bolt')}</span>
+      <span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(smSub(p))}</span></span>
+      <span class="s-acts">${p.count ? `<button class="ib ib-sm" type="button" data-act="sm-play" aria-label="Play ${esc(p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="sm-edit" aria-label="Edit ${esc(p.name)}">${icon('gear')}</button></span></div>`).join('');
+}
+async function renderSmart() {
+  const name = S.openSmart;
+  const p = (S.smart || []).find((x) => x.name === name);
+  if (!p) { S.openSmart = null; return renderPlaylists(); }
+  $('#libSummary').textContent = 'A smart playlist: the Rondo picks its songs by its rules.';
+  libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4);
+  let songs;
+  try { songs = await api('GET', `/api/smart/songs?name=${encodeURIComponent(name)}`); } catch (e) {
+    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t read it</h3><p>${esc(reason(e))}</p></div>`;
+    return;
+  }
+  if (S.openSmart !== name) return;
+  S.smartPaths = songs.paths;
+  const head = `<div class="pl-head"><button class="btn btn-sm" type="button" data-act="sm-back">${icon('chevron', 'i flip')}<span>Playlists</span></button>
+      <h2>${esc(p.name)}</h2><p>${esc(smSub(songs))}</p>
+      <div class="pl-acts">${songs.count ? `<button class="btn btn-primary btn-sm" type="button" data-act="sm-play">${icon('play')}<span>Play on Rondo</span></button>` : ''}
+        <button class="btn btn-sm" type="button" data-act="sm-edit">${icon('gear')}<span>Edit rules</span></button>
+        <button class="btn btn-sm btn-red-text" type="button" data-act="sm-delete">${icon('trash')}<span>Delete</span></button></div></div>`;
+  const rows = songs.paths.map((path) => {
+    const t = S.libByPath?.get(path);
+    if (!t) return '';
+    return `<div class="song${isPlaying(t) ? ' is-playing' : ''}" role="listitem" data-smpath="${esc(path)}">
+      <span class="art"${t.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
+      <span class="s-main"><span class="s-title">${esc(t.title || fileName(path))}</span><span class="s-sub">${esc([t.artist, t.album].filter(Boolean).join(' · '))}</span></span>
+      <span class="s-time">${fmtDur(t.durationSec)}</span></div>`;
+  }).join('');
+  libList.innerHTML = head + (rows || '<div class="lib-empty"><h3>No songs match</h3><p>Change the rules, or play and rate more songs.</p></div>');
+  $$('.art[data-art]', libList).forEach((el) => artIO.observe(el));
+}
+async function playSmart(p, from) {
+  try {
+    const songs = from && S.smartPaths ? { paths: S.smartPaths } : await api('GET', `/api/smart/songs?name=${encodeURIComponent(p.name)}`);
+    if (!songs.paths.length) return;
+    const pl = await api('POST', '/api/player/play', { path: from || songs.paths[0], queue: songs.paths });
+    if (S.status) { S.status.player = pl; S.statusAt = performance.now(); }
+    renderMini(); markPlayingRows();
+    toast(`Playing “${p.name}” on your Rondo`);
+  } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
+}
+// true when the click was a smart playlist's
+async function onSmartClick(e) {
+  const b = e.target.closest('[data-act]'), row = e.target.closest('.song');
+  const act = b?.dataset.act || (row?.dataset.sm ? 'sm-open' : row?.dataset.smpath ? 'sm-song' : '');
+  if (!act.startsWith('sm-')) return false;
+  const name = row?.dataset.sm || S.openSmart;
+  const p = (S.smart || []).find((x) => x.name === name);
+  if (act === 'sm-new') { editSmart(null); return true; }
+  if (act === 'sm-back') { S.openSmart = null; renderPlaylists(); return true; }
+  if (!p) return true;
+  if (act === 'sm-open') { S.openSmart = p.name; S.openPlaylist = null; renderPlaylists(); return true; }
+  if (act === 'sm-play') { playSmart(p); return true; }
+  if (act === 'sm-song') { playSmart(p, row.dataset.smpath); return true; }
+  if (act === 'sm-edit') { editSmart(p); return true; }
+  if (act === 'sm-delete') {
+    if (!(await confirmSheet({ title: `Delete “${p.name}”?`, text: 'The smart playlist goes; its songs stay on the card.', action: 'Delete' }))) return true;
+    try {
+      S.smart = (await api('DELETE', `/api/smart?name=${encodeURIComponent(p.name)}`)).playlists;
+      S.openSmart = null;
+      renderPlaylists();
+      toast(`Deleted “${p.name}”`);
+    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t delete it. ${reason(e2)}`, 'err'); }
+    return true;
+  }
+  return true;
+}
+// The editor: a name, all or any of the rules, the order and a limit; what they pick shows as you go
+function editSmart(p) {
+  const draft = p ? JSON.parse(JSON.stringify({ name: p.name, match: p.match, rules: p.rules, sort: p.sort, limit: p.limit }))
+    : { name: '', match: 'all', rules: [{ field: 'genre', op: 'contains', value: '' }], sort: 'artist', limit: 0 };
+  const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  const ruleHtml = (r, i) => {
+    const kind = smKind(r.field);
+    const value = kind === 'text' ? `<input type="text" data-k="value" value="${esc(r.value ?? '')}" placeholder="${r.field === 'genre' ? 'Pop' : r.field === 'folder' ? 'Music/Jazz' : ''}" aria-label="Value">`
+      : `<input type="number" data-k="value" value="${esc(r.value ?? '')}" min="${kind === 'date' ? 1 : 0}" step="1" aria-label="${kind === 'date' ? 'Days' : 'Number'}">${kind === 'date' ? '<span class="sm-unit">days</span>' : ''}`;
+    return `<div class="sm-rule" data-i="${i}"><div class="select"><select data-k="field" aria-label="Field">${opts(SM_FIELDS.map((x) => [x[0], x[1]]), r.field)}</select>${icon('down')}</div>
+      <div class="select"><select data-k="op" aria-label="Condition">${opts(SM_OPS[kind], r.op)}</select>${icon('down')}</div>${value}
+      <button class="ib ib-sm" type="button" data-rm="${i}" aria-label="Remove this rule"${draft.rules.length > 1 ? '' : ' disabled'}>${icon('close')}</button></div>`;
+  };
+  const html = () => `<h2>${p ? 'Edit smart playlist' : 'New smart playlist'}</h2>
+    <form class="sheet-form sm-form" novalidate>
+      <label class="field-label" for="smName">Name</label>
+      <div class="field-row"><input type="text" id="smName" maxlength="60" value="${esc(draft.name)}" placeholder="Like Pop of the 2010s" autocomplete="off"></div>
+      <div class="sm-match">Songs that match <div class="select"><select id="smMatch" aria-label="Match">${opts([['all', 'all'], ['any', 'any']], draft.match)}</select>${icon('down')}</div> of these rules:</div>
+      <div id="smRules">${draft.rules.map(ruleHtml).join('')}</div>
+      <button class="btn btn-sm" type="button" id="smAdd"${draft.rules.length >= 12 ? ' disabled' : ''}>${icon('plus')}<span>Add a rule</span></button>
+      <div class="sm-match">In the order of <div class="select"><select id="smSort" aria-label="Order">${opts(SM_SORTS, draft.sort)}</select>${icon('down')}</div>,
+        at most <input type="number" id="smLimit" min="0" max="5000" step="1" value="${draft.limit || ''}" placeholder="any number of" aria-label="Songs at most"> songs</div>
+      <p class="sm-preview" id="smPreview" aria-live="polite"></p>
+      <p class="field-err" id="smErr" hidden></p>
+      <div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="submit">Save</button></div>
+    </form>`;
+  openSheet(html());
+  let timer = 0, asked = 0;
+  const read = () => {
+    draft.name = $('#smName', sheet).value.trim();
+    draft.match = $('#smMatch', sheet).value;
+    draft.sort = $('#smSort', sheet).value;
+    draft.limit = Math.max(0, Math.min(5000, parseInt($('#smLimit', sheet).value, 10) || 0));
+    $$('.sm-rule', sheet).forEach((el, i) => {
+      const r = draft.rules[i];
+      r.field = $('[data-k="field"]', el).value;
+      r.op = $('[data-k="op"]', el).value;
+      const v = $('[data-k="value"]', el).value;
+      r.value = smKind(r.field) === 'text' ? v : Number(v);
+    });
+  };
+  const preview = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const mine = ++asked, out = $('#smPreview', sheet);
+      if (!out) return;
+      try {
+        const r = await api('POST', '/api/smart/preview', { playlist: draft });
+        if (mine === asked) out.textContent = r.count ? `Now: ${plural(r.count, 'song')}${r.durationSec ? `, ${fmtDur(r.durationSec)}` : ''}` : 'Now: no songs match';
+      } catch (e) { if (mine === asked) out.textContent = e.code && e.code !== 'pair' ? e.code : ''; }
+    }, 300);
+  };
+  const redrawRules = () => { $('#smRules', sheet).innerHTML = draft.rules.map(ruleHtml).join(''); $('#smAdd', sheet).disabled = draft.rules.length >= 12; };
+  const form = $('form', sheet);
+  form.addEventListener('input', () => { read(); preview(); });
+  form.addEventListener('change', (e) => {
+    const k = e.target.dataset?.k;
+    if (k === 'field') {  // a field of another kind takes that kind's first condition and no value
+      const el = e.target.closest('.sm-rule'), r = draft.rules[+el.dataset.i];
+      const kind = smKind(e.target.value);
+      if (kind !== smKind(r.field)) { r.field = e.target.value; r.op = SM_OPS[kind][0][0]; r.value = kind === 'date' ? 30 : kind === 'number' ? (r.field === 'rating' ? 4 : 0) : ''; redrawRules(); }
+    }
+    read(); preview();
+  });
+  form.addEventListener('click', (e) => {
+    const rm = e.target.closest('[data-rm]');
+    if (rm) { read(); draft.rules.splice(+rm.dataset.rm, 1); redrawRules(); preview(); return; }
+    if (e.target.closest('#smAdd')) { read(); draft.rules.push({ field: 'rating', op: 'atLeast', value: 4 }); redrawRules(); preview(); }
+    if (e.target.closest('[data-r="0"]')) sheet.close();
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    read();
+    const err = $('#smErr', sheet);
+    if (!draft.name) { err.textContent = 'Type a name.'; err.hidden = false; return; }
+    try {
+      S.smart = (await api('PUT', '/api/smart', { playlist: draft, oldName: p ? p.name : undefined })).playlists;
+      sheet.close();
+      // the name as the card keeps it (FAT: no : / \ * ? " < > |)
+      if (S.openSmart) S.openSmart = draft.name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+      renderPlaylists();
+      toast(`Saved “${draft.name}”`);
+    } catch (e2) { if (e2.status !== 401) { err.textContent = e2.code && e2.code !== 'pair' ? e2.code : reason(e2); err.hidden = false; } }
+  });
+  $('#smName', sheet).focus();
+  read();
+  preview();
 }

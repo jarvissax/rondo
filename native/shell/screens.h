@@ -13,7 +13,9 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
-std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
+std::unique_ptr<Screen> makeFolders();
+// A list of card songs (Select plays them all from there; held, a song's menu), as Songs shows them
+std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs);  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeSettings();
 // YouTube Music (music_screen.cpp) and its search
 std::unique_ptr<Screen> makeMusic();

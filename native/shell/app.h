@@ -12,6 +12,7 @@
 #include "../core/fold.h"
 #include "../core/library.h"
 #include "../core/playlists.h"
+#include "../core/smart.h"
 #include "../core/prefs.h"
 #include "../player/player.h"
 #include "../services/core.h"
@@ -25,6 +26,7 @@ extern Library g_library;
 extern PlayerHost g_player;
 extern CoreHost g_core;  // rondo-core: Wi-Fi and the other system services
 extern Playlists g_playlists;
+extern SmartPlaylists g_smart;  // the smart playlists beside them (core/smart.h)
 extern Prefs g_prefs;
 extern std::string g_configPath, g_prefsPath;
 // Settings changed on the device are written at once (Config.update in 1.0.x); a theme change also
