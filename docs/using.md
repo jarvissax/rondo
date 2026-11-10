@@ -39,7 +39,13 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
 
 - **Search** finds songs, artists, albums, videos and playlists as you type, on the wheel
   keyboard. Songs, Artists, Albums, Videos and Playlists each start with a Search of their own.
+- **Album artists** and **Genres** group songs by their album artist (else their artist) and their
+  genre tag. **Albums** show the album artist and the year; two albums of one name by different
+  artists stay apart, and an album's songs play in disc and track order.
+- **Folders** shows the card as it is: open folders, play a folder's songs from any of them, or a video.
 - **Recently added** lists the newest songs first.
+- **Most played**, **Recently played** and **Top rated** (4 stars and up): a song counts as played
+  once it's half over or 4 minutes in.
 - **Playlists:** **New playlist**, then **Add songs** (or hold center on any song and choose
   **Add to playlist**). Hold center on a song in a playlist to move it or take it out, and on a
   playlist to rename or delete it. Playlists are `.m3u8` files in the card's `Playlists` folder,
@@ -87,7 +93,8 @@ so moving on takes about a second.
 </p>
 
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
-- **Hold center** for options: scrub through the song, see what's up next, and repeat.
+- **Hold center** for options: scrub through the song, see what's up next, shuffle and repeat,
+  and for a song on the card its **rating**: center gives it one star more (after five, none).
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
   Menu cancels.
 

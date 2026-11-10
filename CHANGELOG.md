@@ -55,6 +55,11 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   arrives as they slide in.
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
+- **A richer library:** Album artists, Genres and Folders in Library. Albums show their year, two
+  albums of one name by different artists stay apart, and songs play in disc and track order.
+  Most played, Recently played and Top rated; rate a song in Now Playing (hold center) or on the
+  dashboard, which also sorts by genre, year, plays and rating. Rondo reads every song's tags once
+  more after the update.
 - **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
   headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
   between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.

@@ -442,6 +442,7 @@ int main(int argc, char** argv) {
     fmTick();
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
+    playStatsTick();
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
     if (safetyTick(now_ns())) changed = true;
     resumeTick(now_ns());  // the queue and where it is, for after a restart

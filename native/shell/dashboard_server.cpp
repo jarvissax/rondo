@@ -1292,6 +1292,13 @@ std::string librarySongJson(const Track& t) {
               {"artist", str(t.artist)},
               {"album", str(t.album)},
               {"track", num(int64_t(t.track))},
+              {"disc", num(int64_t(t.disc))},
+              {"year", num(int64_t(t.year))},
+              {"albumArtist", str(t.albumArtist)},
+              {"genre", str(t.genre)},
+              {"plays", num(int64_t(t.plays))},
+              {"lastPlayed", num(t.lastPlayed)},
+              {"rating", num(int64_t(t.rating))},
               {"durationSec", t.durationSec < 0 ? kNull : num(int64_t(t.durationSec))},
               {"size", num(t.size)},
               {"modified", num(t.modified)},
@@ -1644,6 +1651,15 @@ Response Server::api(Request& r, const std::string& path) {
     });
     return okBody();
   }
+  if (path == "/library/rating" && m == "PUT")  // a song's stars, 0 to 5 (Now Playing's options on the Y1)
+    return onUi([b] {
+      std::string p;
+      int64_t stars;
+      if (!b->text("path", p) || !b->integer("rating", stars)) return error(400, "path, rating");
+      if (!g_library.setRating(p, int(stars))) return error(404, "not found");
+      const Track* t = g_library.find(p);
+      return json(t ? librarySongJson(*t) : "{}");
+    });
   if (path == "/library/rescan" && m == "POST") {
     postToMain([] { rescan(); });
     return okBody();

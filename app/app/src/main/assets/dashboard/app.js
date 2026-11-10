@@ -722,7 +722,7 @@ async function loadLibrary(quiet = false) {
 }
 function prepLibrary() {
   S.libByPath = new Map();
-  for (const s of S.library.songs) { s._key = fold(`${s.title} ${s.artist} ${s.album} ${fileName(s.path)}`); S.libByPath.set(s.path, s); }
+  for (const s of S.library.songs) { s._key = fold(`${s.title} ${s.artist} ${s.album} ${s.albumArtist || ''} ${s.genre || ''} ${s.year || ''} ${fileName(s.path)}`); S.libByPath.set(s.path, s); }
   for (const v of S.library.videos) { v._video = true; v._key = fold(`${v.title} ${fileName(v.path)}`); S.libByPath.set(v.path, v); }
 }
 function renderLibrarySummary() {
@@ -738,7 +738,10 @@ function renderLibrarySummary() {
     : 'Music and videos on the card. They play without the internet.';
   $('#rescanBtn').disabled = false;
 }
-const sortKey = () => (S.libKind === 'videos' && (S.libSort === 'artist' || S.libSort === 'album') ? 'title' : S.libSort);
+// sorts that only songs have (tags, listening)
+const SONG_SORTS = ['artist', 'album', 'albumArtist', 'genre', 'year', 'plays', 'played', 'rating'];
+const sortKey = () => (S.libKind === 'videos' && SONG_SORTS.includes(S.libSort) ? 'title' : S.libSort);
+const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
 function dateGroup(ms) {
   if (!ms) return 'Earlier';
   const now = new Date(), d = new Date(ms);
@@ -753,14 +756,23 @@ function buildRows() {
   const L = S.library, kind = S.libKind, sort = sortKey();
   const src = kind === 'songs' ? L.songs : L.videos;
   const q = fold(S.libQuery.trim());
-  const items = q ? src.filter((x) => q.split(/\s+/).every((w) => x._key.includes(w))) : src.slice();
+  let items = q ? src.filter((x) => q.split(/\s+/).every((w) => x._key.includes(w))) : src.slice();
+  // the listening sorts show only what has been listened to (rated)
+  if (sort === 'plays' || sort === 'played') items = items.filter((x) => x.plays > 0);
+  if (sort === 'rating') items = items.filter((x) => x.rating > 0);
   const byTitle = (a, b) => collator.compare(a.title || fileName(a.path), b.title || fileName(b.path));
   const emptyLast = (a, b) => (!a) - (!b) || collator.compare(a, b);
   const cmp = {
     title: byTitle,
     artist: (a, b) => emptyLast(a.artist, b.artist) || emptyLast(a.album, b.album) || (a.track || 0) - (b.track || 0) || byTitle(a, b),
-    album: (a, b) => emptyLast(a.album, b.album) || (a.track || 0) - (b.track || 0) || byTitle(a, b),
+    album: (a, b) => emptyLast(a.album, b.album) || (a.disc || 0) - (b.disc || 0) || (a.track || 0) - (b.track || 0) || byTitle(a, b),
+    albumArtist: (a, b) => emptyLast(a.albumArtist || a.artist, b.albumArtist || b.artist) || emptyLast(a.album, b.album) || (a.disc || 0) - (b.disc || 0) || (a.track || 0) - (b.track || 0) || byTitle(a, b),
+    genre: (a, b) => emptyLast(a.genre, b.genre) || emptyLast(a.artist, b.artist) || byTitle(a, b),
+    year: (a, b) => (b.year || 0) - (a.year || 0) || emptyLast(a.album, b.album) || (a.track || 0) - (b.track || 0) || byTitle(a, b),
     added: (a, b) => (b.modified || 0) - (a.modified || 0) || byTitle(a, b),
+    plays: (a, b) => b.plays - a.plays || b.lastPlayed - a.lastPlayed || byTitle(a, b),
+    played: (a, b) => b.lastPlayed - a.lastPlayed || byTitle(a, b),
+    rating: (a, b) => b.rating - a.rating || b.plays - a.plays || byTitle(a, b),
   }[sort];
   items.sort(cmp);
   const rows = [];
@@ -770,7 +782,12 @@ function buildRows() {
     if (sort === 'added') label = dateGroup(it.modified);
     else if (kind === 'songs' && sort === 'title') { const c = fold(it.title || fileName(it.path)).charAt(0).toUpperCase(); label = /[A-Z]/.test(c) ? c : '#'; }
     else if (sort === 'artist') label = it.artist || 'Unknown artist';
-    else if (sort === 'album') { label = it.album || 'Unknown album'; sub = it.album ? it.artist : ''; }
+    else if (sort === 'album') { label = it.album || 'Unknown album'; sub = it.album ? [it.albumArtist || it.artist, it.year || ''].filter(Boolean).join(' · ') : ''; }
+    else if (sort === 'albumArtist') label = it.albumArtist || it.artist || 'Unknown artist';
+    else if (sort === 'genre') label = it.genre || 'No genre';
+    else if (sort === 'year') label = it.year ? String(it.year) : 'No year';
+    else if (sort === 'played') label = dateGroup(it.lastPlayed);
+    else if (sort === 'rating') label = stars(it.rating);
     if (label !== null && label !== last) { rows.push({ h: label, sub }); last = label; }
     rows.push(it);
   }
@@ -791,7 +808,7 @@ function renderLibrary() {
     return renderPlaylists();
   }
   const sel = $('#libSort');
-  for (const o of sel.options) o.hidden = videos && (o.value === 'artist' || o.value === 'album');
+  for (const o of sel.options) o.hidden = videos && SONG_SORTS.includes(o.value);
   sel.value = sortKey();
   $$('#libHead [data-sort]').forEach((b) => (b.dataset.sort === sortKey() ? b.setAttribute('aria-sort', 'ascending') : b.removeAttribute('aria-sort')));
   libList.setAttribute('aria-label', videos ? 'Videos' : 'Songs');
@@ -806,6 +823,15 @@ function renderLibrary() {
   window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) });
   const total = (videos ? S.library.videos : S.library.songs).length;
   $('#view-library').classList.toggle('is-empty', !total);
+  // the listening sorts with nothing listened to (or rated) yet
+  const LISTENING = { plays: ['Nothing played yet', 'Songs show up here once you’ve played them through on your Rondo.'],
+    played: ['Nothing played yet', 'Songs show up here once you’ve played them through on your Rondo.'],
+    rating: ['Nothing rated yet', 'Rate a song from its details here, or on your Rondo in Now Playing (hold the center button).'] };
+  if (!count && total && !S.libQuery.trim() && LISTENING[sortKey()] && !videos) {
+    const [h, p] = LISTENING[sortKey()];
+    libList.innerHTML = `<div class="lib-empty"><h3>${h}</h3><p>${p}</p></div>`;
+    return;
+  }
   if (!count) {
     libList.innerHTML = S.libQuery.trim() && total
       ? `<div class="lib-empty"><h3>No matches</h3><p>Nothing ${videos ? 'among the videos' : 'in the songs'} matches “${esc(S.libQuery.trim())}”.</p></div>`
@@ -981,10 +1007,14 @@ function openItem(it) {
   const video = !!it._video, title = it.title || fileName(it.path);
   const facts = video
     ? [['Length', fmtDur(it.durationSec)], ['Size', fmtBytes(it.size)], ['File', it.path, 'path']]
-    : [['Artist', it.artist], ['Album', it.album], ['Track', it.track || ''], ['Length', fmtDur(it.durationSec)], ['Size', fmtBytes(it.size)], ['File', it.path, 'path']];
+    : [['Artist', it.artist], ['Album artist', it.albumArtist && it.albumArtist !== it.artist ? it.albumArtist : ''], ['Album', it.album],
+      ['Disc', it.disc || ''], ['Track', it.track || ''], ['Year', it.year || ''], ['Genre', it.genre || ''], ['Length', fmtDur(it.durationSec)],
+      ['Played', it.plays ? `${plural(it.plays, 'time')}, last ${new Date(it.lastPlayed).toLocaleDateString(undefined, { dateStyle: 'medium' })}` : 'Never'],
+      ['Size', fmtBytes(it.size)], ['File', it.path, 'path']];
   const detail = () => {
     openSheet(`<div class="song-sheet${video ? ' is-video' : ''}"><span class="art"${video || it.art ? ` data-art="${esc(it.path)}"` : ''}>${icon(video ? 'film' : 'note')}</span>
       <div><h2>${esc(title)}</h2><p>${esc(video ? 'Video on the card' : [it.artist, it.album].filter(Boolean).join(' · ') || 'On the card')}</p></div></div>
+      ${video ? '' : `<div class="rate" role="radiogroup" aria-label="Rating">${[1, 2, 3, 4, 5].map((n) => `<button type="button" role="radio" aria-checked="${n === it.rating}" aria-label="${plural(n, 'star')}" data-rate="${n}" class="${n <= it.rating ? 'on' : ''}">★</button>`).join('')}</div>`}
       <dl class="facts">${facts.filter((f) => f[1] !== '' && f[1] != null).map(([k, v, c]) => `<dt>${k}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>
       <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>Delete</span></button>${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>Add to playlist</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>Play on Rondo</span></button>`}</div>`);
     const art = $('.art[data-art]', sheet);
@@ -998,6 +1028,17 @@ function openItem(it) {
     $('[data-act="back"]', sheet).focus();
   };
   const onClick = async (e) => {
+    const star = e.target.closest('[data-rate]');
+    if (star) {  // the same star again takes the rating away
+      const n = +star.dataset.rate === it.rating ? 0 : +star.dataset.rate;
+      try {
+        const t = await api('PUT', '/api/library/rating', { path: it.path, rating: n });
+        it.rating = t.rating ?? n;
+        $$('[data-rate]', sheet).forEach((x) => { x.classList.toggle('on', +x.dataset.rate <= it.rating); x.setAttribute('aria-checked', String(+x.dataset.rate === it.rating)); });
+        if (sortKey() === 'rating') renderLibrary();
+      } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
+      return;
+    }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act;

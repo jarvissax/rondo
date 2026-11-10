@@ -295,7 +295,7 @@ class NowPlayingScreen : public Screen {
 
   bool onAction(Action a, int steps) override {
     if (options_) {
-      int n = 4;
+      int n = optionCount();
       switch (a) {
         case Action::Up: cursor_ = (cursor_ + n - 1) % n; break;
         case Action::Down: cursor_ = (cursor_ + 1) % n; break;
@@ -646,12 +646,27 @@ class NowPlayingScreen : public Screen {
 
 
   // the options panel: 190 units wide, four 28-unit rows, the chosen one white
+  // the song on the card playing, else "": the one a rating is for
+  static std::string ratable() {
+    PlayerState s = g_player.state();
+    std::string p = s.path;
+    return s.video || p.empty() || isStream(p) || !g_library.find(p) ? std::string() : p;
+  }
+  // a card song also has its rating (center: one star more, after five none)
+  int optionCount() const { return ratable().empty() ? 4 : 5; }
   std::string optionLabel(int i, const PlayerState& s) const {
     switch (i) {
       case 0: return "Scrub through the song";
       case 1: return "Up next";
       case 2: return std::string("Shuffle: ") + (s.shuffle ? "On" : "Off");
-      default: return std::string("Repeat: ") + (s.repeat == 1 ? "All" : s.repeat == 2 ? "One" : "Off");
+      case 3: return std::string("Repeat: ") + (s.repeat == 1 ? "All" : s.repeat == 2 ? "One" : "Off");
+      default: {
+        const Track* t = g_library.find(ratable());
+        int r = t ? t->rating : 0;
+        std::string stars;
+        for (int k = 0; k < r; k++) stars += "\xe2\xad\x90";  // U+2B50, in color (Roboto has no star)
+        return "Rating: " + (r ? stars : std::string("none"));
+      }
     }
   }
   void chooseOption() {
@@ -666,7 +681,12 @@ class NowPlayingScreen : public Screen {
         g_app->push(makeQueue());
         break;
       case 2: g_player.setShuffle(!s.shuffle); shuffleShown_ = !s.shuffle; break;
-      default: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
+      case 3: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
+      default: {
+        std::string p = ratable();
+        if (const Track* t = g_library.find(p)) g_library.setRating(p, (t->rating + 1) % 6);
+        break;
+      }
     }
     optionsAt_ = now_ns();
   }
@@ -679,11 +699,13 @@ class NowPlayingScreen : public Screen {
       shuffleShown_ = repeatShown_ = -1;
     }
     int pw = e.dp(190), rowH = e.dp(28), pad = e.dp(5);
-    int ph = pad + 4 * rowH + pad;
+    int n = optionCount();
+    if (cursor_ >= n) cursor_ = n - 1;  // the song changed to one without a rating
+    int ph = pad + n * rowH + pad;
     float x = float((int(w) - pw) / 2), y = float((int(h) - ph) / 2);
     e.c.layer(7);
     e.c.shape({x, y, float(pw), float(ph)}, e.dpf(10), 0xf21e1e20);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < n; i++) {
       bool on = i == cursor_;
       Rect r{x + pad, y + pad + float(i * rowH), float(pw - 2 * pad), float(rowH)};
       if (on) e.c.shape(r, e.dpf(6), white);

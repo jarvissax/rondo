@@ -33,8 +33,9 @@ downloaded (Rondo 1.0: an APK).
 
 ## Library
 
-Everything on the card, as songs or videos, with search and sorting by title, artist, album or
-date added.
+Everything on the card, as songs or videos, with search and sorting by title, artist, album, album
+artist, genre, year or date added, and by what you listen to: most played, recently played and
+rating. A song's details show its tags and plays, with stars to rate it.
 
 - **Upload** music or videos straight onto the card, several at a time. Expect about 3 MB a
   second over the Y1's Wi-Fi.

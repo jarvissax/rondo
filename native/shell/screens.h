@@ -13,6 +13,7 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
+std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeSettings();
 // YouTube Music (music_screen.cpp) and its search
 std::unique_ptr<Screen> makeMusic();
@@ -91,6 +92,7 @@ std::string soundSaveUserPreset(const std::string& output, const std::string& na
 bool soundDeleteUserPreset(const std::string& name);
 bool soundSetMatch(const std::string& output, const std::string& presetBody, const std::string& name, const std::string& source);
 void soundTick();
+void playStatsTick();  // from the loop: a card song played through counts (Most and Recently played)
 std::string soundState();  // Settings' row: the preset for the output in use
 std::unique_ptr<Screen> makeDashboard();  // Settings › Dashboard
 extern std::string g_dashboardAssets;     // <dir>/dashboard and <dir>/fonts

@@ -6,8 +6,10 @@
 namespace rondo {
 
 struct Tags {
-  std::string title, artist, albumArtist, album;
+  std::string title, artist, albumArtist, album, genre;
   int track = 0;
+  int disc = 0;  // 0: not set
+  int year = 0;  // 0: not set
   int durationSec = -1;  // -1: unknown
   bool read = false;     // the file was understood
 };

@@ -1,5 +1,6 @@
 #include "tags.h"
 
+#include <ctype.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,47 @@ std::string trim(std::string s) {
 }
 
 int trackNumber(const std::string& s) { return atoi(s.c_str()); }  // "3/12" -> 3
+// "2019", "2019-05-17", "2019-05-17T00:00:00": the year (0 when it isn't one)
+int yearOf(const std::string& s) {
+  int y = atoi(s.c_str());
+  return y >= 1000 && y <= 2999 ? y : 0;
+}
+// ID3v1's genres by number (the 80 of the standard and Winamp's first additions), as ID3v2's TCON
+// and MP4's gnre name them by number
+const char* const kGenres[] = {
+    "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal", "New Age",
+    "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial", "Alternative", "Ska",
+    "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion",
+    "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise", "Alternative Rock",
+    "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic",
+    "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy",
+    "Cult", "Gangsta", "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave",
+    "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro",
+    "Musical", "Rock & Roll", "Hard Rock", "Folk", "Folk-Rock", "National Folk", "Swing", "Fast Fusion", "Bebop",
+    "Latin", "Revival", "Celtic", "Bluegrass", "Avantgarde", "Gothic Rock", "Progressive Rock", "Psychedelic Rock",
+    "Symphonic Rock", "Slow Rock", "Big Band", "Chorus", "Easy Listening", "Acoustic", "Humour", "Speech", "Chanson",
+    "Opera", "Chamber Music", "Sonata", "Symphony", "Booty Bass", "Primus", "Porn Groove", "Satire", "Slow Jam",
+    "Club", "Tango", "Samba", "Folklore", "Ballad", "Power Ballad", "Rhythmic Soul", "Freestyle", "Duet", "Punk Rock",
+    "Drum Solo", "A Cappella", "Euro-House", "Dance Hall"};
+std::string genreByNumber(int n) {
+  return n >= 0 && n < int(sizeof(kGenres) / sizeof(kGenres[0])) ? kGenres[n] : std::string();
+}
+// TCON: "Rock", "(17)", "17", "(17)Rock" (the text wins), "(RX)" remix, "(CR)" cover
+std::string id3Genre(const std::string& v) {
+  if (v.empty()) return v;
+  if (v[0] == '(') {
+    size_t close = v.find(')');
+    if (close != std::string::npos) {
+      std::string rest = v.substr(close + 1), inner = v.substr(1, close - 1);
+      if (!rest.empty()) return rest;
+      if (!inner.empty() && isdigit((unsigned char)inner[0])) return genreByNumber(atoi(inner.c_str()));
+      return inner == "RX" ? "Remix" : inner == "CR" ? "Cover" : inner;
+    }
+  }
+  bool digits = true;
+  for (char c : v) digits &= isdigit((unsigned char)c) != 0;
+  return digits ? genreByNumber(atoi(v.c_str())) : v;
+}
 
 // One Vorbis comment list (FLAC, Ogg Vorbis, Opus): little-endian lengths, "KEY=value".
 void vorbisComments(const uint8_t* p, size_t n, Tags& t) {
@@ -57,6 +99,9 @@ void vorbisComments(const uint8_t* p, size_t n, Tags& t) {
     else if (!strcasecmp(key.c_str(), "ALBUMARTIST")) t.albumArtist = v;
     else if (!strcasecmp(key.c_str(), "ALBUM")) t.album = v;
     else if (!strcasecmp(key.c_str(), "TRACKNUMBER")) t.track = trackNumber(v);
+    else if (!strcasecmp(key.c_str(), "DISCNUMBER")) t.disc = trackNumber(v);
+    else if (!strcasecmp(key.c_str(), "GENRE")) t.genre = v;
+    else if (!strcasecmp(key.c_str(), "DATE") || (!strcasecmp(key.c_str(), "YEAR") && !t.year)) t.year = yearOf(v);
   }
 }
 
@@ -123,6 +168,10 @@ void mp4Walk(int fd, uint64_t start, uint64_t end, int depth, Tags& t) {
           else if (!memcmp(type, "aART", 4)) t.albumArtist = v;
           else if (!memcmp(type, "\xa9" "alb", 4)) t.album = v;
           else if (!memcmp(type, "trkn", 4) && dlen >= 20) t.track = b[16 + 2] << 8 | b[16 + 3];
+          else if (!memcmp(type, "disk", 4) && dlen >= 20) t.disc = b[16 + 2] << 8 | b[16 + 3];
+          else if (!memcmp(type, "\xa9" "gen", 4)) t.genre = v;
+          else if (!memcmp(type, "gnre", 4) && dlen >= 18 && t.genre.empty()) t.genre = genreByNumber((b[16] << 8 | b[17]) - 1);
+          else if (!memcmp(type, "\xa9" "day", 4)) t.year = yearOf(v);
         }
       }
     }
@@ -192,6 +241,9 @@ bool id3(int fd, Tags& t, uint64_t* audioStart) {
     else if (id == "TPE2") t.albumArtist = id3Text(f, len);
     else if (id == "TALB") t.album = id3Text(f, len);
     else if (id == "TRCK") t.track = trackNumber(id3Text(f, len));
+    else if (id == "TPOS") t.disc = trackNumber(id3Text(f, len));
+    else if (id == "TCON") t.genre = id3Genre(id3Text(f, len));
+    else if (id == "TDRC" || (id == "TYER" && !t.year)) t.year = yearOf(id3Text(f, len));
     else if (id == "TLEN") t.durationSec = atoi(id3Text(f, len).c_str()) / 1000;
     p += 10 + len;
   }

@@ -111,7 +111,8 @@ void applyTags(Track& t, const Tags& g) {
   if (!g.artist.empty()) t.artist = g.artist;
   else if (!g.albumArtist.empty()) t.artist = g.albumArtist;
   if (!g.album.empty()) t.album = g.album;
-  t.track = g.track;
+  t.albumArtist = g.albumArtist, t.genre = g.genre;
+  t.track = g.track, t.disc = g.disc, t.year = g.year;
   if (g.durationSec >= 0) t.durationSec = g.durationSec;
   t.tagged = true;
   t.dirty = true;
@@ -305,10 +306,25 @@ bool Library::open(const char* path) {
   sqlite3_exec(db_,
                "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"
                "CREATE TABLE IF NOT EXISTS tracks (path TEXT PRIMARY KEY, size INTEGER, modified INTEGER,"
-               " video INTEGER, title TEXT, artist TEXT, album TEXT, track INTEGER, duration INTEGER, tagged INTEGER);",
+               " video INTEGER, title TEXT, artist TEXT, album TEXT, track INTEGER, duration INTEGER, tagged INTEGER);"
+               "CREATE TABLE IF NOT EXISTS stats (path TEXT PRIMARY KEY, plays INTEGER, last_played INTEGER, rating INTEGER);",
                nullptr, nullptr, nullptr);
+  // version 2 (Nov 10): the album artist, genre, disc and year kept; every song's tags read again
+  int version = 0;
+  sqlite3_stmt* v = nullptr;
+  if (sqlite3_prepare_v2(db_, "PRAGMA user_version", -1, &v, nullptr) == SQLITE_OK && sqlite3_step(v) == SQLITE_ROW)
+    version = sqlite3_column_int(v, 0);
+  sqlite3_finalize(v);
+  if (version < 2)
+    sqlite3_exec(db_,
+                 "BEGIN; ALTER TABLE tracks ADD COLUMN album_artist TEXT; ALTER TABLE tracks ADD COLUMN genre TEXT;"
+                 " ALTER TABLE tracks ADD COLUMN disc INTEGER; ALTER TABLE tracks ADD COLUMN year INTEGER;"
+                 " UPDATE tracks SET tagged = 0 WHERE video = 0; PRAGMA user_version = 2; COMMIT;",
+                 nullptr, nullptr, nullptr);
   sqlite3_stmt* st = nullptr;
-  sqlite3_prepare_v2(db_, "SELECT path, size, modified, video, title, artist, album, track, duration, tagged FROM tracks",
+  sqlite3_prepare_v2(db_,
+                     "SELECT path, size, modified, video, title, artist, album, track, duration, tagged, album_artist, genre,"
+                     " disc, year FROM tracks",
                      -1, &st, nullptr);
   auto text = [&](int i) {
     const unsigned char* s = sqlite3_column_text(st, i);
@@ -324,11 +340,26 @@ bool Library::open(const char* path) {
     t.track = sqlite3_column_int(st, 7);
     t.durationSec = sqlite3_column_type(st, 8) == SQLITE_NULL ? -1 : sqlite3_column_int(st, 8);
     t.tagged = sqlite3_column_int(st, 9) != 0;
+    t.albumArtist = text(10), t.genre = text(11);
+    t.disc = sqlite3_column_int(st, 12), t.year = sqlite3_column_int(st, 13);
     t.dirty = false;
     setKey(t);
     tracks_.push_back(std::move(t));
   }
   sqlite3_finalize(st);
+  // plays and ratings, by path
+  std::unordered_map<std::string, Track*> byPath;
+  for (Track& t : tracks_) byPath[t.path] = &t;
+  if (sqlite3_prepare_v2(db_, "SELECT path, plays, last_played, rating FROM stats", -1, &st, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      auto it = byPath.find(text(0));
+      if (it == byPath.end()) continue;
+      it->second->plays = sqlite3_column_int(st, 1);
+      it->second->lastPlayed = sqlite3_column_int64(st, 2);
+      it->second->rating = sqlite3_column_int(st, 3);
+    }
+    sqlite3_finalize(st);
+  }
   return true;
 }
 
@@ -462,7 +493,7 @@ bool writeRows(sqlite3* db_, const std::vector<Track>& rows, const std::vector<s
   sqlite3_stmt* put = nullptr;
   sqlite3_prepare_v2(db_,
                      "INSERT OR REPLACE INTO tracks (path, size, modified, video, title, artist, album, track, duration,"
-                     " tagged) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                     " tagged, album_artist, genre, disc, year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                      -1, &put, nullptr);
   for (const Track& t : rows) {
     sqlite3_bind_text(put, 1, t.path.c_str(), -1, SQLITE_STATIC);
@@ -476,6 +507,10 @@ bool writeRows(sqlite3* db_, const std::vector<Track>& rows, const std::vector<s
     if (t.durationSec >= 0) sqlite3_bind_int(put, 9, t.durationSec);
     else sqlite3_bind_null(put, 9);
     sqlite3_bind_int(put, 10, t.tagged);
+    sqlite3_bind_text(put, 11, t.albumArtist.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(put, 12, t.genre.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(put, 13, t.disc);
+    sqlite3_bind_int(put, 14, t.year);
     sqlite3_step(put);
     sqlite3_reset(put);
   }
@@ -493,6 +528,137 @@ void byTitle(std::vector<const Track*>& v) {
 }
 }  // namespace
 
+std::vector<Library::Group> Library::albumArtists() const {
+  index();
+  return albumArtists_;
+}
+
+std::vector<Library::Group> Library::genres() const {
+  index();
+  return genres_;
+}
+
+int Library::yearOf(const std::vector<const Track*>& songs) {
+  std::unordered_map<int, int> count;  // the year most of them carry
+  int best = 0, most = 0;
+  for (const Track* t : songs)
+    if (t->year && ++count[t->year] > most) most = count[t->year], best = t->year;
+  return best;
+}
+
+namespace {
+int64_t wallMs() {
+  timespec t;
+  clock_gettime(CLOCK_REALTIME, &t);
+  return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
+}
+}  // namespace
+
+void Library::saveStats(const Track& t) {
+  sqlite3* db = db_;
+  std::string path = t.path;
+  int plays = t.plays, rating = t.rating;
+  int64_t last = t.lastPlayed;
+  worker_->post([db, path, plays, last, rating] {
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO stats (path, plays, last_played, rating) VALUES (?, ?, ?, ?)", -1, &st,
+                           nullptr) != SQLITE_OK)
+      return;
+    sqlite3_bind_text(st, 1, path.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(st, 2, plays);
+    sqlite3_bind_int64(st, 3, last);
+    sqlite3_bind_int(st, 4, rating);
+    sqlite3_step(st);
+    sqlite3_finalize(st);
+  });
+}
+
+void Library::notePlayed(const std::string& path) {
+  for (Track& t : tracks_)
+    if (!t.gone && t.path == path) {
+      t.plays++;
+      t.lastPlayed = wallMs();
+      saveStats(t);
+      generation_++;
+      return;
+    }
+}
+
+bool Library::setRating(const std::string& path, int stars) {
+  if (stars < 0 || stars > 5) return false;
+  for (Track& t : tracks_)
+    if (!t.gone && t.path == path) {
+      t.rating = stars;
+      saveStats(t);
+      generation_++;
+      return true;
+    }
+  return false;
+}
+
+namespace {
+std::vector<const Track*> songsWhere(const std::deque<Track>& tracks, const std::function<bool(const Track&)>& keep) {
+  std::vector<const Track*> v;
+  for (const Track& t : tracks)
+    if (!t.gone && !t.video && keep(t)) v.push_back(&t);
+  return v;
+}
+}  // namespace
+
+std::vector<const Track*> Library::mostPlayed(size_t max) const {
+  std::vector<const Track*> v = songsWhere(tracks_, [](const Track& t) { return t.plays > 0; });
+  std::stable_sort(v.begin(), v.end(), [](const Track* a, const Track* b) {
+    return a->plays != b->plays ? a->plays > b->plays : a->lastPlayed > b->lastPlayed;
+  });
+  if (v.size() > max) v.resize(max);
+  return v;
+}
+
+std::vector<const Track*> Library::recentlyPlayed(size_t max) const {
+  std::vector<const Track*> v = songsWhere(tracks_, [](const Track& t) { return t.lastPlayed > 0; });
+  std::stable_sort(v.begin(), v.end(), [](const Track* a, const Track* b) { return a->lastPlayed > b->lastPlayed; });
+  if (v.size() > max) v.resize(max);
+  return v;
+}
+
+std::vector<const Track*> Library::topRated() const {
+  std::vector<const Track*> v = songsWhere(tracks_, [](const Track& t) { return t.rating >= 4; });
+  std::stable_sort(v.begin(), v.end(), [](const Track* a, const Track* b) {
+    return a->rating != b->rating ? a->rating > b->rating : a->plays > b->plays;
+  });
+  return v;
+}
+
+std::vector<const Track*> Library::neverPlayed() const {
+  std::vector<const Track*> v = songsWhere(tracks_, [](const Track& t) { return t.plays == 0; });
+  byTitle(v);
+  return v;
+}
+
+bool Library::moved(const std::string& from, const std::string& to) {
+  for (Track& t : tracks_)
+    if (!t.gone && t.path == from) {
+      removed_.push_back(from);
+      t.path = to;
+      t.dirty = true;
+      setKey(t);
+      sqlite3* db = db_;
+      worker_->post([db, from, to] {  // the stats row follows (written after the tracks: same thread)
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(db, "UPDATE OR REPLACE stats SET path = ? WHERE path = ?", -1, &st, nullptr) != SQLITE_OK) return;
+        sqlite3_bind_text(st, 1, to.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(st, 2, from.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(st);
+        sqlite3_finalize(st);
+      });
+      indexed_ = false;
+      generation_++;
+      saveAsync();
+      return true;
+    }
+  return false;
+}
+
 std::vector<const Track*> Library::songs() const {
   index();
   return songs_;
@@ -506,14 +672,18 @@ std::vector<const Track*> Library::videos() const {
 namespace {
 // groups sorted case-insensitively by name (TreeMap with CASE_INSENSITIVE_ORDER: names differing only in
 // case join the first one seen)
-std::vector<Library::Group> group(const std::deque<Track>& tracks, bool album) {
+enum class By { Artist, Album, AlbumArtist, Genre };
+std::vector<Library::Group> group(const std::deque<Track>& tracks, By by) {
+  bool album = by == By::Album;
   std::vector<Library::Group> out;
   std::unordered_map<std::string, size_t> at;
   std::vector<std::string> keys;  // lower() of each group's name, computed once
   for (const Track& t : tracks) {
-    if (t.gone || t.video || (album && t.album.empty())) continue;
-    std::string name = album ? t.album : (t.artist.empty() ? "Unknown artist" : t.artist);
-    std::string k = lower(name);
+    if (t.gone || t.video || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
+    const std::string& artist = by == By::AlbumArtist && !t.albumArtist.empty() ? t.albumArtist : t.artist;
+    std::string name = album ? t.album : by == By::Genre ? t.genre : (artist.empty() ? "Unknown artist" : artist);
+    // an album is its name and its album artist: "Greatest Hits" by two artists are two albums
+    std::string k = lower(name) + (album && !t.albumArtist.empty() ? "\x1f" + lower(t.albumArtist) : "");
     auto it = at.find(k);
     if (it == at.end()) {
       at[k] = out.size();
@@ -538,6 +708,7 @@ std::vector<Library::Group> group(const std::deque<Track>& tracks, bool album) {
       const auto& ka = k[a];
       const auto& kb = k[b];
       if (ka.first != kb.first) return ka.first < kb.first;
+      if (a->disc != b->disc) return a->disc < b->disc;
       if (a->track != b->track) return a->track < b->track;
       return ka.second < kb.second;
     });
@@ -553,8 +724,10 @@ void Library::index() const {
     if (!t.gone) (t.video ? videos_ : songs_).push_back(&t);
   byTitle(songs_);
   byTitle(videos_);
-  artists_ = group(tracks_, false);
-  albums_ = group(tracks_, true);
+  artists_ = group(tracks_, By::Artist);
+  albums_ = group(tracks_, By::Album);
+  albumArtists_ = group(tracks_, By::AlbumArtist);
+  genres_ = group(tracks_, By::Genre);
   byPath_.clear();
   for (const Track& t : tracks_)
     if (!t.gone) byPath_[t.path] = &t;
