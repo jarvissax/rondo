@@ -75,6 +75,9 @@ class CoreHost {
   void wifiEnable(bool on);
   // the screen on or off: with it off the Wi-Fi chip saves power and the signal is not polled
   void screen(bool on);
+  // Settings › Date & time: whether rondo-core sets the clock and the time zone from the network (at
+  // each Wi-Fi connection, and at once when one is switched on)
+  void clockConfigure(bool autoTime, bool autoZone);
   void wifiScan();
   void wifiConnect(int id);  // a saved network
   void wifiJoin(const std::string& ssid, WifiSecurity security, const std::string& password);

@@ -80,6 +80,9 @@ class PowerScreen : public ShellListScreen {
       goAt_ = 0;
       saveConfigNow();
       savePrefsNow();
+      resumeSaveNow();  // the queue and the place in the song, for the next start
+      // the song's file closed, so unmounting the card stops nothing of Rondo's
+      if (g_player.active()) g_player.release();
       if (restart_) power::reboot();
       else power::shutdown();
     }

@@ -18,7 +18,7 @@ namespace rondo::ui {
 enum class Icon : uint8_t {
   Chevron, Play, Pause, Battery, Wifi, Search, Note, Shuffle, Repeat, Volume, Check, Bluetooth, Gear, Folder,
   Bars, Info, Person, Disc, Sun, Timer, Screen, Cloud, Radio, Power, Theme, Playlist, Plus, Trash, Refresh,
-  Shorts,
+  Shorts, Clock,
   // the two brand logos, each in two colors (drawn as their two masks)
   MusicLogoDisc, MusicLogoMarks, VideoLogoButton, VideoLogoPlay,
   // the battery's two parts: the outline and tip (icon color) and the charge (by level)

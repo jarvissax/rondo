@@ -12,9 +12,11 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <deque>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <SLES/OpenSLES.h>
@@ -267,6 +269,18 @@ class Engine {
   bool fmOnOutput_ = false;  // the radio's step is on the output (not music's)
   void restoreVolumes();
   void saveVolume(audio_devices_t device, int index);
+
+ public:
+  // mediaserver died (AudioSystem's error callback): until the new one has the volume ranges and this
+  // Y1's levels again, the output plays silence. A fresh audio policy has one step per stream, so its
+  // default step is full volume (Nov 10: vold stopped mediaserver for the USB drive, and the next song
+  // played at full volume); AudioTrack reconnects to the new mediaserver by itself and would play at it.
+  void audioLost();
+
+ private:
+  std::atomic<bool> audioLost_{false};
+  std::atomic<bool> recovering_{false};
+  void recoverAudio();
 };
 
 void Engine::publish() {
@@ -1164,7 +1178,7 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
   }
   int16_t* b = buffers_[next_];
   next_ = (next_ + 1) % kBuffers;
-  if (fmSounding_) {  // the radio plays: its ring, music's left where it is
+  if (fmSounding_ && !audioLost_) {  // the radio plays: its ring, music's left where it is
     int n = int(std::min<uint64_t>(fmWrite_ - fmRead_, kBufferFrames));
     for (int k = 0; k < n; k++) {
       size_t at = size_t((fmRead_ + uint64_t(k)) % kFmRingFrames) * 2;
@@ -1179,8 +1193,9 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     pthread_mutex_unlock(&mu_);
     return;
   }
-  // a video's sound waits (silence, nothing taken from the ring) until its picture is there
-  int n = waitingForPicture() ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
+  // a video's sound waits (silence, nothing taken from the ring) until its picture is there; all of it
+  // waits while mediaserver comes back (audioLost)
+  int n = audioLost_ || waitingForPicture() ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
   for (int k = 0; k < n; k++) {
     size_t at = size_t((readAt_ + uint64_t(k)) % kRingFrames) * 2;
     b[k * 2] = ring_[at];
@@ -1268,9 +1283,46 @@ void Engine::saveVolume(audio_devices_t device, int index) {
   FILE* f = fopen(tmp.c_str(), "w");
   if (!f) return;
   for (auto& l : lines) fprintf(f, "%x %d\n", l.first, l.second);
-  bool ok = fflush(f) == 0;
+  bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;  // on the flash before it counts: a power cut keeps it
   fclose(f);
   if (ok) rename(tmp.c_str(), volumesFile_.c_str());
+}
+
+namespace {
+Engine* g_audioEngine = nullptr;
+void onAudioError(android::status_t err) {
+  if (err == android::DEAD_OBJECT && g_audioEngine) g_audioEngine->audioLost();
+}
+}  // namespace
+
+void Engine::audioLost() {
+  audioLost_ = true;  // silence from the next buffer on
+  if (recovering_.exchange(true)) return;
+  fprintf(stderr, "rondo-player: mediaserver is gone: silent until the volumes are back\n");
+  std::thread([this] { recoverAudio(); }).detach();
+}
+
+void Engine::recoverAudio() {
+  using android::AudioSystem;
+  // the new mediaserver's services (init starts it again within a second or two)
+  auto sm = android::defaultServiceManager();
+  for (int i = 0; i < 300; i++) {
+    if (sm->checkService(android::String16("media.audio_policy")) != nullptr && sm->checkService(android::String16("media.audio_flinger")) != nullptr)
+      break;
+    usleep(100000);
+  }
+  usleep(300000);  // its policy set up its outputs
+  restoreVolumes();
+  if (fmOnOutput_ && fmVolume_ >= 0)  // the radio was sounding: its own step on the output, not music's
+    AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, fmVolume_, AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC));
+  fmSpeakerApply(fmOnOutput_ && fmSpeaker_);
+  readVolume();
+  recovering_ = false;
+  audioLost_ = false;
+  pthread_mutex_lock(&mu_);
+  publish();
+  pthread_mutex_unlock(&mu_);
+  fprintf(stderr, "rondo-player: mediaserver started again: the volume ranges and levels are back\n");
 }
 
 void Engine::main() {
@@ -1284,6 +1336,8 @@ void Engine::main() {
   // system_server hosts; without it, rondo does (N0 log)
   if (android::defaultServiceManager()->checkService(android::String16("permission")) == nullptr)
     rondo::PermissionService::publish();
+  g_audioEngine = this;
+  android::AudioSystem::setErrorCallback(onAudioError);  // mediaserver dying: audioLost()
   restoreVolumes();
   // the radio's speaker left forced by a player that ended mid-broadcast: media goes where it should
   fmSpeakerApply(false);

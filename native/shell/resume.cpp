@@ -51,6 +51,7 @@ bool writeFile(const std::string& path, const std::string& text) {
 }
 
 std::vector<std::string> g_savedQueue;  // what queue.txt holds
+bool g_resumeWaiting = false;          // the queue is on a card not mounted yet
 std::string g_savedState;
 int64_t g_stateAt = 0;
 
@@ -114,8 +115,16 @@ void resumeRestore() {
     fclose(q);
   }
   if (paths.empty() || index >= int(paths.size())) return;
-  // a card song still there; a streamed one is asked for again
-  if (!isStream(paths[size_t(index)]) && access(paths[size_t(index)].c_str(), R_OK) != 0) return;
+  // a card song still there; a streamed one is asked for again. The card's mount at boot runs in the
+  // background (firmware/rondo/start), so after a restart it may not be there yet: then this is asked
+  // again once it is (main.cpp; Nov 10: the queue was lost at every restart).
+  const std::string& cur = paths[size_t(index)];
+  if (!isStream(cur) && access(cur.c_str(), R_OK) != 0) {
+    int root = cur.compare(0, 17, "/storage/sdcard0/") == 0 ? 1 : cur.compare(0, 17, "/storage/sdcard1/") == 0 ? 2 : 0;
+    g_resumeWaiting = root && !(g_library.presentRoots() & root);
+    return;
+  }
+  g_resumeWaiting = false;
   g_savedQueue = paths;
   // playing again only after a crash or a quick restart (seconds ago); after a night off, paused
   bool resume = playing && time(nullptr) - at < 20;
@@ -124,5 +133,11 @@ void resumeRestore() {
   g_player.restoreQueue(paths, index, ms, resume);
   printf("rondo: the queue is back: %zu songs, at %d, %lld ms%s\n", paths.size(), index, ms, resume ? ", playing" : "");
 }
+
+}  // namespace rondo::shell
+
+namespace rondo::shell {
+
+bool resumeWaitingForCard() { return g_resumeWaiting; }
 
 }  // namespace rondo::shell

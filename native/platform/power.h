@@ -26,7 +26,12 @@ struct Battery {
 Battery battery();
 
 int headset();    // the wired jack (h2w): 0 nothing, 1 a headset, 2 headphones
-void shutdown();  // init's sys.powerctl
+// Off, or off and on again: the card unmounted (vold, at most 6 s), everything written out and
+// remounted read-only, then the kernel (libcutils' android_reboot, as Android's ShutdownThread ended).
+// Not through init's sys.powerctl: this firmware's init.rc has no trigger for it (Android 4.2's Java
+// layer called android_reboot itself), so setting it did nothing (Nov 10: stuck on "Shutting down…").
+// They don't return.
+void shutdown();
 // The CPU (both cores of the Cortex-A7). After a cold boot the Y1 keeps the second core off and the
 // clock pinned at 1.0 GHz until Android's framework says otherwise (measured Nov 9): without it,
 // cpuSetup() lets MediaTek's hotplug governor bring the second core in under load and scale the clock

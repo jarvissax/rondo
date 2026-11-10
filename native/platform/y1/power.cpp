@@ -9,8 +9,11 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <errno.h>
+
 #include <atomic>
 #include <string>
+#include <thread>
 
 #include <cutils/properties.h>
 
@@ -139,14 +142,42 @@ void cpuBothCores(bool on) {
   writeFile(hp("cpu_num_base").c_str(), on ? "2" : "1");  // the governor keeps at least this many in
 }
 
-void shutdown() {
+namespace {
+// the card and the internal storage unmounted cleanly (their FAT marked clean), as Android's
+// MountService did before power-off; vold stops whatever still has a file open on them. At most 6 s.
+void unmountStorage() {
   sync();
-  property_set("sys.powerctl", "shutdown");
+  std::atomic<bool> done{false};
+  std::thread t([&done] {
+    for (const char* v : {"/storage/sdcard0", "/storage/sdcard1"}) {
+      std::string cmd = std::string("/system/bin/vdc volume unmount ") + v + " force > /dev/null 2>&1";
+      if (system(cmd.c_str()) != 0) fprintf(stderr, "rondo: %s didn't unmount\n", v);
+    }
+    done = true;
+  });
+  for (int i = 0; i < 60 && !done; i++) usleep(100000);
+  if (done) t.join();
+  else t.detach();  // vold is stuck: off all the same (the remount below makes the card read-only)
+  sync();
+}
+
+// libcutils (4.2): sync, everything remounted read-only, then reboot(2)
+extern "C" int android_reboot(int cmd, int flags, char* arg);
+constexpr int kRbRestart = int(0xDEAD0001), kRbPowerOff = int(0xDEAD0002);
+}  // namespace
+
+void shutdown() {
+  fprintf(stderr, "rondo: powering off\n");
+  unmountStorage();
+  android_reboot(kRbPowerOff, 0, nullptr);
+  fprintf(stderr, "rondo: android_reboot didn't power off: %s\n", strerror(errno));
 }
 
 void reboot() {
-  sync();
-  property_set("sys.powerctl", "reboot");
+  fprintf(stderr, "rondo: restarting\n");
+  unmountStorage();
+  android_reboot(kRbRestart, 0, nullptr);
+  fprintf(stderr, "rondo: android_reboot didn't restart: %s\n", strerror(errno));
 }
 
 }  // namespace rondo::power

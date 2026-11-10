@@ -3,6 +3,7 @@
 // 4.2 lays out a one-line TextView. Sizes are 1.0.x's mockup units through dp(), as there.
 #pragma once
 #include <math.h>
+#include <time.h>
 
 #include <functional>
 #include <string>
@@ -68,7 +69,7 @@ struct Tile {
 namespace tiles {
 extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,
     albums, dashboard, brightness, timer, radio, lyrics, sound, accel, wheel, videos, shuffle, power, restart, theme,
-    playlists, add, search, recent, del, rescan, shorts, update, equalizer;
+    playlists, add, search, recent, del, rescan, shorts, update, equalizer, clock;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 
@@ -80,7 +81,12 @@ void fillDiagonal(Canvas& c, Rect r, Color c0, Color c1, Color c2);
 struct Status {
   bool playing = false, online = false;
   float battery = 1;
+  std::string date, time;  // the status bar's clock: "Nov 10", "09:43" (or "9:43 AM"), in the device's time zone
 };
+// the clock's two parts now (readClock), and the longer forms Settings › Date & time shows
+void readClock(Status& s, bool clock24);
+std::string clockTime(time_t t, bool clock24);       // "09:43" or "9:43 AM"
+std::string clockDate(time_t t, bool weekdayAndYear);  // "Nov 10", or "Tue, Nov 10, 2026"
 void statusBar(Env& e, float w, const Status& s, const std::string& title, const std::string& title2 = "", float t = 0);
 
 // One row of a shell list (Row.Entry / Row.Header in RowList.kt).

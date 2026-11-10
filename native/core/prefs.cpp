@@ -104,6 +104,9 @@ Prefs loadPrefs(const std::string& path) {
   flag("clickSound", p.clickSound);
   flag("accountMusic", p.accountMusic);
   flag("accountVideos", p.accountVideos);
+  flag("autoTime", p.autoTime);
+  flag("autoZone", p.autoZone);
+  flag("clock24", p.clock24);
   // a file from before Bluetooth was native: Android's setting, once
   if (yyjson_is_bool(yyjson_obj_get(root, "bluetoothOn"))) flag("bluetoothOn", p.bluetoothOn);
   else fromAndroidGlobal("bluetooth_on", p.bluetoothOn);
@@ -115,13 +118,14 @@ Prefs loadPrefs(const std::string& path) {
 }
 
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[400];
+  char json[512];
+  auto b = [](bool v) { return v ? "true" : "false"; };
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
-                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d}\n",
-                   p.videoQuality, p.brightness, p.screenTimeoutMs, p.clickSound ? "true" : "false",
-                   p.accountMusic ? "true" : "false", p.accountVideos ? "true" : "false", p.bluetoothOn ? "true" : "false",
-                   p.wifiOn ? "true" : "false", p.fmVolume);
+                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
+                   "\"clock24\":%s}\n",
+                   p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
+                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24));
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

@@ -27,6 +27,9 @@ struct Behavior {
 
 struct Server {
   std::string url, token;  // empty: not paired
+  // YouTube straight from the Y1, without the server (direct mode, rondo-core's local server); also
+  // whenever no server is set up
+  bool direct = false;
 };
 
 struct Preset {

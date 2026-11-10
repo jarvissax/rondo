@@ -51,9 +51,9 @@ class MusicScreen : public TabbedListScreen {
     Label name = label(e, "Music", 15, true);
     drawLabel(e, name, x, float((H - name.h) / 2), white);
     x += name.w + e.dp(10);
-    drawPills(e, x, H, h);
-    // battery only: the pills leave no room for Wi-Fi
-    statusIcons(e, w - e.dp(10), H, e.p.darkMuted, false);
+    float pillsEnd = drawPills(e, x, H, h);
+    // battery only: the pills leave no room for Wi-Fi (the date goes too when they leave none for it)
+    statusIconsFit(e, pillsEnd + e.dp(10), w - e.dp(10), H, e.p.darkMuted, false);
   }
   std::vector<Row> sectionRows(const std::vector<Section>& sections) {
     std::vector<Row> rows;

@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
   applyBrightness(g_prefs.brightness);
   // the server's answers kept for two minutes, on disk too: beside the prefs
   const std::string apiCache = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache";
-  g_core.apiConfigure(g_config.server.url, g_config.server.token, apiCache);
+  g_core.apiConfigure(apiBase(), apiToken(), apiCache);
   // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
   if (g_prefs.bluetoothOn) g_core.btPower(true);
@@ -263,14 +263,14 @@ int main(int argc, char** argv) {
     size_t tab = s.find('\t');
     if (tab != std::string::npos) g_core.wifiJoin(s.substr(0, tab), WifiSecurity::Psk, s.substr(tab + 1));
   }
-  loader.configure(g_config.server.url, g_config.server.token);
-  g_player.configure(g_config.server.url, g_config.server.token);
+  loader.configure(apiBase(), apiToken());
+  g_player.configure(apiBase(), apiToken());
   resumeRestore();  // the queue as Rondo left it (a restart, a crash)
   // Settings › Server connected to another server or took a token: everything that talks to it
   g_onServerChanged = [&] {
-    g_core.apiConfigure(g_config.server.url, g_config.server.token, apiCache);
-    loader.configure(g_config.server.url, g_config.server.token);
-    g_player.configure(g_config.server.url, g_config.server.token);
+    g_core.apiConfigure(apiBase(), apiToken(), apiCache);
+    loader.configure(apiBase(), apiToken());
+    g_player.configure(apiBase(), apiToken());
   };
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
@@ -325,7 +325,9 @@ int main(int argc, char** argv) {
     if (g_prefs.clickSound) g_player.click();
   };
   g_onSleep = [&] { dispatch.cancel(); };
-  Status status{false, readOnline(), readBattery()};
+  Status status{false, readOnline(), readBattery(), "", ""};
+  readClock(status, g_prefs.clock24);
+  g_core.clockConfigure(g_prefs.autoTime, g_prefs.autoZone);  // Settings › Date & time, for rondo-core
   printf("rondo: %zu files in the library (%.0f ms), ready at %.0f ms\n", g_library.tracks().size(), (tLib - t0) / 1e6,
          (now_ns() - t0) / 1e6);
 
@@ -364,7 +366,7 @@ int main(int argc, char** argv) {
     for (Icon k : {Icon::Note, Icon::Play, Icon::Folder, Icon::Bars, Icon::Gear, Icon::Wifi, Icon::Bluetooth, Icon::Cloud,
                    Icon::Info, Icon::Person, Icon::Disc, Icon::Screen, Icon::Sun, Icon::Timer, Icon::Radio, Icon::Volume,
                    Icon::Shuffle, Icon::Power, Icon::Refresh, Icon::Theme, Icon::Playlist, Icon::Plus, Icon::Search,
-                   Icon::Trash, Icon::Shorts, Icon::Check})
+                   Icon::Trash, Icon::Shorts, Icon::Check, Icon::Clock})
       list.push_back({k, d(16), d(16)});
     for (Icon k : {Icon::Bars, Icon::Folder, Icon::Radio, Icon::Gear}) list.push_back({k, d(70), d(70)});
     list.push_back({Icon::Chevron, d(8), d(12)});
@@ -465,14 +467,18 @@ int main(int argc, char** argv) {
       int m = g_library.presentRoots();
       if (m != roots && !g_library.scanning()) {
         if (m & ~roots) g_library.scanAsync();
+        // the queue waited for the card: back now, unless something else plays already
+        if ((m & ~roots) && resumeWaitingForCard() && !g_player.active()) resumeRestore();
         roots = m;
       }
     }
     if ((g_player.state().playing != 0) != status.playing) changed = true;
     if (now_ns() - lastStatus >= 500 * kMs) {  // 1.0.x refreshes on its 500 ms tick
       lastStatus = now_ns();
-      Status s{false, readOnline(), readBattery()};
-      if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f) status = s, changed = true;
+      Status s{false, readOnline(), readBattery(), "", ""};
+      readClock(s, g_prefs.clock24);  // the minute turning redraws the status bar
+      if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f || s.time != status.time || s.date != status.date)
+        status = s, changed = true;
     }
     if (now_ns() - lastLog > 2 * kSec) {  // development: what the services say, every 2 s
       lastLog = now_ns();

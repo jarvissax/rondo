@@ -36,6 +36,7 @@ void rememberStream(const std::string& path, const Item& item);  // a restored q
 void resumeTick(int64_t now);
 void resumeSaveNow();  // on the way out
 void resumeRestore();
+bool resumeWaitingForCard();  // the restore waits for the card (resumeRestore again once it is mounted)
 // music_screens.cpp: a playlist, album or artist row's screen; a song's menu
 void openMusicContainer(const Item& item);
 void openSongMenu(const Item& song);
@@ -51,6 +52,7 @@ std::string wifiName();
 // they next need the loop; whether frames are drawn now; a wake waiting for its first frame; a frame
 // presented (the backlight after a wake). g_onSleep: the screen went off (the loop lets go of holds).
 std::unique_ptr<Screen> makePower();
+std::unique_ptr<Screen> makeDateTime();  // Settings › Date & time (date_screens.cpp)
 bool powerFilter(const InputEvent& ev);
 bool powerTick(int64_t now);
 int64_t powerWakeAt();
@@ -77,6 +79,11 @@ extern std::string g_dashboardAssets;     // <dir>/dashboard and <dir>/fonts
 void serverState(std::function<void(const std::string&)> done);
 void checkAccounts();
 extern std::function<void()> g_onServerChanged;  // the server's address or token changed: everything that talks to it
+// Which YouTube Rondo talks to: directly (chosen, or no server set up), or the user's Rondo server.
+// apiBase()/apiToken() are what every part of Rondo asks: the server's, or direct mode's local server.
+bool directMode();
+std::string apiBase();
+std::string apiToken();
 // Software update (SoftwareUpdate.kt): this Y1's firmware number, GET /update's version, and which is newer
 constexpr const char* kVersion = kRondoVersion;  // core/version.h (tools/set-version.sh)
 int firmwareLevel();
@@ -145,11 +152,13 @@ std::pair<std::string, std::string> firstAndRest(const std::string& subtitle);
 // brightness, from the picture decoded at sourcePx (the view showing it); false while it loads.
 // sourceH: a picture decoded at sourcePx x sourceH (0: square), as the row that shows it decodes it
 bool artColor(Env& e, const std::string& path, int sourcePx, Color* out, int sourceH = 0);
-// StatusIcons: Wi-Fi (dimmed offline), the percentage and the battery, ending at `right` in a row
-// rowH tall; returns its left edge.
-// hidePercent: a header that runs out of room (YouTube's three pills) keeps the battery only
-float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true, bool hidePercent = false);
-float statusIconsWidth(Env& e, bool showWifi);
+// StatusIcons: the date and the time, Wi-Fi (dimmed offline), the percentage and the battery, ending
+// at `right` in a row rowH tall; returns its left edge.
+// A header that runs out of room (YouTube's three pills) gives up the date first (hideDate), then the
+// percentage (hidePercent): statusIconsFit() picks for the room there is.
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true, bool hidePercent = false, bool hideDate = false);
+float statusIconsWidth(Env& e, bool showWifi, bool hidePercent = false, bool hideDate = false);
+float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool showWifi);
 
 }  // namespace rondo::shell
 

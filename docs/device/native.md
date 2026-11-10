@@ -66,6 +66,16 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
 
 - OpenSL ES works from a native process with only mediaserver running: no underruns, real-time
   playback.
+- **A restarted mediaserver is at full volume.** Without Android's AudioService nothing tells the audio
+  policy its ranges, so every stream has one step (0 to 1) and step 1 is full volume. Rondo's player
+  sets the ranges (`initStreamVolume`, music 0-13) and the saved levels when it starts, but mediaserver
+  can restart under it: vold stops every process that has a file open on the card when the card is
+  unmounted or shared as a USB drive, and mediaserver had card videos open from stuck frame grabs
+  (Nov 10). AudioTrack reconnects to the new mediaserver by itself and played the next song at full
+  volume. `AudioSystem::setErrorCallback` reports the death (`DEAD_OBJECT`); Rondo's output plays
+  silence from then until the new mediaserver has the ranges and the levels again
+  (`player/engine.cpp`, `audioLost`). `dumpsys media.audio_policy` shows each stream's range and
+  index per output.
 - MediaTek's mixer uses 1024-frame periods at 44.1 kHz (23.2 ms). A normal track gets a 4096-frame
   buffer (92.9 ms).
 
@@ -142,13 +152,32 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   a check byte over the record before it: from 0, the even-index bytes added and the odd-index bytes
   XORed, in turn (`WIFI` 512 + 2 bytes, `BT_Addr` 30 + 2, `WIFI_CUSTOM` 4 + 2). `WIFI`: two version
   words, the MAC address at 4-9.
-- **Time zone:** bionic's `localtime` reads `persist.sys.timezone` at each call, so setting the
-  property changes the time zone at once in every process, and it outlasts a reboot. The firmware's
-  tzdata is 2012h (`/system/usr/share/zoneinfo/zoneinfo.idx`: a 40-byte name and three 32-bit numbers
-  per zone; it has `Etc/UTC` but no bare `UTC`). The stock firmware ships `Asia/Shanghai`.
+- **Time zone:** bionic's `localtime` reads `TZ`, else `persist.sys.timezone`, at each call, so setting
+  the property changes the time zone at once in every process, and it outlasts a reboot. The stock
+  firmware ships `Asia/Shanghai`.
+- **Time zone data:** bionic 4.2 reads only `/system/usr/share/zoneinfo/zoneinfo.idx` and `.dat`
+  (no `/data/misc/zoneinfo`). The base firmware's are tzdata 2012h, whose rules are long out of date:
+  Moscow is +4 instead of +3, Istanbul +2 instead of +3, and Mexico City still switches to
+  summer time. The format: `zoneinfo.dat` is the zones' TZif files one after another;
+  `zoneinfo.idx` is a 52-byte entry for each zone, sorted by name (40 bytes of name, then big-endian
+  int32s: start in the .dat, length, standard offset in ms); `zoneinfo.version` is "2012h\n". bionic
+  reads the TZif's version-1 data (32-bit `time_t`), so zic must write "fat" files (`-b fat`; slim
+  ones leave it empty). `tools/firmware/zoneinfo.mjs` packs zic's output; `firmware/zoneinfo` holds
+  2026f (597 zones), which `firmware/build.sh` puts in. IANA has since dropped invented
+  abbreviations, so `date` shows a number such as `+03` where 2012h had a name.
+- **The RTC:** `ioctl(/dev/alarm, ANDROID_ALARM_SET_RTC)` (Android's AlarmManagerService's way) sets
+  MediaTek's clock chip, which keeps counting while the Y1 is off; the kernel reads it at boot
+  (`/sys/class/rtc/rtc0/time` shows it, in UTC). A time set by hand survives a restart and a power-off.
 
 ## Power
 
+- **Shutting down and restarting:** this firmware's `init.rc` has no trigger for `sys.powerctl`
+  (Android 4.2's Java layer called libcutils' `android_reboot` itself), so setting it does nothing.
+  Rondo unmounts the card and the internal storage through vold, then calls
+  `android_reboot(0xDEAD0002 /* power off */ or 0xDEAD0001 /* restart */, 0, NULL)`, which syncs,
+  remounts everything read-only and calls `reboot(2)` (`platform/y1/power.cpp`). Switched off on a
+  USB cable, the Y1 enters MediaTek's power-off charging: a press shows the charge picture, holding
+  the center button about 3 s starts it.
 - **Battery and charger:** `/sys/class/power_supply/battery` has `capacity`, `status`, `batt_vol`
   (mV), `batt_temp` (tenths of °C), `BatteryAverageCurrent`, `ChargerVoltage` and `health`; `ac` and
   `usb` have `online`.
@@ -222,6 +251,15 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   card to a computer. A Y1 started on a computer's cable must still mount its card: the USB drive
   prompt only offers sharing it.
 - **net.hostname** (ConnectivityService's job) is needed before DHCP; see Wi-Fi.
+- **vold tells its clients:** every client of `/dev/socket/vold` receives its broadcasts, such as
+  `605 Volume sdcard2 /storage/sdcard0 state changed from 0 (No-Media) to 1 (Idle-Unmounted)`. Rondo
+  mounts on those instead of asking `volume list` every few seconds (asking every 2 s woke vold and
+  the CPU all the time).
+- **mediaserver's frame retriever can hang:** on the 2.0 firmware a native
+  `MediaMetadataRetriever.getFrameAtTime` call for a card video sometimes never returns (Nov 9: two
+  calls waiting in binder, the videos' files open in rondo-media). Rondo grabs a video's frame on a
+  thread of its own and gives up after 8 s, so the other artwork keeps coming. Why mediaserver hangs
+  isn't known yet.
 
 ## Keeping frames on time (measured with the N1 UI engine)
 

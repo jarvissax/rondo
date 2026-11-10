@@ -9,6 +9,14 @@ Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to keep your settings
 ([moving from 1.0](docs/install.md#moving-from-rondo-10)).
 
+### YouTube without a server
+
+- **YouTube and YouTube Music straight from the Y1.** Settings › Server › Connect to: **Directly to
+  YouTube** or **My server**. Directly, there is nothing to set up: home, search, albums, artists,
+  playlists, up next, Shorts, lyrics and playback (Opus, or AAC where a song has no Opus) all come
+  from YouTube itself. A Y1 without a server uses it on its own. Signed out for now: Library,
+  Subscriptions, History and Headphone match still need your server.
+
 ### Rondo, rebuilt
 
 - **Rebuilt, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
@@ -51,9 +59,14 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **A fixed Wi-Fi address.** The Y1 shipped without one, so it showed up on the network as a new
   device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
   About shows it.
-- **Your time zone.** The Y1 starts in UTC and takes the time zone of wherever it is online, through
-  your server, each time it joins Wi-Fi (Settings › About shows the zone and the time). It used to
-  stay on China's time zone.
+- **The date and the time in the status bar,** in your time zone, kept while the Y1 is off.
+- **Settings › Date & time:** the time and the time zone each set automatically or by hand. Set
+  automatically, the Y1 takes the time from the network and the time zone of wherever it is online,
+  each time it joins Wi-Fi. By hand, you set the date, the time and the time zone yourself, and choose
+  24-hour time or AM/PM. A new Y1 starts in UTC (it used to stay on China's time zone).
+- **Current time zone rules.** The firmware's time zone data was from 2012, so clocks in Russia, Turkey,
+  Mexico and other places that changed their rules since were an hour off for part of the
+  year. Rondo's firmware has IANA's 2026 data.
 
 ### Updates
 

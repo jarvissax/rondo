@@ -287,6 +287,10 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.roundRect(5.5f, 2, 18.5f, 22, 3.5f)}, 2.2f);
       p.fill({p.poly({10, 8, 10, 16, 16, 12}, true)});
       break;
+    case Icon::Clock:  // Settings › Date & time: a clock face
+      p.stroke({p.circle(12, 12, 9)}, 2.2f);
+      p.stroke({p.poly({12, 12, 12, 6.5f}, false), p.poly({12, 12, 16, 13.5f}, false)}, 2.2f);
+      break;
     default: break;
   }
 }

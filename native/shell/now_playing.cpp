@@ -151,13 +151,31 @@ static Color hsvToColor(const float hsv[3]) {
   return rgb(uint32_t(r) << 16 | uint32_t(g) << 8 | uint32_t(b));
 }
 
-float statusIconsWidth(Env& e, bool showWifi) {
+namespace {
+// the clock's width before the icons: the date (unless hidden), the time, and their gaps
+int clockWidth(Env& e, bool hideDate) {
+  const Status& st = g_app->status();
+  if (st.time.empty()) return 0;
+  int w = label(e, st.time, 10, true).w + e.dp(7);
+  if (!hideDate && !st.date.empty()) w += label(e, st.date, 10, false).w + e.dp(4);
+  return w;
+}
+}  // namespace
+
+float statusIconsWidth(Env& e, bool showWifi, bool hidePercent, bool hideDate) {
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(g_app->status().battery * 100 + 0.5f)));
-  return float((showWifi ? e.dp(11) + e.dp(5) : 0) + label(e, pct, 10, true).w + e.dp(3) + e.dp(18));
+  int pw = hidePercent ? -e.dp(3) : label(e, pct, 10, true).w;
+  return float(clockWidth(e, hideDate) + (showWifi ? e.dp(11) + e.dp(5) : 0) + pw + e.dp(3) + e.dp(18));
 }
 
-float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hidePercent) {
+float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool showWifi) {
+  bool hideDate = right - statusIconsWidth(e, showWifi) < left;
+  bool hidePercent = hideDate && right - statusIconsWidth(e, showWifi, false, true) < left;
+  return statusIcons(e, right, rowH, c, showWifi, hidePercent, hideDate);
+}
+
+float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hidePercent, bool hideDate) {
   const Status& st = g_app->status();
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(st.battery * 100 + 0.5f)));
@@ -166,6 +184,18 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hi
   int wifi = showWifi ? e.dp(11) + e.dp(5) : 0, bw = e.dp(18), bh = e.dp(11);
   int gw = wifi + pl.w + e.dp(3) + bw, gh = std::max({showWifi ? e.dp(11) : 0, pl.h, bh});
   float gx = right - gw, gy = float((rowH - gh) / 2);
+  float left = gx;  // the whole group's left edge, the clock's when it shows
+  // the clock before them: the date, then the time
+  if (!st.time.empty()) {
+    Label tl = label(e, st.time, 10, true);
+    left = gx - e.dp(7) - tl.w;
+    drawLabel(e, tl, left, float((rowH - tl.h) / 2), c);
+    if (!hideDate && !st.date.empty()) {
+      Label dl = label(e, st.date, 10, false);
+      left -= e.dp(4) + dl.w;
+      drawLabel(e, dl, left, float((rowH - dl.h) / 2), c);
+    }
+  }
   if (showWifi) {
     int s = e.dp(11);
     e.c.pushAlpha(st.online ? 1 : 0.3f);
@@ -174,7 +204,7 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hi
   }
   if (!hidePercent) drawLabel(e, pl, gx + wifi, gy + float((gh - pl.h) / 2), c);
   e.icons.battery(e.c, {gx + wifi + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
-  return gx;
+  return left;
 }
 
 bool artColor(Env& e, const std::string& path, int sourcePx, Color* out, int sourceH) {

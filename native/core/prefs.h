@@ -18,6 +18,9 @@ struct Prefs {
   // which account feeds the server has (GET /healthz "account", Accounts.kt): without one, YouTube Music
   // has no Library tab and YouTube no Subscriptions or History. Remembered so the tabs don't jump.
   bool accountMusic = true, accountVideos = true;
+  // Settings › Date & time: the time and the time zone from the network (each Wi-Fi connection), or
+  // as set by hand; the status bar's clock in 24 hours or AM/PM
+  bool autoTime = true, autoZone = true, clock24 = true;
 };
 
 // The file, or on the first run what 1.0.x's preferences and Android's settings database hold.

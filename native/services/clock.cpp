@@ -1,6 +1,7 @@
 // clock.h.
 #include "clock.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/ioctl.h>
 #include <stdio.h>
@@ -66,12 +67,11 @@ time_t parseDate(const std::string& s) {
 
 }  // namespace
 
-bool syncClock(const std::string& baseUrl) {
-  if (baseUrl.empty()) return false;
+bool syncClock(const std::string& url) {
+  if (url.empty()) return false;
   CURL* c = curl_easy_init();
   if (!c) return false;
   std::string date;
-  std::string url = baseUrl + "/healthz";
   curl_easy_setopt(c, CURLOPT_URL, url.c_str());
   curl_easy_setopt(c, CURLOPT_NOBODY, 1L);
   curl_easy_setopt(c, CURLOPT_USERAGENT, net::userAgent());
@@ -93,15 +93,8 @@ bool syncClock(const std::string& baseUrl) {
   if (!server) return false;
   time_t here = time(nullptr);
   if (here >= server - 2 && here <= server + 2) return true;
-  timeval tv{server, 0};
-  if (settimeofday(&tv, nullptr) != 0) return false;
-  timespec ts{server, 0};
-  int fd = open("/dev/alarm", O_RDWR);
-  if (fd >= 0) {
-    ioctl(fd, kAlarmSetRtc, &ts);  // so it holds over a reboot
-    close(fd);
-  }
-  fprintf(stderr, "rondo-core: the clock was %lld s off: set from the server\n", (long long)(here - server));
+  if (!setWallClock(server)) return false;
+  fprintf(stderr, "rondo-core: the clock was %lld s off: set from %s\n", (long long)(here - server), url.c_str());
   return true;
 }
 
@@ -168,5 +161,28 @@ bool timeZoneFromServer(Api& api) {
   setZone(name, "from the server");
   return true;
 }
+
+}  // namespace rondo
+
+namespace rondo {
+
+bool setWallClock(time_t t) {
+  timeval tv{t, 0};
+  if (settimeofday(&tv, nullptr) != 0) return false;
+  // Android's alarm driver sets the RTC on this kernel (AlarmManagerService's way), so the time holds
+  // while the Y1 is off and over a restart
+  timespec ts{t, 0};
+  int fd = open("/dev/alarm", O_RDWR);
+  bool rtc = fd >= 0 && ioctl(fd, kAlarmSetRtc, &ts) == 0;
+  if (fd >= 0) close(fd);
+  if (!rtc) fprintf(stderr, "rondo: the RTC wasn't set (%s)\n", strerror(errno));
+  return true;
+}
+
+void setTimeZoneByHand(const std::string& name) {
+  if (knownZone(name)) setZone(name, "set by hand");
+}
+
+bool knownTimeZone(const std::string& name) { return knownZone(name); }
 
 }  // namespace rondo

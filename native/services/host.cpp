@@ -76,6 +76,10 @@ void CoreHost::screen(bool on) {
   uint8_t v = on;
   send(kScreen, &v, 1);
 }
+void CoreHost::clockConfigure(bool autoTime, bool autoZone) {
+  uint8_t v[2] = {uint8_t(autoTime), uint8_t(autoZone)};
+  send(kClock, v, 2);
+}
 void CoreHost::wifiScan() { send(kWifiScan); }
 void CoreHost::wifiConnect(int id) {
   int32_t v = id;

@@ -23,6 +23,8 @@
 
 #include "../core/api.h"
 #include "../core/clock.h"
+#include "../direct/innertube.h"
+#include "../direct/server.h"
 
 #include "../player/protocol.h"  // readFully
 #include "core.h"
@@ -343,12 +345,18 @@ class ApiWorkers {
 std::string g_clockBase, g_clockToken;
 pthread_mutex_t g_clockMu = PTHREAD_MUTEX_INITIALIZER;
 Api* g_zoneApi = nullptr;  // made before the thread (libcurl's setup isn't thread-safe)
+// Settings › Date & time (kClock): either one off leaves what was set by hand alone; switching one on
+// asks the network again at once (g_clockKick)
+std::atomic<bool> g_autoTime{true}, g_autoZone{true};
+std::atomic<int> g_clockKick{0};
 void* clockLoop(void*) {
   prctl(PR_SET_NAME, "rondo-clock");
   uint32_t syncedFor = 0, zonedFor = 0;  // the address of the connection the clock, the zone was set on
   int64_t retryAt = 0, zoneRetryAt = 0;
+  int kick = 0;
   for (;;) {
     sleep(5);
+    if (kick != g_clockKick) kick = g_clockKick, syncedFor = zonedFor = 0, retryAt = zoneRetryAt = 0;
     uint32_t ip = g_shm->wifiState == 4 ? g_shm->ip : 0;
     if (!ip) {
       syncedFor = zonedFor = 0;
@@ -358,8 +366,12 @@ void* clockLoop(void*) {
     std::string base = g_clockBase, token = g_clockToken;
     pthread_mutex_unlock(&g_clockMu);
     if (base.empty()) continue;
+    if (!g_autoTime) syncedFor = ip;  // set by hand: not asked
+    if (!g_autoZone) zonedFor = ip;
     if (ip != syncedFor && now_ns() >= retryAt) {
-      if (syncClock(base)) syncedFor = ip;
+      // direct mode's local server has only this Y1's own clock: YouTube's Date header instead
+      bool local = base.compare(0, 17, "http://127.0.0.1:") == 0;
+      if (syncClock(local ? "https://www.youtube.com/generate_204" : base + "/healthz")) syncedFor = ip;
       else retryAt = now_ns() + 60 * kSec;
     }
     if (ip != zonedFor && now_ns() >= zoneRetryAt) {
@@ -383,6 +395,8 @@ void runCore(int sock, CoreState* shm) {
   wifi.start();
   ApiWorkers api(sock);
   Bluetooth bt(publish);
+  // direct mode's local server (direct/server.h): always listening, used when Rondo is in direct mode
+  if (!direct::serve()) fprintf(stderr, "rondo-core: direct mode's local server didn't start\n");
   timeZoneDefault();
   g_zoneApi = new Api();
   pthread_t clockThread;
@@ -404,6 +418,14 @@ void runCore(int sock, CoreState* shm) {
       case kWifiEnable: wifi.enable(len && p[0]); break;
       case kWifiScan: wifi.scan(); break;
       case kScreen: wifi.screen(len && p[0]); break;
+      case kClock: {
+        if (len < 2) break;
+        bool t = p[0] != 0, z = p[1] != 0;
+        bool newlyOn = (t && !g_autoTime) || (z && !g_autoZone);
+        g_autoTime = t, g_autoZone = z;
+        if (newlyOn) g_clockKick++;
+        break;
+      }
       case kWifiConnect: wifi.connect(i32()); break;
       case kWifiJoin: {
         if (len < 1) break;
@@ -425,7 +447,12 @@ void runCore(int sock, CoreState* shm) {
         std::string s(reinterpret_cast<const char*>(p), len);
         size_t z = s.find('\0'), z2 = z == std::string::npos ? z : s.find('\0', z + 1);
         std::string token = z == std::string::npos ? "" : s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
-        api.configure(s.substr(0, z), token, z2 == std::string::npos ? "" : s.substr(z2 + 1));
+        std::string cacheDir = z2 == std::string::npos ? "" : s.substr(z2 + 1);
+        api.configure(s.substr(0, z), token, cacheDir);
+        // direct mode keeps its visitor id and rules beside the prefs (the cache's folder's folder)
+        static std::string directData;
+        std::string data = cacheDir.empty() ? "" : cacheDir.substr(0, cacheDir.rfind('/'));
+        if (!data.empty() && data != directData) directData = data, direct::setDataDir(data);
         pthread_mutex_lock(&g_clockMu);
         g_clockBase = s.substr(0, z), g_clockToken = token;
         pthread_mutex_unlock(&g_clockMu);

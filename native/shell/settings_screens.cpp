@@ -369,7 +369,7 @@ class AboutScreen : public ShellListScreen {
     std::string server = g_config.server.url;
     for (const char* p : {"https://", "http://"})
       if (server.compare(0, strlen(p), p) == 0) server = server.substr(strlen(p));
-    add("Server", server.empty() ? "Not set up" : server);
+    add("Server", directMode() ? "Directly to YouTube" : server.empty() ? "Not set up" : server);
     list_.setRows(std::move(rows), true);
   }
   int64_t last_ = 0;
@@ -383,8 +383,8 @@ class SettingsScreen : public ShellListScreen {
   void onShow() override {
     render();
     checkServer();
-    // a newer Rondo, when the server knows one
-    if (!g_config.server.url.empty()) {
+    // a newer Rondo, when the server (or, in direct mode, the update page) knows one
+    {
       auto alive = alive_;
       g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
         if (!*alive || status != 200) return;
@@ -495,6 +495,7 @@ class SettingsScreen : public ShellListScreen {
       savePrefsNow();
       render();
     });
+    add("Date & time", clockTime(time(nullptr), g_prefs.clock24), tiles::clock, true, [] { g_app->push(makeDateTime()); });
     add("Server", server_, tiles::server, true, [] { g_app->push(makeServer()); });
     add("Software update", latest_.empty() ? "" : latest_ + " is out", tiles::update, true, [] { g_app->push(makeSoftwareUpdate()); });
     add("About", std::string("Rondo ") + kVersion, tiles::about, true,

@@ -111,6 +111,7 @@ Config loadConfig(const char* path) {
     if (yyjson_val* s = yyjson_obj_get(root, "server")) {
       c.server.url = str(s, "url", "");
       c.server.token = str(s, "token", "");
+      c.server.direct = yyjson_is_true(yyjson_obj_get(s, "direct"));
     }
     if (yyjson_val* r = yyjson_obj_get(root, "radio")) {
       c.radio.frequency = int(num(r, "frequency", c.radio.frequency));
@@ -157,6 +158,7 @@ bool saveConfig(const char* path, const Config& c) {
   else yyjson_mut_obj_add_strcpy(doc, s, "url", c.server.url.c_str());
   if (c.server.token.empty()) yyjson_mut_obj_add_null(doc, s, "token");
   else yyjson_mut_obj_add_strcpy(doc, s, "token", c.server.token.c_str());
+  if (c.server.direct) yyjson_mut_obj_add_true(doc, s, "direct");
   yyjson_mut_val* r = yyjson_mut_obj_add_obj(doc, root, "radio");
   yyjson_mut_obj_add_int(doc, r, "frequency", c.radio.frequency);
   yyjson_mut_obj_add_bool(doc, r, "speaker", c.radio.speaker);

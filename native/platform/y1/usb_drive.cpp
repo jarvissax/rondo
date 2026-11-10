@@ -133,18 +133,44 @@ struct Switching {
 };
 }  // namespace
 
+// The watch listens instead of asking: vold tells every client of its socket when a volume changes
+// state ("605 Volume sdcard2 /storage/sdcard0 state changed from 0 (No-Media) to 1 (Idle-Unmounted)"),
+// as MountService heard it. A volume that becomes idle is mounted (once per change); what is idle when
+// the watch connects is mounted then. Nothing wakes while nothing changes (asking every 2 s, as
+// this did for a day, woke vold and the CPU all the time).
 void watchCard() {
   std::thread([] {
     prctl(PR_SET_NAME, "rondo-card");
-    std::map<std::string, int> refused;
     for (;;) {
+      int s = socket(AF_UNIX, SOCK_STREAM, 0);
+      sockaddr_un a;
+      memset(&a, 0, sizeof(a));
+      a.sun_family = AF_UNIX;
+      snprintf(a.sun_path, sizeof(a.sun_path), "/dev/socket/vold");
+      if (s < 0 || connect(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != 0) {
+        if (s >= 0) close(s);
+        sleep(2);  // vold not listening yet (boot)
+        continue;
+      }
+      if (!g_switching)
+        for (const std::string& v : volumesIn(1)) vold("volume mount " + v);
+      std::string got;
+      char buf[512];
+      for (;;) {
+        ssize_t n = read(s, buf, sizeof(buf));
+        if (n <= 0) break;
+        got.append(buf, size_t(n));
+        size_t z;
+        while ((z = got.find('\0')) != std::string::npos) {
+          std::string m = got.substr(0, z);
+          got.erase(0, z + 1);
+          if (atoi(m.c_str()) != 605 || m.find(" to 1 (") == std::string::npos || g_switching) continue;
+          char label[64], path[128];
+          if (sscanf(m.c_str(), "%*d Volume %63s %127s", label, path) == 2) vold(std::string("volume mount ") + path);
+        }
+      }
+      close(s);
       sleep(2);
-      if (g_switching) continue;
-      std::vector<std::string> idle = volumesIn(1);
-      for (auto it = refused.begin(); it != refused.end();)  // no longer idle: its refusals are forgotten
-        it = std::find(idle.begin(), idle.end(), it->first) == idle.end() ? refused.erase(it) : std::next(it);
-      for (const std::string& v : idle)
-        if (refused[v] < 3 && vold("volume mount " + v) != 200) refused[v]++;
     }
   }).detach();
 }

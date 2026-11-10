@@ -148,7 +148,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
   }
 
   void check() {
-    if (g_config.server.url.empty()) {
+    if (!directMode() && g_config.server.url.empty()) {
       state_ = kNoServer;
       return render();
     }

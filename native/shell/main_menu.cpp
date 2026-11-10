@@ -8,18 +8,37 @@ namespace rondo::shell {
 // MainMenuScreen: the menu on the left (190 units), a preview of the selected entry on the right.
 class MainMenuScreen : public Screen {
  public:
+  // The pane changes in 180 ms: the backgrounds cross over the whole time, the old glyph and name fade
+  // out in the first half and the new ones in over the second, so two glyphs are never seen at once
+  // (until Nov 9 the new pane faded in over the old one, whose glyph and name, drawn on higher layers,
+  // stayed whole on top of it until the end). A change in the middle carries on from what is seen:
+  // back to the pane that was going is the same fade reversed; another one replaces the pane coming in
+  // (first half) or makes the one coming in the one going (second half).
   MainMenuScreen() {
     list_.onSelectionChanged = [this] {
       const Row* r = list_.selectedRow();
-      if (!r) return;
-      if (shown_ != r->tile) {
-        from_ = shown_;
+      if (!r || r->tile == shown_) return;
+      int64_t now = g_app->now();
+      float u = fade_.running(now) ? fade_.progress(now) : 1;
+      if (u < 1 && r->tile == from_) {
+        std::swap(from_, shown_);
+        restartAt(now, 1 - u);
+      } else if (u < 0.5f) {
         shown_ = r->tile;
-        fade_.begin(0, 1, now_, 180 * kMs, easeInOutCubic);
+      } else if (u < 1) {
+        from_ = shown_, shown_ = r->tile;
+        restartAt(now, 1 - u);
+      } else {
+        from_ = shown_, shown_ = r->tile;
+        restartAt(now, 0);
       }
     };
     build();
     from_ = shown_;
+  }
+  void restartAt(int64_t now, float u) {
+    const int64_t d = 180 * kMs;
+    fade_.begin(0, 1, now - int64_t(u * float(d)), d, [](float x) { return x; });
   }
   // Settings › Theme › Main menu reorders or hides entries: the menu is built again on the way back
   void onShow() override {
@@ -99,12 +118,12 @@ class MainMenuScreen : public Screen {
     e.c.layer(0);
     e.c.fill({lw, 0, 1, h}, p.barLine);
     Rect pane{lw + 1, 0, w - lw - 1, h};
-    float t = fade_.at(e.now);
-    if (from_ && t < 1) drawPane(e, pane, from_, 1);
-    if (shown_) {
-      e.c.pushAlpha(from_ && t < 1 ? t : 1);
-      drawPane(e, pane, shown_, 1);
-      e.c.popAlpha();
+    float u = fade_.progress(e.now);
+    if (from_ && from_ != shown_ && u < 1) {
+      drawPane(e, pane, from_, 1, 1 - easeInOutCubic(clamp01(2 * u)));
+      if (shown_) drawPane(e, pane, shown_, easeInOutCubic(u), easeInOutCubic(clamp01(2 * u - 1)));
+    } else if (shown_) {
+      drawPane(e, pane, shown_, 1, 1);
     }
   }
 
@@ -113,7 +132,8 @@ class MainMenuScreen : public Screen {
   // translucent rounded square (the logos alone), and its name
   // renderPane() for Now Playing with a song: the artwork on its own color (darker toward the bottom),
   // the title and the artist under it, centered, and a thin progress line
-  void drawPlaying(Env& e, Rect pane, const PlayerState& s) {
+  // (bg and fg: the background's and the rest's opacity, for the change between panes)
+  void drawPlaying(Env& e, Rect pane, const PlayerState& s, float bg, float fg) {
     auto darker = [](Color c, float f) {
       return rgb(uint32_t(((c >> 16) & 0xff) * f) << 16 | uint32_t(((c >> 8) & 0xff) * f) << 8 | uint32_t((c & 0xff) * f));
     };
@@ -121,7 +141,11 @@ class MainMenuScreen : public Screen {
     Color base = rgb(0x3a3f4a);
     artColor(e, artOf(path, 300), e.dp(98), &base);
     e.c.layer(0);
+    e.c.pushAlpha(bg);
     e.c.fillGradient(pane, darker(base, 1.0f), darker(base, 0.45f));
+    e.c.popAlpha();
+    if (fg <= 0) return;
+    e.c.pushAlpha(fg);
     int padX = e.dp(10), padY = e.dp(8);
     float ix = pane.x + padX, iy = pane.y + padY, iw = pane.w - 2 * padX, ih = pane.h - 2 * padY;
     int box = e.dp(98);
@@ -157,18 +181,23 @@ class MainMenuScreen : public Screen {
     e.c.layer(2);
     progressBar(e, {bx, y, float(box), float(barH)}, 0x46ffffff, rgb(0xffffff),
                 s.durationMs > 0 ? float(s.positionMs) / s.durationMs : 0, 0, 2);
+    e.c.popAlpha();
   }
 
-  void drawPane(Env& e, Rect pane, const Tile* tile, float) {
+  void drawPane(Env& e, Rect pane, const Tile* tile, float bg, float fg) {
     if (tile == &tiles::nowPlaying) {
       PlayerState s = g_player.state();
-      if (s.index >= 0 && s.path[0]) return drawPlaying(e, pane, s);
+      if (s.index >= 0 && s.path[0]) return drawPlaying(e, pane, s, bg, fg);
     }
     auto darker = [](Color c, float f) {
       return rgb(uint32_t(((c >> 16) & 0xff) * f) << 16 | uint32_t(((c >> 8) & 0xff) * f) << 8 | uint32_t((c & 0xff) * f));
     };
     e.c.layer(0);
+    e.c.pushAlpha(bg);
     fillDiagonal(e.c, pane, tile->top, tile->bottom, darker(tile->bottom, 0.7f));
+    e.c.popAlpha();
+    if (fg <= 0) return;
+    e.c.pushAlpha(fg);
     int padX = e.dp(10), padY = e.dp(8);
     float ix = pane.x + padX, iy = pane.y + padY, iw = pane.w - 2 * padX, ih = pane.h - 2 * padY;
     int box = e.dp(98);
@@ -200,6 +229,7 @@ class MainMenuScreen : public Screen {
     }
     e.c.layer(4);
     drawLabel(e, title, centerText(ix, iw, title.w), top + box + e.dp(9), rgb(0xffffff));
+    e.c.popAlpha();
   }
 
   RowList list_;

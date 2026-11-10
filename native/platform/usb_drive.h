@@ -12,8 +12,8 @@ bool computerConnected();
 // The card is the computer's (vold's Shared state).
 bool shared();
 // A thread that mounts whatever vold lists as idle (a card put in while running, the boot's mounts
-// still to come), as Android's MountService did, every 2 s, except while setShared hands the card over
-// (it passes through idle then); a volume refused three times is left alone until its state changes.
+// still to come), as Android's MountService did: when vold says a volume became idle, except while
+// setShared hands the card over (it passes through idle then).
 // vold answers one command at a time, a mount's check included, so never from the drawing thread.
 void watchCard();
 // Hands the card to the computer or takes it back, waiting until it has changed hands (up to 15 s

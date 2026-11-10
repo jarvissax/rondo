@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <atomic>
 #include <deque>
+#include <string>
 #include <memory>
 #include <turbojpeg.h>
 #include <fcntl.h>
@@ -36,6 +37,54 @@ FrameGrabber g_grabber = nullptr;
 void setFrameGrabber(FrameGrabber grabber) { g_grabber = grabber; }
 
 namespace {
+
+// A card video's frame, from a thread of its own with a time limit. mediaserver's retriever can keep
+// a call waiting for good (the 2.0 firmware, Nov 9: both decode workers sat in it with two videos
+// open, and no artwork came for anything after); a grab that doesn't answer in 8 s is given up, and
+// while it hangs no other is started, so the workers keep decoding everything else.
+struct GrabJob {
+  std::string path;
+  Pixels frame;
+  bool ok = false, done = false, abandoned = false;
+};
+pthread_mutex_t g_grabMu = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t g_grabCv = PTHREAD_COND_INITIALIZER;
+bool g_grabBusy = false;  // a grab is running (perhaps hung)
+
+bool grabWithin(const std::string& path, Pixels& out) {
+  pthread_mutex_lock(&g_grabMu);
+  if (g_grabBusy) {  // the last one hasn't come back: no frame for now
+    pthread_mutex_unlock(&g_grabMu);
+    return false;
+  }
+  g_grabBusy = true;
+  pthread_mutex_unlock(&g_grabMu);
+  GrabJob* job = new GrabJob;
+  job->path = path;
+  pthread_t t;
+  pthread_create(&t, nullptr, [](void* p) -> void* {
+    GrabJob* j = static_cast<GrabJob*>(p);
+    bool ok = g_grabber(j->path.c_str(), 10000000, j->frame);
+    pthread_mutex_lock(&g_grabMu);
+    j->ok = ok, j->done = true;
+    g_grabBusy = false;
+    bool gone = j->abandoned;
+    pthread_cond_broadcast(&g_grabCv);
+    pthread_mutex_unlock(&g_grabMu);
+    if (gone) delete j;
+    return nullptr;
+  }, job);
+  pthread_detach(t);
+  pthread_mutex_lock(&g_grabMu);
+  int64_t until = now_ns() + 8000 * kMs;
+  while (!job->done && now_ns() < until) waitUntil(&g_grabCv, &g_grabMu, until);
+  bool ok = job->done && job->ok;
+  if (ok) out = std::move(job->frame);
+  if (job->done) delete job;
+  else job->abandoned = true;  // its thread frees it, if it ever returns
+  pthread_mutex_unlock(&g_grabMu);
+  return ok;
+}
 
 // Area-filtered resample of the crop (cx, cy, cw, ch) of src into dst, 4 channels: each output pixel
 // is the exact average of the source area it covers.
@@ -357,7 +406,7 @@ struct Worker {
       rondo::readCover(path.c_str(), bytes);
       if (bytes.empty() && isVideo(path) && g_grabber) {
         Pixels frame;
-        if (g_grabber(path.c_str(), 10000000, frame) && frame.w > 0 && frame.h > 0) return fit(frame, r, px);
+        if (grabWithin(path, frame) && frame.w > 0 && frame.h > 0) return fit(frame, r, px);
       }
       if (bytes.empty()) folderPicture(path, bytes);
     }

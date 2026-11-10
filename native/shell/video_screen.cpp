@@ -48,9 +48,9 @@ class VideoScreen : public TabbedListScreen {
     e.icons.videoLogo(e.c, {x, float((H - lh) / 2), float(lw), float(lh)});
     x += lw + e.dp(9);
     float pillsEnd = drawPills(e, x, H, h);
-    // battery only; with three pills the percentage goes too when there is no room (StatusIcons.onLayout)
+    // battery only; with three pills the date, then the percentage go when there is no room (StatusIcons.onLayout)
     float right = w - e.dp(10), searchEnd = pillsEnd + e.dp(10);
-    statusIcons(e, right, H, e.p.darkMuted, false, right - statusIconsWidth(e, false) < searchEnd);
+    statusIconsFit(e, searchEnd, right, H, e.p.darkMuted, false);
   }
   void load(int tab) override {
     static const char* feeds[] = {"/video/home", "/video/subscriptions", "/video/history"};

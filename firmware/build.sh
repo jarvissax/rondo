@@ -117,6 +117,12 @@ done
 debugfs -R "dump /usr/keylayout/Stock.kl $WORK/Stock.kl" "$SYS" 2>/dev/null
 put "$SYS" "$WORK/Stock.kl" /usr/keylayout/Generic.kl
 echo "Generic.kl is now the stock layout."
+# current time zone rules: the base ships tzdata 2012h (Russia, Turkey, Mexico and more have changed
+# since); firmware/zoneinfo is IANA's, packed by tools/firmware/zoneinfo.mjs
+for f in zoneinfo.idx zoneinfo.dat zoneinfo.version; do
+  put "$SYS" "$HERE/zoneinfo/$f" "/usr/share/zoneinfo/$f"
+done
+echo "Time zones: tzdata $(cat "$HERE/zoneinfo/zoneinfo.version")."
 # the data image only holds Rockbox's data, the stock player's APK and the switching scripts
 for f in /data/com.innioasis.y1.apk /data/switch-to-stock.sh /data/update/update.sh /data/initialized; do
   exists "$DATA" "$f" && dfs "$DATA" "rm $f"

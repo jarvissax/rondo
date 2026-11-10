@@ -38,7 +38,14 @@ void takeAccounts(const Health& h) {
 }
 
 void useServer(const std::string& url, const std::string& token) {
-  g_config.server.url = url, g_config.server.token = token;
+  g_config.server.url = url, g_config.server.token = token, g_config.server.direct = false;
+  saveConfigNow();
+  if (g_onServerChanged) g_onServerChanged();
+}
+
+void useDirect(bool on) {
+  if (g_config.server.direct == on) return;
+  g_config.server.direct = on;
   saveConfigNow();
   if (g_onServerChanged) g_onServerChanged();
 }
@@ -58,10 +65,29 @@ class ServerScreen : public ShellListScreen {
  private:
   void render() {
     std::vector<Row> rows;
-    Row address = entry("Address", "", g_config.server.url.empty() ? "Not set up" : hostOf(g_config.server.url));
+    // Connect to: YouTube straight from the Y1, or the user's Rondo server (2.0, Nov 9)
+    rows.push_back(header("Connect to"));
+    bool direct = directMode();
+    Row yt = entry("Directly to YouTube", "No server needed", direct ? "Current" : "");
+    yt.onSelect = [this] {
+      useDirect(true);
+      test_.clear();
+      render();
+    };
+    rows.push_back(yt);
+    Row mine = entry("My server", g_config.server.url.empty() ? "Not set up yet" : hostOf(g_config.server.url), direct ? "" : "Current");
+    mine.onSelect = [this] {
+      if (g_config.server.url.empty()) return askAddress();
+      useDirect(false);
+      test_.clear();
+      render();
+    };
+    rows.push_back(mine);
+    rows.push_back(header("Status"));
+    Row address = entry("Address", "", direct ? "YouTube" : hostOf(g_config.server.url));
     address.tile = &tiles::server;
     rows.push_back(address);
-    Row test = entry("Connection test", "Calls the server and reports back");
+    Row test = entry("Connection test", direct ? "Asks YouTube and reports back" : "Calls the server and reports back");
     test.onSelect = [this] { runTest(); };
     rows.push_back(test);
     if (!test_.empty()) {
@@ -91,12 +117,32 @@ class ServerScreen : public ShellListScreen {
   }
 
   void runTest() {
-    Row calling = entry("Calling the server\xe2\x80\xa6");
+    Row calling = entry(directMode() ? "Asking YouTube\xe2\x80\xa6" : "Calling the server\xe2\x80\xa6");
     calling.enabled = false;
     show({calling});
-    if (g_config.server.url.empty()) return show({entry("No server yet", "Connect to one below")});
     auto alive = alive_;
     int64_t started = now_ns();  // the real clock: g_app->now() is the frame's
+    if (directMode()) {
+      // a search answered and a song's streams found: what playing needs
+      g_core.get("/music/search?type=song&q=" + Api::escape("Rondo alla turca"), 0, [this, alive, started](int status, const std::string& body) {
+        if (!*alive) return;
+        int ms = int((now_ns() - started) / 1000000);
+        if (status != 200) return show({entry(status == 0 ? "YouTube didn't answer" : "YouTube answered HTTP " + std::to_string(status), "Check the Wi-Fi")});
+        std::string id;
+        if (yyjson_doc* doc = yyjson_read(body.data(), body.size(), 0)) {
+          yyjson_val* first = yyjson_arr_get(yyjson_obj_get(yyjson_doc_get_root(doc), "items"), 0);
+          if (yyjson_is_str(yyjson_obj_get(first, "id"))) id = yyjson_get_str(yyjson_obj_get(first, "id"));
+          yyjson_doc_free(doc);
+        }
+        g_core.get("/resolve/" + id, 0, [this, alive, ms](int status, const std::string&) {
+          if (!*alive) return;
+          show({entry("Answered in", "", std::to_string(ms) + " ms"), entry("Playback", "", status == 200 ? "working" : "failing"),
+                entry("YouTube account", "", "signed out")});
+        });
+      });
+      return;
+    }
+    if (g_config.server.url.empty()) return show({entry("No server yet", "Connect to one below")});
     g_core.get("/healthz", 0, [this, alive, started](int status, const std::string& body) {
       if (!*alive) return;
       int ms = int((now_ns() - started) / 1000000);
@@ -198,7 +244,12 @@ std::unique_ptr<Screen> makeServer() { return std::unique_ptr<Screen>(new Server
 
 // Settings' row (SettingsScreen.serverState): what the server says about itself (GET /healthz) and
 // whether it takes this Rondo's token (GET /time)
+bool directMode() { return g_config.server.direct || g_config.server.url.empty(); }
+std::string apiBase() { return directMode() ? "http://127.0.0.1:47811" : g_config.server.url; }  // direct/server.h's kBase
+std::string apiToken() { return directMode() ? std::string("direct") : g_config.server.token; }
+
 void serverState(std::function<void(const std::string&)> done) {
+  if (directMode()) return done("Directly to YouTube");
   if (g_config.server.url.empty()) return done("Not set up");
   g_core.get("/healthz", 0, [done](int status, const std::string& body) {
     Health h;
@@ -217,7 +268,6 @@ void serverState(std::function<void(const std::string&)> done) {
 // the main menu's check: whether the server has an account, so YouTube and YouTube Music open with the
 // right tabs (offline, the last known answer stands)
 void checkAccounts() {
-  if (g_config.server.url.empty()) return;
   g_core.get("/healthz", 0, [](int status, const std::string& body) {
     Health h;
     if (status == 200 && parseHealth(body, h)) takeAccounts(h);

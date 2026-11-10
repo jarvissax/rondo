@@ -38,6 +38,7 @@ const Tile albums{Icon::Disc, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile dashboard{Icon::Screen, rgb(0x3fd0c9), rgb(0x0f8f96)};
 const Tile brightness{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
 const Tile timer{Icon::Timer, rgb(0x9a8cff), rgb(0x5a3fe0)};
+const Tile clock{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile radio{Icon::Radio, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile lyrics{Icon::Note, rgb(0xff8fc8), rgb(0xd6338a)};
 const Tile sound{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};
@@ -100,6 +101,32 @@ void fillDiagonal(Canvas& c, Rect r, Color c0, Color c1, Color c2) {
   }
 }
 
+std::string clockTime(time_t t, bool clock24) {
+  struct tm tm;
+  localtime_r(&t, &tm);
+  char b[16];
+  if (clock24) snprintf(b, sizeof(b), "%02d:%02d", tm.tm_hour, tm.tm_min);
+  else snprintf(b, sizeof(b), "%d:%02d %s", tm.tm_hour % 12 ? tm.tm_hour % 12 : 12, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
+  return b;
+}
+
+std::string clockDate(time_t t, bool weekdayAndYear) {
+  static const char* kDays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  struct tm tm;
+  localtime_r(&t, &tm);
+  char b[32];
+  if (weekdayAndYear) snprintf(b, sizeof(b), "%s, %s %d, %d", kDays[tm.tm_wday], kMonths[tm.tm_mon], tm.tm_mday, tm.tm_year + 1900);
+  else snprintf(b, sizeof(b), "%s %d", kMonths[tm.tm_mon], tm.tm_mday);
+  return b;
+}
+
+void readClock(Status& s, bool clock24) {
+  time_t now = time(nullptr);
+  s.date = clockDate(now, false);
+  s.time = clockTime(now, clock24);
+}
+
 void statusBar(Env& e, float w, const Status& s, const std::string& title, const std::string& title2, float t) {
   const Palette& p = e.p;
   float H = float(e.dp(22));
@@ -107,9 +134,22 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   e.c.fillGradient({0, 0, w, H}, p.barTop, p.barBottom);
   e.c.fill({0, H - 1, w, 1}, p.barLine);
   e.c.layer(layer + 1);
+  float leftEnd = float(e.dp(10));
   if (s.playing) {
     int sz = e.dp(12);
     e.icons.draw(e.c, Icon::Play, {float(e.dp(10)), float((int(H) - sz) / 2), float(sz), float(sz)}, p.accent);
+    leftEnd += sz + e.dp(6);
+  }
+  // the clock on the left, after the play state: the time, then the date (2.0, Nov 10)
+  if (!s.time.empty()) {
+    Label tl = label(e, s.time, 11, true), dl = label(e, s.date, 11, false);
+    drawLabel(e, tl, leftEnd, float((int(H) - tl.h) / 2), p.icon);
+    leftEnd += tl.w;
+    if (!s.date.empty()) {
+      leftEnd += e.dp(5);
+      drawLabel(e, dl, leftEnd, float((int(H) - dl.h) / 2), p.icon);
+      leftEnd += dl.w;
+    }
   }
   // Wi-Fi (dimmed offline), the percentage and the battery, 10 units from the right
   char pct[8];
@@ -118,9 +158,10 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   int wifi = e.dp(14), bw = e.dp(24), bh = e.dp(14);
   int gw = wifi + e.dp(6) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
   float gx = w - e.dp(10) - gw, gy = float((int(H) - gh) / 2);
-  // The title stays centered and keeps 10 units clear of the icons on the right, the same on the
-  // left; a longer one (a Wi-Fi network's name) ends in an ellipsis (2.0: 1.0.x let it run into them)
-  float side = w - gx + e.dp(10), maxW = std::max(0.0f, w - 2 * side);
+  // The title stays centered and keeps 10 units clear of the icons on the right and of the clock on the
+  // left, the same distance on both sides; a longer one (a Wi-Fi network's name) ends in an ellipsis
+  // (2.0: 1.0.x let it run into them)
+  float side = std::max(w - gx, leftEnd) + e.dp(10), maxW = std::max(0.0f, w - 2 * side);
   auto drawTitle = [&](const std::string& text, float alpha) {
     if (text.empty() || alpha <= 0) return;
     Label l = label(e, text, 15, true, maxW);
