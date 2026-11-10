@@ -505,6 +505,41 @@ class SoundScreen : public ShellListScreen {
       };
       rows.push_back(amp);
     }
+    Row ph;
+    ph.header = true;
+    ph.title = "Playback";
+    rows.push_back(ph);
+    Row xf;
+    xf.title = "Crossfade";
+    xf.subtitle = "Songs fade into each other";
+    xf.trailing = g_prefs.crossfadeSec ? std::to_string(g_prefs.crossfadeSec) + " s" : "Off";
+    xf.chevron = true;
+    xf.onSelect = [] {
+      std::vector<std::pair<std::string, std::string>> c = {{"Off", "0"}};
+      for (int sec : {2, 4, 6, 8, 10, 12}) c.push_back({std::to_string(sec) + " seconds", std::to_string(sec)});
+      g_app->push(makeChoice(
+          "Crossfade", c, [] { return std::to_string(g_prefs.crossfadeSec); },
+          [](const std::string& v) {
+            g_prefs.crossfadeSec = atoi(v.c_str());
+            savePrefsNow();
+            g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);
+          },
+          [](const std::string& v) {
+            return std::string(v == "0" ? "one after the other, no gap" : v == "6" ? "like a DJ" : "");
+          }));
+    };
+    rows.push_back(xf);
+    Row fp;
+    fp.title = "Fade on pause and play";
+    fp.subtitle = "Music fades out and back in";
+    fp.trailing = g_prefs.fadePause ? "On" : "Off";
+    fp.onSelect = [this] {
+      g_prefs.fadePause = !g_prefs.fadePause;
+      savePrefsNow();
+      g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);
+      render();
+    };
+    rows.push_back(fp);
     {  // the highest step the wheel (and the dashboard) may set, on every output
       int maxVol = ps.volumeMax > 0 ? ps.volumeMax : 13;
       int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));

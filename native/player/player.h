@@ -88,6 +88,7 @@ class PlayerHost {
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
   void setVolumeLimit(int limit);  // Settings › Sound › Volume limit: the highest step, 0-13
+  void playback(int crossfadeMs, bool fadePause);  // Settings › Sound › Playback
   void release();                // paused, the song's file closed (the USB drive); Play picks it up again
   void configure(const std::string& baseUrl, const std::string& token);  // where /s/<id>/140 streams come from
   // A video (1.0.x's playVideo): whatever played stops; the sound plays as the queue's one item, the

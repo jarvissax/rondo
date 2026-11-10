@@ -72,6 +72,8 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
   headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
   between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.
+- **Crossfade** (Settings › Sound › Playback, and on the dashboard): songs fade into each other over
+  2 to 12 seconds, on the card and streamed. **Fade on pause and play**, on as it ships.
 - **Volume limit** (Settings › Sound, and on the dashboard): the loudest step the wheel can set, on
   every output.
 - **Artwork that comes every time.** Card videos show their picture again, in Rondo and on the

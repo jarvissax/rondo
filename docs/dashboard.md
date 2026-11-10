@@ -90,7 +90,8 @@ or a Bluetooth device (the one music plays on now is marked), then:
 - **Loudness boost:** louder, the peaks held and never clipped.
 
 For every output: **volume leveling**, the Y1's **amplifier**, and the **volume limit**, the loudest
-step the wheel and the dashboard can set.
+step the wheel and the dashboard can set. **Playback:** the crossfade between songs and the fade on
+pause and play.
 
 ## Wi-Fi
 

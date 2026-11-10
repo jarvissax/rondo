@@ -121,6 +121,10 @@ void PlayerHost::setVolumeLimit(int limit) {
   int32_t v = limit;
   send(kVolumeLimit, &v, 4);
 }
+void PlayerHost::playback(int crossfadeMs, bool fadePause) {
+  int32_t v[2] = {crossfadeMs, fadePause ? 1 : 0};
+  send(kPlayback, v, 8);
+}
 void PlayerHost::playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths) {
   queue_ = {soundPath};
   std::string b = soundPath;

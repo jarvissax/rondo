@@ -57,7 +57,11 @@ namespace {
 constexpr int kRate = 44100;
 constexpr int kBufferFrames = 2048;  // per OpenSL buffer: 46 ms
 constexpr int kBuffers = 3;
-constexpr uint32_t kRingFrames = 1u << 17;  // 3 s of PCM
+// 12 s of PCM: room for a crossfade's overlap (the next song mixed into the end of this one while
+// that is still in the ring, not heard yet). The sound settings work at the output, so they follow
+// at once however far ahead the ring is.
+constexpr uint32_t kRingFrames = 1u << 19;
+constexpr int kFadeFrames = kRate * 3 / 10;  // a pause's and a resume's fade, 300 ms
 constexpr uint32_t kFmRingFrames = 1u << 14;  // the radio's: 0.37 s
 
 int64_t monoNs() {
@@ -266,6 +270,17 @@ class Engine {
   // for; kept in <data>/volume-limit so it holds from the first moment after a start
   int volumeLimit_ = 13;
   void setVolumeLimit(int limit);
+  // Settings › Sound › Playback. A crossfade overlaps the next song (overlapping_ frames of it, from
+  // the ring's overlapAt_) with the end of the one before; the pause fade ramps fade_ to 0 before the
+  // pause is applied (pausing_), the play fade from 0 up.
+  int crossfadeFrames_ = 0;
+  bool fadePause_ = true;
+  uint64_t overlapAt_ = 0, prevTrackAt_ = UINT64_MAX;
+  int overlapping_ = 0, overlapDone_ = 0;
+  float overlapGain_ = 1;  // the earlier song's samples in the overlap, by their two levelings
+  float lastGainDb_ = NAN;  // the leveling gain of the song decoded last
+  float fade_ = 1;
+  bool pausing_ = false;
   // Each output's music volume, kept as Android's AudioService kept it (volume_music_speaker and the
   // rest): without Android the policy forgets it at every boot
   std::string volumesFile_;
@@ -335,6 +350,7 @@ void Engine::publish() {
 }
 
 void Engine::restart(int pos, int64_t atMs, bool play) {
+  pausing_ = false;  // a new place: no fade left over
   // under mu_: the decoder starts over at `pos`, the stream is dropped
   gen_++;
   startPos_ = pos;
@@ -459,6 +475,11 @@ void Engine::command(const std::vector<uint8_t>& m) {
     }
     case kToggle:
     case kPlay:
+      if (pausing_) {  // a pause still fading out: called off, the sound comes back up
+        pausing_ = false;
+        break;
+      }
+      if (fadePause_ && !playing_) fade_ = 0;  // from silence up
       if (failed_ && heardPos_ >= 0) {  // a stream that failed: again from where it stopped
         int64_t at = heardStartMs_ + int64_t(playedAt_ - heardFrom_) * 1000 / kRate;
         restart(heardPos_, std::max<int64_t>(0, at), true);
@@ -478,6 +499,7 @@ void Engine::command(const std::vector<uint8_t>& m) {
         restart(heardPos_, releasedMs_, true);
       } else if (heardPos_ >= 0) {
         if (ended_) restart(heardPos_, 0, true);
+        else if (playing_ && fadePause_ && applied_ && !fmSounding_) pausing_ = true;  // fades out, then pauses
         else setPlaying(!playing_);
       }
       break;
@@ -639,7 +661,16 @@ void Engine::command(const std::vector<uint8_t>& m) {
         released_ = true;
       }
       break;
-    case kPause: setPlaying(false); break;
+    case kPause:
+      if (fadePause_ && playing_ && applied_ && !fmSounding_) pausing_ = true;  // the output fades, then pauses
+      else setPlaying(false);
+      break;
+    case kPlayback:
+      if (len >= 8) {
+        crossfadeFrames_ = int(std::max(0, std::min(12000, int(i32at(0)))) * int64_t(kRate) / 1000);
+        fadePause_ = i32at(4) != 0;
+      }
+      break;
     case kNext: {
       int n = heardPos_ + 1 < int(order_.size()) ? heardPos_ + 1 : repeat_ == 1 && !order_.empty() ? 0 : -1;
       if (n >= 0) restart(n, 0, true);
@@ -792,10 +823,34 @@ void Engine::fmSpeakerApply(bool on) {
 
 bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
   // under mu_ (released while waiting for room)
+  // a crossfade: the song's first frames mixed into the end of the one before (equal power: sin and cos
+  // over the overlap), where the output hasn't read yet
+  while (frames > 0 && overlapping_ > 0 && overlapDone_ < overlapping_) {
+    if (gen != gen_) return false;
+    uint64_t at = overlapAt_ + uint64_t(overlapDone_);
+    if (at < readAt_) {  // the output caught up (a pause can't, a long decode can): the rest plain
+      overlapping_ = 0;
+      break;
+    }
+    size_t i = size_t(at % kRingFrames) * 2;
+    float t = (float(overlapDone_) + 0.5f) / float(overlapping_);
+    float in = sinf(t * 1.5707963f), out = cosf(t * 1.5707963f) * overlapGain_;
+    for (int c = 0; c < 2; c++) {
+      float v = float(ring_[i + size_t(c)]) * out + float(pcm[c]) * in;
+      ring_[i + size_t(c)] = int16_t(std::max(-32768.f, std::min(32767.f, v)));
+    }
+    pcm += 2, frames--, overlapDone_++;
+  }
   while (frames > 0) {
     if (gen != gen_) return false;
     uint64_t room = kRingFrames - (writeAt_ - readAt_);
     if (room == 0) {
+      if (!playing_ && applied_) {  // paused by a fade's end (from the output's callback): OpenSL now
+        pthread_mutex_unlock(&mu_);
+        applyPlayState();
+        pthread_mutex_lock(&mu_);
+        continue;
+      }
       waitUntil(&cv_, &mu_, now_ns() + 50 * kMs);
       continue;
     }
@@ -912,7 +967,23 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     float lufs;
     if (std::isnan(rg) && loudness_.find(path, lufs)) rg = -18.f - lufs;
     if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
-    markers_.push_back({writeAt_, pos, duration, seekMs, false, rg});
+    // a crossfade: this song begins under the end of the one before, while that is still in the ring and
+    // not heard (one after the other only: not after a seek, a skip or into a video)
+    uint64_t at = writeAt_;
+    overlapping_ = overlapDone_ = 0;
+    if (crossfadeFrames_ > 0 && seekMs <= 0 && !video && prevTrackAt_ != UINT64_MAX && prevTrackAt_ < writeAt_ && heardPos_ >= 0) {
+      uint64_t unheard = writeAt_ - readAt_, before = writeAt_ - prevTrackAt_;
+      uint64_t n = std::min<uint64_t>(uint64_t(crossfadeFrames_), std::min(unheard, before));
+      if (n > uint64_t(kRate / 4)) {
+        overlapping_ = int(n);
+        overlapAt_ = at = writeAt_ - n;
+        // the output levels by the song begun last: the one before's samples, by its own gain
+        overlapGain_ = !std::isnan(lastGainDb_) && !std::isnan(rg) ? powf(10.f, (lastGainDb_ - rg) / 20.f) : 1.f;
+        fprintf(stderr, "rondo-player: crossfade %.1f s into song %d\n", double(n) / kRate, pos);
+      }
+    }
+    lastGainDb_ = rg;
+    markers_.push_back({at, pos, duration, seekMs, false, rg});
     snprintf(markers_.back().codec, sizeof(markers_.back().codec), "%s", codecName);
     trackAt_ = writeAt_;
     if (heardPos_ == pos && readAt_ == markers_.back().at) {
@@ -1099,6 +1170,7 @@ void Engine::decodeLoop() {
     for (int tries = 0; pos >= 0 && gen == gen_;) {
       uint64_t before = writeAt_;
       bool opened = false;
+      prevTrackAt_ = trackAt_;  // the song before (a crossfade overlaps its end)
       trackAt_ = UINT64_MAX;
       bool done = decodeTrack(pos, seekMs, gen);
       if (gen != gen_) break;
@@ -1209,11 +1281,31 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
   }
   // a video's sound waits (silence, nothing taken from the ring) until its picture is there; all of it
   // waits while mediaserver comes back (audioLost)
-  int n = audioLost_ || waitingForPicture() ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
+  // paused (a fade's end) but OpenSL not yet: silence, nothing taken from the ring
+  int n = audioLost_ || waitingForPicture() || !playing_ ? 0 : int(std::min<uint64_t>(writeAt_ - readAt_, kBufferFrames));
   for (int k = 0; k < n; k++) {
     size_t at = size_t((readAt_ + uint64_t(k)) % kRingFrames) * 2;
     b[k * 2] = ring_[at];
     b[k * 2 + 1] = ring_[at + 1];
+  }
+  // a pause fades out over 300 ms and then pauses; playing again fades back in
+  float target = pausing_ ? 0.f : 1.f;
+  if (n > 0 && (fade_ != target)) {
+    float step = 1.f / float(kFadeFrames);
+    for (int k = 0; k < n; k++) {
+      fade_ = target > fade_ ? std::min(target, fade_ + step) : std::max(target, fade_ - step);
+      float g = fade_ * fade_;  // smoother to the ear than a straight line
+      b[k * 2] = int16_t(float(b[k * 2]) * g);
+      b[k * 2 + 1] = int16_t(float(b[k * 2 + 1]) * g);
+      if (pausing_ && fade_ <= 0.f) {  // silent: the rest of the buffer stays in the ring for Play
+        memset(b + k * 2, 0, size_t(kBufferFrames - k) * 4);
+        n = k;
+        pausing_ = false;
+        playing_ = false;
+        pthread_cond_broadcast(&cv_);
+        break;
+      }
+    }
   }
   if (n < kBufferFrames) memset(b + n * 2, 0, size_t(kBufferFrames - n) * 4);  // not decoded yet: silence
   if (dsp_.active()) {

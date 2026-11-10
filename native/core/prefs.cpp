@@ -97,6 +97,7 @@ Prefs loadPrefs(const std::string& path) {
   p.brightness = num("brightness", p.brightness);
   p.screenTimeoutMs = num("screenTimeoutMs", p.screenTimeoutMs);
   p.fmVolume = num("fmVolume", p.fmVolume);
+  p.crossfadeSec = std::max(0, std::min(12, num("crossfadeSec", p.crossfadeSec)));
   auto flag = [&](const char* k, bool& out) {
     yyjson_val* v = yyjson_obj_get(root, k);
     if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -107,6 +108,7 @@ Prefs loadPrefs(const std::string& path) {
   flag("autoTime", p.autoTime);
   flag("autoZone", p.autoZone);
   flag("clock24", p.clock24);
+  flag("fadePause", p.fadePause);
   // a file from before Bluetooth was native: Android's setting, once
   if (yyjson_is_bool(yyjson_obj_get(root, "bluetoothOn"))) flag("bluetoothOn", p.bluetoothOn);
   else fromAndroidGlobal("bluetooth_on", p.bluetoothOn);
@@ -123,9 +125,9 @@ bool savePrefs(const std::string& path, const Prefs& p) {
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
                    "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
-                   "\"clock24\":%s}\n",
+                   "\"clock24\":%s,\"crossfadeSec\":%d,\"fadePause\":%s}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
-                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24));
+                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24), p.crossfadeSec, b(p.fadePause));
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;
