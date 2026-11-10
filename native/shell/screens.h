@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "../core/api.h"
+#include "../core/organize.h"
 #include "../core/version.h"
 #include "app.h"
 
@@ -13,7 +14,18 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
-std::unique_ptr<Screen> makeFolders();
+std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
+// Library › Organize the card (organize_screens.cpp): the plan for each storage root, the moves on a
+// thread of their own (the library, playlists and queue follow when they're done), how far they are
+std::unique_ptr<Screen> makeOrganize();
+std::vector<std::pair<std::string, OrganizePlan>> organizePlans();
+std::string organizeStart();  // "" when started, else why not
+struct OrganizeStatus {
+  bool running = false, finished = false;
+  int done = 0, total = 0, moved = 0;
+  std::vector<std::string> errors;
+};
+OrganizeStatus organizeStatus();
 // A list of card songs (Select plays them all from there; held, a song's menu), as Songs shows them
 std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs);  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeSettings();

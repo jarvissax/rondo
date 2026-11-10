@@ -1372,6 +1372,30 @@ bool smartFrom(const Body& b, SmartPlaylist& p) {
   return ok;
 }
 
+// Library › Organize the card: where everything would go, and how far the moves are
+std::string organizeStatusJson() {
+  OrganizeStatus s = organizeStatus();
+  std::vector<std::string> errors;
+  for (const std::string& e : s.errors) errors.push_back(str(e));
+  return obj({{"running", boolean(s.running)}, {"finished", boolean(s.finished)}, {"done", num(int64_t(s.done))},
+              {"total", num(int64_t(s.total))}, {"moved", num(int64_t(s.moved))}, {"errors", arr(errors)}});
+}
+std::string organizePlanJson() {
+  static const char* const kinds[] = {"song", "video", "lyrics", "subtitles", "cover"};
+  int songs = 0, videos = 0, sidecars = 0, covers = 0, there = 0;
+  std::vector<std::string> moves;
+  for (auto& p : organizePlans()) {
+    const OrganizePlan& plan = p.second;
+    songs += plan.songs, videos += plan.videos, sidecars += plan.sidecars, covers += plan.covers, there += plan.alreadyThere;
+    size_t n = p.first.size() + 1;
+    for (const OrganizeMove& m : plan.moves)
+      moves.push_back(obj({{"kind", str(kinds[m.kind])}, {"from", str(m.from.substr(n))}, {"to", str(m.to.substr(n))}}));
+  }
+  return obj({{"songs", num(int64_t(songs))}, {"videos", num(int64_t(videos))}, {"sidecars", num(int64_t(sidecars))},
+              {"covers", num(int64_t(covers))}, {"alreadyThere", num(int64_t(there))}, {"moves", arr(moves)},
+              {"status", organizeStatusJson()}});
+}
+
 std::string playlistsJson() {
   std::vector<std::string> all;
   for (const Playlist& p : g_playlists.all()) all.push_back(playlistJson(p));
@@ -1805,6 +1829,14 @@ Response Server::api(Request& r, const std::string& path) {
   }
   if (path == "/playlists" && m == "GET") return ui([] { return playlistsJson(); });
   if (path == "/smart" && m == "GET") return ui([] { return smartListJson(); });
+  if (path == "/organize" && m == "GET") return ui([] { return organizePlanJson(); });
+  if (path == "/organize/status" && m == "GET") return ui([] { return organizeStatusJson(); });
+  if (path == "/organize" && m == "POST")
+    return onUi([] {
+      std::string why = organizeStart();
+      if (!why.empty()) return error(409, why);
+      return json(organizeStatusJson());
+    });
   if (path == "/smart/songs" && m == "GET") {  // one smart playlist's songs now, every path
     std::string name = r.param("name");
     return onUi([name] {

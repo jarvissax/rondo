@@ -2856,3 +2856,59 @@ function editSmart(p) {
   read();
   preview();
 }
+
+// ---------- Organize the card (Library › Organize the card on the Rondo) ----------
+// Every song into Music/Artist/Album (Year)/, every video into Shows/ or Movies/, as Jellyfin expects:
+// first what would move, then the moves only when asked. Playlists, plays and ratings go along.
+$('#organizeBtn').addEventListener('click', openOrganize);
+async function openOrganize() {
+  openSheet('<h2>Organize the card</h2><p>Working out where everything goes…</p>');
+  let plan;
+  try { plan = await api('GET', '/api/organize', undefined, { timeout: 60000 }); } catch (e) {
+    if (e.status !== 401) openSheet(`<h2>Organize the card</h2><p>${esc(reason(e))}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+    $('[data-r="0"]', sheet)?.addEventListener('click', () => sheet.close());
+    return;
+  }
+  if (plan.status.running) return organizeProgress();
+  const n = plan.moves.length;
+  const kindName = { song: 'Song', video: 'Video', lyrics: 'Lyrics', subtitles: 'Subtitles', cover: 'Picture' };
+  const shown = plan.moves.slice(0, 400);
+  const facts = [['Songs', plan.songs, 'Music/Artist/Album (Year)/01 - Title'], ['Videos', plan.videos, 'Shows/Series (Year)/Season 01, or Movies/Title (Year)'],
+    ['Lyrics and subtitles', plan.sidecars, 'with their songs and videos'], ['Folder pictures', plan.covers, 'with their albums'], ['Already in place', plan.alreadyThere, '']]
+    .filter((x) => x[1]);
+  openSheet(`<h2>Organize the card</h2>
+    <p>${n ? `Folders the way Jellyfin, Plex and Kodi expect them, from the songs’ tags. Nothing moves until you press Organize; playlists, plays and ratings go along.` : 'Everything on the card is where it belongs.'}</p>
+    <dl class="facts">${facts.map(([k, v, sub]) => `<dt>${k}</dt><dd>${v}${sub ? ` <span class="org-sub">${esc(sub)}</span>` : ''}</dd>`).join('')}</dl>
+    ${n ? `<div class="org-list" role="list" aria-label="The moves">${shown.map((m) => `<div class="org-move" role="listitem"><span class="tag">${kindName[m.kind] || m.kind}</span>
+      <div><div class="org-to">${esc(m.to)}</div><div class="org-from">from ${esc(m.from)}</div></div></div>`).join('')}
+      ${n > shown.length ? `<div class="row-empty">and ${plural(n - shown.length, 'more')}</div>` : ''}</div>` : ''}
+    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${n ? 'Cancel' : 'Close'}</button>${n ? `<button class="btn btn-primary" type="button" data-r="go">Organize ${plural(n, 'file')}</button>` : ''}</div>`);
+  $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
+  $('[data-r="go"]', sheet)?.addEventListener('click', async (e) => {
+    e.target.closest('button').disabled = true;
+    try { await api('POST', '/api/organize'); organizeProgress(); } catch (err) {
+      if (err.status !== 401) toast(`Didn’t start. ${err.code && err.code !== 'pair' ? err.code : reason(err)}`, 'err');
+      e.target.closest('button').disabled = false;
+    }
+  });
+}
+async function organizeProgress() {
+  openSheet('<h2>Organizing</h2><div class="meter"><span id="orgBar" style="--p:0%"></span></div><p id="orgNote">Starting…</p>');
+  for (;;) {
+    let st;
+    try { st = await api('GET', '/api/organize/status'); } catch { await new Promise((r) => setTimeout(r, 1500)); continue; }
+    const bar = document.getElementById('orgBar'), note = document.getElementById('orgNote');
+    if (!bar) return;  // the sheet was closed
+    bar.style.setProperty('--p', `${st.total ? (st.done / st.total) * 100 : 0}%`);
+    note.textContent = st.running ? `Moving ${st.done} of ${st.total}… Keep your Rondo on.` : '';
+    if (!st.running) {
+      openSheet(`<h2>Organized</h2><p>${plural(st.moved, 'file')} moved${st.errors.length ? `, ${plural(st.errors.length, 'file')} couldn’t be:` : '.'}</p>
+        ${st.errors.length ? `<div class="org-list">${st.errors.slice(0, 100).map((x) => `<div class="org-move"><div class="org-from">${esc(x)}</div></div>`).join('')}</div>` : ''}
+        <div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="0">Done</button></div>`);
+      $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
+      setTimeout(() => loadLibrary(true), 1500);  // the new paths
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 700));
+  }
+}

@@ -39,7 +39,7 @@ foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson)
 endforeach()
 
 # The core (N2): settings, the card library, later the server client
-add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/smart.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp)
+add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/smart.cpp core/organize.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp)
 target_include_directories(rondo_core SYSTEM PUBLIC ${TP}/include)
 target_link_libraries(rondo_core PUBLIC tp_sqlite3 tp_yyjson dl)
 
@@ -91,7 +91,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/organize_screens.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)

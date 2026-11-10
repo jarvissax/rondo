@@ -513,6 +513,14 @@ class DeviceScreen : public ShellListScreen {
       render();
     };
     rows.push_back(std::move(rescan));
+    Row organize;
+    organize.title = "Organize the card";
+    organize.subtitle = "Folders by artist and album, as Jellyfin expects";
+    organize.tile = &tiles::device;
+    organize.chevron = true;
+    organize.enabled = songs + videos != 0;
+    organize.onSelect = [] { g_app->push(makeOrganize()); };
+    rows.push_back(std::move(organize));
     list_.setRows(std::move(rows), true);
   }
   // the card read again when Library opens and the last scan is over 30 s old (DeviceScreens.kt)

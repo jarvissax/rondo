@@ -60,6 +60,9 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   Most played, Recently played and Top rated; rate a song in Now Playing (hold center) or on the
   dashboard, which also sorts by genre, year, plays and rating. Rondo reads every song's tags once
   more after the update.
+- **Organize the card** (Library, and on the dashboard): songs into Artist/Album (Year) folders,
+  episodes into Shows and other videos into Movies, as Jellyfin, Plex and Kodi expect. You see every
+  move first; lyrics, subtitles, covers, playlists, plays, ratings and the queue go along.
 - **Smart playlists:** songs picked by rules (a genre, a year, a folder, ratings, plays, when they
   were added or last played), made on the dashboard and played from Library › Playlists. They
   follow your library as it changes.

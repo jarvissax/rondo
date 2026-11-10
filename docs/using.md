@@ -55,6 +55,12 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
   delete it from the card.
 - **Rescan the card** after copying files to it another way than the USB drive.
+- **Organize the card** puts every song in `Music/Artist/Album (Year)/01 - Title` (a `Disc 1`
+  folder for each disc of a multi-disc album), episodes in `Shows/Series (Year)/Season 01/` and
+  other videos in `Movies/Title (Year)/`, the way Jellyfin, Plex and Kodi expect, from the tags. It
+  shows how many files would move and where (**See the moves**) and moves nothing until you choose
+  **Organize**. Lyrics (`.lrc`), subtitles and a one-album folder's cover picture go along, and so
+  do your playlists, plays, ratings and the queue.
 - **Formats:** FLAC, MP3, M4A, AAC, OGG, Opus and WAV for music; MP4 (H.264) and similar for
   video. **Covers** come from the file's embedded artwork. **Lyrics** come from the file's tags
   or from an `.lrc` file with the same name next to it, and timed lyrics scroll along. Songs on
