@@ -505,6 +505,30 @@ class SoundScreen : public ShellListScreen {
       };
       rows.push_back(amp);
     }
+    {  // the highest step the wheel (and the dashboard) may set, on every output
+      int maxVol = ps.volumeMax > 0 ? ps.volumeMax : 13;
+      int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));
+      Row lim;
+      lim.title = "Volume limit";
+      lim.subtitle = "The loudest the wheel goes, on every output";
+      lim.trailing = limit >= maxVol ? "No limit" : std::to_string(limit) + " of " + std::to_string(maxVol);
+      lim.chevron = true;
+      lim.onSelect = [maxVol] {
+        std::vector<std::pair<std::string, std::string>> c;
+        c.push_back({"No limit", std::to_string(maxVol)});
+        for (int v = maxVol - 1; v >= 1; v--) c.push_back({std::to_string(v) + " of " + std::to_string(maxVol), std::to_string(v)});
+        g_app->push(makeChoice(
+            "Volume limit", c,
+            [maxVol] { return std::to_string(std::max(0, std::min(maxVol, int(g_player.state().volumeLimit)))); },
+            [](const std::string& v) { g_player.setVolumeLimit(atoi(v.c_str())); },
+            [maxVol](const std::string& v) {
+              int n = atoi(v.c_str());
+              return std::string(n >= maxVol ? "the wheel goes all the way" : n <= maxVol / 3 ? "quiet: kind to ears" : "");
+            }));
+      };
+      rows.push_back(lim);
+      limit_ = limit;
+    }
     Row ph;
     ph.header = true;
     ph.title = "Playback";
@@ -540,30 +564,6 @@ class SoundScreen : public ShellListScreen {
       render();
     };
     rows.push_back(fp);
-    {  // the highest step the wheel (and the dashboard) may set, on every output
-      int maxVol = ps.volumeMax > 0 ? ps.volumeMax : 13;
-      int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));
-      Row lim;
-      lim.title = "Volume limit";
-      lim.subtitle = "The loudest the wheel goes, on every output";
-      lim.trailing = limit >= maxVol ? "No limit" : std::to_string(limit) + " of " + std::to_string(maxVol);
-      lim.chevron = true;
-      lim.onSelect = [maxVol] {
-        std::vector<std::pair<std::string, std::string>> c;
-        c.push_back({"No limit", std::to_string(maxVol)});
-        for (int v = maxVol - 1; v >= 1; v--) c.push_back({std::to_string(v) + " of " + std::to_string(maxVol), std::to_string(v)});
-        g_app->push(makeChoice(
-            "Volume limit", c,
-            [maxVol] { return std::to_string(std::max(0, std::min(maxVol, int(g_player.state().volumeLimit)))); },
-            [](const std::string& v) { g_player.setVolumeLimit(atoi(v.c_str())); },
-            [maxVol](const std::string& v) {
-              int n = atoi(v.c_str());
-              return std::string(n >= maxVol ? "the wheel goes all the way" : n <= maxVol / 3 ? "quiet: kind to ears" : "");
-            }));
-      };
-      rows.push_back(lim);
-      limit_ = limit;
-    }
     amp_ = ps.amplifier;
     list_.setRows(std::move(rows), true);
   }
