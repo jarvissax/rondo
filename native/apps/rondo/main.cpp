@@ -236,11 +236,13 @@ int main(int argc, char** argv) {
     g_dashboardAssets = dir.substr(0, dir.rfind('/'));
   }
   // first, while this is the only thread: it forks the decoding process
-  ui::setFrameGrabber(grabVideoFrame);  // card videos' artwork: a frame (in rondo-media)
+  ui::setFrameGrabber(grabVideoFrame, prepareVideoFrames);  // card videos' artwork: a frame (in rondo-media)
   ImageLoader loader;
-  if (!loader.start(2, thumbs)) return 1;
+  // four decoders: two mostly wait on the network for remote artwork (direct mode fetches from Google)
+  if (!loader.start(4, thumbs)) return 1;
   if (!g_player.start(data, dev)) return 1;  // rondo-player, also before any thread
   if (!g_core.start()) return 1;    // rondo-core, the system services, the same
+  prepareVideoFrames();  // binder opened on this thread, now the forks are done (the dashboard's frames, videos)
   int64_t t0 = now_ns();
   g_traceT0 = t0;
   g_traceSlow = getenv("RONDO_SLOW") != nullptr;

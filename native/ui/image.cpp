@@ -33,28 +33,36 @@ namespace rondo::ui {
 
 namespace {
 FrameGrabber g_grabber = nullptr;
+void (*g_grabberPrepare)() = nullptr;
 }
-void setFrameGrabber(FrameGrabber grabber) { g_grabber = grabber; }
+void setFrameGrabber(FrameGrabber grabber, void (*prepare)()) { g_grabber = grabber, g_grabberPrepare = prepare; }
 
 namespace {
 
-// A card video's frame, from a thread of its own with a time limit. mediaserver's retriever can keep
+// A card video's frame, from a thread of its own with a time limit. *timedOut: no answer (it hung, or the last
+// one still hangs), which says nothing about the file: not to be remembered as "no picture". mediaserver's retriever can keep
 // a call waiting for good (the 2.0 firmware, Nov 9: both decode workers sat in it with two videos
 // open, and no artwork came for anything after); a grab that doesn't answer in 8 s is given up, and
-// while it hangs no other is started, so the workers keep decoding everything else.
+// while it hangs no other is started, so the workers keep decoding everything else. Grabs take turns:
+// one waits up to 8 s for the one before it (Nov 10: three videos' frames given up at once while the
+// first waited for drmserver to start).
 struct GrabJob {
   std::string path;
   Pixels frame;
-  bool ok = false, done = false, abandoned = false;
+  bool ok = false, later = false, done = false, abandoned = false;
 };
 pthread_mutex_t g_grabMu = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t g_grabCv = PTHREAD_COND_INITIALIZER;
 bool g_grabBusy = false;  // a grab is running (perhaps hung)
 
-bool grabWithin(const std::string& path, Pixels& out) {
+bool grabWithin(const std::string& path, Pixels& out, bool* timedOut = nullptr) {
+  if (timedOut) *timedOut = false;
   pthread_mutex_lock(&g_grabMu);
-  if (g_grabBusy) {  // the last one hasn't come back: no frame for now
+  int64_t turn = now_ns() + 8000 * kMs;
+  while (g_grabBusy && now_ns() < turn) waitUntil(&g_grabCv, &g_grabMu, turn);
+  if (g_grabBusy) {  // the one before still hasn't come back: no frame for now
     pthread_mutex_unlock(&g_grabMu);
+    if (timedOut) *timedOut = true;
     return false;
   }
   g_grabBusy = true;
@@ -64,9 +72,9 @@ bool grabWithin(const std::string& path, Pixels& out) {
   pthread_t t;
   pthread_create(&t, nullptr, [](void* p) -> void* {
     GrabJob* j = static_cast<GrabJob*>(p);
-    bool ok = g_grabber(j->path.c_str(), 10000000, j->frame);
+    int got = g_grabber(j->path.c_str(), 10000000, j->frame);
     pthread_mutex_lock(&g_grabMu);
-    j->ok = ok, j->done = true;
+    j->ok = got > 0, j->later = got < 0, j->done = true;
     g_grabBusy = false;
     bool gone = j->abandoned;
     pthread_cond_broadcast(&g_grabCv);
@@ -79,12 +87,22 @@ bool grabWithin(const std::string& path, Pixels& out) {
   int64_t until = now_ns() + 8000 * kMs;
   while (!job->done && now_ns() < until) waitUntil(&g_grabCv, &g_grabMu, until);
   bool ok = job->done && job->ok;
+  if ((!job->done || job->later) && timedOut) *timedOut = true;
   if (ok) out = std::move(job->frame);
   if (job->done) delete job;
   else job->abandoned = true;  // its thread frees it, if it ever returns
   pthread_mutex_unlock(&g_grabMu);
   return ok;
 }
+
+}  // namespace
+
+bool grabVideoFrameWithin(const std::string& path, Pixels& out, bool* later) {
+  if (later) *later = false;
+  return g_grabber && grabWithin(path, out, later);
+}
+
+namespace {
 
 // Area-filtered resample of the crop (cx, cy, cw, ch) of src into dst, 4 channels: each output pixel
 // is the exact average of the source area it covers.
@@ -268,7 +286,7 @@ uint64_t fnv64(const char* s) {
 // A cached thumbnail: this header, then w * h * 4 bytes of RGBA. w = h = 0 records a file with no
 // picture, so it is not read again.
 struct CacheHeader {
-  char magic[4];  // "RTH2" (2: video frames and folder pictures, Nov 7)
+  char magic[4];  // "RTH2" (2: video frames and folder pictures, Nov 7); "RTM3": no picture (Nov 10)
   int32_t w, h, blur;
   int64_t mtime, size;  // of the source file, to notice a changed file
 };
@@ -321,10 +339,12 @@ struct Worker {
     if (fd < 0) return -1;
     CacheHeader h;
     int result = -1;
-    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && !memcmp(h.magic, "RTH2", 4) && h.mtime == int64_t(st.st_mtime) &&
-        h.size == int64_t(st.st_size)) {
+    bool marker = false;
+    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && (!memcmp(h.magic, "RTH2", 4) || (marker = !memcmp(h.magic, "RTM3", 4))) &&
+        h.mtime == int64_t(st.st_mtime) && h.size == int64_t(st.st_size)) {
       if (h.w == 0) {
-        result = 0;
+        // an older "no picture" for a video: most were frames that never came (drmserver stopped, Nov 9)
+        result = marker || !isVideo(r.path) ? 0 : -1;
       } else if (h.w == r.w && h.h == r.h) {
         size_t n = size_t(h.w) * h.h * 4;
         result = !dst || read(fd, dst, n) == ssize_t(n) ? 1 : -1;
@@ -339,7 +359,7 @@ struct Worker {
     std::string path = cachePath(r), tmp = path + ".part";
     int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return;
-    CacheHeader h = {{'R', 'T', 'H', '2'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
+    CacheHeader h = {{'R', 'T', px ? 'H' : 'M', px ? '2' : '3'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
     bool ok = write(fd, &h, sizeof(h)) == ssize_t(sizeof(h));
     if (ok && px) ok = write(fd, px->rgba.data(), px->rgba.size()) == ssize_t(px->rgba.size());
     close(fd);
@@ -385,8 +405,11 @@ struct Worker {
     return true;
   }
 
-  bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px, rondo::Api* api = nullptr, int* apiGeneration = nullptr) {
+  // *transient: it failed for now (a video's frame that didn't answer), not for good
+  bool decode(const Msg& r, std::vector<uint8_t>& bytes, Pixels& px, rondo::Api* api = nullptr, int* apiGeneration = nullptr,
+              bool* transient = nullptr) {
     bytes.clear();
+    if (transient) *transient = false;
     std::string path = r.path;
     bool file = path.size() > 4 && (path.compare(path.size() - 4, 4, ".jpg") == 0 ||
                                     path.compare(path.size() - 4, 4, ".png") == 0);
@@ -406,7 +429,12 @@ struct Worker {
       rondo::readCover(path.c_str(), bytes);
       if (bytes.empty() && isVideo(path) && g_grabber) {
         Pixels frame;
-        if (grabWithin(path, frame) && frame.w > 0 && frame.h > 0) return fit(frame, r, px);
+        bool timedOut = false;
+        if (grabWithin(path, frame, &timedOut) && frame.w > 0 && frame.h > 0) return fit(frame, r, px);
+        if (timedOut) {
+          if (transient) *transient = true;
+          return false;
+        }
       }
       if (bytes.empty()) folderPicture(path, bytes);
     }
@@ -547,8 +575,9 @@ struct Worker {
       if (r.type == kPrefetch) {
         if (exists && fromCache(r, st, nullptr) < 0) {
           Pixels px;
-          bool ok = decode(r, bytes, px);
-          toCache(r, st, ok ? &px : nullptr);
+          bool transient = false;
+          bool ok = decode(r, bytes, px, nullptr, nullptr, &transient);
+          if (ok || !transient) toCache(r, st, ok ? &px : nullptr);
         }
         continue;
       }
@@ -558,8 +587,9 @@ struct Worker {
         continue;
       }
       Pixels px;
-      bool ok = cached < 0 && exists && decode(r, bytes, px);
-      if (exists && cached < 0) toCache(r, st, ok ? &px : nullptr);
+      bool transient = false;
+      bool ok = cached < 0 && exists && decode(r, bytes, px, nullptr, nullptr, &transient);
+      if (exists && cached < 0 && (ok || !transient)) toCache(r, st, ok ? &px : nullptr);
       if (ok) {
         memcpy(slot(s), px.rgba.data(), px.rgba.size());
         reply(r, true, false, s, px.w, px.h);
@@ -580,6 +610,7 @@ struct Worker {
   [[noreturn]] void main(int threads) {
     prctl(PR_SET_PDEATHSIG, SIGKILL);
     prctl(PR_SET_NAME, "rondo-media");
+    if (g_grabberPrepare) g_grabberPrepare();  // on this thread, which lives as long as the process
     // SCHED_IDLE: runs only when nothing else wants the CPU, so the kernel's display and GPU threads (nice
     // 0) always go first. At nice 10 they still lost a refresh about once a minute (N1 log).
     sched_param sp = {};

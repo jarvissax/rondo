@@ -2,9 +2,23 @@
 
 #include <GLES2/gl2.h>
 
+#include <ctype.h>
+
+#include <algorithm>
+
 #include "motion.h"
 
 namespace rondo::ui {
+
+namespace {
+bool isVideoPath(const std::string& p) {
+  size_t dot = p.rfind('.');
+  if (dot == std::string::npos || p.size() - dot > 5) return false;
+  std::string x = p.substr(dot + 1);
+  for (char& c : x) c = char(tolower((unsigned char)c));
+  return x == "mp4" || x == "m4v" || x == "mkv" || x == "3gp" || x == "webm";
+}
+}  // namespace
 
 uint64_t Covers::keyOf(const std::string& path, int w, int h, int blur) {
   uint64_t k = 1469598103934665603ULL;
@@ -16,8 +30,14 @@ const Texture* Covers::get(const std::string& path, int w, int h, int blur, int6
   uint64_t key = keyOf(path, w, h, blur);
   Entry& e = map_[key];
   e.used = ++clock_;
-  // the server's artwork that didn't come (Wi-Fi): asked again after a while, as 1.0.x retried
-  if (e.state == kMissing && path.compare(0, 6, "/thumb") == 0 && now - e.readyAt > retryNs) e.state = kNone;
+  // the server's artwork that didn't come (Wi-Fi, a busy moment), or a video's frame (mediaserver busy):
+  // asked again after 2, 4, 8 s, then every retryNs (1.0.x retried every 15 s). A video that has no
+  // frame is answered from the thumbnail cache's "no picture" at once.
+  if (e.state == kMissing && (path.compare(0, 6, "/thumb") == 0 || isVideoPath(path)) &&
+      now - e.readyAt > std::min<int64_t>(retryNs, (2000000000LL << std::min<int>(e.tries, 3)))) {
+    e.state = kNone;
+    if (e.tries < 8) e.tries++;
+  }
   if (e.state == kNone) {
     e.path = path, e.w = w, e.h = h, e.blur = blur;
     if (loader_.request({key, path, w, h, blur})) e.state = kLoading;

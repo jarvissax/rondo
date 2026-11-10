@@ -27,5 +27,7 @@ void streamRoute(const Request& r, Response& out);   // /s/:id/:itag
 void mpdRoute(const Request& r, Response& out);      // /mpd/:id: resolved (a warm-up): 200, or 404 when unplayable
 void resolveRoute(const Request& r, Response& out);  // /resolve/:id
 void thumbRoute(const Request& r, Response& out);    // /thumb?u=&w=&h=
+// a picture from Google's image hosts, from memory when fetched before (thumbRoute)
+bool thumbBytes(const std::string& want, const std::string& original, std::string& type, std::string& body);
 
 }  // namespace rondo::direct

@@ -345,15 +345,64 @@ void thumbRoute(const Request& r, Response& out) {
     return v <= 0 ? 0 : std::min(std::max(v, 16), 720);
   };
   int w = px("w") ? px("w") : 64, h = px("h");
-  // twice the size asked for: the Y1 scales it down itself, as the server did
-  std::string want = sized(url, std::max(w, h) * 2);
-  std::vector<std::string> hs = {"Accept: image/jpeg,image/png;q=0.9,*/*;q=0.1"};
-  Fetched f = get(want, hs, 4 << 20);
-  if (f.status != 200 && want != url) f = get(url, hs, 4 << 20);
-  if (f.status != 200 || f.body.empty()) return out.error(502, "upstream");
-  out.type = f.type.empty() ? "image/jpeg" : f.type;
+  // twice the size asked for, rounded up to one of four sizes, so the screens' rows, Now Playing and
+  // the dashboard share one picture: the Y1 (and the browser) scale it down themselves
+  int want2 = std::max(w, h) * 2, bucket = want2 <= 120 ? 120 : want2 <= 240 ? 240 : want2 <= 480 ? 480 : 720;
+  std::string want = sized(url, bucket);
+  std::string type, body;
+  if (!thumbBytes(want, url, type, body)) return out.error(502, "upstream");
+  out.type = type.empty() ? "image/jpeg" : type;
   out.headers.push_back("Cache-Control: public, max-age=604800");
-  out.body = std::move(f.body);
+  out.body = std::move(body);
+}
+
+// The pictures fetched, in memory (12 MB, the oldest go first); one fetch for a picture asked for by
+// several at once (the screen's row, the artwork prefetch, the dashboard); a failure tried once more.
+bool thumbBytes(const std::string& want, const std::string& original, std::string& type, std::string& body) {
+  struct Pic {
+    std::string type, body;
+    uint64_t used = 0;
+  };
+  static std::mutex mu;
+  static std::condition_variable cv;
+  static std::map<std::string, Pic> pics;
+  static std::set<std::string> fetching;
+  static uint64_t clock = 0;
+  static size_t bytes = 0;
+  std::unique_lock<std::mutex> l(mu);
+  cv.wait(l, [&] { return !fetching.count(want); });
+  auto hit = pics.find(want);
+  if (hit != pics.end()) {
+    hit->second.used = ++clock;
+    type = hit->second.type, body = hit->second.body;
+    return true;
+  }
+  fetching.insert(want);
+  l.unlock();
+  std::vector<std::string> hs = {"Accept: image/jpeg,image/png;q=0.9,*/*;q=0.1"};
+  Fetched f;
+  for (int attempt = 0; attempt < 2 && f.status != 200; attempt++) {
+    if (attempt) usleep(300000);
+    f = get(want, hs, 4 << 20);
+    if (f.status != 200 && want != original) f = get(original, hs, 4 << 20);  // a size the image server refuses
+  }
+  l.lock();
+  fetching.erase(want);
+  bool ok = f.status == 200 && !f.body.empty();
+  if (ok) {
+    type = f.type, body = f.body;
+    bytes += f.body.size();
+    pics[want] = {std::move(f.type), std::move(f.body), ++clock};
+    while (bytes > (12u << 20) && !pics.empty()) {
+      auto oldest = pics.begin();
+      for (auto it = pics.begin(); it != pics.end(); ++it)
+        if (it->second.used < oldest->second.used) oldest = it;
+      bytes -= oldest->second.body.size();
+      pics.erase(oldest);
+    }
+  }
+  cv.notify_all();
+  return ok;
 }
 
 }  // namespace rondo::direct

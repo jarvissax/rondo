@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include <time.h>
+#include <cutils/properties.h>
 
 #include <algorithm>
 #include <atomic>
@@ -389,6 +390,12 @@ void runCore(int sock, CoreState* shm) {
   setpriority(PRIO_PROCESS, 0, 5);  // below the UI and the player: nothing here is in a hurry
   signal(SIGPIPE, SIG_IGN);
   setvbuf(stderr, nullptr, _IOLBF, 0);
+  // drmserver: mediaserver's MetadataRetriever (a card video's frame, its artwork) waits for it for good
+  // when it isn't running, and the 2.0 firmware's first builds had it disabled (Nov 10: no video had a
+  // picture, on the Y1 or the dashboard). Started here too, so firmwares already flashed have it.
+  char drm[PROPERTY_VALUE_MAX] = "";
+  property_get("init.svc.drm", drm, "");
+  if (strcmp(drm, "running") != 0 && property_set("ctl.start", "drm") == 0) fprintf(stderr, "rondo-core: drmserver started (video frames need it)\n");
   g_shm = shm;
   Wifi wifi(publish);
   wifi.snapshot_ = snapshot;

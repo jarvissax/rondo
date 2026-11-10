@@ -262,6 +262,10 @@ class Engine {
   int16_t buffers_[kBuffers][kBufferFrames * 2];
   int next_ = 0;
   int volume_ = 0, volumeMax_ = 13;  // MediaTek's STREAM_MUSIC has 13 steps (the policy's index max, Nov 7)
+  // Settings › Sound › Volume limit (the iPod's): no step above it, on any output, however it is asked
+  // for; kept in <data>/volume-limit so it holds from the first moment after a start
+  int volumeLimit_ = 13;
+  void setVolumeLimit(int limit);
   // Each output's music volume, kept as Android's AudioService kept it (volume_music_speaker and the
   // rest): without Android the policy forgets it at every boot
   std::string volumesFile_;
@@ -301,6 +305,7 @@ void Engine::publish() {
   s.publishedNs = monoNs();
   s.volume = volume_;
   s.volumeMax = volumeMax_;
+  s.volumeLimit = std::min(volumeMax_, volumeLimit_);
   s.ended = ended_;
   int np = heardPos_ >= 0 ? nextAfter(heardPos_) : -1;
   s.nextIndex = np >= 0 && np < int(order_.size()) ? order_[np] : -1;
@@ -703,6 +708,14 @@ void Engine::command(const std::vector<uint8_t>& m) {
       pthread_mutex_lock(&mu_);
       break;
     }
+    case kVolumeLimit: {
+      int32_t limit = i32at(0);
+      pthread_mutex_unlock(&mu_);
+      setVolumeLimit(limit);
+      pthread_mutex_lock(&mu_);
+      publish();
+      break;
+    }
   }
   // music started: the radio stops (PlayerService.changed in 1.0.x)
   if (playing_ && fm_.active() && type != kFmStart) radio = [this] { fm_.stop(); };
@@ -753,6 +766,7 @@ void Engine::fmVolumes(bool on) {
   if (on) {
     musicVolume_ = volume_;
     if (fmVolume_ < 0) fmVolume_ = volume_;
+    if (fmVolume_ > volumeLimit_) fmVolume_ = volumeLimit_;
     if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, fmVolume_, device) == 0) volume_ = fmVolume_;
   } else {
     fmVolume_ = volume_;
@@ -1231,7 +1245,7 @@ void Engine::changeVolume(int delta) {
   using android::AudioSystem;
   audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
   readVolume();
-  int index = std::max(0, std::min(volumeMax_, volume_ + delta));
+  int index = std::max(0, std::min(std::min(volumeMax_, volumeLimit_), volume_ + delta));
   if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, device) == 0) {
     volume_ = index;
     if (!fmOnOutput_) saveVolume(device, index);  // the radio's own step is the UI's (prefs fmVolume)
@@ -1243,6 +1257,12 @@ constexpr int kStreamMax[] = {6, 7, 7, 13, 7, 7, 15, 7, 15, 15, 13, 13, 1};
 
 void Engine::restoreVolumes() {
   using android::AudioSystem;
+  // the volume limit first: nothing set below may pass it
+  if (FILE* lf = fopen((volumesFile_.substr(0, volumesFile_.rfind('/') + 1) + "volume-limit").c_str(), "r")) {
+    int v = volumeLimit_;
+    if (fscanf(lf, "%d", &v) == 1) volumeLimit_ = std::max(0, std::min(volumeMax_, v));
+    fclose(lf);
+  }
   // Without Android (the 2.0 firmware) nobody gives the policy its ranges: every stream would have one
   // step. AudioService's initStreamVolume, with this firmware's maxima.
   if (!development_)
@@ -1255,15 +1275,40 @@ void Engine::restoreVolumes() {
     if (!development_) {
       for (audio_devices_t d : {AUDIO_DEVICE_OUT_SPEAKER, AUDIO_DEVICE_OUT_WIRED_HEADSET, AUDIO_DEVICE_OUT_WIRED_HEADPHONE,
                                 AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES})
-        AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, 5, d);
+        AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, std::min(5, volumeLimit_), d);
     }
     return;
   }
   unsigned device;
   int index;
   while (fscanf(f, "%x %d", &device, &index) == 2)
-    if (index >= 0 && index <= volumeMax_) AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, audio_devices_t(device));
+    if (index >= 0 && index <= volumeMax_)
+      AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, std::min(index, volumeLimit_), audio_devices_t(device));
   fclose(f);
+}
+
+void Engine::setVolumeLimit(int limit) {
+  using android::AudioSystem;
+  volumeLimit_ = std::max(0, std::min(volumeMax_, limit));
+  // every output above it comes down now (the one in use and the ones remembered)
+  for (audio_devices_t d : {AUDIO_DEVICE_OUT_SPEAKER, AUDIO_DEVICE_OUT_WIRED_HEADSET, AUDIO_DEVICE_OUT_WIRED_HEADPHONE,
+                            AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES,
+                            AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER}) {
+    int index = 0;
+    if (AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &index, d) == 0 && index > volumeLimit_) {
+      AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, volumeLimit_, d);
+      if (!fmOnOutput_) saveVolume(d, volumeLimit_);
+    }
+  }
+  if (fmVolume_ > volumeLimit_) fmVolume_ = volumeLimit_;
+  readVolume();
+  std::string tmp = volumesFile_.substr(0, volumesFile_.rfind('/') + 1) + "volume-limit";
+  if (FILE* f = fopen((tmp + ".part").c_str(), "w")) {
+    fprintf(f, "%d\n", volumeLimit_);
+    bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
+    fclose(f);
+    if (ok) rename((tmp + ".part").c_str(), tmp.c_str());
+  }
 }
 
 void Engine::saveVolume(audio_devices_t device, int index) {

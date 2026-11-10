@@ -161,7 +161,8 @@ class App {
   void changeVolume(int dir) {
     PlayerState s = g_player.state();
     int max = s.volumeMax > 0 ? s.volumeMax : 13;
-    volumeLevel_ = std::max(0, std::min(max, (volumeUntil_ ? volumeLevel_ : s.volume) + dir));
+    int limit = std::min(max, std::max(0, s.volumeLimit));  // the meter stops where the player does
+    volumeLevel_ = std::max(0, std::min(limit, (volumeUntil_ ? volumeLevel_ : s.volume) + dir));
     volumeMax_ = max;
     volumeUntil_ = now_ns() + 1500 * kMs;
     g_player.changeVolume(dir);

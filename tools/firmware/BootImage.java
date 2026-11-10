@@ -102,11 +102,12 @@ public class BootImage {
 
   // Measured on the Y1 with the Java layer gone (Nov 9): Wi-Fi, Bluetooth, sound, FM, the card and
   // NVRAM work with all of these stopped, and 4.5 MB more is free. The Y1 has no modem, SIM, GPS or TV
-  // tuner, and no apps to install, sign or play protected media for.
+  // tuner, and no apps to install or sign. drm stays: mediaserver's MetadataRetriever (a video's frame,
+  // its artwork) waits for drmserver for good without it (Nov 10).
   static final java.util.List<String> UNUSED = java.util.Arrays.asList(
       "ccci_fsd", "ccci_mdinit", "gsm0710muxd", "ril-daemon", "mdlogger",  // the modem
       "agpsd", "matv", "DMAgent", "netdiag",                               // GPS, TV, device management, diagnostics
-      "drm", "installd", "keystore");                                        // Android's apps
+      "installd", "keystore");                                               // Android's apps
 
   // "disabled" under each unused service; returns the text and how many were found
   static String[] disableServices(String text) {

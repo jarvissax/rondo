@@ -4,6 +4,7 @@
 #include "../video_frame.h"
 
 #include <fcntl.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -13,6 +14,7 @@
 
 #include "../aosp_begin.h"
 #include <binder/IMemory.h>
+#include <binder/ProcessState.h>
 #include <media/mediametadataretriever.h>
 #include <private/media/VideoFrame.h>
 #include "../aosp_end.h"
@@ -26,18 +28,29 @@ T* roomy(A&&... a) {  // room to spare for MediaTek's larger classes (as in s2)
 }
 }  // namespace
 
-bool grabVideoFrame(const char* path, int64_t atUs, ui::Pixels& out) {
+void prepareVideoFrames() { android::ProcessState::self(); }
+
+int grabVideoFrame(const char* path, int64_t atUs, ui::Pixels& out) {
   using namespace android;
   int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0) return false;
+  if (fd < 0) return 0;
   struct stat st;
   fstat(fd, &st);
   sp<MediaMetadataRetriever> r = roomy<MediaMetadataRetriever>();
-  bool ok = false;
-  if (r->setDataSource(fd, 0, st.st_size) == OK) {
+  int ok = 0;
+  status_t set = r->setDataSource(fd, 0, st.st_size);
+  if (set != OK) fprintf(stderr, "rondo-media: no frame of %s: setDataSource %d\n", path, int(set));
+  if (set == OK) {
     sp<IMemory> mem = r->getFrameAtTime(atUs, 2 /* OPTION_CLOSEST_SYNC, getFrameAtTime(us)'s */);
-    if (mem != nullptr && mem->size() >= sizeof(VideoFrame)) {
-      const VideoFrame* f = static_cast<const VideoFrame*>(mem->pointer());
+    if (mem == nullptr) fprintf(stderr, "rondo-media: no frame of %s at %lld us\n", path, (long long)atUs);
+    // the frame's memory mapped into this process: it can fail (Nov 10: a null pointer, which crashed
+    // rondo-media and the dashboard), and then the file isn't to blame
+    const VideoFrame* f = mem != nullptr && mem->size() >= sizeof(VideoFrame) ? static_cast<const VideoFrame*>(mem->pointer()) : nullptr;
+    if (mem != nullptr && mem->size() >= sizeof(VideoFrame) && !f) {
+      fprintf(stderr, "rondo-media: the frame of %s couldn't be mapped: later\n", path);
+      ok = -1;
+    }
+    if (f) {
       const uint8_t* data = reinterpret_cast<const uint8_t*>(f) + sizeof(VideoFrame);
       int w = int(f->mWidth), h = int(f->mHeight);
       size_t n = size_t(w) * h;
@@ -60,7 +73,7 @@ bool grabVideoFrame(const char* path, int64_t atUs, ui::Pixels& out) {
             o[3] = 255;
           }
         }
-        ok = true;
+        ok = 1;
       }
     }
   }

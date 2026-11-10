@@ -117,6 +117,10 @@ void PlayerHost::changeVolume(int delta) {
   int64_t d = delta;
   send(kVolume, &d, 8);
 }
+void PlayerHost::setVolumeLimit(int limit) {
+  int32_t v = limit;
+  send(kVolumeLimit, &v, 4);
+}
 void PlayerHost::playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths) {
   queue_ = {soundPath};
   std::string b = soundPath;

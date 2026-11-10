@@ -35,6 +35,7 @@ struct PlayerState {
   int64_t positionMs, durationMs;
   int64_t publishedNs;  // CLOCK_MONOTONIC when this was written
   int32_t volume, volumeMax;  // STREAM_MUSIC on the current output
+  int32_t volumeLimit;        // the highest step allowed (Settings › Sound › Volume limit), ≤ volumeMax
   uint32_t trackSerial;  // changes whenever the track does
   int32_t ended;         // the queue played to its end
   int32_t nextIndex;     // the queue item up next (-1: none), by the order and repeat
@@ -86,6 +87,7 @@ class PlayerHost {
   void setShuffle(bool on);
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
+  void setVolumeLimit(int limit);  // Settings › Sound › Volume limit: the highest step, 0-13
   void release();                // paused, the song's file closed (the USB drive); Play picks it up again
   void configure(const std::string& baseUrl, const std::string& token);  // where /s/<id>/140 streams come from
   // A video (1.0.x's playVideo): whatever played stops; the sound plays as the queue's one item, the

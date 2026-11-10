@@ -405,7 +405,7 @@ function renderMini() {
   const key = `${p.title}|${p.art}`;
   if (mini.dataset.key !== key) {
     mini.dataset.key = key;
-    mini.innerHTML = `<span class="art">${icon('note')}${p.art ? `<img alt="" src="${esc(p.art)}" onload="this.classList.add('ok')" onerror="this.remove()">` : ''}</span>
+    mini.innerHTML = `<span class="art">${icon('note')}${p.art ? `<img alt="" src="${esc(p.art)}" onload="this.classList.add('ok')" onerror="artRetry(this)">` : ''}</span>
       <a class="s-main" href="#overview" style="color:inherit;text-decoration:none"><div class="s-title">${esc(p.title)}</div><div class="s-sub">${esc(p.subtitle || '')}</div></a>
       <button class="ib ib-sm" type="button" data-act="toggle"></button>`;
   }
@@ -481,12 +481,17 @@ function setNpArt(url) {
   probe.onload = () => {
     if (npArt !== url) return;
     if (!img) { img = new Image(); img.id = 'npImg'; img.alt = ''; $('.np-art', np).append(img); }
-    img.src = url;
+    img.src = probe.src;  // the address that answered (a retry carries &r=)
     const c = artColor(probe) || '#3a3f4a';
     np.style.setProperty('--np1', c);
     np.style.setProperty('--np2', darker(c, 0.45));
   };
-  probe.onerror = () => { if (npArt === url) reset(); };
+  let tries = 0;
+  probe.onerror = () => {
+    if (npArt !== url) return;
+    if (++tries > ART_RETRY_MS.length) return reset();
+    setTimeout(() => { if (npArt === url) probe.src = withTry(url, tries); }, ART_RETRY_MS[tries - 1]);
+  };
   probe.src = url;
 }
 np.addEventListener('click', (e) => {
@@ -848,8 +853,19 @@ function rowHtml(r) {
     <span class="s-time">${fmtDur(r.durationSec)}</span>${acts}</div>`;
 }
 
-// album art: only rows near the screen, at most 3 requests at a time (the Y1 serves one by one)
-const artUrl = (path, size) => `/api/art?path=${encodeURIComponent(path)}&size=${size}`;
+// album art: only rows near the screen, at most 4 requests at a time. A cover that failed (the Y1 busy,
+// Wi-Fi dropping a request, a video's frame still being taken) is asked again after 1.5, 4 and 10 s.
+const ART_RETRY_MS = [1500, 4000, 10000];
+const artUrl = (path, size, tries = 0) => `/api/art?path=${encodeURIComponent(path)}&size=${size}${tries ? `&r=${tries}` : ''}`;
+const withTry = (url, tries) => url + (url.includes('?') ? '&' : '?') + 'r=' + tries;
+// an <img> of the player's artwork that failed: the same address again, then nothing
+window.artRetry = (img) => {
+  const tries = (img._tries || 0) + 1;
+  if (tries > ART_RETRY_MS.length) return img.remove();
+  img._tries = tries;
+  img._src = img._src || img.getAttribute('src');
+  setTimeout(() => { if (img.isConnected) img.src = withTry(img._src, tries); }, ART_RETRY_MS[tries - 1]);
+};
 const artQueue = [];
 let artActive = 0;
 const artIO = new IntersectionObserver((entries) => {
@@ -860,7 +876,7 @@ const artIO = new IntersectionObserver((entries) => {
   pumpArt();
 }, { rootMargin: '300px 0px' });
 function pumpArt() {
-  while (artActive < 3) {
+  while (artActive < 4) {
     const i = artQueue.findIndex((el) => el._vis && el.isConnected);
     if (i < 0) break;
     const el = artQueue.splice(i, 1)[0];
@@ -873,10 +889,26 @@ function loadArtInto(el, size, counted = false) {
   const img = new Image();
   img.alt = '';
   img.decoding = 'async';
-  const done = () => { if (counted) { artActive--; pumpArt(); } };
-  img.onload = () => { el.append(img); requestAnimationFrame(() => img.classList.add('ok')); done(); };
-  img.onerror = done;
-  img.src = artUrl(el.dataset.art, size);
+  let settled = false;
+  const done = () => { if (settled) return; settled = true; if (counted) { artActive--; pumpArt(); } };
+  img.onload = () => {
+    done();
+    if (!el.isConnected || $('img', el)) return;
+    el.append(img);
+    requestAnimationFrame(() => img.classList.add('ok'));
+  };
+  img.onerror = () => {
+    done();
+    const tries = (el._artTries || 0) + 1;
+    if (tries > ART_RETRY_MS.length) return;
+    el._artTries = tries;
+    setTimeout(() => {
+      if (!el.isConnected || $('img', el)) return;
+      if (counted) { el._queued = false; artIO.observe(el); } // back in line when it is near the screen
+      else loadArtInto(el, size);
+    }, ART_RETRY_MS[tries - 1]);
+  };
+  img.src = artUrl(el.dataset.art, size, el._artTries || 0);
 }
 
 libList.addEventListener('click', (e) => {
@@ -1515,7 +1547,7 @@ function paneHtml(id) {
   if (id === 'nowPlaying' && p) {
     const sub = (p.subtitle || '').split(' · ')[0];
     return `<div class="pv-pane" style="--p1:#4a505c;--p2:#20232a;--p3:#16181d">
-      <div class="pv-visual art">${p.art ? `<img alt="" src="${esc(p.art)}" onload="this.classList.add('ok')" onerror="this.remove()">` : ''}</div>
+      <div class="pv-visual art">${p.art ? `<img alt="" src="${esc(p.art)}" onload="this.classList.add('ok')" onerror="artRetry(this)">` : ''}</div>
       <div class="pv-pt">${esc(p.title)}</div>${sub ? `<div class="pv-pd">${esc(sub)}</div>` : ''}<div class="pv-prog"><span></span></div></div>`;
   }
   const visual = d.logo

@@ -255,11 +255,20 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   `605 Volume sdcard2 /storage/sdcard0 state changed from 0 (No-Media) to 1 (Idle-Unmounted)`. Rondo
   mounts on those instead of asking `volume list` every few seconds (asking every 2 s woke vold and
   the CPU all the time).
-- **mediaserver's frame retriever can hang:** on the 2.0 firmware a native
-  `MediaMetadataRetriever.getFrameAtTime` call for a card video sometimes never returns (Nov 9: two
-  calls waiting in binder, the videos' files open in rondo-media). Rondo grabs a video's frame on a
-  thread of its own and gives up after 8 s, so the other artwork keeps coming. Why mediaserver hangs
-  isn't known yet.
+- **mediaserver's frame retriever needs drmserver:** `MediaMetadataRetriever.setDataSource` in
+  mediaserver waits for the `drm.drmManager` service, for good when it isn't running ("Waiting for
+  service drm.drmManager..." every second in the log). The 2.0 firmware's first builds disabled the
+  `drm` service, so no card video ever had a picture (Nov 9 and 10). The firmware keeps it now, and
+  rondo-core starts it (`ctl.start drm`) when it isn't running. Rondo still grabs a frame on a thread
+  of its own and gives up after 8 s; grabs take turns, and one that didn't answer isn't remembered as
+  "no picture".
+- **Binder hands file descriptors through the thread that opened it:** this kernel's binder gives a
+  process a file descriptor (a frame's shared memory, a video's picture buffers) through the task that
+  first opened `/dev/binder` in it. When that thread has ended, every reply carrying one fails: the
+  kernel logs `binder: 129:… no unused fd available, -24` and the client gets FAILED_TRANSACTION
+  (`cannot map BpMemoryHeap … fd=-1`). Opened by a frame grab's own short-lived thread, only the first
+  frame in each process ever came (Nov 10). Open it (`ProcessState::self()`) on the process's main
+  thread, after any fork: `prepareVideoFrames()` in `native/platform/video_frame.h`.
 
 ## Keeping frames on time (measured with the N1 UI engine)
 

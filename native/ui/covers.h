@@ -47,6 +47,7 @@ class Covers {
     uint32_t used = 0;
     size_t bytes = 0;
     bool cpuOnly = false;
+    uint8_t tries = 0;  // remote artwork that didn't come: asked again sooner at first
     std::vector<uint8_t> cpu;
   };
   struct Ask {

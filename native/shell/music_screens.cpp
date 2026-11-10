@@ -90,6 +90,7 @@ class CollectionScreen : public MusicListScreen {
       if (songs_.size() > 1) {
         Row all;
         all.title = "Shuffle all";
+        all.tile = &tiles::shuffle;  // the row beside covers: a tile, not an empty square (as local playlists)
         all.subtitle = std::to_string(songs_.size()) + (next_.empty() ? " songs" : "+ songs");
         all.onSelect = [this] {
           std::vector<Item> s = songs_;

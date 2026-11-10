@@ -26,8 +26,13 @@ bool imageSize(const uint8_t* data, size_t size, int& w, int& h);
 bool encodeJpeg(const Pixels& px, int quality, std::vector<uint8_t>& out);
 // A still from a video file at atUs, as RGBA at its own size: the platform's (on the Y1, Android's
 // MediaMetadataRetriever, as 1.0.x's ImageLoader used it). Set before the loader starts.
-using FrameGrabber = bool (*)(const char* path, int64_t atUs, Pixels& out);
-void setFrameGrabber(FrameGrabber grabber);
+// 1: a frame, 0: none, -1: not this time (ask again later)
+using FrameGrabber = int (*)(const char* path, int64_t atUs, Pixels& out);
+// prepare: run on the decoding process's main thread as it starts (prepareVideoFrames on the Y1)
+void setFrameGrabber(FrameGrabber grabber, void (*prepare)() = nullptr);
+// a video's frame at 10 s through that grabber, given up after 8 s (mediaserver's retriever can hang);
+// *later: it failed for now (a hung or unreadable answer), not for good
+bool grabVideoFrameWithin(const std::string& path, Pixels& out, bool* later = nullptr);
 // A box blur repeated `passes` times (3 is close to a Gaussian), in place.
 void blur(Pixels& p, int radius, int passes);
 

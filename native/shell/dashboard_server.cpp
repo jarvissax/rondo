@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../core/api.h"
 #include "../core/bundle.h"
 #include "../core/clock.h"
 #include "../core/cover.h"
@@ -311,6 +312,7 @@ Response okBody() { return json(obj({{"ok", "true"}})); }
 Response error(int status, const std::string& why) {
   Response res;
   res.status = status;
+  res.headers.push_back({"Cache-Control", "no-store"});  // never kept: artwork that failed is asked again
   res.body = obj({{"error", str(why)}});
   return res;
 }
@@ -470,7 +472,7 @@ class Server {
   int wrongCodes_ = 0;
   int64_t pairBlockedUntil_ = 0;
   std::atomic<int64_t> last_{0};
-  // the artwork the page asked for, 2 MB of JPEGs, oldest out first
+  // the artwork the page asked for, 8 MB of JPEGs, oldest out first
   std::list<std::pair<std::string, std::vector<uint8_t>>> art_;
   size_t artBytes_ = 0;
   bool cachedArt(const std::string& key, std::vector<uint8_t>& out) {
@@ -490,7 +492,7 @@ class Server {
     pthread_mutex_lock(&mu_);
     art_.push_front({key, bytes});
     artBytes_ += bytes.size();
-    while (artBytes_ > 2u * 1024 * 1024 && !art_.empty()) artBytes_ -= art_.back().second.size(), art_.pop_back();
+    while (artBytes_ > 8u * 1024 * 1024 && !art_.empty()) artBytes_ -= art_.back().second.size(), art_.pop_back();
     pthread_mutex_unlock(&mu_);
   }
 };
@@ -733,7 +735,7 @@ std::string playerJson(const std::string& queued = "", Asked asked = {}) {  // U
     s.playing = 1, s.positionMs = 0, s.publishedNs = 0;
     s.durationMs = t && t->durationSec > 0 ? int64_t(t->durationSec) * 1000 : 0;
   }
-  bool local = path[0] == '/';
+  bool local = !isStream(path);  // streams are /s/<id>/<itag> in both modes: not a card file
   std::string title, subtitle, thumb;
   if (local) {
     SongInfo i = songInfo(path);
@@ -753,7 +755,8 @@ std::string playerJson(const std::string& queued = "", Asked asked = {}) {  // U
               {"positionMs", num(position)},
               {"durationMs", num(s.durationMs)},
               {"volume", num(int64_t(s.volume))},
-              {"maxVolume", num(int64_t(s.volumeMax > 0 ? s.volumeMax : 13))}});
+              {"maxVolume", num(int64_t(s.volumeMax > 0 ? s.volumeMax : 13))},
+              {"volumeLimit", num(int64_t(s.volumeLimit))}});
 }
 
 std::string wifiCurrent(const CoreState& cs) {
@@ -784,13 +787,50 @@ Response Server::status() {
   return json(obj({{"device", device}, {"battery", battery}, {"storage", storage}, {"wifi", *wifi}, {"player", *player}}));
 }
 
-// YouTube Music artwork through the music server (the Y1 never talks to Google)
+// Connections to the music server (or direct mode's local one) for artwork, lent to one page request
+// at a time: the page asks for many at once, and through rondo-core they waited behind its two workers
+// and the UI thread (Nov 10: covers that never came while a list was loading).
+struct ArtApi {
+  rondo::Api api;
+  std::string base, token;
+};
+pthread_mutex_t g_artApiMu = PTHREAD_MUTEX_INITIALIZER;
+std::vector<std::unique_ptr<ArtApi>> g_artApis;  // idle ones
+std::unique_ptr<ArtApi> borrowArtApi(const std::string& base, const std::string& token) {
+  std::unique_ptr<ArtApi> a;
+  pthread_mutex_lock(&g_artApiMu);
+  if (!g_artApis.empty()) a = std::move(g_artApis.back()), g_artApis.pop_back();
+  pthread_mutex_unlock(&g_artApiMu);
+  if (!a) a.reset(new ArtApi);
+  if (a->base != base || a->token != token) a->base = base, a->token = token, a->api.configure(base, token);
+  return a;
+}
+void returnArtApi(std::unique_ptr<ArtApi> a) {
+  pthread_mutex_lock(&g_artApiMu);
+  if (g_artApis.size() < 4) g_artApis.push_back(std::move(a));
+  pthread_mutex_unlock(&g_artApiMu);
+}
+
+// YouTube Music and YouTube artwork through the music server, or direct mode's local one
 Response Server::thumb(const std::string& path) {
   if (path.compare(0, 7, "/thumb?") != 0) return error(404, "not found");
   std::vector<uint8_t> bytes;
   if (!cachedArt(path, bytes)) {
+    auto where = std::make_shared<std::pair<std::string, std::string>>();  // safe if it runs after 5 s
+    if (!onMain([where] { where->first = apiBase(), where->second = apiToken(); }) || where->first.empty())
+      return error(404, "no art");
+    const std::string base = where->first, token = where->second;
+    std::unique_ptr<ArtApi> a = borrowArtApi(base, token);
     std::string body;
-    if (coreCall(false, path + "&w=300", "", body) != 200 || body.empty()) return error(404, "no art");
+    int status = 0;
+    for (int attempt = 0; attempt < 2 && status != 200; attempt++) {  // a dropped connection: once more
+      if (attempt) usleep(400 * 1000);
+      body.clear();
+      status = a->api.get(path + "&w=300", body);
+      if (status == 404) break;
+    }
+    returnArtApi(std::move(a));
+    if (status != 200 || body.empty()) return error(404, "no art");
     bytes.assign(body.begin(), body.end());
     keepArt(path, bytes);
   }
@@ -799,6 +839,38 @@ Response Server::thumb(const std::string& path) {
   res.body.assign(bytes.begin(), bytes.end());
   res.headers.push_back({"Cache-Control", "max-age=86400"});
   return res;
+}
+
+// A video's frame for the page, kept on disk beside the Y1's own thumbnails: a frame takes mediaserver a
+// second or two, one at a time, so each video's is taken once. Named by the file, its time and size
+// (a changed file gets a new one) and the width asked.
+std::string webFramePath(const std::string& path, const struct stat& st, int size) {
+  uint64_t h = 1469598103934665603ULL;
+  for (char c : path) h = (h ^ uint8_t(c)) * 1099511628211ULL;
+  char name[96];
+  snprintf(name, sizeof(name), "/web-%016llx-%lld-%lld-%d.jpg", (unsigned long long)h, (long long)st.st_mtime,
+           (long long)st.st_size, size);
+  return g_prefsPath.substr(0, g_prefsPath.rfind('/')) + "/thumbs" + name;
+}
+bool readWhole(const std::string& file, std::vector<uint8_t>& out) {
+  FILE* fp = fopen(file.c_str(), "rb");
+  if (!fp) return false;
+  fseek(fp, 0, SEEK_END);
+  long n = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+  out.resize(n > 0 && n < (4 << 20) ? size_t(n) : 0);
+  bool ok = !out.empty() && fread(out.data(), 1, out.size(), fp) == out.size();
+  fclose(fp);
+  return ok;
+}
+void writeWhole(const std::string& file, const std::vector<uint8_t>& bytes) {
+  std::string tmp = file + ".part";
+  FILE* fp = fopen(tmp.c_str(), "wb");
+  if (!fp) return;
+  bool ok = fwrite(bytes.data(), 1, bytes.size(), fp) == bytes.size();
+  ok = fclose(fp) == 0 && ok;
+  if (ok) rename(tmp.c_str(), file.c_str());
+  else unlink(tmp.c_str());
 }
 
 // the embedded cover (or a video's frame at 10 s), `size` px wide, JPEG at 85
@@ -821,7 +893,18 @@ Response Server::art(const std::string& path, int size) {
     } else {
       static const std::set<std::string> video = {"mp4", "m4v", "mkv", "3gp", "webm"};
       ui::Pixels frame;
-      if (video.count(extOf(path)) && grabVideoFrame(path.c_str(), 10000000, frame) && frame.w > 0) {
+      struct stat st;
+      bool isVideo = video.count(extOf(path)) && stat(path.c_str(), &st) == 0;
+      std::string kept = isVideo ? webFramePath(path, st, size) : "";
+      if (isVideo && readWhole(kept, bytes)) {
+        keepArt(key, bytes);
+        Response res;
+        res.type = "image/jpeg";
+        res.body.assign(bytes.begin(), bytes.end());
+        res.headers.push_back({"Cache-Control", "max-age=86400"});
+        return res;
+      }
+      if (isVideo && ui::grabVideoFrameWithin(path, frame) && frame.w > 0) {
         int tw = std::min(frame.w, size), th = std::max(1, frame.h * tw / frame.w);
         ok = true;
         px.w = tw, px.h = th;
@@ -842,6 +925,10 @@ Response Server::art(const std::string& path, int size) {
     }
     if (!ok || !ui::encodeJpeg(px, 85, bytes)) return error(404, "no art");
     keepArt(key, bytes);
+    if (cover.empty()) {  // a video's frame: on disk too
+      struct stat st;
+      if (stat(path.c_str(), &st) == 0) writeWhole(webFramePath(path, st, size), bytes);
+    }
   }
   Response res;
   res.type = "image/jpeg";
@@ -1419,7 +1506,7 @@ Response Server::api(Request& r, const std::string& path) {
         g_player.seekTo(v);
         asked.positionMs = std::max<int64_t>(0, v);
       } else if (action == "volume" && b->integer("volume", v)) {
-        int target = int(std::max<int64_t>(0, std::min<int64_t>(s.volumeMax > 0 ? s.volumeMax : 13, v)));
+        int target = int(std::max<int64_t>(0, std::min<int64_t>(std::min(s.volumeMax > 0 ? s.volumeMax : 13, s.volumeLimit), v)));
         g_player.changeVolume(target - s.volume);
         asked.volume = target;
       }

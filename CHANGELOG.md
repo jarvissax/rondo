@@ -55,6 +55,9 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   arrives as they slide in.
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
+- **Artwork that comes every time.** Card videos show their picture again, in Rondo and on the
+  dashboard. Covers that don't arrive at once (Wi-Fi, a busy moment) are asked for again, on the Y1
+  and on the dashboard. On the dashboard, the song playing from YouTube Music shows its cover.
 - The Wi-Fi switch, the music volume of each output and the clock are kept without Android.
 - **A fixed Wi-Fi address.** The Y1 shipped without one, so it showed up on the network as a new
   device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
