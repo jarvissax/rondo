@@ -981,3 +981,34 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .lib .song.file-row, .lib.is-playlists .song.file-row { grid-template-columns: 22px 44px minmax(0, 1fr) auto; }
 .file-row .s-main { grid-column: 3; }
 .file-row .s-time { grid-column: 4; }
+
+/* the Now Playing visualizer: the Rondo's bands over the dimmed cover */
+.np-art { position: relative; }
+.np-viz { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.np-viz-btn { position: absolute; right: 8px; bottom: 8px; width: 32px; height: 32px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: rgb(0 0 0 / .45); color: #fff; opacity: 0; transition: opacity .15s; cursor: pointer; }
+.np-art:hover .np-viz-btn, .np-viz-btn:focus-visible, .np-viz-btn[aria-pressed="true"] { opacity: 1; }
+.np-viz-btn[aria-pressed="true"] { background: var(--accent); }
+.np-viz-btn .i { width: 16px; height: 16px; }
+.np.is-empty .np-viz-btn { display: none; }
+
+/* Albums: Cover Flow */
+.cf { position: relative; height: 330px; perspective: 900px; overflow: hidden; user-select: none; touch-action: pan-y;
+  background: linear-gradient(#15161a, #000 70%); border-bottom: 1px solid var(--line); outline: none; }
+.cf:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.cf-item { position: absolute; left: 50%; top: 28px; width: 200px; height: 200px; margin-left: -100px; transform-style: preserve-3d;
+  transition: transform .45s cubic-bezier(.2,.7,.2,1), opacity .45s; cursor: pointer; }
+.cf-cover { position: absolute; inset: 0; border-radius: 4px; background: #2a2c33 center/cover no-repeat; display: grid; place-items: center; color: var(--text-3);
+  -webkit-box-reflect: below 2px linear-gradient(transparent 55%, rgb(255 255 255 / .28)); }
+.cf-cover .i { width: 40%; height: 40%; }
+.cf-caption { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; padding: 0 16px; }
+.cf-caption h3 { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-caption p { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.cf-nav { position: absolute; top: 108px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgb(255 255 255 / .1); color: #fff; display: grid; place-items: center; cursor: pointer; z-index: 2000; }
+.cf-nav:hover { background: rgb(255 255 255 / .2); }
+.cf-nav.prev { left: 12px; } .cf-nav.next { right: 12px; }
+.cf-songs .lhdr small { margin-left: 6px; }
+@media (max-width: 599px) { .cf { height: 280px; } .cf-item { width: 150px; height: 150px; margin-left: -75px; } }
+#cfItems { position: absolute; inset: 0; perspective: 900px; perspective-origin: 50% 40%; }
+.np-art .np-viz { z-index: 1; }  /* over the cover, which is added later */
+.np-art .np-viz-btn { z-index: 2; }

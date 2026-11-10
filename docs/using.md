@@ -42,6 +42,8 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
 - **Album artists** and **Genres** group songs by their album artist (else their artist) and their
   genre tag. **Albums** show the album artist and the year; two albums of one name by different
   artists stay apart, and an album's songs play in disc and track order.
+- **Cover Flow** shows the albums' covers side by side in perspective, each above its reflection:
+  turn the wheel to glide through them (Next and Prev jump ten), press center for the album's songs.
 - **Folders** shows the card as it is: open folders, play a folder's songs from any of them, or a video.
 - **Recently added** lists the newest songs first.
 - **Most played**, **Recently played** and **Top rated** (4 stars and up): a song counts as played
@@ -102,7 +104,8 @@ so moving on takes about a second.
 
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
 - **Hold center** for options: scrub through the song, see what's up next, shuffle and repeat,
-  and for a song on the card its **rating**: center gives it one star more (after five, none).
+  **Visualizer** (the music's bands over the cover), and for a song on the card its **rating**:
+  center gives it one star more (after five, none).
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
   Menu cancels.
 

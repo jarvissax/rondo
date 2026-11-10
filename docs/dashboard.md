@@ -22,7 +22,8 @@ pairing for half a minute.
 
 ## Overview
 
-What's playing, with play/pause, skip and a volume slider, plus the battery, how full the card
+What's playing, with play/pause, skip and a volume slider (the bars button on the cover turns on
+the visualizer, the Y1's bands of what's playing), plus the battery, how full the card
 is, the Wi-Fi network and the Y1's Wi-Fi address, where YouTube comes from and the time zone, and
 Rondo's version, with **Restart** and **Shut down** buttons.
 
@@ -33,7 +34,8 @@ downloaded (Rondo 1.0: an APK).
 
 ## Library
 
-Everything on the card, as songs or videos, with search and sorting by title, artist, album, album
+Everything on the card, as songs, albums (Cover Flow: arrow keys, the mouse wheel or a drag move
+through the covers, and the album's songs are listed below) or videos, with search and sorting by title, artist, album, album
 artist, genre, year or date added, and by what you listen to: most played, recently played and
 rating. A song's details show its tags and plays, with stars to rate it.
 

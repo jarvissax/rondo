@@ -25,6 +25,7 @@ struct Prefs {
   // gapless); a short fade when music pauses and plays again
   int crossfadeSec = 0;
   bool fadePause = true;
+  bool visualizer = false;  // Now Playing: the music's bands over the artwork
 };
 
 // The file, or on the first run what 1.0.x's preferences and Android's settings database hold.

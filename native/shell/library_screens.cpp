@@ -477,6 +477,7 @@ class DeviceScreen : public ShellListScreen {
         albums != 0, [] {
           g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Albums", g_library.albums(), Scope::Albums)));
         });
+    add("Cover Flow", tiles::albums, "", true, albums != 0, [] { g_app->push(makeCoverFlow()); });
     size_t albumArtists = g_library.albumArtistCount(), genres = g_library.genreCount();
     add("Album artists", tiles::artists, std::to_string(albumArtists), true, albumArtists != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Album artists", g_library.albumArtists(), Scope::Artists)));

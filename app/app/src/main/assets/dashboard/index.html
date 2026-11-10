@@ -141,7 +141,8 @@
       <header class="vh"><h1 id="h-overview">Overview</h1></header>
       <article class="np is-empty" id="np" aria-label="Now playing">
         <div class="np-field" aria-hidden="true"></div>
-        <div class="np-art"><svg class="i np-art-glyph"><use href="#i-note"/></svg></div>
+        <div class="np-art"><svg class="i np-art-glyph"><use href="#i-note"/></svg><canvas class="np-viz" id="npViz" hidden aria-hidden="true"></canvas>
+          <button class="np-viz-btn" type="button" id="npVizBtn" aria-pressed="false" title="Visualizer"><svg class="i"><use href="#i-bars"/></svg></button></div>
         <div class="np-info">
           <p class="np-src" id="npSrc"></p>
           <h2 class="np-title" id="npTitle">Nothing playing</h2>
@@ -189,6 +190,7 @@
         <div class="seg" role="radiogroup" aria-label="Show" id="libKind">
           <button type="button" role="radio" data-kind="songs" aria-checked="true">Songs</button>
           <button type="button" role="radio" data-kind="videos" aria-checked="false">Videos</button>
+          <button type="button" role="radio" data-kind="albums" aria-checked="false">Albums</button>
           <button type="button" role="radio" data-kind="playlists" aria-checked="false">Playlists</button>
           <button type="button" role="radio" data-kind="files" aria-checked="false">Files</button>
         </div>

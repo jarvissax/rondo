@@ -15,6 +15,7 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
 std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
+std::unique_ptr<Screen> makeCoverFlow();  // Library › Cover Flow: the albums' covers
 // Library › Organize the card (organize_screens.cpp): the plan for each storage root, the moves on a
 // thread of their own (the library, playlists and queue follow when they're done), how far they are
 std::unique_ptr<Screen> makeOrganize();

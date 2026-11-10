@@ -1233,7 +1233,8 @@ std::string settingsJson() {
               {"lyricsOnOpen", boolean(g_config.behavior.lyricsOnOpen)},
               {"wheelAcceleration", str(g_config.behavior.wheelAcceleration)},
               {"wheelVibration", str(g_config.behavior.wheelVibration)},
-              {"clickSound", boolean(g_prefs.clickSound)}});
+              {"clickSound", boolean(g_prefs.clickSound)},
+              {"visualizer", boolean(g_prefs.visualizer)}});
 }
 
 std::string putSettings(const Body& b) {
@@ -1254,6 +1255,7 @@ std::string putSettings(const Body& b) {
   }
   bool f;
   if (b.flag("clickSound", f)) g_prefs.clickSound = f;
+  if (b.flag("visualizer", f)) g_prefs.visualizer = f;
   savePrefsNow();
   bool changed = false;
   if (b.flag("lyricsOnOpen", f)) g_config.behavior.lyricsOnOpen = f, changed = true;
@@ -1928,6 +1930,13 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/playlists" && m == "GET") return ui([] { return playlistsJson(); });
   if (path == "/smart" && m == "GET") return ui([] { return smartListJson(); });
   if (path == "/organize" && m == "GET") return ui([] { return organizePlanJson(); });
+  if (path == "/spectrum" && m == "GET") {  // the visualizer's bands of what's heard now (player.h)
+    PlayerState s = g_player.state();
+    std::vector<std::string> bands;
+    for (uint8_t v : s.spectrum) bands.push_back(std::to_string(int(v)));
+    Response res = json(obj({{"playing", boolean(s.playing && !s.fmOn)}, {"bands", arr(bands)}}));
+    return res;
+  }
   if (path == "/files" && m == "GET") {
     std::string dir = r.hasParam("path") ? r.param("path") : cardRoot().empty() ? std::string(kRoots[0]) : cardRoot();
     while (dir.size() > 1 && dir.back() == '/') dir.pop_back();

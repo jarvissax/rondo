@@ -800,8 +800,15 @@ function renderLibrary() {
   const videos = S.libKind === 'videos';
   libEl.classList.toggle('is-videos', videos);
   $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
-  const pls = S.libKind === 'playlists', files = S.libKind === 'files';
-  libEl.classList.toggle('is-playlists', pls || files);
+  const pls = S.libKind === 'playlists', files = S.libKind === 'files', albumsTab = S.libKind === 'albums';
+  libEl.classList.toggle('is-playlists', pls || files || albumsTab);
+  if (albumsTab) {
+    $('#libSortWrap').hidden = true;
+    $('#libSearch').placeholder = 'Search albums';
+    libList.setAttribute('aria-label', 'Albums');
+    $('#view-library').classList.remove('is-empty');
+    return renderAlbums();
+  }
   if (files) {
     $('#libSortWrap').hidden = true;
     $('#libSearch').placeholder = 'Search this folder';
@@ -851,7 +858,7 @@ function renderLibrary() {
 }
 const CHUNK = 120;
 function appendRows() {
-  if (S.libKind === 'playlists' || S.libKind === 'files') return;  // the songs' rows stay out of the playlists and files
+  if (S.libKind === 'playlists' || S.libKind === 'files' || S.libKind === 'albums') return;  // the songs' rows stay out of the other tabs
   const end = Math.min(S.libShown + CHUNK, S.libRows.length);
   let html = '';
   for (let i = S.libShown; i < end; i++) html += rowHtml(S.libRows[i]);
@@ -971,6 +978,7 @@ $('#libKind').addEventListener('click', (e) => {
   S.openPlaylist = null;
   S.openSmart = null;
   if (S.libKind === 'files') return loadFiles(S.filesDir);
+  if (S.libKind === 'albums') S.cfAt = S.cfAt || 0;
   renderLibrary();
   if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
 });
@@ -1787,7 +1795,10 @@ function renderSettings() {
       <div class="row-control">${segHtml('wheelVibration', BUZZ, s.wheelVibration ?? 'normal', 'Wheel vibration')}</div></div>
     <div class="row set-row"><span class="tile t-sound">${icon('volume')}</span>
       <div class="row-main"><div class="row-title">Click sound</div><div class="row-sub">The tick on every wheel step, separate from vibration.</div></div>
-      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>`;
+      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>
+    <div class="row set-row"><span class="tile t-sound">${icon('bars')}</span>
+      <div class="row-main"><div class="row-title">Visualizer in Now Playing</div><div class="row-sub">The music’s bands over the cover on your Rondo (hold center in Now Playing to turn it on or off there).</div></div>
+      <button class="switch" type="button" role="switch" data-key="visualizer" aria-checked="${!!s.visualizer}" aria-label="Visualizer in Now Playing"></button></div>`;
   setFill($('#brightness'));
 }
 const settingsRows = $('#settingsRows');
@@ -3081,3 +3092,187 @@ libList.addEventListener('click', (e) => {
   if (S.fileSel.has(name)) S.fileSel.delete(name); else S.fileSel.add(name);
   renderFiles();
 }, true);
+
+// ---------- Albums: Cover Flow (Library › Cover Flow on the Rondo) ----------
+// The albums' covers in perspective, the one in the middle facing you; the wheel, the arrow keys, a drag
+// or a click move through them, and the album's songs are listed below, to play on the Rondo.
+function albumsOf() {
+  const L = S.library;
+  if (!L) return [];
+  if (S.albumsFor === L) return S.albums;
+  const by = new Map();
+  for (const s of L.songs) {
+    if (!s.album) continue;
+    const key = fold(s.album) + '\u001f' + fold(s.albumArtist || '');
+    let a = by.get(key);
+    if (!a) by.set(key, (a = { name: s.album, artist: s.albumArtist || s.artist, songs: [], years: {} }));
+    a.songs.push(s);
+    if (s.year) a.years[s.year] = (a.years[s.year] || 0) + 1;
+  }
+  S.albums = [...by.values()].sort((a, b) => collator.compare(a.name, b.name));
+  for (const a of S.albums) {
+    a.songs.sort((x, y) => (x.disc || 0) - (y.disc || 0) || (x.track || 0) - (y.track || 0) || collator.compare(x.title, y.title));
+    a.year = +Object.entries(a.years).sort((x, y) => y[1] - x[1])[0]?.[0] || 0;
+    a.cover = a.songs.find((x) => x.art)?.path || a.songs[0].path;
+  }
+  S.albumsFor = L;
+  return S.albums;
+}
+function renderAlbums() {
+  if (!S.library) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4); return; }
+  const q = fold(S.libQuery.trim());
+  const all = albumsOf().filter((a) => !q || fold(a.name + ' ' + a.artist).includes(q));
+  S.cfList = all;
+  S.cfAt = Math.max(0, Math.min(all.length - 1, S.cfAt || 0));
+  $('#libSummary').textContent = all.length ? `${plural(all.length, 'album')} on the card` : 'No albums';
+  if (!all.length) { libList.innerHTML = '<div class="lib-empty"><h3>No albums</h3><p>Songs tagged with an album show up here.</p></div>'; return; }
+  libList.innerHTML = `<div class="cf" id="cf" tabindex="0" aria-label="Cover Flow: arrow keys move through the albums">
+      <button class="cf-nav prev" type="button" data-cf="-1" aria-label="Previous album">${icon('chevron', 'i flip')}</button>
+      <button class="cf-nav next" type="button" data-cf="1" aria-label="Next album">${icon('chevron')}</button>
+      <div id="cfItems"></div><div class="cf-caption"><h3 id="cfTitle"></h3><p id="cfSub"></p></div></div>
+    <div class="cf-songs" id="cfSongs"></div>`;
+  layoutFlow(true);
+}
+// the covers near the middle, each turned and set back by how far from it it is
+function layoutFlow(rebuild = false) {
+  const all = S.cfList, at = S.cfAt, box = $('#cfItems');
+  if (!box) return;
+  const near = [];
+  for (let i = Math.max(0, at - 7); i <= Math.min(all.length - 1, at + 7); i++) near.push(i);
+  // the elements kept by index, so a move animates (they're made only for the covers near the middle)
+  const have = new Map([...box.children].map((el) => [+el.dataset.i, el]));
+  for (const [i, el] of have) if (!near.includes(i)) el.remove();
+  const wide = box.parentElement.clientWidth < 600 ? 0.75 : 1;
+  for (const i of near) {
+    let el = have.get(i);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'cf-item';
+      el.dataset.i = i;
+      el.innerHTML = `<div class="cf-cover">${icon('note')}</div>`;
+      const img = new Image();
+      img.onload = () => { const c = $('.cf-cover', el); c.style.backgroundImage = `url("${img.src}")`; c.innerHTML = ''; };
+      img.src = artUrl(all[i].cover, 300);
+      box.append(el);
+    }
+    const d = i - at, ad = Math.abs(d), side = Math.sign(d);
+    const x = ad === 0 ? 0 : side * (150 + (ad - 1) * 52) * wide;
+    const turn = ad === 0 ? 0 : -side * 70, z = ad === 0 ? 60 : -40 - ad * 6;
+    el.style.transform = `translateX(${x}px) translateZ(${z}px) rotateY(${turn}deg)`;
+    el.style.zIndex = String(1000 - ad);
+    el.style.opacity = ad > 6 ? '0' : '1';
+  }
+  const a = all[at];
+  $('#cfTitle').textContent = a.name;
+  $('#cfSub').textContent = [a.artist, a.year || '', `${at + 1} of ${all.length}`].filter(Boolean).join(' · ');
+  clearTimeout(S.cfSongsTimer);
+  S.cfSongsTimer = setTimeout(() => {  // the songs once the glide stops
+    const songs = $('#cfSongs');
+    if (!songs || S.cfList[S.cfAt] !== a) return;
+    songs.innerHTML = `<div class="lhdr" role="heading" aria-level="3">${esc(a.name)}<small>${esc(plural(a.songs.length, 'song'))}</small></div>` +
+      a.songs.map((s) => rowHtml(s)).join('');
+    $$('.art[data-art]', songs).forEach((el) => artIO.observe(el));
+    markPlayingRows();
+  }, rebuild ? 0 : 260);
+}
+function moveFlow(by) {
+  const n = S.cfList?.length || 0;
+  const next = Math.max(0, Math.min(n - 1, S.cfAt + by));
+  if (next === S.cfAt) return;
+  S.cfAt = next;
+  layoutFlow();
+}
+libList.addEventListener('click', (e) => {
+  if (S.libKind !== 'albums') return;
+  const nav = e.target.closest('[data-cf]');
+  if (nav) { e.stopImmediatePropagation(); return moveFlow(+nav.dataset.cf); }
+  const item = e.target.closest('.cf-item');
+  if (item) { e.stopImmediatePropagation(); S.cfAt = +item.dataset.i; return layoutFlow(); }
+  // a song row below: the library's own handler (play, details)
+}, true);
+libList.addEventListener('keydown', (e) => {
+  if (S.libKind !== 'albums' || !e.target.closest('#cf')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); moveFlow(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); moveFlow(1); }
+  if (e.key === 'Home') { e.preventDefault(); moveFlow(-1e9); }
+  if (e.key === 'End') { e.preventDefault(); moveFlow(1e9); }
+});
+let cfWheel = 0;
+libList.addEventListener('wheel', (e) => {
+  if (S.libKind !== 'albums' || !e.target.closest('#cf')) return;
+  e.preventDefault();
+  cfWheel += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  while (Math.abs(cfWheel) >= 60) { moveFlow(Math.sign(cfWheel)); cfWheel -= Math.sign(cfWheel) * 60; }
+}, { passive: false });
+let cfDrag = null;
+libList.addEventListener('pointerdown', (e) => { if (S.libKind === 'albums' && e.target.closest('#cf') && !e.target.closest('button')) cfDrag = { x: e.clientX, moved: 0 }; });
+window.addEventListener('pointermove', (e) => {
+  if (!cfDrag) return;
+  const dx = e.clientX - cfDrag.x;
+  if (Math.abs(dx) >= 70) { moveFlow(dx < 0 ? 1 : -1); cfDrag.x = e.clientX; cfDrag.moved++; }
+});
+window.addEventListener('pointerup', () => { cfDrag = null; });
+
+// ---------- the visualizer (Now Playing on the Overview) ----------
+// The Rondo's 20 bands of what's playing, asked about 12 times a second while the Overview shows and
+// music plays, drawn over the dimmed cover. On or off for this browser.
+const vizBtn = $('#npVizBtn'), vizCanvas = $('#npViz');
+let vizOn = false, vizTimer = 0, vizBands = new Array(20).fill(0), vizShown = new Array(20).fill(0), vizRaf = 0;
+try { vizOn = localStorage.getItem('rondo_viz') === '1'; } catch { /* private window */ }
+function setViz(on) {
+  vizOn = on;
+  try { localStorage.setItem('rondo_viz', on ? '1' : '0'); } catch { /* private window */ }
+  vizBtn.setAttribute('aria-pressed', String(on));
+  vizCanvas.hidden = !on;
+  if (on) vizLoop(); else { clearTimeout(vizTimer); cancelAnimationFrame(vizRaf); }
+}
+vizBtn.addEventListener('click', (e) => { e.stopPropagation(); setViz(!vizOn); });
+async function vizLoop() {
+  clearTimeout(vizTimer);
+  if (!vizOn) return;
+  const showing = S.route === 'overview' && !document.hidden && S.status?.player?.playing;
+  if (showing) {
+    try { const r = await api('GET', '/api/spectrum', undefined, { timeout: 2000 }); vizBands = r.playing ? r.bands : vizBands.map(() => 0); } catch { /* a dropped one */ }
+    if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
+  } else {
+    vizBands = vizBands.map(() => 0);
+    if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
+  }
+  vizTimer = setTimeout(vizLoop, showing ? 80 : 600);
+}
+let vizLast = 0;
+function vizDraw(t) {
+  vizRaf = 0;
+  const dt = Math.min(0.1, vizLast ? (t - vizLast) / 1000 : 0.016);
+  vizLast = t;
+  const c = vizCanvas, dpr = devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,.42)';
+  g.fillRect(0, 0, w, h);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3b82f6';
+  const n = 20, pad = w * 0.06, gap = w * 0.012, bw = (w - pad * 2 - gap * (n - 1)) / n, hmax = h - pad * 2;
+  let moving = false;
+  for (let i = 0; i < n; i++) {
+    const want = (vizBands[i] / 255) ** 2;
+    const b = vizShown[i];
+    const nb = want > b ? b + (want - b) * Math.min(1, dt * 30) : Math.max(want, b - dt * 1.4);
+    if (Math.abs(nb - b) > 0.001) moving = true;
+    vizShown[i] = nb;
+    const bh = Math.max(2, nb * hmax);
+    const grad = g.createLinearGradient(0, h - pad - bh, 0, h - pad);
+    grad.addColorStop(0, '#fff');
+    grad.addColorStop(1, accent);
+    g.fillStyle = grad;
+    const x = pad + i * (bw + gap), y = h - pad - bh, r = Math.min(bw / 2, 3);
+    g.beginPath();
+    g.roundRect ? g.roundRect(x, y, bw, bh, [r, r, 0, 0]) : g.rect(x, y, bw, bh);
+    g.fill();
+  }
+  if (moving || (vizOn && S.status?.player?.playing && S.route === 'overview')) vizRaf = requestAnimationFrame(vizDraw);
+}
+setViz(vizOn);
