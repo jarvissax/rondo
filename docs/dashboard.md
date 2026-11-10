@@ -41,6 +41,10 @@ rating. A song's details show its tags and plays, with stars to rate it.
   second over the Y1's Wi-Fi.
 - **Play** a song on the Y1, or **delete** it.
 - **Rescan** after copying files onto the card some other way.
+- **Files:** the card as it is, folder by folder (and the internal storage). Make folders, rename,
+  move and delete files and folders, several at once with their checkboxes, upload into the folder
+  you're in (pictures, lyrics and subtitles too) and download a file to your computer. Songs and
+  videos keep their plays, ratings and playlists when they move, and a moved folder takes them all.
 - **Organize:** every file into the folders Jellyfin expects (as **Library › Organize the card** on
   the Y1), with the full list of moves to look through first; nothing moves until you press
   **Organize**.

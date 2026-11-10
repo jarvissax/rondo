@@ -698,6 +698,8 @@ $('#deviceRows').addEventListener('click', async (e) => {
 const AUDIO = ['flac', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wav'];
 const VIDEO = ['mp4', 'm4v', 'mkv', '3gp', 'webm'];
 const ALLOWED = [...AUDIO, ...VIDEO, 'lrc'];
+// what can go anywhere on the card from the Files tab: pictures, subtitles, playlists too
+const ALLOWED_FILES = [...ALLOWED, 'srt', 'ass', 'vtt', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'm3u8', 'm3u'];
 const extOf = (n) => (n.split('.').pop() || '').toLowerCase();
 const libList = $('#libList'), libEl = $('#lib');
 
@@ -798,8 +800,15 @@ function renderLibrary() {
   const videos = S.libKind === 'videos';
   libEl.classList.toggle('is-videos', videos);
   $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
-  const pls = S.libKind === 'playlists';
-  libEl.classList.toggle('is-playlists', pls);
+  const pls = S.libKind === 'playlists', files = S.libKind === 'files';
+  libEl.classList.toggle('is-playlists', pls || files);
+  if (files) {
+    $('#libSortWrap').hidden = true;
+    $('#libSearch').placeholder = 'Search this folder';
+    libList.setAttribute('aria-label', 'Files');
+    $('#view-library').classList.remove('is-empty');
+    return renderFiles();
+  }
   $('#libSortWrap').hidden = pls;
   if (pls) {
     $('#libSearch').placeholder = 'Search playlists';
@@ -842,7 +851,7 @@ function renderLibrary() {
 }
 const CHUNK = 120;
 function appendRows() {
-  if (S.libKind === 'playlists') return;  // the songs' rows stay out of the playlists
+  if (S.libKind === 'playlists' || S.libKind === 'files') return;  // the songs' rows stay out of the playlists and files
   const end = Math.min(S.libShown + CHUNK, S.libRows.length);
   let html = '';
   for (let i = S.libShown; i < end; i++) html += rowHtml(S.libRows[i]);
@@ -960,6 +969,8 @@ $('#libKind').addEventListener('click', (e) => {
   if (!b || b.dataset.kind === S.libKind) return;
   S.libKind = b.dataset.kind;
   S.openPlaylist = null;
+  S.openSmart = null;
+  if (S.libKind === 'files') return loadFiles(S.filesDir);
   renderLibrary();
   if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
 });
@@ -1353,13 +1364,14 @@ function folderFor(ext) {
   if (VIDEO.includes(ext)) return folders.find((f) => /movie|video/i.test(f)) || music;
   return music;
 }
-function enqueue(files) {
+// folder: where they go (the Files tab's folder), else Music or a video folder by their kind
+function enqueue(files, folder = null) {
   const bad = [];
   let added = 0;
   for (const f of files) {
     const ext = extOf(f.name);
-    if (!ALLOWED.includes(ext) || !f.size) { bad.push(f.name); continue; }
-    S.uploads.push({ id: ++upId, file: f, name: f.name, size: f.size, loaded: 0, status: 'queued', folder: folderFor(ext) });
+    if (!(folder ? ALLOWED_FILES : ALLOWED).includes(ext) || !f.size) { bad.push(f.name); continue; }
+    S.uploads.push({ id: ++upId, file: f, name: f.name, size: f.size, loaded: 0, status: 'queued', folder: folder || folderFor(ext) });
     added++;
   }
   if (bad.length) toast(bad.length === 1 ? `Skipped “${bad[0]}”: Rondo can’t play that kind of file` : `Skipped ${bad.length} files Rondo can’t play`, 'err');
@@ -1405,7 +1417,7 @@ function startUpload(u) {
   xhr.onload = () => {
     let data = null;
     try { data = JSON.parse(xhr.responseText); } catch { /* none */ }
-    if (xhr.status === 200) { u.status = 'done'; u.loaded = u.size; u.path = data?.path; }
+    if (xhr.status === 200) { u.status = 'done'; u.loaded = u.size; u.path = data?.path; if (S.libKind === 'files' && u.folder === S.filesDir) loadFiles(S.filesDir, true); }
     else if (xhr.status === 401) { u.status = 'queued'; needPair(); return; }
     else { u.status = 'error'; u.error = uploadError(xhr.status, data?.error); }
     u.xhr = null;
@@ -2912,3 +2924,150 @@ async function organizeProgress() {
     await new Promise((r) => setTimeout(r, 700));
   }
 }
+
+// ---------- Files: the card as it is (the Y1's Library › Folders) ----------
+// Open folders, make one, rename, move and delete files and folders (several at once), upload into the
+// folder you're in, download a file. Songs and videos keep their plays, ratings and playlists when
+// they move; a folder takes everything in it along.
+const FILE_ICON = { folder: 'folder', song: 'note', video: 'film', image: 'sun', text: 'lyrics', other: 'info' };
+async function loadFiles(dir, quiet = false) {
+  if (!quiet) libList.innerHTML = '<div class="lib-skel"></div>'.repeat(5);
+  try {
+    S.files = await api('GET', `/api/files${dir ? `?path=${encodeURIComponent(dir)}` : ''}`);
+    S.filesDir = S.files.path;
+    if (!quiet) S.fileSel = new Set();
+  } catch (e) {
+    if (e.status === 404 && dir) return loadFiles(null, quiet);  // a folder that went: the card's top
+    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t open the folder</h3><p>${esc(reason(e))}</p></div>`;
+    return;
+  }
+  renderLibrary();
+}
+const relName = (p) => { for (const r of S.files?.roots || []) if (p === r.path) return r.name; else if (p.startsWith(r.path + '/')) return `${r.name}/${p.slice(r.path.length + 1)}`; return p; };
+function renderFiles() {
+  const F = S.files;
+  if (!F) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(5); return; }
+  S.fileSel = S.fileSel || new Set();
+  const q = fold(S.libQuery.trim());
+  const list = F.entries.filter((e) => !q || fold(e.name + ' ' + (e.title || '') + ' ' + (e.artist || '')).includes(q))
+    .sort((a, b) => (b.kind === 'folder') - (a.kind === 'folder') || collator.compare(a.name, b.name));
+  const sel = [...S.fileSel].filter((n) => F.entries.some((e) => e.name === n));
+  S.fileSel = new Set(sel);
+  // where we are: the card's top, then each folder down to this one
+  let crumbs = '', at = '';
+  for (const r of F.roots) if (F.path === r.path || F.path.startsWith(r.path + '/')) at = r.path;
+  const root = F.roots.find((r) => r.path === at);
+  crumbs += `<button class="link" type="button" data-dir="${esc(at)}">${esc(root ? root.name : 'Card')}</button>`;
+  let acc = at;
+  for (const part of F.path.slice(at.length).split('/').filter(Boolean)) { acc += '/' + part; crumbs += ` › <button class="link" type="button" data-dir="${esc(acc)}">${esc(part)}</button>`; }
+  const one = sel.length === 1 ? F.entries.find((e) => e.name === sel[0]) : null;
+  $('#libSummary').textContent = `${plural(F.entries.length, 'item')} in ${relName(F.path)}`;
+  libList.innerHTML = `<div class="files-head">
+      <div class="crumbs">${crumbs}${F.roots.length > 1 ? `<span class="crumb-roots">${F.roots.filter((r) => r.path !== at).map((r) => `<button class="btn btn-sm btn-quiet" type="button" data-dir="${esc(r.path)}">${esc(r.name)}</button>`).join('')}</span>` : ''}</div>
+      <div class="files-acts">${sel.length ? `<span class="sel-count">${sel.length} selected</span>
+          ${one ? `<button class="btn btn-sm" type="button" data-fa="rename">Rename</button>` : ''}
+          ${one && one.kind !== 'folder' ? `<button class="btn btn-sm" type="button" data-fa="download">Download</button>` : ''}
+          <button class="btn btn-sm" type="button" data-fa="move">Move…</button>
+          <button class="btn btn-sm btn-red-text" type="button" data-fa="delete">${icon('trash')}<span>Delete</span></button>
+          <button class="btn btn-sm btn-quiet" type="button" data-fa="none">Clear</button>`
+        : `<button class="btn btn-sm" type="button" data-fa="folder">${icon('plus')}<span>New folder</span></button>
+          <button class="btn btn-sm" type="button" data-fa="upload">${icon('upload')}<span>Upload here</span></button>`}</div></div>
+    ${F.parent ? `<div class="song file-row" role="listitem" data-dir="${esc(F.parent)}"><span class="fsel"></span><span class="art">${icon('up')}</span><span class="s-main"><span class="s-title">Up a folder</span></span></div>` : ''}
+    ${list.length ? list.map((e) => `<div class="song file-row${S.fileSel.has(e.name) ? ' is-sel' : ''}" role="listitem" data-name="${esc(e.name)}" data-kind="${e.kind}">
+        <label class="fsel"><input type="checkbox" ${S.fileSel.has(e.name) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></label>
+        <span class="art">${icon(FILE_ICON[e.kind] || 'info')}</span>
+        <span class="s-main"><span class="s-title">${esc(e.name)}</span><span class="s-sub">${esc(e.kind === 'folder' ? 'Folder' : [e.title && e.title !== e.name ? e.title : '', e.artist, fmtBytes(e.size)].filter(Boolean).join(' · '))}</span></span>
+        <span class="s-time">${new Date(e.modified).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span></div>`).join('')
+      : `<div class="lib-empty"><h3>${q ? 'No matches' : 'An empty folder'}</h3><p>${q ? 'Nothing here matches.' : 'Upload files here, or move some in.'}</p></div>`}`;
+}
+async function fileAction(act) {
+  const F = S.files, sel = [...S.fileSel], paths = sel.map((n) => `${F.path}/${n}`);
+  if (act === 'none') { S.fileSel.clear(); return renderFiles(); }
+  if (act === 'upload') {
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true;
+    input.onchange = () => enqueue([...input.files], F.path);
+    return input.click();
+  }
+  if (act === 'folder') {
+    const name = await promptSheet({ title: 'New folder', text: `In ${esc(relName(F.path))}.`, action: 'Make', placeholder: 'Name' });
+    if (!name) return;
+    try { S.files = await api('POST', '/api/files/folder', { path: F.path, name }); renderFiles(); toast(`Made “${name}”`); }
+    catch (e) { if (e.status !== 401) toast(`Not made. ${e.code && e.code !== 'pair' ? e.code : reason(e)}`, 'err'); }
+    return;
+  }
+  if (act === 'rename') {
+    const name = await promptSheet({ title: 'Rename', value: sel[0], action: 'Rename' });
+    if (!name || name === sel[0]) return;
+    try { S.files = await api('POST', '/api/files/rename', { path: paths[0], name }); S.fileSel = new Set(); renderFiles(); toast('Renamed'); }
+    catch (e) { if (e.status !== 401) toast(`Not renamed. ${e.code && e.code !== 'pair' ? e.code : reason(e)}`, 'err'); }
+    return;
+  }
+  if (act === 'download') {
+    const a = document.createElement('a');
+    a.href = `/api/files/download?path=${encodeURIComponent(paths[0])}`;
+    a.download = sel[0];
+    document.body.append(a); a.click(); a.remove();
+    return;
+  }
+  if (act === 'delete') {
+    const folders = sel.filter((n) => F.entries.find((e) => e.name === n)?.kind === 'folder').length;
+    const what = sel.length === 1 ? `“${esc(sel[0])}”` : plural(sel.length, 'item');
+    if (!(await confirmSheet({ title: `Delete ${what}?`, text: `${folders ? 'Folders go with everything in them. ' : ''}This can’t be undone.`, action: 'Delete' }))) return;
+    try {
+      const r = await api('POST', '/api/files/delete', { paths }, { timeout: 120000 });
+      if (r.errors.length) toast(`${plural(r.errors.length, 'file')} couldn’t be deleted`, 'err'); else toast(`Deleted ${what.replace(/&quot;/g, '"')}`);
+      loadFiles(F.path, true); loadLibrary(true);
+    } catch (e) { if (e.status !== 401) toast(`Not deleted. ${reason(e)}`, 'err'); }
+    return;
+  }
+  if (act === 'move') return moveSheet(paths);
+}
+// a folder to move into: browse the folders, then Move here
+async function moveSheet(paths) {
+  let dir = S.files.path;
+  const draw = async () => {
+    let L;
+    try { L = await api('GET', `/api/files?path=${encodeURIComponent(dir)}`); } catch (e) { return; }
+    const folders = L.entries.filter((e) => e.kind === 'folder').sort((a, b) => collator.compare(a.name, b.name));
+    openSheet(`<h2>Move ${plural(paths.length, 'item')}</h2><p>Into <b>${esc(relName(L.path))}</b></p>
+      <div class="org-list mv-list">${L.parent ? `<button type="button" class="mv-dir" data-to="${esc(L.parent)}">${icon('up')}<span>Up a folder</span></button>` : ''}
+        ${folders.map((e) => `<button type="button" class="mv-dir" data-to="${esc(L.path + '/' + e.name)}"${paths.includes(L.path + '/' + e.name) ? ' disabled' : ''}>${icon('folder')}<span>${esc(e.name)}</span></button>`).join('') || '<div class="row-empty">No folders in here.</div>'}</div>
+      <div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="button" data-r="here"${L.path === S.files.path ? ' disabled' : ''}>Move here</button></div>`);
+    $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
+    $$('.mv-dir', sheet).forEach((b) => b.addEventListener('click', () => { dir = b.dataset.to; draw(); }));
+    $('[data-r="here"]', sheet).addEventListener('click', async () => {
+      try {
+        const r = await api('POST', '/api/files/move', { paths, to: L.path }, { timeout: 120000 });
+        sheet.close();
+        if (r.errors.length) toast(r.errors[0], 'err'); else toast(`Moved ${plural(r.moved, 'item')} to ${relName(L.path)}`);
+        S.fileSel = new Set();
+        loadFiles(S.files.path, true); loadLibrary(true);
+      } catch (e) { if (e.status !== 401) toast(`Not moved. ${reason(e)}`, 'err'); }
+    });
+  };
+  draw();
+}
+libList.addEventListener('click', (e) => {
+  if (S.libKind !== 'files') return;
+  e.stopImmediatePropagation();
+  const fa = e.target.closest('[data-fa]');
+  if (fa) return fileAction(fa.dataset.fa);
+  const go = e.target.closest('[data-dir]');
+  if (go) return loadFiles(go.dataset.dir);
+  const row = e.target.closest('.file-row[data-name]');
+  if (!row) return;
+  const name = row.dataset.name;
+  if (e.target.closest('.fsel')) {  // the checkbox: selected or not
+    const box = $('input', row);
+    if (e.target !== box) box.checked = !box.checked;
+    if (box.checked) S.fileSel.add(name); else S.fileSel.delete(name);
+    return renderFiles();
+  }
+  const ent = S.files.entries.find((x) => x.name === name);
+  if (ent?.kind === 'folder') return loadFiles(`${S.files.path}/${name}`);
+  if (ent?.kind === 'song') { const it = S.libByPath?.get(`${S.files.path}/${name}`); if (it) return openItem(it); }
+  // anything else: selected
+  if (S.fileSel.has(name)) S.fileSel.delete(name); else S.fileSel.add(name);
+  renderFiles();
+}, true);

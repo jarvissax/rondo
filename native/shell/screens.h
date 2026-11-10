@@ -26,6 +26,8 @@ struct OrganizeStatus {
   std::vector<std::string> errors;
 };
 OrganizeStatus organizeStatus();
+// Files or folders moved on the card: the library (plays, ratings), the playlists and the queue follow
+void filesMoved(const std::vector<std::pair<std::string, std::string>>& moves);
 // A list of card songs (Select plays them all from there; held, a song's menu), as Songs shows them
 std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs);  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeSettings();

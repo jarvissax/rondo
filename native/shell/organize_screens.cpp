@@ -42,11 +42,21 @@ std::vector<OrganizeItem> itemsOf(const std::string& root) {
   return items;
 }
 
-// what moved, after the moves: the library, the playlists and the queue follow (UI thread)
-void follow(const std::vector<OrganizeMove>& done) {
-  std::unordered_map<std::string, std::string> moved;
-  for (const OrganizeMove& m : done)
-    if (m.kind == OrganizeMove::Song || m.kind == OrganizeMove::Video) moved[m.from] = m.to;
+}  // namespace
+
+// Files or folders that moved on the card (organized, renamed or moved on the dashboard): the library's
+// entries (their plays and ratings), the playlists and the queue follow them. A folder takes everything
+// in it along. UI thread.
+void filesMoved(const std::vector<std::pair<std::string, std::string>>& moves) {
+  std::unordered_map<std::string, std::string> moved;  // track paths: from -> to
+  for (const auto& mv : moves) {
+    const std::string &from = mv.first, &to = mv.second;
+    for (const Track& t : g_library.tracks()) {
+      if (t.gone) continue;
+      if (t.path == from) moved[t.path] = to;
+      else if (t.path.compare(0, from.size() + 1, from + "/") == 0) moved[t.path] = to + t.path.substr(from.size());
+    }
+  }
   for (const auto& kv : moved) g_library.moved(kv.first, kv.second);
   for (const Playlist& p : g_playlists.all()) {
     std::vector<std::string> paths = p.paths;
@@ -65,9 +75,16 @@ void follow(const std::vector<OrganizeMove>& done) {
     g_player.restoreQueue(queue, s.index, s.positionMs, s.playing != 0);
     if (shuffle) g_player.setShuffle(true);
   }
-  fprintf(stderr, "rondo: organized: %zu files moved\n", done.size());
+  fprintf(stderr, "rondo: %zu files of the library moved\n", moved.size());
 }
 
+namespace {
+void follow(const std::vector<OrganizeMove>& done) {
+  std::vector<std::pair<std::string, std::string>> moves;
+  for (const OrganizeMove& m : done)
+    if (m.kind == OrganizeMove::Song || m.kind == OrganizeMove::Video) moves.push_back({m.from, m.to});
+  filesMoved(moves);
+}
 }  // namespace
 
 std::vector<std::pair<std::string, OrganizePlan>> organizePlans() {

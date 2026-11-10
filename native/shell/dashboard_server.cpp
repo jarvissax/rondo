@@ -1,6 +1,7 @@
 // The dashboard's server (dashboard.h), DashboardServer.kt ported route by route: the same paths, bodies
 // and answers, so 1.0.x's page (index.html, app.js, app.css) runs unchanged.
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -162,6 +163,8 @@ struct Response {
   std::string type = "application/json; charset=utf-8", body;
   std::vector<std::pair<std::string, std::string>> headers;
   bool close = false;
+  std::string file;  // instead of body: this file, read as it's sent (fileBytes long)
+  int64_t fileBytes = 0;
 };
 
 const char* reason(int s) {
@@ -381,7 +384,8 @@ std::string extOf(const std::string& name) {
   for (char& c : e) c = char(tolower((unsigned char)c));
   return e;
 }
-const std::set<std::string> kMediaExt = {"flac", "mp3", "m4a", "aac", "ogg", "opus", "wav", "mp4", "m4v", "mkv", "3gp", "webm", "lrc"};
+const std::set<std::string> kMediaExt = {"flac", "mp3", "m4a", "aac", "ogg", "opus", "wav", "mp4", "m4v", "mkv", "3gp", "webm", "lrc",
+                                         "srt", "ass", "vtt", "jpg", "jpeg", "png", "gif", "webp", "bmp", "m3u8", "m3u"};
 const std::set<std::string> kSongExt = {"flac", "mp3", "m4a", "aac", "ogg", "opus", "wav"};
 
 // WifiManager.calculateSignalLevel(rssi, 5)
@@ -538,9 +542,12 @@ Response Server::index() {
   // the script and styles stamped with this build: a browser that cached an older app.js fetches the new one
   struct stat st;
   std::string stamp = kVersion;
-  if (stat((assets_ + "/dashboard/app.js").c_str(), &st) == 0) {
+  time_t newest = 0;  // the later of the two: either can change alone
+  for (const char* f : {"/dashboard/app.js", "/dashboard/app.css"})
+    if (stat((assets_ + f).c_str(), &st) == 0 && st.st_mtime > newest) newest = st.st_mtime;
+  if (newest) {
     char b[24];
-    snprintf(b, sizeof(b), "%llx", (unsigned long long)st.st_mtime);
+    snprintf(b, sizeof(b), "%llx", (unsigned long long)newest);
     stamp = b;
   }
   auto stampIn = [&](const std::string& from, const std::string& to) {
@@ -603,12 +610,26 @@ void Server::connection(int fd) {
     auto conn = r.headers.find("connection");
     if (conn != r.headers.end() && strcasecmp(conn->second.c_str(), "close") == 0) res.close = true;
     char head[256];
-    snprintf(head, sizeof(head), "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\n", res.status, reason(res.status),
-             res.type.c_str(), res.body.size());
+    snprintf(head, sizeof(head), "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\n", res.status, reason(res.status),
+             res.type.c_str(), (long long)(res.file.empty() ? int64_t(res.body.size()) : res.fileBytes));
     std::string h = head;
     for (auto& kv : res.headers) h += kv.first + ": " + kv.second + "\r\n";
     h += res.close ? "Connection: close\r\n\r\n" : "Connection: keep-alive\r\n\r\n";
-    if (!sendAll(fd, h.data(), h.size()) || (r.method != "HEAD" && !sendAll(fd, res.body.data(), res.body.size()))) break;
+    if (!sendAll(fd, h.data(), h.size())) break;
+    if (!res.file.empty() && r.method != "HEAD") {
+      int in = open(res.file.c_str(), O_RDONLY | O_CLOEXEC);
+      int64_t left = res.fileBytes;
+      std::vector<char> chunk(64 * 1024);
+      while (in >= 0 && left > 0) {
+        ssize_t n = read(in, chunk.data(), size_t(std::min<int64_t>(left, int64_t(chunk.size()))));
+        if (n <= 0 || !sendAll(fd, chunk.data(), size_t(n))) break;
+        left -= n;
+      }
+      if (in >= 0) close(in);
+      if (left > 0) break;  // cut short: the connection goes
+    } else if (r.method != "HEAD" && !sendAll(fd, res.body.data(), res.body.size())) {
+      break;
+    }
     if (res.close) break;
   }
   close(fd);
@@ -1372,6 +1393,75 @@ bool smartFrom(const Body& b, SmartPlaylist& p) {
   return ok;
 }
 
+// --- Files: the card as it is, for the dashboard's file manager ---
+
+std::string kindOfFile(const std::string& name, bool dir) {
+  if (dir) return "folder";
+  std::string x = extOf(name);
+  if (kSongExt.count(x)) return "song";
+  static const std::set<std::string> video = {"mp4", "m4v", "mkv", "3gp", "webm"}, image = {"jpg", "jpeg", "png", "gif", "webp", "bmp"},
+                                      text = {"lrc", "srt", "ass", "vtt", "txt", "m3u8", "m3u", "json"};
+  if (video.count(x)) return "video";
+  if (image.count(x)) return "image";
+  if (text.count(x)) return "text";
+  return "other";
+}
+// a name for one entry in a folder: no slashes, no dot files, nothing FAT can't hold
+std::string entryName(const std::string& in) {
+  std::string n = cardName(in);
+  return n.empty() || n[0] == '.' || n == ".." ? std::string() : n;
+}
+bool isDirPath(const std::string& p) {
+  struct stat st;
+  return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+std::string filesJson(const std::string& dir) {
+  std::vector<std::string> entries;
+  if (DIR* d = opendir(dir.c_str())) {
+    while (dirent* e = readdir(d)) {
+      if (e->d_name[0] == '.') continue;  // hidden, and the .part of an upload
+      std::string p = dir + "/" + e->d_name;
+      struct stat st;
+      if (stat(p.c_str(), &st) != 0) continue;
+      bool folder = S_ISDIR(st.st_mode);
+      const Track* t = folder ? nullptr : g_library.find(p);
+      std::vector<std::pair<std::string, std::string>> fields = {
+          {"name", str(e->d_name)}, {"kind", str(kindOfFile(e->d_name, folder))}, {"size", num(int64_t(folder ? 0 : st.st_size))},
+          {"modified", num(int64_t(st.st_mtime) * 1000)}};
+      if (t) fields.push_back({"title", str(t->title)}), fields.push_back({"artist", str(t->artist)});
+      entries.push_back(obj(fields));
+    }
+    closedir(d);
+  }
+  std::string parent;
+  for (const char* r : kRoots)
+    if (dir != r && inside(dir)) parent = dir.substr(0, dir.rfind('/'));
+  std::vector<std::string> roots;
+  for (const char* r : kRoots)
+    if (isDirPath(r)) roots.push_back(obj({{"path", str(r)}, {"name", str(std::string(r) == kRoots[0] ? "Card" : "Internal storage")}}));
+  return obj({{"path", str(dir)}, {"parent", parent.empty() ? kNull : str(parent)}, {"entries", arr(entries)}, {"roots", arr(roots)}});
+}
+bool isRoot(const std::string& p) {
+  for (const char* r : kRoots)
+    if (p == r) return true;
+  return false;
+}
+// what's in a folder, files and folders, deepest first (a delete's order)
+void walkDeep(const std::string& dir, std::vector<std::string>& out, int depth = 0) {
+  if (depth > 16) return;
+  if (DIR* d = opendir(dir.c_str())) {
+    std::vector<std::string> names;
+    while (dirent* e = readdir(d))
+      if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) names.push_back(e->d_name);
+    closedir(d);
+    for (const std::string& n : names) {
+      std::string p = dir + "/" + n;
+      if (isDirPath(p)) walkDeep(p, out, depth + 1);
+      out.push_back(p);
+    }
+  }
+}
+
 // Library › Organize the card: where everything would go, and how far the moves are
 std::string organizeStatusJson() {
   OrganizeStatus s = organizeStatus();
@@ -1830,6 +1920,116 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/playlists" && m == "GET") return ui([] { return playlistsJson(); });
   if (path == "/smart" && m == "GET") return ui([] { return smartListJson(); });
   if (path == "/organize" && m == "GET") return ui([] { return organizePlanJson(); });
+  if (path == "/files" && m == "GET") {
+    std::string dir = r.hasParam("path") ? r.param("path") : cardRoot().empty() ? std::string(kRoots[0]) : cardRoot();
+    while (dir.size() > 1 && dir.back() == '/') dir.pop_back();
+    if (!(isRoot(dir) || inside(dir)) || !isDirPath(dir)) return error(404, "not found");
+    return onUi([dir] { return json(filesJson(dir)); });  // the library's titles: UI thread
+  }
+  if (path == "/files/download" && m == "GET") {  // a file as it is, to save on the computer
+    std::string p = r.param("path");
+    struct stat st;
+    if (!inside(p) || stat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return error(404, "not found");
+    Response res;
+    res.type = "application/octet-stream";
+    res.file = p, res.fileBytes = st.st_size;
+    std::string name = p.substr(p.rfind('/') + 1), ascii;
+    for (unsigned char c : name) ascii += c < 0x20 || c >= 0x7f || c == '"' || c == '\\' ? '_' : char(c);
+    res.headers.push_back({"Content-Disposition", "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + Api::escape(name)});
+    return res;
+  }
+  if (path == "/files/folder" && m == "POST")  // a new folder in one
+    return onUi([b] {
+      std::string dir, name;
+      b->text("path", dir), b->text("name", name);
+      name = entryName(name);
+      if (name.empty()) return error(400, "Type a name");
+      if (!(isRoot(dir) || inside(dir)) || !isDirPath(dir)) return error(404, "not found");
+      std::string p = dir + "/" + name;
+      struct stat st;
+      if (stat(p.c_str(), &st) == 0) return error(409, "Something by that name is there already");
+      if (mkdir(p.c_str(), 0775) != 0) return error(500, strerror(errno));
+      return json(filesJson(dir));
+    });
+  if (path == "/files/rename" && m == "POST")  // a file or folder, in its folder
+    return onUi([b] {
+      std::string from, name;
+      b->text("path", from), b->text("name", name);
+      name = entryName(name);
+      if (name.empty()) return error(400, "Type a name");
+      if (!inside(from) || isRoot(from)) return error(404, "not found");
+      std::string dir = from.substr(0, from.rfind('/')), to = dir + "/" + name;
+      struct stat st;
+      if (stat(from.c_str(), &st) != 0) return error(404, "not found");
+      if (to != from && strcasecmp(to.c_str(), from.c_str()) != 0 && stat(to.c_str(), &st) == 0)
+        return error(409, "Something by that name is there already");
+      if (rename(from.c_str(), to.c_str()) != 0) return error(500, strerror(errno));
+      filesMoved({{from, to}});
+      return json(filesJson(dir));
+    });
+  if (path == "/files/move" && m == "POST")  // files and folders into another folder
+    return onUi([b] {
+      bool has;
+      std::vector<std::string> paths = b->strings("paths", has);
+      std::string to;
+      b->text("to", to);
+      if (!(isRoot(to) || inside(to)) || !isDirPath(to)) return error(404, "That folder isn't there");
+      std::vector<std::pair<std::string, std::string>> moved;
+      std::vector<std::string> errors;
+      for (const std::string& from : paths) {
+        if (!inside(from) || isRoot(from)) continue;
+        std::string name = from.substr(from.rfind('/') + 1), target = to + "/" + name;
+        if (target == from) continue;
+        if (to.compare(0, from.size() + 1, from + "/") == 0 || to == from) {
+          errors.push_back(name + ": can't go into itself");
+          continue;
+        }
+        struct stat st;
+        if (stat(target.c_str(), &st) == 0) {
+          errors.push_back(name + ": something by that name is there already");
+          continue;
+        }
+        if (rename(from.c_str(), target.c_str()) != 0) {
+          errors.push_back(name + ": " + strerror(errno));
+          continue;
+        }
+        moved.push_back({from, target});
+      }
+      filesMoved(moved);
+      std::vector<std::string> errs;
+      for (const std::string& e : errors) errs.push_back(str(e));
+      return json(obj({{"moved", num(int64_t(moved.size()))}, {"errors", arr(errs)}}));
+    });
+  if (path == "/files/delete" && m == "POST")  // files, and folders with all they hold
+    return onUi([b] {
+      bool has;
+      std::vector<std::string> paths = b->strings("paths", has);
+      int deleted = 0;
+      std::vector<std::string> errors;
+      for (const std::string& p : paths) {
+        if (!inside(p) || isRoot(p)) continue;
+        std::vector<std::string> all;
+        if (isDirPath(p)) walkDeep(p, all);
+        all.push_back(p);
+        for (const std::string& q : all) {
+          bool ok;
+          if (isDirPath(q)) {
+            ok = rmdir(q.c_str()) == 0;
+          } else if (const Track* t = g_library.find(q)) {  // a song or video: out of the library too
+            ok = g_library.deleteFile(t->path);
+            if (ok) g_playlists.forget(q);
+          } else {
+            struct stat st;
+            ok = unlink(q.c_str()) == 0 || stat(q.c_str(), &st) != 0;  // an .lrc deleteFile took already
+          }
+          if (ok) deleted++;
+          else errors.push_back(q.substr(q.rfind('/') + 1) + ": " + strerror(errno));
+        }
+      }
+      std::vector<std::string> errs;
+      for (const std::string& e : errors) errs.push_back(str(e));
+      return json(obj({{"deleted", num(int64_t(deleted))}, {"errors", arr(errs)}}));
+    });
   if (path == "/organize/status" && m == "GET") return ui([] { return organizeStatusJson(); });
   if (path == "/organize" && m == "POST")
     return onUi([] {
