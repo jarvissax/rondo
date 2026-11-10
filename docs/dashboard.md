@@ -23,7 +23,8 @@ pairing for half a minute.
 ## Overview
 
 What's playing, with play/pause, skip and a volume slider, plus the battery, how full the card
-is, the Wi-Fi network and Rondo's version, with **Restart** and **Shut down** buttons.
+is, the Wi-Fi network and the Y1's Wi-Fi address, where YouTube comes from and the time zone, and
+Rondo's version, with **Restart** and **Shut down** buttons.
 
 When a newer Rondo is out, a row says so, with **Install**: your browser downloads the update and
 sends it to the Y1, which installs it and restarts with everything kept (the dashboard stops with
@@ -60,6 +61,23 @@ The same settings as on the Y1 (see [Using Rondo](using.md#settings)): video qua
 brightness, screen timeout, lyrics, wheel acceleration, wheel vibration and the click sound. The
 Theme page above matches the Y1's **Settings › Theme**.
 
+**Date & time**, as on the Y1: the time and the time zone each set automatically or by hand, and
+24-hour time. By hand, set the date and the time (or take your computer's) and pick the time zone.
+
+## Sound
+
+The Y1's **Settings › Sound**. Each output keeps its own sound: pick the speaker, wired headphones
+or a Bluetooth device (the one music plays on now is marked), then:
+
+- **Equalizer:** a preset, or ten bands you drag yourself; the sound follows as you drag. **Save as
+  a preset** keeps your bands for every output; **Flat** sets them back.
+- **Headphone match:** find your headphone model in AutoEq's measurements (through your server)
+  and Rondo corrects its sound.
+- **Loudness boost:** louder, the peaks held and never clipped.
+
+For every output: **volume leveling**, the Y1's **amplifier**, and the **volume limit**, the loudest
+step the wheel and the dashboard can set.
+
 ## Wi-Fi
 
 The network the Y1 is on, your saved networks and the ones nearby. Join a network with its
@@ -81,7 +99,8 @@ antenna.
 
 ## Server
 
-Which [Rondo server](server.md) the Y1 uses, and whether it's reachable. The Y1's own
+Where YouTube Music and YouTube come from: **Directly to YouTube** (nothing to set up) or **My
+server**, the [Rondo server](server.md) the Y1 uses, and whether it's reachable. The Y1's own
 **Settings › Server** does the same.
 
 - **Connect to a server:** enter the server's address and the code from its admin page

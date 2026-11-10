@@ -306,6 +306,7 @@ const NAV = [
   { id: 'library', label: 'Library', tile: 'device', glyph: 'folder' },
   { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
   { id: 'settings', label: 'Settings', tile: 'settings', glyph: 'gear' },
+  { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'volume' },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
   { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio' },
@@ -332,7 +333,8 @@ function enterView(id, force = false) {
   if (id === 'overview') { renderOverview(); if (performance.now() - S.statusAt > 1800) poll(); }
   if (id === 'library') { if (!S.library || force) loadLibrary(); else renderLibrarySummary(); }
   if (id === 'theme') { if (!S.theme || force) loadTheme(); else renderTheme(); }
-  if (id === 'settings') loadSettings();
+  if (id === 'settings') { loadSettings(); loadDateTime(); }
+  if (id === 'sound') loadSound();
   if (id === 'wifi') loadWifi();
   if (id === 'bluetooth') loadBluetooth();
   if (id === 'radio') loadRadio();
@@ -550,7 +552,7 @@ async function sendVolume(v) {
 function renderDevice() {
   const st = S.status;
   if (!st) return;
-  const b = st.battery || {}, s = st.storage || {}, w = st.wifi, d = st.device || {};
+  const b = st.battery || {}, s = st.storage || {}, w = st.wifi, d = st.device || {}, ab = st.about || {};
   const level = b.level ?? 0;
   const used = (s.totalBytes || 0) - (s.freeBytes || 0);
   const pct = s.totalBytes ? (used / s.totalBytes) * 100 : 0;
@@ -572,8 +574,12 @@ function renderDevice() {
     </div>
     <div class="row">
       <span class="tile t-wifi">${icon('wifi')}</span>
-      <div class="row-main"><div class="row-title">${w ? esc(w.ssid) : 'Wi-Fi'}</div><div class="row-sub">${w ? `Wi-Fi · ${esc(w.ip || '')}` : 'Not connected'}</div></div>
+      <div class="row-main"><div class="row-title">${w ? esc(w.ssid) : 'Wi-Fi'}</div><div class="row-sub">${w ? `Wi-Fi · ${esc(w.ip || '')}` : 'Not connected'}${ab.mac ? ` · MAC ${esc(ab.mac)}` : ''}</div></div>
       ${w ? `<span class="row-value" aria-label="Signal ${w.signal} of 4">${sigSvg(w.signal ?? 0)}</span>` : ''}
+    </div>
+    <div class="row">
+      <span class="tile t-server">${icon('cloud')}</span>
+      <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${esc(ab.connectTo || '')}${ab.timeZone ? ` · Time zone ${esc(ab.timeZone)}` : ''}</div></div>
     </div>
     <div class="row">
       <span class="tile t-rondo">${markTile}</span>
@@ -2186,6 +2192,13 @@ function renderServer() {
   const admin = s.url ? `${s.url.replace(/\/+$/, '')}/admin` : '';
   $('#serverBody').innerHTML = `
     <div class="group">
+      <div class="row row-wide set-row"><span class="tile t-server">${icon('cloud')}</span>
+        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? 'Rondo talks to YouTube itself: nothing to set up. Library, Subscriptions and History need your server.' : 'Everything goes through your server.'}</div></div>
+        <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="Connect to" id="srvMode">
+          <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">Directly to YouTube</button>
+          <button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0"${s.url ? '' : ' disabled title="Connect to a server below first"'}>My server</button></div></div></div>
+    </div>
+    <div class="group">
       <div class="srv-field">
         <div class="row-title">Your server</div>
         <div class="row-sub srv-now"><span class="srv-url">${esc(s.url || 'None')}</span>
@@ -2230,6 +2243,15 @@ function renderServer() {
     </div>`;
 }
 const serverBody = $('#serverBody');
+serverBody.addEventListener('click', async (e) => {
+  const b = e.target.closest('#srvMode [data-direct]');
+  if (!b || b.disabled || b.getAttribute('aria-checked') === 'true') return;
+  try {
+    S.server = await api('PUT', '/api/server', { direct: b.dataset.direct === '1' });
+    renderServer();
+    toast('Saved on your Rondo');
+  } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
+});
 serverBody.addEventListener('input', (e) => {
   if (e.target.id === 'srvUrl') {
     e.target.classList.remove('is-invalid');
@@ -2367,3 +2389,236 @@ function toast(msg, kind = 'ok') {
 setFill(npSeek);
 setFill(npVol);
 boot();
+
+// ---------- Date & time (Settings › Date & time on the Rondo) ----------
+async function loadDateTime() {
+  try {
+    S.dateTime = await api('GET', '/api/datetime');
+    S.dateTimeAt = Date.now();
+    renderDateTime();
+  } catch (e) {
+    if (e.status !== 401 && !S.dateTime) $('#dateRows').innerHTML = `<div class="row-empty">Couldn’t load the date and time. ${esc(reason(e))}</div>`;
+  }
+}
+// the Rondo's clock now, as a datetime-local value in its own time zone
+function rondoLocal(d) {
+  const t = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
+  return t.toISOString().slice(0, 16);
+}
+function rondoClock(d) {
+  const t = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
+  return t.toLocaleString(undefined, { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short', hour12: !d.clock24 });
+}
+function renderDateTime() {
+  const d = S.dateTime;
+  if (!d) return;
+  const zones = d.zones.map((z) => `<option value="${esc(z.id)}"${z.id === d.zone ? ' selected' : ''}>${esc(z.gmt)} · ${esc(z.city)}</option>`).join('');
+  $('#dateRows').innerHTML = `
+    <div class="row set-row"><span class="tile t-timer">${icon('timer')}</span>
+      <div class="row-main"><div class="row-title">Set automatically</div><div class="row-sub">From the network when Wi-Fi is on. Now: <b id="dtNow">${esc(rondoClock(d))}</b></div></div>
+      <button class="switch" type="button" role="switch" data-dt="autoTime" aria-checked="${d.autoTime}" aria-label="Set the time automatically"></button></div>
+    ${d.autoTime ? '' : `<div class="row row-wide set-row"><span class="tile t-timer">${icon('timer')}</span>
+      <div class="row-main"><div class="row-title">Date and time</div><div class="row-sub">Set on your Rondo, in its time zone.</div></div>
+      <div class="row-control date-set"><input type="datetime-local" id="dtValue" value="${esc(rondoLocal(d))}" aria-label="Date and time">
+        <button class="btn btn-sm" type="button" id="dtFromHere">Use this computer’s time</button><button class="btn btn-sm btn-primary" type="button" id="dtSet">Set</button></div></div>`}
+    <div class="row set-row"><span class="tile t-wifi">${icon('wifi')}</span>
+      <div class="row-main"><div class="row-title">Time zone automatically</div><div class="row-sub">Where your Rondo is online. Now: ${esc(d.city)} (${esc(d.zone)})</div></div>
+      <button class="switch" type="button" role="switch" data-dt="autoZone" aria-checked="${d.autoZone}" aria-label="Set the time zone automatically"></button></div>
+    ${d.autoZone ? '' : `<div class="row row-wide set-row"><span class="tile t-wifi">${icon('wifi')}</span>
+      <div class="row-main"><div class="row-title">Time zone</div></div>
+      <div class="row-control"><div class="select"><select id="dtZone" aria-label="Time zone">${zones}</select>${icon('down')}</div></div></div>`}
+    <div class="row set-row"><span class="tile t-timer">${icon('timer')}</span>
+      <div class="row-main"><div class="row-title">24-hour time</div><div class="row-sub">Off: AM and PM.</div></div>
+      <button class="switch" type="button" role="switch" data-dt="clock24" aria-checked="${d.clock24}" aria-label="24-hour time"></button></div>`;
+}
+async function putDateTime(body) {
+  try {
+    S.dateTime = await api('PUT', '/api/datetime', body);
+    S.dateTimeAt = Date.now();
+    renderDateTime();
+    toast('Saved on your Rondo');
+  } catch (e) {
+    if (e.status !== 401) toast(`Not saved. ${reason(e)}`, 'err');
+    renderDateTime();
+  }
+}
+const dateRows = $('#dateRows');
+dateRows.addEventListener('click', (e) => {
+  const sw = e.target.closest('.switch[data-dt]');
+  if (sw) return putDateTime({ [sw.dataset.dt]: sw.getAttribute('aria-checked') !== 'true' });
+  if (e.target.closest('#dtFromHere')) {
+    const now = new Date(), d = S.dateTime;
+    // this computer's moment, shown in the Rondo's zone
+    $('#dtValue').value = new Date(now.getTime() + d.offsetSec * 1000).toISOString().slice(0, 16);
+    return;
+  }
+  if (e.target.closest('#dtSet')) {
+    const v = $('#dtValue').value, d = S.dateTime;
+    if (!v) return;
+    // the value is the Rondo's local time: back to UTC by its offset
+    const epoch = Math.round(Date.parse(v + ':00Z') / 1000) - d.offsetSec;
+    putDateTime({ now: epoch });
+  }
+});
+dateRows.addEventListener('change', (e) => { if (e.target.id === 'dtZone') putDateTime({ zone: e.target.value }); });
+setInterval(() => { const el = document.getElementById('dtNow'); if (el && S.dateTime && S.route === 'settings') el.textContent = rondoClock(S.dateTime); }, 15000);
+
+// ---------- Sound (Settings › Sound on the Rondo) ----------
+// Each output's own: the equalizer (a preset, or ten bands of your own), headphone match, the loudness
+// boost; for every output: volume leveling, the amplifier and the volume limit.
+let soundOut = null, eqTimer = 0;
+const BOOSTS = [[0, 'Off'], [3, '+3 dB'], [6, '+6 dB'], [9, '+9 dB'], [12, '+12 dB']];
+const AMPS = [[0, 'Standard'], [1, '+2 dB'], [2, '+4 dB'], [3, '+6 dB']];
+const freqName = (f) => (f >= 1000 ? `${f / 1000}k` : String(f));
+const gainName = (g) => (g > 0 ? `+${g.toFixed(1)}` : g.toFixed(1)).replace('.0', '');
+async function loadSound(quiet = false) {
+  if (!S.sound && !quiet) $('#soundBody').innerHTML = '<div class="group"><div class="lib-skel"></div><div class="lib-skel"></div><div class="lib-skel"></div></div>';
+  try {
+    S.sound = await api('GET', '/api/sound');
+    renderSound();
+  } catch (e) {
+    if (e.status !== 401 && !S.sound) $('#soundBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the sound settings. ${esc(reason(e))} <button class="link" type="button" data-act="reload">Try again</button></div></div>`;
+  }
+}
+function soundOutput() {
+  const s = S.sound;
+  if (!soundOut || !s.outputs.some((o) => o.key === soundOut)) soundOut = s.current;
+  return s.outputs.find((o) => o.key === soundOut) || s.outputs[0];
+}
+function renderSound() {
+  const s = S.sound, o = soundOutput();
+  const outs = s.outputs.map((x) => `<button type="button" role="radio" aria-checked="${x.key === o.key}" data-out="${esc(x.key)}">${esc(x.label)}${x.key === s.current ? ' · playing' : ''}</button>`).join('');
+  const presets = [...s.presets.map((p) => [p.id, p.name + (p.note ? ` (${p.note})` : '')]), ...s.userPresets.map((u) => ['user:' + u.name, u.name]),
+    ...(o.match ? [['autoeq', `${o.match.name} (headphone match)`]] : []), ['custom', 'Custom (your own bands)']];
+  const bands = s.freqs.map((fr, i) => `<label class="eq-band"><output>${gainName(o.gains[i])}</output>
+      <input type="range" min="-12" max="12" step="0.5" value="${o.gains[i]}" data-band="${i}" aria-label="${freqName(fr)} Hz"><span>${freqName(fr)}</span></label>`).join('');
+  const user = o.preset.startsWith('user:') ? o.preset.slice(5) : '';
+  const limitName = (v) => (v >= s.maxVolume ? 'No limit' : `${v} of ${s.maxVolume}`);
+  $('#soundBody').innerHTML = `
+    <div class="group"><div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+      <div class="row-main"><div class="row-title">Output</div><div class="row-sub">The one music plays on now is marked “playing”. Changes to another apply when it plays.</div></div>
+      <div class="row-control"><div class="seg seg-wide sound-out" role="radiogroup" aria-label="Output" id="soundOuts">${outs}</div></div></div></div>
+    <h2 class="gh">${esc(o.label)}</h2>
+    <div class="group">
+      <div class="row row-wide set-row"><span class="tile t-sound">${icon('bars')}</span>
+        <div class="row-main"><div class="row-title">Equalizer</div><div class="row-sub">Moving a band makes it your own (Custom).</div></div>
+        <div class="row-control"><div class="select"><select id="eqPreset" aria-label="Equalizer preset">${presets.map(([v, l]) => `<option value="${esc(v)}"${v === o.preset ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div></div></div>
+      <div class="eq" id="eqBands">${bands}</div>
+      <div class="eq-actions"><button class="btn btn-sm" type="button" id="eqFlat">Flat</button><button class="btn btn-sm" type="button" id="eqSave">${icon('plus')}<span>Save as a preset</span></button>
+        ${user ? `<button class="btn btn-sm btn-red-text" type="button" id="eqDelete" data-name="${esc(user)}">${icon('trash')}<span>Delete “${esc(user)}”</span></button>` : ''}</div>
+      ${o.key === 'speaker' ? '' : `<div class="row set-row"><span class="tile t-sound">${icon('search')}</span>
+        <div class="row-main"><div class="row-title">Headphone match</div><div class="row-sub">${o.match ? `${esc(o.match.name)}, measured by ${esc(o.match.source)}${o.preset === 'autoeq' ? ' · in use' : ''}` : 'A correction for your model, from AutoEq’s measurements of about 9,000 headphones.'}</div></div>
+        <button class="btn btn-sm" type="button" id="matchFind">${o.match ? 'Change model' : 'Find your model'}</button></div>`}
+      <div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+        <div class="row-main"><div class="row-title">Loudness boost</div><div class="row-sub">Louder; the peaks are held, never clipped.</div></div>
+        <div class="row-control">${segHtml('boostDb', BOOSTS, o.boostDb, 'Loudness boost')}</div></div>
+    </div>
+    <h2 class="gh">Every output</h2>
+    <div class="group">
+      <div class="row set-row"><span class="tile t-sound">${icon('bars')}</span>
+        <div class="row-main"><div class="row-title">Volume leveling</div><div class="row-sub">${esc(s.levelingNote)}</div></div>
+        <button class="switch" type="button" role="switch" data-key="leveling" aria-checked="${s.leveling}" aria-label="Volume leveling"></button></div>
+      ${s.amplifier >= 0 ? `<div class="row row-wide set-row"><span class="tile t-sound">${icon('bolt')}</span>
+        <div class="row-main"><div class="row-title">Amplifier</div><div class="row-sub">The Y1’s own, for headphones and the speaker. Standard is the cleanest, +6 dB the loudest with more hiss.</div></div>
+        <div class="row-control">${segHtml('amplifier', AMPS, s.amplifier, 'Amplifier')}</div></div>` : ''}
+      <div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+        <div class="row-main"><div class="row-title">Volume limit</div><div class="row-sub">The highest step the wheel and this page can set, on every output. Anything louder comes down to it.</div></div>
+        <div class="row-control"><div class="range-row">${icon('volume')}<input type="range" id="volLimit" min="1" max="${s.maxVolume}" step="1" value="${s.volumeLimit}" aria-label="Volume limit"><output id="volLimitOut">${limitName(s.volumeLimit)}</output></div></div></div>
+    </div>`;
+  setFill($('#volLimit'));
+}
+async function putSound(body, { quiet = false } = {}) {
+  try {
+    S.sound = await api('PUT', '/api/sound', { output: soundOutput().key, ...body });
+    renderSound();
+    if (!quiet) toast('Saved on your Rondo');
+    return true;
+  } catch (e) {
+    if (e.status !== 401) toast(`Not saved. ${reason(e)}`, 'err');
+    loadSound(true);
+    return false;
+  }
+}
+const soundBody = $('#soundBody');
+soundBody.addEventListener('click', async (e) => {
+  if (e.target.closest('[data-act="reload"]')) return loadSound();
+  const out = e.target.closest('#soundOuts [data-out]');
+  if (out) { soundOut = out.dataset.out; return renderSound(); }
+  const seg = e.target.closest('.seg[data-key]'), b = e.target.closest('[data-v]');
+  if (seg && b) {
+    $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    return putSound({ [seg.dataset.key]: JSON.parse(b.dataset.v) });
+  }
+  const sw = e.target.closest('.switch[data-key]');
+  if (sw) return putSound({ [sw.dataset.key]: sw.getAttribute('aria-checked') !== 'true' });
+  if (e.target.closest('#eqFlat')) return putSound({ preset: 'flat' });
+  if (e.target.closest('#eqSave')) {
+    const name = await promptSheet({ title: 'Name this preset', text: 'Kept with the presets, for every output.', action: 'Save', placeholder: 'Name' });
+    if (name) putSound({ savePreset: name, custom: soundOutput().gains });
+    return;
+  }
+  const del = e.target.closest('#eqDelete');
+  if (del) {
+    if (await confirmSheet({ title: `Delete “${del.dataset.name}”?`, text: 'Outputs using it go back to Flat.', action: 'Delete' })) putSound({ deletePreset: del.dataset.name });
+    return;
+  }
+  if (e.target.closest('#matchFind')) findMatch();
+});
+soundBody.addEventListener('change', (e) => {
+  if (e.target.id === 'eqPreset') putSound({ preset: e.target.value });
+  if (e.target.id === 'volLimit') putSound({ volumeLimit: +e.target.value });
+});
+soundBody.addEventListener('input', (e) => {
+  const band = e.target.dataset?.band;
+  if (band != null) {
+    const o = soundOutput(), v = +e.target.value;
+    o.gains[+band] = v;
+    e.target.previousElementSibling.textContent = gainName(v);
+    clearTimeout(eqTimer);
+    // the sound follows as you drag; saved as your own bands
+    eqTimer = setTimeout(() => putSound({ custom: o.gains }, { quiet: true }), 200);
+    return;
+  }
+  if (e.target.id === 'volLimit') {
+    setFill(e.target);
+    $('#volLimitOut').textContent = +e.target.value >= S.sound.maxVolume ? 'No limit' : `${e.target.value} of ${S.sound.maxVolume}`;
+  }
+});
+// Headphone match: a model looked up on the server's AutoEq index, its correction kept with the output
+function findMatch() {
+  const o = soundOutput();
+  openSheet(`<h2>Headphone match</h2><p>For ${esc(o.label)}. Through your music server.</p>
+    <form class="sheet-form" id="matchForm"><label class="search pick-search">${icon('search')}<input type="search" placeholder="Like Sennheiser HD 650 or AirPods Pro" value="${esc(o.key.startsWith('bt:') ? o.label : '')}" autocomplete="off" aria-label="Headphone model"></label></form>
+    <div class="match-list" id="matchList"></div><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+  const input = $('input', sheet), list = $('#matchList', sheet);
+  let asked = 0;
+  const search = async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    const mine = ++asked;
+    list.innerHTML = '<div class="row-empty">Looking…</div>';
+    try {
+      const r = await api('GET', `/api/sound/match?q=${encodeURIComponent(q)}`, undefined, { timeout: 60000 });
+      if (mine !== asked) return;
+      const items = r.items || [];
+      list.innerHTML = items.length ? items.map((it) => `<button type="button" data-id="${esc(it.id)}" data-name="${esc(it.name)}" data-source="${esc(it.source)}"><div class="row-title">${esc(it.name)}</div><div class="row-sub">Measured by ${esc(it.source)}</div></button>`).join('') : '<div class="row-empty">No model by that name.</div>';
+    } catch (e) {
+      if (mine === asked) list.innerHTML = `<div class="row-empty">${esc(e.status === 404 ? 'Your server can’t look headphones up yet: update it.' : reason(e))}</div>`;
+    }
+  };
+  $('#matchForm', sheet).addEventListener('submit', (e) => { e.preventDefault(); search(); });
+  $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
+  list.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-id]');
+    if (!b) return;
+    list.innerHTML = `<div class="row-empty">Getting ${esc(b.dataset.name)}…</div>`;
+    try {
+      S.sound = await api('POST', '/api/sound/match', { output: o.key, id: b.dataset.id, name: b.dataset.name, source: b.dataset.source }, { timeout: 60000 });
+      sheet.close();
+      renderSound();
+      toast(`${b.dataset.name}: in use on ${o.label}`);
+    } catch (err) { list.innerHTML = `<div class="row-empty">${esc(reason(err))}</div>`; }
+  });
+  input.focus();
+  if (input.value) search();
+}

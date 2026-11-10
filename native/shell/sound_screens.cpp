@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <yyjson.h>
 
+#include <algorithm>
+#include <array>
 #include <memory>
 
 
@@ -229,6 +231,31 @@ class EqualizerScreen : public Screen {
   int band_ = 5;  // 1 kHz
 };
 
+// AutoEq's correction as the server's /eq/preset gives it, into a profile: false without filters
+bool parseAutoEq(const std::string& body, SoundProfile& p) {
+  yyjson_doc* d = yyjson_read(body.data(), body.size(), 0);
+  if (!d) return false;
+  yyjson_val* r = yyjson_doc_get_root(d);
+  yyjson_val* pre = yyjson_obj_get(r, "preampDb");
+  p.autoEq.clear();
+  size_t i, n;
+  yyjson_val* e;
+  yyjson_arr_foreach(yyjson_obj_get(r, "filters"), i, n, e) {
+    yyjson_val* t = yyjson_obj_get(e, "type");
+    std::string type = yyjson_is_str(t) ? yyjson_get_str(t) : "";
+    Filter flt;
+    flt.type = type == "LSC" ? FilterType::LowShelf : type == "HSC" ? FilterType::HighShelf
+               : type == "LPQ" ? FilterType::LowPass : type == "HPQ" ? FilterType::HighPass : FilterType::Peak;
+    flt.freq = float(yyjson_get_num(yyjson_obj_get(e, "freq")));
+    flt.gainDb = float(yyjson_get_num(yyjson_obj_get(e, "gainDb")));
+    flt.q = float(yyjson_get_num(yyjson_obj_get(e, "q")));
+    if (flt.freq > 0 && p.autoEq.size() < 16) p.autoEq.push_back(flt);
+  }
+  p.autoEqPreamp = yyjson_is_num(pre) ? float(yyjson_get_num(pre)) : 0;
+  yyjson_doc_free(d);
+  return !p.autoEq.empty();
+}
+
 // Headphone match: AutoEq's correction for the model (through the server, /eq/search and
 // /eq/preset), looked up by the Bluetooth device's name or by a name typed in; the one picked is kept
 // with the output.
@@ -277,29 +304,7 @@ class HeadphoneMatchScreen : public ShellListScreen {
     std::string key = out_.key;
     g_core.get("/eq/preset?id=" + Api::escape(f.id), 0, [this, alive, key, f](int status, const std::string& body) {
       SoundProfile p = profile(key);
-      bool ok = false;
-      if (status == 200)
-        if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
-          yyjson_val* r = yyjson_doc_get_root(d);
-          yyjson_val* pre = yyjson_obj_get(r, "preampDb");
-          p.autoEq.clear();
-          size_t i, n;
-          yyjson_val* e;
-          yyjson_arr_foreach(yyjson_obj_get(r, "filters"), i, n, e) {
-            yyjson_val* t = yyjson_obj_get(e, "type");
-            std::string type = yyjson_is_str(t) ? yyjson_get_str(t) : "";
-            Filter flt;
-            flt.type = type == "LSC" ? FilterType::LowShelf : type == "HSC" ? FilterType::HighShelf
-                       : type == "LPQ" ? FilterType::LowPass : type == "HPQ" ? FilterType::HighPass : FilterType::Peak;
-            flt.freq = float(yyjson_get_num(yyjson_obj_get(e, "freq")));
-            flt.gainDb = float(yyjson_get_num(yyjson_obj_get(e, "gainDb")));
-            flt.q = float(yyjson_get_num(yyjson_obj_get(e, "q")));
-            if (flt.freq > 0 && p.autoEq.size() < 16) p.autoEq.push_back(flt);
-          }
-          p.autoEqPreamp = yyjson_is_num(pre) ? float(yyjson_get_num(pre)) : 0;
-          yyjson_doc_free(d);
-          ok = !p.autoEq.empty();
-        }
+      bool ok = status == 200 && parseAutoEq(body, p);
       if (ok) {
         p.autoEqName = f.name, p.autoEqSource = f.source, p.preset = "autoeq";
         profile(key) = p;
@@ -385,7 +390,8 @@ class SoundScreen : public ShellListScreen {
   bool tick(int64_t) override {
     Output o = currentOutput();
     std::string note = levelingNote();
-    if (o.key == out_.key && note == note_ && g_player.state().amplifier == amp_) return false;
+    PlayerState ps = g_player.state();
+    if (o.key == out_.key && note == note_ && ps.amplifier == amp_ && ps.volumeLimit == limit_) return false;
     out_ = o;
     render();
     return true;
@@ -499,17 +505,197 @@ class SoundScreen : public ShellListScreen {
       };
       rows.push_back(amp);
     }
+    {  // the highest step the wheel (and the dashboard) may set, on every output
+      int maxVol = ps.volumeMax > 0 ? ps.volumeMax : 13;
+      int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));
+      Row lim;
+      lim.title = "Volume limit";
+      lim.subtitle = "The loudest the wheel goes, on every output";
+      lim.trailing = limit >= maxVol ? "No limit" : std::to_string(limit) + " of " + std::to_string(maxVol);
+      lim.chevron = true;
+      lim.onSelect = [maxVol] {
+        std::vector<std::pair<std::string, std::string>> c;
+        c.push_back({"No limit", std::to_string(maxVol)});
+        for (int v = maxVol - 1; v >= 1; v--) c.push_back({std::to_string(v) + " of " + std::to_string(maxVol), std::to_string(v)});
+        g_app->push(makeChoice(
+            "Volume limit", c,
+            [maxVol] { return std::to_string(std::max(0, std::min(maxVol, int(g_player.state().volumeLimit)))); },
+            [](const std::string& v) { g_player.setVolumeLimit(atoi(v.c_str())); },
+            [maxVol](const std::string& v) {
+              int n = atoi(v.c_str());
+              return std::string(n >= maxVol ? "the wheel goes all the way" : n <= maxVol / 3 ? "quiet: kind to ears" : "");
+            }));
+      };
+      rows.push_back(lim);
+      limit_ = limit;
+    }
     amp_ = ps.amplifier;
     list_.setRows(std::move(rows), true);
   }
   Output out_;
   std::string note_;
-  int amp_ = -2;
+  int amp_ = -2, limit_ = -1;
 };
 
 }  // namespace
 
 std::unique_ptr<Screen> makeSound() { return std::unique_ptr<Screen>(new SoundScreen()); }
+
+// --- the dashboard's Sound page (UI thread) ---
+
+namespace {
+bool validOutput(const std::string& k) { return k == "speaker" || k == "headphones" || (k.size() == 20 && k.compare(0, 3, "bt:") == 0); }
+std::string jstr(const std::string& v) {
+  std::string o = "\"";
+  for (unsigned char c : v) {
+    if (c == '"' || c == '\\') o += '\\', o += char(c);
+    else if (c < 0x20) { char b[8]; snprintf(b, sizeof(b), "\\u%04x", c); o += b; }
+    else o += char(c);
+  }
+  return o + "\"";
+}
+std::string gainsJson(const std::array<float, kEqBands>& g) {
+  std::string o = "[";
+  for (int i = 0; i < kEqBands; i++) {
+    char b[16];
+    snprintf(b, sizeof(b), "%s%.1f", i ? "," : "", double(g[i]));
+    o += b;
+  }
+  return o + "]";
+}
+}  // namespace
+
+std::string soundJson() {
+  load();
+  Output cur = currentOutput();
+  // every output Rondo knows: the speaker, wired headphones, the paired Bluetooth devices, any kept
+  std::vector<Output> outs = {{"speaker", "Speaker"}, {"headphones", "Headphones"}};
+  CoreState cs = g_core.state();
+  for (int i = 0; i < cs.btCount; i++)
+    if (cs.bt[i].paired)  // one that never told its name: by the end of its address
+      outs.push_back({std::string("bt:") + cs.bt[i].address,
+                      cs.bt[i].name[0] ? btName(cs.bt[i]) : "Bluetooth device \xc2\xb7 " + std::string(cs.bt[i].address).substr(12)});
+  for (const auto& kv : g_sound.outputs) {
+    bool known = false;
+    for (const Output& o : outs) known |= o.key == kv.first;
+    if (!known && validOutput(kv.first)) outs.push_back({kv.first, "Bluetooth " + kv.first.substr(3)});
+  }
+  if (cur.key.compare(0, 3, "bt:") == 0) {
+    bool known = false;
+    for (const Output& o : outs) known |= o.key == cur.key;
+    if (!known) outs.push_back(cur);
+  }
+  std::string o = "{\"current\":" + jstr(cur.key) + ",\"leveling\":" + (g_sound.leveling ? "true" : "false") +
+                  ",\"levelingNote\":" + jstr(levelingNote()) + ",\"freqs\":[";
+  for (int i = 0; i < kEqBands; i++) o += (i ? "," : "") + std::to_string(int(kEqFreqs[i]));
+  o += "],\"presets\":[";
+  bool first = true;
+  for (const EqPreset& e : eqPresets()) {
+    SoundProfile probe;
+    probe.preset = e.id;
+    o += std::string(first ? "" : ",") + "{\"id\":" + jstr(e.id) + ",\"name\":" + jstr(e.name) + ",\"note\":" + jstr(e.note) +
+         ",\"gains\":" + gainsJson(presetGains(g_sound, probe)) + "}";
+    first = false;
+  }
+  o += "],\"userPresets\":[";
+  first = true;
+  for (const UserPreset& u : g_sound.userPresets) {
+    o += std::string(first ? "" : ",") + "{\"name\":" + jstr(u.name) + ",\"gains\":" + gainsJson(u.gains) + "}";
+    first = false;
+  }
+  o += "],\"outputs\":[";
+  first = true;
+  for (const Output& out : outs) {
+    auto it = g_sound.outputs.find(out.key);
+    SoundProfile p = it == g_sound.outputs.end() ? SoundProfile() : it->second;
+    o += std::string(first ? "" : ",") + "{\"key\":" + jstr(out.key) + ",\"label\":" + jstr(out.label) +
+         ",\"preset\":" + jstr(p.preset) + ",\"presetName\":" + jstr(presetName(g_sound, p)) +
+         ",\"gains\":" + gainsJson(presetGains(g_sound, p)) + ",\"custom\":" + gainsJson(p.custom) +
+         ",\"boostDb\":" + std::to_string(p.boostDb) + ",\"match\":" +
+         (p.autoEq.empty() ? std::string("null") : "{\"name\":" + jstr(p.autoEqName) + ",\"source\":" + jstr(p.autoEqSource) + "}") + "}";
+    first = false;
+  }
+  return o + "]}";
+}
+
+bool soundSetPreset(const std::string& output, const std::string& preset) {
+  load();
+  if (!validOutput(output)) return false;
+  bool ok = preset == "custom" || (preset == "autoeq" && !profile(output).autoEq.empty());
+  for (const EqPreset& e : eqPresets()) ok |= preset == e.id;
+  for (const UserPreset& u : g_sound.userPresets) ok |= preset == "user:" + u.name;
+  if (!ok) return false;
+  profile(output).preset = preset;
+  changed();
+  return true;
+}
+
+bool soundSetCustom(const std::string& output, const std::array<float, kEqBands>& gains) {
+  load();
+  if (!validOutput(output)) return false;
+  SoundProfile& p = profile(output);
+  for (int i = 0; i < kEqBands; i++) p.custom[i] = std::max(-12.f, std::min(12.f, gains[i]));
+  p.preset = "custom";
+  changed();
+  return true;
+}
+
+bool soundSetBoost(const std::string& output, int db) {
+  load();
+  if (!validOutput(output) || (db != 0 && db != 3 && db != 6 && db != 9 && db != 12)) return false;
+  profile(output).boostDb = db;
+  changed();
+  return true;
+}
+
+void soundSetLeveling(bool on) {
+  load();
+  g_sound.leveling = on;
+  changed();
+}
+
+// "" when saved, else why not
+std::string soundSaveUserPreset(const std::string& output, const std::string& name, const std::array<float, kEqBands>& gains) {
+  load();
+  if (name.empty() || name.size() > 30) return "Type a name of up to 30 characters";
+  for (const EqPreset& e : eqPresets())
+    if (name == e.name) return "That's a built-in preset's name";
+  std::array<float, kEqBands> g;
+  for (int i = 0; i < kEqBands; i++) g[i] = std::max(-12.f, std::min(12.f, gains[i]));
+  bool found = false;
+  for (UserPreset& u : g_sound.userPresets)
+    if (u.name == name) u.gains = g, found = true;
+  if (!found) g_sound.userPresets.push_back({name, g});
+  if (validOutput(output)) profile(output).preset = "user:" + name;
+  changed();
+  saveNow();
+  return "";
+}
+
+bool soundDeleteUserPreset(const std::string& name) {
+  load();
+  auto& v = g_sound.userPresets;
+  size_t before = v.size();
+  v.erase(std::remove_if(v.begin(), v.end(), [&](const UserPreset& u) { return u.name == name; }), v.end());
+  if (v.size() == before) return false;
+  for (auto& kv : g_sound.outputs)  // an output on it goes back to its own bands
+    if (kv.second.preset == "user:" + name) kv.second.preset = "flat";
+  changed();
+  saveNow();
+  return true;
+}
+
+bool soundSetMatch(const std::string& output, const std::string& presetBody, const std::string& name, const std::string& source) {
+  load();
+  if (!validOutput(output)) return false;
+  SoundProfile p = profile(output);
+  if (!parseAutoEq(presetBody, p)) return false;
+  p.autoEqName = name, p.autoEqSource = source, p.preset = "autoeq";
+  profile(output) = p;
+  changed();
+  saveNow();
+  return true;
+}
 
 // From the loop: the output in use changing brings its sound; a change is written a second later
 void soundTick() {

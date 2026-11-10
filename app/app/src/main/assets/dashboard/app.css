@@ -922,3 +922,18 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 /* a newer Rondo is out (Overview › Device) */
 .update-row .row-title { color: var(--accent-hi); font-weight: 600; }
 .update-row .tile .i { transform: rotate(180deg); } /* the upload arrow, pointing down */
+
+/* ---------- Sound: the equalizer's ten bands ---------- */
+.eq { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; padding: 8px 16px 4px; }
+.eq-band { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.eq-band input[type="range"] { writing-mode: vertical-lr; direction: rtl; width: 28px; height: 150px; margin: 0; accent-color: var(--accent); }
+.eq-band output { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.eq-band span { font-size: 12px; color: var(--text-2); }
+.eq-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 14px; }
+.sound-out { display: flex; flex-wrap: wrap; gap: 8px; }
+.match-list { display: flex; flex-direction: column; max-height: 50vh; overflow: auto; margin: 8px 0; }
+.match-list button { text-align: left; padding: 10px 4px; border-bottom: 1px solid var(--line); background: none; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
+.match-list button:hover { color: var(--accent-text, var(--text)); }
+.date-set { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.date-set input[type="datetime-local"] { height: 40px; padding: 0 12px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--text); }
+@media (max-width: 599px) { .eq-band input[type="range"] { height: 120px; } .eq { gap: 0; padding: 8px 8px 4px; } }

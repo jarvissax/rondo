@@ -55,6 +55,11 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   arrives as they slide in.
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
+- **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
+  headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
+  between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.
+- **Volume limit** (Settings › Sound, and on the dashboard): the loudest step the wheel can set, on
+  every output.
 - **Artwork that comes every time.** Card videos show their picture again, in Rondo and on the
   dashboard. Covers that don't arrive at once (Wi-Fi, a busy moment) are asked for again, on the Y1
   and on the dashboard. On the dashboard, the song playing from YouTube Music shows its cover.

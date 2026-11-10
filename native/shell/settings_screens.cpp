@@ -520,6 +520,10 @@ class SettingsScreen : public ShellListScreen {
 
 }  // namespace
 
+// Settings › About's Wi-Fi address and time zone, for the dashboard
+std::string aboutMac() { return macAddress(); }
+std::string aboutTimeZone() { return timeZone(); }
+
 std::unique_ptr<Screen> makeSettings() { return std::unique_ptr<Screen>(new SettingsScreen()); }
 
 std::unique_ptr<Screen> makeChoice(std::string title, std::vector<std::pair<std::string, std::string>> choices,

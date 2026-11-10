@@ -1,5 +1,6 @@
 // The screens other screens open.
 #pragma once
+#include <array>
 #include <memory>
 
 #include "../core/api.h"
@@ -72,6 +73,23 @@ std::unique_ptr<Screen> makeChoice(std::string title, std::vector<std::pair<std:
                                    std::function<std::string(const std::string&)> note = nullptr);
 // Settings › Sound, and what it sends the player (from the loop: the output in use changing)
 std::unique_ptr<Screen> makeSound();
+// Settings › About's Wi-Fi MAC address ("" none) and time zone, for the dashboard
+std::string aboutMac();
+std::string aboutTimeZone();
+// The dashboard's Date & time (UI thread)
+std::string dateTimeJson();
+void dateTimeSetAuto(int autoTime, int autoZone, int clock24);  // -1: as it is
+std::string dateTimeSetClock(int64_t epoch);                    // "" when set, else why not
+std::string dateTimeSetZone(const std::string& id);
+// The dashboard's Sound page (UI thread): every output's sound as JSON, and changes to it
+std::string soundJson();
+bool soundSetPreset(const std::string& output, const std::string& preset);
+bool soundSetCustom(const std::string& output, const std::array<float, 10>& gains);
+bool soundSetBoost(const std::string& output, int db);
+void soundSetLeveling(bool on);
+std::string soundSaveUserPreset(const std::string& output, const std::string& name, const std::array<float, 10>& gains);
+bool soundDeleteUserPreset(const std::string& name);
+bool soundSetMatch(const std::string& output, const std::string& presetBody, const std::string& name, const std::string& source);
 void soundTick();
 std::string soundState();  // Settings' row: the preset for the output in use
 std::unique_ptr<Screen> makeDashboard();  // Settings › Dashboard

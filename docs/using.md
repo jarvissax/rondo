@@ -125,7 +125,7 @@ turns the radio off.
 | **Dashboard** | Starts the dashboard; see below. |
 | **Wi-Fi** | Join networks. Hold center on a saved network to forget it. |
 | **Bluetooth** | Pair and connect headphones or speakers. |
-| **Sound** | How music sounds, kept for each output: the speaker, wired headphones and each Bluetooth device. An **equalizer** with presets (or ten bands of your own), **Headphone match** (a correction for your headphone model from [AutoEq](https://github.com/jaakkopasanen/AutoEq), looked up through your server), a **loudness boost** whose peaks are held so they never clip, and **volume leveling** (songs at one loudness, measured as they play and while the Y1 charges). **Amplifier** sets the Y1's own amplifier: Standard as it ships, or +2, +4 or +6 dB louder for headphones and the speaker; the loudest steps add some hiss. |
+| **Sound** | How music sounds, kept for each output: the speaker, wired headphones and each Bluetooth device. An **equalizer** with presets (or ten bands of your own), **Headphone match** (a correction for your headphone model from [AutoEq](https://github.com/jaakkopasanen/AutoEq), looked up through your server), a **loudness boost** whose peaks are held so they never clip, and **volume leveling** (songs at one loudness, measured as they play and while the Y1 charges). **Amplifier** sets the Y1's own amplifier: Standard as it ships, or +2, +4 or +6 dB louder for headphones and the speaker; the loudest steps add some hiss. **Volume limit** sets the loudest step the wheel goes to, on every output (No limit as it ships). |
 | **Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
 | **Video quality** | Auto, or a fixed height. |
 | **Brightness**, **Screen off after** | |

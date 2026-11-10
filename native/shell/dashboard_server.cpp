@@ -779,12 +779,17 @@ Response Server::status() {
   std::string battery = obj({{"level", num(int64_t(bat.level))}, {"charging", boolean(bat.plugged)}});
   auto player = std::make_shared<std::string>(kNull);
   auto wifi = std::make_shared<std::string>(kNull);
-  if (!onMain([player, wifi] {
+  auto about = std::make_shared<std::string>(kNull);
+  if (!onMain([player, wifi, about] {
         *player = playerJson();
         *wifi = wifiCurrent(g_core.state());
+        std::string mac = aboutMac();
+        *about = obj({{"mac", mac.empty() ? kNull : str(mac)},
+                      {"timeZone", str(aboutTimeZone())},
+                      {"connectTo", str(directMode() ? "Directly to YouTube" : g_config.server.url.empty() ? "Not set up" : g_config.server.url)}});
       }))
     return error(500, "device busy");
-  return json(obj({{"device", device}, {"battery", battery}, {"storage", storage}, {"wifi", *wifi}, {"player", *player}}));
+  return json(obj({{"device", device}, {"battery", battery}, {"storage", storage}, {"wifi", *wifi}, {"about", *about}, {"player", *player}}));
 }
 
 // Connections to the music server (or direct mode's local one) for artwork, lent to one page request
@@ -1027,6 +1032,8 @@ Response Server::update(Request& r) {
 }
 
 // the address, and either a connect code from the server's admin page or a token typed in
+std::string serverInfoJson();  // below, with the routes' bodies
+
 Response Server::putServer(const Body& b) {
   std::string url, code, token;
   bool hasUrl = b.text("url", url), hasToken = b.text("token", token);
@@ -1041,7 +1048,7 @@ Response Server::putServer(const Body& b) {
       if (c >= '0' && c <= '9') code += c;
   auto serverJson = [] {
     auto out = std::make_shared<std::string>();
-    onMain([out] { *out = obj({{"url", str(g_config.server.url)}, {"tokenSet", boolean(!g_config.server.token.empty())}}); });
+    onMain([out] { *out = serverInfoJson(); });
     return json(*out);
   };
   if (!code.empty()) {
@@ -1057,19 +1064,29 @@ Response Server::putServer(const Body& b) {
     std::string paired;
     if (!reply.text("token", paired) || paired.empty()) return error(403, "code");
     onMain([target, paired] {
-      g_config.server.url = target, g_config.server.token = paired;
+      g_config.server.url = target, g_config.server.token = paired, g_config.server.direct = false;
       saveConfigNow();
       if (g_onServerChanged) g_onServerChanged();
     });
     fprintf(stderr, "rondo: dashboard: connected to a server with a connect code\n");
     return serverJson();
   }
+  bool direct;
+  if (b.flag("direct", direct) && !hasUrl && !hasToken)
+    onMain([direct] {
+      if (g_config.server.direct == direct) return;
+      if (!direct && g_config.server.url.empty()) return;  // no server to use: direct it stays
+      g_config.server.direct = direct;
+      saveConfigNow();
+      if (g_onServerChanged) g_onServerChanged();
+    });
   if (hasUrl || hasToken) {
     while (!token.empty() && token.back() == ' ') token.pop_back();
     while (!token.empty() && token[0] == ' ') token.erase(0, 1);
     onMain([hasUrl, url, token] {
       if (hasUrl && !url.empty()) g_config.server.url = url;
       if (!token.empty()) g_config.server.token = token;
+      g_config.server.direct = false;  // a server set up here is the one to use
       saveConfigNow();
       if (g_onServerChanged) g_onServerChanged();
     });
@@ -1100,6 +1117,81 @@ Response Server::testServer() {
 }
 
 // UI thread from here on: the routes' bodies
+
+// Settings › Server: where YouTube comes from. direct: Rondo talks to YouTube itself (chosen, or no
+// server set up); directChosen: the choice as made
+std::string serverInfoJson() {
+  return obj({{"url", str(g_config.server.url)},
+              {"tokenSet", boolean(!g_config.server.token.empty())},
+              {"direct", boolean(directMode())},
+              {"directChosen", boolean(g_config.server.direct)}});
+}
+
+// Settings › Sound: the player's part (the amplifier, the volume limit) beside the outputs' sound
+std::string soundPageJson(int askedAmp = -9, int askedLimit = -1) {
+  PlayerState s = g_player.state();
+  std::string j = soundJson();
+  j.pop_back();
+  int maxVol = s.volumeMax > 0 ? s.volumeMax : 13;
+  int amp = askedAmp != -9 ? askedAmp : s.amplifier;
+  int limit = askedLimit >= 0 ? askedLimit : std::min(maxVol, std::max(0, int(s.volumeLimit)));
+  return j + ",\"amplifier\":" + std::to_string(amp) + ",\"volumeLimit\":" + std::to_string(limit) +
+         ",\"maxVolume\":" + std::to_string(maxVol) + "}";
+}
+
+Response putSound(const Body& b) {
+  std::string out, v;
+  b.text("output", out);
+  int64_t n;
+  bool f;
+  int askedAmp = -9, askedLimit = -1;
+  std::array<float, 10> gains{};
+  bool hasGains = false;
+  if (yyjson_val* g = b.get("custom"))
+    if (yyjson_is_arr(g) && yyjson_arr_size(g) == 10) {
+      hasGains = true;
+      size_t i, max;
+      yyjson_val* e;
+      yyjson_arr_foreach(g, i, max, e) gains[i] = yyjson_is_num(e) ? float(yyjson_get_num(e)) : 0.f;
+    }
+  if (b.text("savePreset", v)) {
+    if (!hasGains) return error(400, "custom");
+    std::string problem = soundSaveUserPreset(out, v, gains);
+    if (!problem.empty()) return error(400, problem);
+  } else if (hasGains && !soundSetCustom(out, gains)) {
+    return error(400, "output");
+  }
+  if (b.text("preset", v) && !soundSetPreset(out, v)) return error(400, "preset");
+  if (b.integer("boostDb", n) && !soundSetBoost(out, int(n))) return error(400, "boostDb");
+  if (b.flag("leveling", f)) soundSetLeveling(f);
+  if (b.text("deletePreset", v) && !soundDeleteUserPreset(v)) return error(404, "preset");
+  if (b.integer("amplifier", n)) {
+    if (n < 0 || n > 3 || g_player.state().amplifier < 0) return error(400, "amplifier");
+    g_player.amplifier(int(n), g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin");
+    askedAmp = int(n);
+  }
+  if (b.integer("volumeLimit", n)) {
+    PlayerState s = g_player.state();
+    askedLimit = int(std::max<int64_t>(0, std::min<int64_t>(s.volumeMax > 0 ? s.volumeMax : 13, n)));
+    g_player.setVolumeLimit(askedLimit);
+  }
+  return json(soundPageJson(askedAmp, askedLimit));
+}
+
+Response putDateTime(const Body& b) {
+  bool f;
+  int autoTime = -1, autoZone = -1, clock24 = -1;
+  if (b.flag("autoTime", f)) autoTime = f;
+  if (b.flag("autoZone", f)) autoZone = f;
+  if (b.flag("clock24", f)) clock24 = f;
+  if (autoTime >= 0 || autoZone >= 0 || clock24 >= 0) dateTimeSetAuto(autoTime, autoZone, clock24);
+  std::string zone, problem;
+  if (b.text("zone", zone)) problem = dateTimeSetZone(zone);
+  int64_t epoch;
+  if (problem.empty() && b.integer("now", epoch)) problem = dateTimeSetClock(epoch);
+  if (!problem.empty()) return error(400, problem);
+  return json(dateTimeJson());
+}
 
 std::string settingsJson() {
   static const int timeouts[] = {15, 30, 60, 120, 300, 600};
@@ -1558,6 +1650,29 @@ Response Server::api(Request& r, const std::string& path) {
   }
   if (path == "/settings" && m == "GET") return ui([] { return settingsJson(); });
   if (path == "/settings" && m == "PUT") return ui([b] { return putSettings(*b); });
+  if (path == "/sound" && m == "GET") return ui([] { return soundPageJson(); });
+  if (path == "/sound" && m == "PUT") return onUi([b] { return putSound(*b); });
+  if (path == "/sound/match" && m == "GET") {  // headphone models, from the server's AutoEq index
+    std::string q = r.param("q"), body;
+    if (q.empty()) return error(400, "q");
+    int st = coreCall(false, "/eq/search?q=" + rondo::Api::escape(q), "", body, 60000);
+    if (st == 404) return error(404, "This server can't look headphones up yet: update it");
+    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : "The server didn't answer");
+    return json(body);
+  }
+  if (path == "/sound/match" && m == "POST") {  // one model's correction, for an output
+    std::string output, id, name, source, body;
+    b->text("output", output), b->text("id", id), b->text("name", name), b->text("source", source);
+    if (id.empty() || output.empty()) return error(400, "id");
+    int st = coreCall(false, "/eq/preset?id=" + rondo::Api::escape(id), "", body, 60000);
+    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : "The server didn't answer");
+    return onUi([output, body, name, source] {
+      if (!soundSetMatch(output, body, name, source)) return error(502, "That model's correction didn't come");
+      return json(soundPageJson());
+    });
+  }
+  if (path == "/datetime" && m == "GET") return ui([] { return dateTimeJson(); });
+  if (path == "/datetime" && m == "PUT") return onUi([b] { return putDateTime(*b); });
   if (path == "/theme" && m == "GET") return ui([] { return themeJson(); });
   if (path == "/theme" && m == "PUT") return ui([b] { return putTheme(*b); });
   if (path == "/wifi" && m == "GET") return ui([] { return wifiJson(); });
@@ -1620,7 +1735,7 @@ Response Server::api(Request& r, const std::string& path) {
     });
   }
   if (path == "/server" && m == "GET")
-    return ui([] { return obj({{"url", str(g_config.server.url)}, {"tokenSet", boolean(!g_config.server.token.empty())}}); });
+    return ui([] { return serverInfoJson(); });
   if (path == "/server" && m == "PUT") return putServer(*b);
   if (path == "/server/test" && m == "POST") return testServer();
   if (path == "/power" && m == "POST") {

@@ -328,4 +328,61 @@ class DateTimeScreen : public ShellListScreen {
 
 std::unique_ptr<Screen> makeDateTime() { return std::unique_ptr<Screen>(new DateTimeScreen()); }
 
+// --- the dashboard's Date & time (UI thread) ---
+
+std::string dateTimeJson() {
+  time_t now = time(nullptr);
+  std::string zone = currentZone();
+  auto q = [](const std::string& v) {
+    std::string o = "\"";
+    for (char c : v) {
+      if (c == '"' || c == '\\') o += '\\';
+      o += c;
+    }
+    return o + "\"";
+  };
+  struct Z {
+    std::string id;
+    long offset;
+  };
+  std::vector<Z> zones;
+  for (const char* id : kZones)
+    if (knownTimeZone(id)) zones.push_back({id, offsetIn(id, now)});
+  bool listed = false;
+  for (const Z& z : zones) listed |= z.id == zone;
+  if (!listed && !zone.empty()) zones.push_back({zone, offsetIn(zone, now)});
+  std::stable_sort(zones.begin(), zones.end(), [](const Z& a, const Z& b) {
+    return a.offset != b.offset ? a.offset < b.offset : cityOf(a.id) < cityOf(b.id);
+  });
+  std::string o = "{\"autoTime\":" + std::string(g_prefs.autoTime ? "true" : "false") +
+                  ",\"autoZone\":" + (g_prefs.autoZone ? "true" : "false") + ",\"clock24\":" + (g_prefs.clock24 ? "true" : "false") +
+                  ",\"now\":" + std::to_string(int64_t(now)) + ",\"zone\":" + q(zone) + ",\"city\":" + q(cityOf(zone)) +
+                  ",\"offsetSec\":" + std::to_string(offsetIn(zone, now)) + ",\"zones\":[";
+  for (size_t i = 0; i < zones.size(); i++)
+    o += std::string(i ? "," : "") + "{\"id\":" + q(zones[i].id) + ",\"city\":" + q(cityOf(zones[i].id)) + ",\"gmt\":" +
+         q(gmt(zones[i].offset)) + "}";
+  return o + "]}";
+}
+
+void dateTimeSetAuto(int autoTime, int autoZone, int clock24) {  // -1: as it is
+  if (autoTime >= 0) g_prefs.autoTime = autoTime;
+  if (autoZone >= 0) g_prefs.autoZone = autoZone;
+  if (clock24 >= 0) g_prefs.clock24 = clock24;
+  savePrefsNow();
+  if (autoTime >= 0 || autoZone >= 0) tellCore();
+}
+
+// "" when set, else why not (automatic time or zone is on, an unknown zone)
+std::string dateTimeSetClock(int64_t epoch) {
+  if (g_prefs.autoTime) return "Turn off Set automatically first";
+  if (epoch < 1704067200 || epoch > 4102444800LL) return "That date is out of range";  // 2024 to 2100
+  return setWallClock(time_t(epoch)) ? "" : "The clock didn't take it";
+}
+std::string dateTimeSetZone(const std::string& id) {
+  if (g_prefs.autoZone) return "Turn off Time zone automatically first";
+  if (!knownTimeZone(id)) return "Rondo doesn't know that time zone";
+  setTimeZoneByHand(id);
+  return "";
+}
+
 }  // namespace rondo::shell
