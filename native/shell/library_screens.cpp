@@ -493,7 +493,8 @@ std::unique_ptr<Screen> makeSearchToAdd(const std::string& playlist) {
   return std::unique_ptr<Screen>(new LibrarySearchScreen(Scope::All, playlist));
 }
 
-// Library › Music: the songs every way, in groups (Browse, Playlists, Listening, the card)
+// Library › Music: the songs every way, in groups (Browse, Playlists, Listening, the card); the folders
+// themselves are Library › Files'
 class MusicSectionScreen : public ShellListScreen {
  public:
   MusicSectionScreen() : ShellListScreen("Music") { render(); }
@@ -547,7 +548,6 @@ class MusicSectionScreen : public ShellListScreen {
     add("Genres", tiles::genres, std::to_string(genres), true, genres != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Genres", g_library.genres(), Scope::Songs)));
     });
-    add("Folders", tiles::folders, "", true, true, [] { g_app->push(makeFolders()); });
     header("Playlists");
     size_t playlists = g_playlists.all().size();
     add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true, [] { g_app->push(makePlaylists()); });
@@ -666,137 +666,8 @@ void playStatsTick() {
   g_library.notePlayed(path);
 }
 
-}  // namespace rondo::shell
-
-// --- Library › Folders: the card's folders as they are, folders first, then the songs and videos ---
-
-#include <dirent.h>
-#include <sys/stat.h>
-
-namespace rondo::shell {
-namespace {
-
-// dot folders and what Android and Windows keep on a card
-bool hiddenName(const char* n) {
-  return n[0] == '.' || !strcmp(n, "LOST.DIR") || !strcmp(n, "Android") || !strcmp(n, "System Volume Information") ||
-         !strcmp(n, "$RECYCLE.BIN");
-}
-
-class FolderScreen : public ShellListScreen {
- public:
-  FolderScreen(std::string dir, std::string title) : ShellListScreen(std::move(title)), dir_(std::move(dir)) { build(); }
-  void onShow() override {
-    if (generation_ != g_library.generation()) build();
-  }
-
- private:
-  void build() {
-    generation_ = g_library.generation();
-    std::vector<std::string> folders;
-    std::vector<const Track*> songs, videos;
-    if (DIR* d = opendir(dir_.c_str())) {
-      while (dirent* e = readdir(d)) {
-        if (hiddenName(e->d_name)) continue;
-        std::string p = dir_ + "/" + e->d_name;
-        struct stat st;
-        if (stat(p.c_str(), &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) folders.push_back(e->d_name);
-        else if (const Track* t = g_library.find(p)) (t->video ? videos : songs).push_back(t);
-      }
-      closedir(d);
-    }
-    auto byName = [](const std::string& a, const std::string& b) { return fold(a) < fold(b); };
-    std::sort(folders.begin(), folders.end(), byName);
-    // one album's folder: in its order (disc, track); a folder of many: by file name
-    bool oneAlbum = !songs.empty();
-    for (const Track* t : songs) oneAlbum &= !t->album.empty() && lower(t->album) == lower(songs.front()->album);
-    std::sort(songs.begin(), songs.end(), [oneAlbum](const Track* a, const Track* b) {
-      if (oneAlbum && a->disc != b->disc) return a->disc < b->disc;
-      if (oneAlbum && a->track != b->track) return a->track < b->track;
-      return fold(a->path) < fold(b->path);
-    });
-    std::sort(videos.begin(), videos.end(), [](const Track* a, const Track* b) { return a->path < b->path; });
-    songs_ = songs;
-    std::vector<Row> rows;
-    for (const std::string& name : folders) {
-      Row r;
-      r.title = name;
-      r.tile = &tiles::folders;
-      r.chevron = true;
-      std::string p = dir_ + "/" + name;
-      r.onSelect = [p, name] { g_app->push(std::unique_ptr<Screen>(new FolderScreen(p, name))); };
-      rows.push_back(std::move(r));
-    }
-    for (size_t k = 0; k < songs.size(); k++) {
-      const Track* t = songs[k];
-      Row r;
-      r.title = t->title;
-      r.subtitle = subtitleOf(*t);
-      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-      r.thumb = t->path;
-      r.onSelect = [this, k] {  // the folder's songs from this one
-        std::vector<std::string> paths;
-        for (const Track* s : songs_) paths.push_back(s->path);
-        g_player.playQueue(paths, int(k));
-        openNowPlaying();
-      };
-      std::string path = t->path;
-      r.onLongSelect = [path] { g_app->push(makeSongMenu(path)); };
-      rows.push_back(std::move(r));
-    }
-    for (const Track* t : videos) {
-      Row r;
-      r.title = t->title;
-      r.subtitle = "Video";
-      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-      r.thumb = t->path;
-      Item item = cardVideo(*t);
-      r.onSelect = [item] { openVideo(item); };
-      rows.push_back(std::move(r));
-    }
-    if (rows.empty()) return list_.setMessage("Nothing to play in this folder.");
-    list_.setRows(std::move(rows), true);
-  }
-  std::string dir_;
-  std::vector<const Track*> songs_;
-  uint64_t generation_ = 0;
-};
-
-// the storage roots: the card, and the internal storage when it has anything
-class FolderRootsScreen : public ShellListScreen {
- public:
-  FolderRootsScreen() : ShellListScreen("Folders") {
-    std::vector<Row> rows;
-    struct Root {
-      const char* path;
-      const char* name;
-    };
-    for (Root r : {Root{"/storage/sdcard0", "Card"}, Root{"/storage/sdcard1", "Internal storage"}}) {
-      struct stat st;
-      if (stat(r.path, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
-      Row row;
-      row.title = r.name;
-      row.tile = &tiles::folders;
-      row.chevron = true;
-      std::string p = r.path, n = r.name;
-      row.onSelect = [p, n] { g_app->push(std::unique_ptr<Screen>(new FolderScreen(p, n))); };
-      rows.push_back(std::move(row));
-    }
-    if (rows.empty()) list_.setMessage("No card.");
-    else list_.setRows(std::move(rows), true);
-  }
-};
-
-}  // namespace
-
 std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs) {
   return std::unique_ptr<Screen>(new LocalSongsScreen(title, std::move(songs), false, true));
-}
-
-std::unique_ptr<Screen> makeFolders() {
-  struct stat st;  // one root: straight into it
-  if (stat("/storage/sdcard1", &st) != 0) return std::unique_ptr<Screen>(new FolderScreen("/storage/sdcard0", "Folders"));
-  return std::unique_ptr<Screen>(new FolderRootsScreen());
 }
 
 }  // namespace rondo::shell

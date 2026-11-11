@@ -40,7 +40,7 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
 Library has four parts: **Music**, **Videos**, **Photos** and **Files**.
 
 **Music** starts with Shuffle songs and Search, then **Browse** (Songs, Artists, Album artists,
-Albums, Cover Flow, Genres, Folders), **Playlists**, **Listening** (Recently added, Most played,
+Albums, Cover Flow, Genres), **Playlists**, **Listening** (Recently added, Most played,
 Recently played, Top rated) and **The card** (Rescan, Organize). Every list of songs starts with
 **Shuffle**.
 
@@ -52,8 +52,6 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
 - **Cover Flow** shows the albums' covers on a wide stage, the one in front facing you and the
   others turned and set back, each above its reflection: turn the wheel to glide through them
   (Next and Prev jump ten), press center for the album's songs.
-- **Folders** shows the card's music as it is: open folders, play a folder's songs from any of
-  them, or a video.
 - **Recently added** lists the newest songs first.
 - **Most played**, **Recently played** and **Top rated** (4 stars and up): a song counts as played
   once it's half over or 4 minutes in.
@@ -71,7 +69,8 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
   screen. There the wheel (or Next and Prev) slides from one to the next, center shows its name and
   date, and Play starts or stops a slideshow. Pictures from a camera show the right way up.
 - **Files** is a file manager for the card and the internal storage: every folder and file, not
-  only music. Center opens a folder, plays a song (the folder's songs after it), a video or a photo.
+  only music. Center opens a folder, plays a song (the folder's songs after it, an album's in disc
+  and track order), a video or a photo.
   **Hold center** on a file or folder to **Rename** it, **Copy** or **Move** it to another folder
   (on either storage: between the two it copies in the background, and the list says how far it
   is), or **Delete** it. Each folder starts with **New folder**. Songs keep their plays, ratings and

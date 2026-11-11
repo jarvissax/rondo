@@ -1445,11 +1445,6 @@ std::string kindOfFile(const std::string& name, bool dir) {
   if (text.count(x)) return "text";
   return "other";
 }
-// a name for one entry in a folder: no slashes, no dot files, nothing FAT can't hold
-std::string entryName(const std::string& in) {
-  std::string n = cardName(in);
-  return n.empty() || n[0] == '.' || n == ".." ? std::string() : n;
-}
 bool isDirPath(const std::string& p) {
   struct stat st;
   return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);

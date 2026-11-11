@@ -91,13 +91,26 @@ void openFile(const std::string& path) {
   std::string dir = parentOf(path), name = nameOf(path);
   if (isAudioExtension(extOf(name))) {
     std::vector<std::string> songs;
-    int at = 0;
-    for (const Entry& e : listFolder(dir)) {
-      if (e.dir || !isAudioExtension(extOf(e.name))) continue;
-      if (e.path == path) at = int(songs.size());
-      songs.push_back(e.path);
+    for (const Entry& e : listFolder(dir))
+      if (!e.dir && isAudioExtension(extOf(e.name))) songs.push_back(e.path);
+    // one album's folder: in its order (disc, track); a folder of many: by file name
+    std::vector<const Track*> tracks;
+    for (const std::string& p : songs) tracks.push_back(g_library.find(p));
+    bool oneAlbum = !tracks.empty();
+    for (const Track* t : tracks) oneAlbum &= t && !t->album.empty() && fold(t->album) == fold(tracks.front()->album);
+    if (oneAlbum) {
+      std::vector<size_t> order(songs.size());
+      for (size_t k = 0; k < order.size(); k++) order[k] = k;
+      std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        if (tracks[a]->disc != tracks[b]->disc) return tracks[a]->disc < tracks[b]->disc;
+        return tracks[a]->track < tracks[b]->track;
+      });
+      std::vector<std::string> sorted;
+      for (size_t k : order) sorted.push_back(songs[k]);
+      songs.swap(sorted);
     }
-    g_player.playQueue(songs, at);
+    int at = int(std::find(songs.begin(), songs.end(), path) - songs.begin());
+    g_player.playQueue(songs, std::min(at, int(songs.size()) - 1));
     openNowPlaying();
   } else if (isVideoName(name)) {
     Item i;

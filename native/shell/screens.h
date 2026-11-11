@@ -14,7 +14,6 @@ enum class Scope { All, Songs, Artists, Albums, Videos, Playlists };
 
 std::unique_ptr<Screen> makeMainMenu();
 std::unique_ptr<Screen> makeDevice();
-std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeCoverFlow();  // Library › Cover Flow: the albums' covers
 std::unique_ptr<Screen> makePhotos();     // Library › Photos: the pictures on the card
 std::unique_ptr<Screen> makePhotoViewer(const std::vector<std::string>& paths, int at);  // these, full screen
