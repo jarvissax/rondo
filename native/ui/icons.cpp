@@ -470,6 +470,17 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.fill({p.poly({17.5f, 2, 18.6f, 5.4f, 22, 6.5f, 18.6f, 7.6f, 17.5f, 11, 16.4f, 7.6f, 13, 6.5f, 16.4f, 5.4f}, true)});
       p.fill({p.circle(9, 4.5f, 1.2f), p.circle(20, 15, 1.2f)});
       break;
+    case Icon::Bolt:  // Amplifier
+      p.fill({p.poly({13.5f, 2, 5, 13.5f, 11, 13.5f, 10, 22, 19, 10, 12.8f, 10}, true)});
+      break;
+    case Icon::Lock:  // Volume limit
+      p.fill({p.roundRect(5, 10.5f, 19, 20.5f, 2)});
+      p.stroke({p.arc(8, 4, 16, 14, 180, 180), p.poly({8, 9, 8, 10.5f}, false), p.poly({16, 9, 16, 10.5f}, false)}, 2.2f);
+      break;
+    case Icon::Crossfade:  // one song falling as the next rises
+      p.stroke({p.poly({2.5f, 6.5f, 14, 18.5f}, false), p.poly({10, 18.5f, 21.5f, 6.5f}, false)}, 2.2f);
+      p.fill({p.poly({2.5f, 18.5f, 2.5f, 13, 7.6f, 18.5f}, true), p.poly({21.5f, 18.5f, 21.5f, 13, 16.4f, 18.5f}, true)});
+      break;
     case Icon::Mic:  // lyrics: what's sung
       p.fill({p.roundRect(9, 2.5f, 15, 14, 3)});
       p.stroke({p.arc(5.5f, 4.5f, 18.5f, 17.5f, 0, 180)}, 2);

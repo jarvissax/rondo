@@ -41,6 +41,7 @@ class Dsp {
   void configure(const SoundSettings& s);
   // the song now heard: its ReplayGain track gain in dB (NAN: none)
   void setTrackGain(float db) { trackDb_ = db; }
+  bool leveling() const { return s_.leveling; }  // songs' gains applied (a crossfade matches the two)
   bool active() const { return active_; }
   // in place, frames of interleaved stereo
   void process(int16_t* io, int frames);

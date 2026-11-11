@@ -74,7 +74,9 @@ extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, q
     // 2.0: Settings' groups, Library's sections and the rows in them
     connections, display, controls, system, account, output, textSize, menuOrder, repeat, musicSection, photos, files,
     folders, organize, usb, albumArtists, genres, coverFlow, played, mostPlayed, topRated, smart, newFolder, copyTo, moveTo,
-    renameTo, openFile;
+    renameTo, openFile,
+    // Settings › Sound
+    eqPreset, eqEdit, match, boost, leveling, amplifier, limit, crossfade, fadePause;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 

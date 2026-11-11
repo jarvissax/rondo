@@ -72,7 +72,13 @@ constexpr int kBuffers = 3;
 // that is still in the ring, not heard yet). The sound settings work at the output, so they follow
 // at once however far ahead the ring is.
 constexpr uint32_t kRingFrames = 1u << 19;
-constexpr int kFadeFrames = kRate * 3 / 10;  // a pause's and a resume's fade, 300 ms
+constexpr int kFadeOutFrames = kRate / 4;     // a pause's fade, 250 ms: it answers the press quickly
+constexpr int kFadeInFrames = kRate * 2 / 5;  // a resume's, 400 ms: the music comes back gently
+// a crossfade's silence: below -50 dBFS on both channels (a song's own fade-out tail, a quiet lead-in)
+constexpr int kQuiet = 104;
+constexpr int kLeadMax = kRate * 8;   // at most 8 s of a song's silence skipped at its start
+constexpr int kTailScan = kRate * 20;  // and the end of the one before looked at over 20 s
+inline bool quiet(const int16_t* f) { return std::abs(int(f[0])) < kQuiet && std::abs(int(f[1])) < kQuiet; }
 constexpr uint32_t kFmRingFrames = 1u << 14;  // the radio's: 0.37 s
 
 int64_t monoNs() {
@@ -289,6 +295,13 @@ class Engine {
   uint64_t overlapAt_ = 0, prevTrackAt_ = UINT64_MAX;
   int overlapping_ = 0, overlapDone_ = 0;
   float overlapGain_ = 1;  // the earlier song's samples in the overlap, by their two levelings
+  // the song begun under a crossfade starts at its first sound: its silence before is skipped (at most
+  // kLeadMax frames), and its marker's start moves by as much, so its time still reads right
+  bool skipLead_ = false;
+  int leadSkipped_ = 0;
+  // the last song's album and track number (an album's next track follows it gapless, not crossfaded)
+  std::string lastAlbum_;
+  int lastTrackNo_ = 0;
   float lastGainDb_ = NAN;  // the leveling gain of the song decoded last
   float fade_ = 1;
   bool pausing_ = false;
@@ -836,6 +849,18 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
   // under mu_ (released while waiting for room)
   // a crossfade: the song's first frames mixed into the end of the one before (equal power: sin and cos
   // over the overlap), where the output hasn't read yet
+  // a crossfaded song's silence before its first sound: left out (its start moves by as much)
+  while (skipLead_ && frames > 0) {
+    if (!quiet(pcm) || leadSkipped_ >= kLeadMax) {
+      skipLead_ = false;
+      if (leadSkipped_ > 0 && !markers_.empty()) {
+        markers_.back().startMs += int64_t(leadSkipped_) * 1000 / kRate;
+        fprintf(stderr, "rondo-player: crossfade: %.1f s of silence at the start left out\n", double(leadSkipped_) / kRate);
+      }
+      break;
+    }
+    pcm += 2, frames--, leadSkipped_++;
+  }
   while (frames > 0 && overlapping_ > 0 && overlapDone_ < overlapping_) {
     if (gen != gen_) return false;
     uint64_t at = overlapAt_ + uint64_t(overlapDone_);
@@ -978,21 +1003,45 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     float lufs;
     if (std::isnan(rg) && loudness_.find(path, lufs)) rg = -18.f - lufs;
     if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
+    // its album and track number: an album's next track plays on gapless (a live album, a mix)
+    std::string album;
+    int trackNo = 0;
+    for (AVDictionary* d : {fmt->metadata, fmt->streams[stream]->metadata}) {
+      if (const AVDictionaryEntry* e = album.empty() ? av_dict_get(d, "album", nullptr, 0) : nullptr) album = e->value;
+      if (const AVDictionaryEntry* e = trackNo ? nullptr : av_dict_get(d, "track", nullptr, 0)) trackNo = atoi(e->value);
+    }
+    bool albumNext = !album.empty() && album == lastAlbum_ && trackNo > 0 && trackNo == lastTrackNo_ + 1;
     // a crossfade: this song begins under the end of the one before, while that is still in the ring and
-    // not heard (one after the other only: not after a seek, a skip or into a video)
+    // not heard (one after the other only: not after a seek, a skip, into a video or an album's next track)
     uint64_t at = writeAt_;
     overlapping_ = overlapDone_ = 0;
-    if (crossfadeFrames_ > 0 && seekMs <= 0 && !video && prevTrackAt_ != UINT64_MAX && prevTrackAt_ < writeAt_ && heardPos_ >= 0) {
+    skipLead_ = false, leadSkipped_ = 0;
+    if (crossfadeFrames_ > 0 && seekMs <= 0 && !video && !albumNext && prevTrackAt_ != UINT64_MAX && prevTrackAt_ < writeAt_ &&
+        heardPos_ >= 0) {
+      // the one before ends at its last sound: its silent tail (a fade to nothing, a pause before the end)
+      // isn't heard, the overlap goes over sound
+      uint64_t floor = std::max(std::max(readAt_, prevTrackAt_), writeAt_ > uint64_t(kTailScan) ? writeAt_ - uint64_t(kTailScan) : 0);
+      uint64_t end = writeAt_;
+      while (end > floor && quiet(&ring_[size_t((end - 1) % kRingFrames) * 2])) end--;
+      if (end < writeAt_ && end > floor) {
+        end = std::min(writeAt_, end + uint64_t(kRate / 20));  // 50 ms of its tail kept: no cut mid-decay
+        fprintf(stderr, "rondo-player: crossfade: %.1f s of silence at the end left out\n", double(writeAt_ - end) / kRate);
+        writeAt_ = end;
+      }
       uint64_t unheard = writeAt_ - readAt_, before = writeAt_ - prevTrackAt_;
       uint64_t n = std::min<uint64_t>(uint64_t(crossfadeFrames_), std::min(unheard, before));
       if (n > uint64_t(kRate / 4)) {
         overlapping_ = int(n);
         overlapAt_ = at = writeAt_ - n;
-        // the output levels by the song begun last: the one before's samples, by its own gain
-        overlapGain_ = !std::isnan(lastGainDb_) && !std::isnan(rg) ? powf(10.f, (lastGainDb_ - rg) / 20.f) : 1.f;
+        skipLead_ = true;
+        // with leveling, the output levels by the song begun last: the one before's samples by its own
+        // gain; without, both as they are
+        overlapGain_ = dsp_.leveling() && !std::isnan(lastGainDb_) && !std::isnan(rg) ? powf(10.f, (lastGainDb_ - rg) / 20.f) : 1.f;
         fprintf(stderr, "rondo-player: crossfade %.1f s into song %d\n", double(n) / kRate, pos);
       }
     }
+    if (albumNext && crossfadeFrames_ > 0) fprintf(stderr, "rondo-player: track %d of %s follows gapless\n", trackNo, album.c_str());
+    lastAlbum_ = album, lastTrackNo_ = trackNo;
     lastGainDb_ = rg;
     markers_.push_back({at, pos, duration, seekMs, false, rg});
     snprintf(markers_.back().codec, sizeof(markers_.back().codec), "%s", codecName);
@@ -1299,10 +1348,10 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     b[k * 2] = ring_[at];
     b[k * 2 + 1] = ring_[at + 1];
   }
-  // a pause fades out over 300 ms and then pauses; playing again fades back in
+  // a pause fades out over 250 ms and then pauses; playing again fades back in over 400 ms
   float target = pausing_ ? 0.f : 1.f;
   if (n > 0 && (fade_ != target)) {
-    float step = 1.f / float(kFadeFrames);
+    float step = 1.f / float(pausing_ ? kFadeOutFrames : kFadeInFrames);
     for (int k = 0; k < n; k++) {
       fade_ = target > fade_ ? std::min(target, fade_ + step) : std::max(target, fade_ - step);
       float g = fade_ * fade_;  // smoother to the ear than a straight line

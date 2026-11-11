@@ -331,9 +331,19 @@ class PhotoGridScreen : public Screen {
       v += d * std::min(1.f, dt * 16.f);
       moving = true;
     };
+    aim();  // where the selection is now: a press moves the highlight on that frame, not the next
     glide(scroll_, want_);
     if (hx_ >= 0) glide(hx_, tx_), glide(hy_, ty_);
     return moving;
+  }
+  // the highlight's and the scroll's targets for the selection, from the last drawn layout
+  void aim() {
+    if (cw_ <= 0) return;
+    tx_ = pad_ + (sel_ % kCols) * (cw_ + gap_), ty_ = pad_ + (sel_ / kCols) * (ch_ + gap_);
+    float top = ty_, bottom = top + ch_;
+    if (top - want_ < pad_) want_ = top - pad_;
+    if (bottom - want_ > h_ - pad_) want_ = bottom - h_ + pad_;
+    want_ = std::max(0.f, want_);
   }
   void draw(Env& e, float w, float h) override {
     e.c.fill({0, 0, w, h}, e.p.shellBg);
@@ -346,12 +356,8 @@ class PhotoGridScreen : public Screen {
     float pad = float(e.dp(6)), gap = float(e.dp(4));
     float cw = (w - 2 * pad - gap * (kCols - 1)) / kCols, ch = cw * 0.75f;
     int tw = std::min(200, int(cw)), th = std::min(150, int(ch));
-    // the selected row in view
-    int row = sel_ / kCols;
-    float top = pad + row * (ch + gap), bottom = top + ch;
-    if (top - want_ < pad) want_ = top - pad;
-    if (bottom - want_ > h - pad) want_ = bottom - h + pad;
-    want_ = std::max(0.f, want_);
+    pad_ = pad, gap_ = gap, cw_ = cw, ch_ = ch, h_ = h;
+    aim();  // the selected row in view
     int first = std::max(0, int((scroll_ - pad) / (ch + gap)) * kCols), last = std::min(n, first + kCols * (int(h / (ch + gap)) + 2));
     for (int i = first; i < last; i++) {
       float x = pad + (i % kCols) * (cw + gap), y = pad + (i / kCols) * (ch + gap) - scroll_;
@@ -365,7 +371,6 @@ class PhotoGridScreen : public Screen {
       }
     }
     // the highlight, where it glides (in the grid's own coordinates: it scrolls with the rows)
-    tx_ = pad + (sel_ % kCols) * (cw + gap), ty_ = pad + (sel_ / kCols) * (ch + gap);
     if (hx_ < 0) hx_ = tx_, hy_ = ty_;
     {
       ui::Rect r{hx_, hy_ - scroll_, cw, ch};
@@ -385,6 +390,7 @@ class PhotoGridScreen : public Screen {
   int sel_ = 0;
   float scroll_ = 0, want_ = 0;
   float hx_ = -1, hy_ = 0, tx_ = 0, ty_ = 0;  // the highlight and where it goes
+  float pad_ = 0, gap_ = 0, cw_ = 0, ch_ = 0, h_ = 0;  // the layout last drawn
 };
 
 // ---- the folders ----

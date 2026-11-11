@@ -96,6 +96,16 @@ const Tile newFolder{Icon::Plus, rgb(0x4fc3f7), rgb(0x0288d1)};
 const Tile renameTo{Icon::Type, rgb(0xc58cff), rgb(0x7b3fe0)};
 const Tile moveTo{Icon::Tree, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile copyTo{Icon::Stack, rgb(0x8c7bff), rgb(0x4b36d6)};
+// Settings › Sound (Playing on is output)
+const Tile eqPreset{Icon::Sliders, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile eqEdit{Icon::Bars, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile match{Icon::Search, rgb(0xb8bcc4), rgb(0x6f747d)};
+const Tile boost{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};
+const Tile leveling{Icon::Gauge, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile amplifier{Icon::Bolt, rgb(0xffd24d), rgb(0xf0a012)};
+const Tile limit{Icon::Lock, rgb(0xff7a7a), rgb(0xe0283c)};
+const Tile crossfade{Icon::Crossfade, rgb(0x8c7bff), rgb(0x4b36d6)};
+const Tile fadePause{Icon::Pause, rgb(0x5fb7ff), rgb(0x1f73e0)};
 // the rest
 const Tile usb{Icon::Usb, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile shorts{Icon::Shorts, rgb(0xff6b5a), rgb(0xe01e1e)};

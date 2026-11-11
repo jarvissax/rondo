@@ -162,37 +162,44 @@ class EqualizerScreen : public Screen {
     e.c.layer(1);
     drawLabel(e, where, float(pad), top, p.muted);
     drawLabel(e, value, w - pad - value.w, top, p.text);
-    // the graph: ±12 dB, a column a band
+    // a slider a band, as on the dashboard: its gain over it, its frequency under it, ±12 dB
     Label hint = label(e, "wheel: gain \xc2\xb7 Prev/Next: band \xc2\xb7 center: save as preset \xc2\xb7 hold: flat", 9, false, w);
-    Label freq = label(e, "16k", 10, false);
-    float gTop = top + where.h + e.dp(10), gBottom = h - hint.h - e.dp(8) - freq.h - e.dp(8);
-    float gh = gBottom - gTop, mid = gTop + gh / 2, colW = (w - 2 * pad) / kEqBands;
-    auto yOf = [&](float db) { return mid - db / 12.f * (gh / 2); };
-    e.c.layer(0);
-    for (float db : {-12.f, -6.f, 0.f, 6.f, 12.f}) e.c.fill({float(pad), roundf(yOf(db)), w - 2 * pad, db == 0 ? 2.f : 1.f}, p.rowLine);
-    // the curve the filters make together, across the bands
+    Label freq = label(e, "16k", 10, false), gainL = label(e, "+12", 11, true);
+    float gTop = top + where.h + e.dp(8) + gainL.h + e.dp(5), gBottom = h - hint.h - e.dp(8) - freq.h - e.dp(7);
+    float gh = gBottom - gTop, colW = (w - 2 * pad) / kEqBands;
+    float knob = float(e.dp(7)), span = gh - 2 * knob;  // the knob stays inside its track
+    auto yOf = [&](float db) { return gTop + knob + (12.f - db) / 24.f * span; };
+    // the curve the filters make together, faintly behind the sliders
     SoundSettings s = resolveSound(g_sound, profile(out_.key), out_.key == "speaker");
     e.c.layer(1);
     float x0 = float(pad) + colW / 2, x1 = w - pad - colW / 2;
     for (float x = x0; x <= x1; x += 2) {
       float hz = 31.f * powf(2.f, (x - x0) / (x1 - x0) * 9.f), db = 0;
       for (const Filter& f : s.filters) db += Dsp::responseDb(f, hz);
-      db = std::max(-13.f, std::min(13.f, db));
-      e.c.shape({x - 1.5f, yOf(db) - 1.5f, 3, 3}, 1.5f, withAlpha(p.accent, 0.45f));
+      db = std::max(-12.f, std::min(12.f, db));
+      e.c.shape({x - 1, yOf(db) - 1, 2, 2}, 1, withAlpha(p.accent, 0.3f));
     }
-    // the bands
-    e.c.layer(2);
     for (int i = 0; i < kEqBands; i++) {
       float cx = float(pad) + colW * (float(i) + 0.5f), gy = yOf(gains_[size_t(i)]);
       bool picked = i == band_;
-      Color c = picked ? p.accent : p.muted;
-      float bw = float(e.dp(picked ? 8 : 6));
-      float y0 = std::min(mid, gy), y1 = std::max(mid, gy);
-      if (y1 - y0 >= 1) e.c.shape({cx - bw / 2, y0, bw, y1 - y0}, bw / 2, withAlpha(c, picked ? 1.f : 0.7f));
-      float k = float(e.dp(picked ? 7 : 5));
-      e.c.shape({cx - k, gy - k, 2 * k, 2 * k}, k, c);
-      Label f = label(e, freqName(kEqFreqs[i]), 10, picked, colW);
-      drawLabel(e, f, cx - f.w / 2.f, gBottom + e.dp(8), picked ? p.text : p.muted);
+      float tw = float(e.dp(picked ? 10 : 8));
+      // the track; the band picked filled in its color from 0 dB to the knob
+      e.c.layer(0);
+      e.c.shape({cx - tw / 2, gTop, tw, gh}, tw / 2, picked ? withAlpha(p.accent, 0.22f) : p.rowLine);
+      float zero = yOf(0), y0 = std::min(zero, gy), y1 = std::max(zero, gy);
+      if (picked && y1 - y0 >= 1) {
+        e.c.layer(1);
+        e.c.shape({cx - tw / 2, y0, tw, y1 - y0}, tw / 2, withAlpha(p.accent, 0.75f));
+      }
+      e.c.layer(2);
+      float k = picked ? knob + e.dpf(1) : knob;
+      if (picked) e.c.shape({cx - k - 2, gy - k - 2, 2 * k + 4, 2 * k + 4}, k + 2, p.accent);
+      e.c.shape({cx - k, gy - k, 2 * k, 2 * k}, k, 0xffffffff);
+      int gdb = int(roundf(gains_[size_t(i)]));
+      Label gl = label(e, (gdb > 0 ? "+" : "") + std::to_string(gdb), 11, picked, colW);
+      drawLabel(e, gl, cx - gl.w / 2.f, gTop - e.dp(5) - gl.h, picked ? p.text : p.muted);
+      Label fl = label(e, freqName(kEqFreqs[i]), 10, picked, colW);
+      drawLabel(e, fl, cx - fl.w / 2.f, gBottom + e.dp(7), picked ? p.text : p.muted);
     }
     e.c.layer(3);
     drawLabel(e, hint, centerText(0, w, hint.w), h - hint.h - e.dp(4), p.muted);
@@ -413,6 +420,7 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(on);
     Row eq;
     eq.title = "Equalizer";
+    eq.tile = &tiles::eqPreset;
     eq.trailing = presetName(g_sound, p);
     eq.chevron = true;
     eq.onSelect = [key] {
@@ -436,6 +444,7 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(eq);
     Row edit;
     edit.title = "Edit equalizer";
+    edit.tile = &tiles::eqEdit;
     edit.subtitle = "Ten bands of your own";
     edit.chevron = true;
     Output o = out_;
@@ -444,6 +453,7 @@ class SoundScreen : public ShellListScreen {
     if (key != "speaker") {  // headphones, wired or Bluetooth
       Row match;
       match.title = "Headphone match";
+      match.tile = &tiles::match;
       match.subtitle = p.autoEq.empty() ? "A correction for your model (AutoEq)" : p.autoEqName;
       match.chevron = true;
       match.onSelect = [o] { g_app->push(std::unique_ptr<Screen>(new HeadphoneMatchScreen(o))); };
@@ -451,6 +461,7 @@ class SoundScreen : public ShellListScreen {
     }
     Row boost;
     boost.title = "Loudness boost";
+    boost.tile = &tiles::boost;
     boost.subtitle = "Louder; the peaks are held, never clipped";
     boost.trailing = boostName(p.boostDb);
     boost.chevron = true;
@@ -474,6 +485,7 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(h);
     Row level;
     level.title = "Volume leveling";
+    level.tile = &tiles::leveling;
     note_ = levelingNote();
     level.subtitle = note_;
     level.trailing = g_sound.leveling ? "On" : "Off";
@@ -488,6 +500,7 @@ class SoundScreen : public ShellListScreen {
       static const char* const kNames[4] = {"Standard", "+2 dB", "+4 dB", "+6 dB"};
       Row amp;
       amp.title = "Amplifier";
+      amp.tile = &tiles::amplifier;
       amp.subtitle = "The Y1's own, for headphones and the speaker";
       amp.trailing = kNames[std::max(0, std::min(3, int(ps.amplifier)))];
       amp.chevron = true;
@@ -510,6 +523,7 @@ class SoundScreen : public ShellListScreen {
       int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));
       Row lim;
       lim.title = "Volume limit";
+      lim.tile = &tiles::limit;
       lim.subtitle = "The loudest the wheel goes, on every output";
       lim.trailing = limit >= maxVol ? "No limit" : std::to_string(limit) + " of " + std::to_string(maxVol);
       lim.chevron = true;
@@ -535,6 +549,7 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(ph);
     Row xf;
     xf.title = "Crossfade";
+    xf.tile = &tiles::crossfade;
     xf.subtitle = "Songs fade into each other";
     xf.trailing = g_prefs.crossfadeSec ? std::to_string(g_prefs.crossfadeSec) + " s" : "Off";
     xf.chevron = true;
@@ -555,6 +570,7 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(xf);
     Row fp;
     fp.title = "Fade on pause and play";
+    fp.tile = &tiles::fadePause;
     fp.subtitle = "Music fades out and back in";
     fp.trailing = g_prefs.fadePause ? "On" : "Off";
     fp.onSelect = [this] {
