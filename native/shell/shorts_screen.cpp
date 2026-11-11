@@ -154,6 +154,9 @@ class ShortsScreen : public Screen {
   // it starting again without sound.
   bool ownPicture(const PlayerState& s, VideoSurface* vs) const {
     if (!vs || !vs->hasPicture()) return false;
+    // never longer than 1.5 s: whatever is on the surface then is shown (this check can only hide an
+    // old picture for a moment, never keep a short from showing)
+    if (now_ns() - askedNs_ > 1500 * kMs) return true;
     if (armedAt_ < 0) {
       bool started = s.video && s.videoFrames > 0 && expectPath_ == s.path;
       if (!started) return false;
@@ -319,7 +322,7 @@ class ShortsScreen : public Screen {
     const Item& item = items_[size_t(i)];
     if (savedRepeat_ < 0) savedRepeat_ = g_player.state().repeat;
     if (VideoSurface* v = VideoSurface::get()) v->clear();  // the still until this one's video draws
-    expectPath_ = videoSound(item), armedAt_ = -1;
+    expectPath_ = videoSound(item), armedAt_ = -1, askedNs_ = now_ns();
     g_player.playVideo(videoSound(item), videoPictures(item, g_prefs.videoQuality));
     g_player.setRepeat(2);  // shorts loop, as in the app
     describe(item);
@@ -400,6 +403,7 @@ class ShortsScreen : public Screen {
   // the short asked for last: its sound's path, and the surface's picture count when its video began
   std::string expectPath_;
   mutable int64_t armedAt_ = -1, armedNs_ = 0;
+  int64_t askedNs_ = 0;  // when it was asked for
 };
 
 }  // namespace

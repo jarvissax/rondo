@@ -29,6 +29,8 @@
 
 #include "../core/api.h"
 #include "../core/bundle.h"
+#include "downloads.h"
+#include "subtitles.h"
 #include "../core/clock.h"
 #include "../core/cover.h"
 #include "../platform/power.h"
@@ -1267,6 +1269,41 @@ Response putDateTime(const Body& b) {
   return json(dateTimeJson());
 }
 
+// a YouTube link (watch?v=, youtu.be/, /shorts/, /live/, /embed/) or an id itself: the 11-character id, or ""
+std::string videoIdIn(const std::string& text) {
+  std::string t = text;
+  while (!t.empty() && isspace((unsigned char)t.back())) t.pop_back();
+  while (!t.empty() && isspace((unsigned char)t[0])) t.erase(0, 1);
+  auto valid = [](const std::string& id) {
+    if (id.size() != 11) return false;
+    for (char c : id)
+      if (!isalnum((unsigned char)c) && c != '-' && c != '_') return false;
+    return true;
+  };
+  if (valid(t)) return t;
+  for (const char* key : {"v=", "youtu.be/", "/shorts/", "/live/", "/embed/"}) {
+    size_t at = t.find(key);
+    if (at == std::string::npos) continue;
+    std::string id = t.substr(at + strlen(key), 11);
+    if (valid(id)) return id;
+  }
+  return "";
+}
+
+std::string subtitleChoicesJson() {
+  std::vector<std::string> sizes, colors, edges, langs;
+  for (const char* n : kSubSizes) sizes.push_back(str(n));
+  for (const SubColor& c : kSubColors) {
+    char hex[8];
+    snprintf(hex, sizeof(hex), "#%06x", unsigned(c.rgb));
+    colors.push_back(obj({{"name", str(c.name)}, {"hex", str(hex)}}));
+  }
+  for (const char* n : kSubEdges) edges.push_back(str(n));
+  for (const char* l : {"", "en", "az", "tr", "ru", "de", "fr", "es", "it", "pt", "ar", "fa", "uk", "ja", "ko", "zh", "hi"})
+    langs.push_back(obj({{"code", str(l)}, {"name", str(*l ? languageName(l) : "The video's own")}}));
+  return obj({{"sizes", arr(sizes)}, {"colors", arr(colors)}, {"edges", arr(edges)}, {"languages", arr(langs)}});
+}
+
 std::string settingsJson() {
   static const int timeouts[] = {15, 30, 60, 120, 300, 600};
   int sec = g_prefs.screenTimeoutMs / 1000, best = 60;
@@ -1278,7 +1315,17 @@ std::string settingsJson() {
               {"lyricsOnOpen", boolean(g_config.behavior.lyricsOnOpen)},
               {"wheelAcceleration", str(g_config.behavior.wheelAcceleration)},
               {"wheelVibration", str(g_config.behavior.wheelVibration)},
-              {"clickSound", boolean(g_prefs.clickSound)}});
+              {"clickSound", boolean(g_prefs.clickSound)},
+              // Settings › Display › Subtitles: the same choices, by index, as on the Rondo
+              {"subtitles", boolean(g_prefs.subtitles)},
+              {"subLang", str(g_prefs.subLang)},
+              {"subSize", num(int64_t(g_prefs.subSize))},
+              {"subColor", num(int64_t(g_prefs.subColor))},
+              {"subOpacity", num(int64_t(g_prefs.subOpacity))},
+              {"subBack", num(int64_t(g_prefs.subBack))},
+              {"subBackOpacity", num(int64_t(g_prefs.subBackOpacity))},
+              {"subEdge", num(int64_t(g_prefs.subEdge))},
+              {"subChoices", subtitleChoicesJson()}});
 }
 
 std::string putSettings(const Body& b) {
@@ -1299,6 +1346,20 @@ std::string putSettings(const Body& b) {
   }
   bool f;
   if (b.flag("clickSound", f)) g_prefs.clickSound = f;
+  // subtitles: on or off, the language, the look (each in its range), or YouTube's look again
+  if (b.flag("subtitles", f)) g_prefs.subtitles = f;
+  std::string lang;
+  if (b.text("subLang", lang)) g_prefs.subLang = cleanLang(lang);
+  auto pick = [&](const char* k, int& out, int lo, int hi) {
+    if (b.integer(k, v)) out = int(std::max<int64_t>(lo, std::min<int64_t>(hi, v)));
+  };
+  pick("subSize", g_prefs.subSize, 0, 3);
+  pick("subColor", g_prefs.subColor, 0, 7);
+  pick("subOpacity", g_prefs.subOpacity, 25, 100);
+  pick("subBack", g_prefs.subBack, 0, 7);
+  pick("subBackOpacity", g_prefs.subBackOpacity, 0, 100);
+  pick("subEdge", g_prefs.subEdge, 0, 4);
+  if (b.flag("subReset", f) && f) resetSubtitleStyle();
   savePrefsNow();
   bool changed = false;
   if (b.flag("lyricsOnOpen", f)) g_config.behavior.lyricsOnOpen = f, changed = true;
@@ -1871,6 +1932,47 @@ Response Server::api(Request& r, const std::string& path) {
     return okBody();
   }
   if (path == "/settings" && m == "GET") return ui([] { return settingsJson(); });
+  // YouTube › Download: the queue and the videos on the card; a link or id to download at a height
+  if (path == "/downloads" && m == "GET") return ui([] { return downloadsJson(); });
+  if (path == "/downloads" && m == "POST") {
+    std::string video, id;
+    int64_t q = 480;
+    b->text("video", video), b->integer("quality", q);
+    id = videoIdIn(video);
+    if (id.empty()) return error(400, "That isn't a YouTube link or video id");
+    int quality = q >= 720 ? 720 : q >= 480 ? 480 : 360;
+    // its title and channel for the list (the Y1 shows them; the file is named by them)
+    Item item;
+    item.kind = "video", item.id = id;
+    std::string body;
+    if (coreCall(false, "/video/short/" + rondo::Api::escape(id), "", body, 20000) == 200) {
+      ShortInfo info;
+      if (parseShortInfo(body, info)) item.title = info.title, item.subtitle = info.channel;
+    }
+    item.thumb = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
+    return onUi([item, quality] {
+      if (!downloadedFile(item.id).empty()) return error(409, "It's on the card already");
+      for (const DownloadJob& j : downloadJobs())
+        if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, "It's downloading already");
+      downloadVideo(item, quality);
+      return json(downloadsJson());
+    });
+  }
+  if (path == "/downloads/cancel" && m == "POST") {
+    std::string id;
+    if (!b->text("id", id)) return error(400, "id");
+    return onUi([id] {
+      cancelDownload(id);
+      return json(downloadsJson());
+    });
+  }
+  if (path == "/downloads" && m == "DELETE") {
+    std::string file = r.param("file");
+    return onUi([file] {
+      if (!deleteDownload(file)) return error(404, "not found");
+      return json(downloadsJson());
+    });
+  }
   if (path == "/settings" && m == "PUT") return ui([b] { return putSettings(*b); });
   if (path == "/sound" && m == "GET") return ui([] { return soundPageJson(); });
   if (path == "/sound" && m == "PUT") return onUi([b] { return putSound(*b); });

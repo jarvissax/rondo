@@ -477,6 +477,11 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.fill({p.roundRect(5, 10.5f, 19, 20.5f, 2)});
       p.stroke({p.arc(8, 4, 16, 14, 180, 180), p.poly({8, 9, 8, 10.5f}, false), p.poly({16, 9, 16, 10.5f}, false)}, 2.2f);
       break;
+    case Icon::Captions:  // subtitles: a picture with two lines of text on it
+      p.stroke({p.roundRect(2.5f, 4.5f, 21.5f, 19.5f, 2.5f)}, 2.2f);
+      p.stroke({p.poly({6.5f, 12.5f, 11.5f, 12.5f}, false), p.poly({14, 12.5f, 17.5f, 12.5f}, false),
+                p.poly({6.5f, 16, 9.5f, 16}, false), p.poly({12, 16, 17.5f, 16}, false)}, 2);
+      break;
     case Icon::Mic:  // lyrics: what's sung
       p.fill({p.roundRect(9, 2.5f, 15, 14, 3)});
       p.stroke({p.arc(5.5f, 4.5f, 18.5f, 17.5f, 0, 180)}, 2);

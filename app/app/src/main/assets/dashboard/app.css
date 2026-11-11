@@ -210,6 +210,8 @@ input { caret-color: var(--accent-hi); }
 .t-server { --t1: #ff6b5a; --t2: #e01e1e; }
 .t-settings, .t-about, .t-search { --t1: #b8bcc4; --t2: #6f747d; }
 .t-quality, .t-albums, .t-radio { --t1: #ffb04d; --t2: #f07a12; }
+.t-subtitles { --t1: #5fe0b5; --t2: #10a37a; }
+.t-downloads { --t1: #7be07b; --t2: #26a83b; }
 .t-brightness, .t-photos, .t-amp { --t1: #ffd24d; --t2: #f0a012; }
 .t-timer, .t-coverflow { --t1: #8fa3b8; --t2: #52657a; }
 .t-theme, .t-artists, .t-account { --t1: #c58cff; --t2: #7b3fe0; }
@@ -1064,3 +1066,22 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .tv-code { font: 600 34px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; margin: 10px 0 6px; color: var(--text); user-select: all; }
 .tv-steps { padding: 6px 0 6px 20px; font-size: 13.5px; }
 .tv-err { color: var(--red, #ff6b6b); margin-top: 4px; }
+
+/* Subtitles: a picture with a line of them on it, in the look picked (the Y1 draws them the same) */
+.sub-preview { position: relative; height: 150px; margin: 12px 14px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(160deg, #3b4b6b, #1a1f2b); display: flex; align-items: flex-end; justify-content: center; padding: 0 12px 16px; }
+.sub-preview::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 75% 30%, rgba(255, 210, 120, .35), transparent 45%); }
+.sub-line { position: relative; font-family: Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.25; padding: 0 .25em; text-align: center; }
+.sub-actions { display: flex; justify-content: flex-end; padding: 10px 14px 14px; }
+
+/* Downloads */
+.dl-form { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 14px; }
+.dl-form input { width: 100%; min-width: 0; }
+.dl-row .row-main { min-width: 0; }
+.dl-bar { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
+.dl-bar > span { display: block; height: 100%; background: var(--accent, #ff2d55); transition: width .4s ease; }
+.dl-row .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) {
+  .dl-form { grid-template-columns: 1fr 1fr; }
+  .dl-form input { grid-column: 1 / -1; }
+}

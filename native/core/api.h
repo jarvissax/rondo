@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <string>
+#include <atomic>
 #include <vector>
 
 typedef void CURL;
@@ -49,7 +50,9 @@ class Api {
   // POST a JSON body to a full URL without the token (pairing: 1.0.x's bare client)
   int post(const std::string& url, const std::string& json, std::string& body);
   // The path into a file (written as .part, renamed when whole); progress(done, total) as it comes
-  int download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress);
+  // cancel: checked as it goes; once true it stops (status 0, nothing written)
+  int download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
+               const std::atomic<bool>* cancel = nullptr);
 
   int health(Health& out);
   int musicHome(SectionsPage& out);
@@ -81,6 +84,12 @@ struct ShortInfo {
   int durationSec = -1;
 };
 bool parseShortInfo(const std::string& json, ShortInfo& out);
+// /captions/<id>: a YouTube video's subtitle tracks (its own, and the speech recognition's)
+struct CaptionTrack {
+  std::string id, lang, name;
+  bool autoGen = false;
+};
+bool parseCaptions(const std::string& json, std::vector<CaptionTrack>& out);
 bool parseItems(const std::string& json, ItemsPage& out);
 
 }  // namespace rondo

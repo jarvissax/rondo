@@ -154,7 +154,9 @@ Two rules the server keeps:
 - **youtubei.js for browsing, yt-dlp for streams.** Everything the user sees (home pages, search,
   playlists, up next) comes from youtubei.js. yt-dlp only turns a video ID into stream URLs.
 - **No media on disk.** Audio and video are proxied as they're requested. Caching metadata (stream
-  URLs, index ranges, thumbnails) is fine; caching media isn't.
+  URLs, index ranges, thumbnails) is fine; caching media isn't. The one exception is on the Y1, not
+  the server: a video the user downloads (YouTube › Download) is saved to the Y1's card, from the same
+  /s/ streams, joined into one .mp4 there (`native/shell/downloads.cpp`).
 
 The API is described in [docs/dev/server-api.md](dev/server-api.md).
 

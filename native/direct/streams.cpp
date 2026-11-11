@@ -31,8 +31,15 @@ struct Format {
   int bitrate = 0, w = 0, h = 0;
 };
 
+// a subtitle track the video has: its own (lang) or YouTube's speech recognition's (lang + ".auto")
+struct Caption {
+  std::string id, lang, name, url;
+  bool autoGen = false;
+};
+
 struct Resolved {
   std::map<int, Format> formats;
+  std::vector<Caption> captions;
   VideoDetails details;
   int64_t at = 0, expires = 0;  // monotonic ms
 };
@@ -79,6 +86,21 @@ std::shared_ptr<const Resolved> ask(const std::string& id) {
     fprintf(stderr, "rondo-direct: %s has no format the Y1 plays\n", id.c_str());
     return nullptr;
   }
+  // the subtitles: the video's own, and the speech recognition's in the language spoken (YouTube's
+  // translations of them are left out: Google refuses them from servers, and they are machine-made)
+  each(path(r, "captions", "playerCaptionsTracklistRenderer", "captionTracks"), [&](J t) {
+    Caption c;
+    c.url = str(key(t, "baseUrl"));
+    c.lang = str(key(t, "languageCode"));
+    if (c.url.empty() || c.lang.empty()) return;
+    c.autoGen = str(key(t, "kind")) == "asr";
+    c.id = c.lang + (c.autoGen ? ".auto" : "");
+    c.name = text(key(t, "name"));
+    if (c.name.empty()) c.name = c.lang;
+    for (const Caption& x : out->captions)
+      if (x.id == c.id) return;
+    out->captions.push_back(c);
+  });
   J vd = key(r, "videoDetails");
   out->details.title = str(key(vd, "title"));
   out->details.author = str(key(vd, "author"));
@@ -290,6 +312,34 @@ void resolveRoute(const Request& r, Response& out) {
          ",\"h\":" + std::to_string(f.h) + ",\"codecs\":" + quote(f.codecs) + ",\"contentLength\":" + std::to_string(f.length) + "}";
   }
   out.body = s + "}}";
+}
+
+// /captions/<id>: the video's subtitle tracks; /captions/<id>/<track>: one of them as WebVTT
+void captionsRoute(const Request& r, Response& out) {
+  std::string rest = r.path.substr(10), track;
+  size_t slash = rest.find('/');
+  if (slash != std::string::npos) track = uriDecode(rest.substr(slash + 1)), rest = rest.substr(0, slash);
+  if (!isVideoId(rest)) return out.error(400, "bad_id");
+  auto res = resolve(rest);
+  if (!res) return out.error(502, "resolve");
+  if (track.empty()) {
+    std::string s = "{\"tracks\":[";
+    int n = 0;
+    for (const Caption& c : res->captions)
+      s += std::string(n++ ? "," : "") + "{\"id\":" + quote(c.id) + ",\"lang\":" + quote(c.lang) + ",\"name\":" + quote(c.name) +
+           ",\"auto\":" + (c.autoGen ? "true" : "false") + "}";
+    out.body = s + "]}";
+    return;
+  }
+  for (const Caption& c : res->captions) {
+    if (c.id != track) continue;
+    Fetched x = get(c.url + "&fmt=vtt", {"User-Agent: " + rules().player.userAgent}, 4 << 20);
+    if (x.status != 200 || x.body.compare(0, 6, "WEBVTT") != 0) return out.error(502, "upstream");
+    out.type = "text/vtt; charset=utf-8";
+    out.body = std::move(x.body);
+    return;
+  }
+  out.error(404, "no_track");
 }
 
 // Google's image server sizes by the options after the last "=" ("=w120-h120-l90-rj"): the short side

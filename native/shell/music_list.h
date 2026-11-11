@@ -39,6 +39,8 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
 void openMusicItem(const Item& item, const std::vector<Item>& siblings);
 // videoRows(): YouTube's rows; center plays the video
 std::vector<Row> videoRows(const std::vector<Item>& items);
+// hold center on a YouTube video: Download, at a height picked (downloads.h)
+void askDownload(const Item& item);
 // offlineOr(): what a list says when it couldn't load (pointing at Settings › Wi-Fi without a network)
 std::string offlineOr(const std::string& problem);
 // "HTTP 500 for /music/home", or the connection's failure, as 1.0.x words it

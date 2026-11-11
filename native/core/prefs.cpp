@@ -2,6 +2,8 @@
 #include "prefs.h"
 
 #include <fcntl.h>
+
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +13,14 @@
 #include <yyjson.h>
 
 namespace rondo {
+
+std::string cleanLang(const std::string& s) {
+  std::string out;
+  for (char c : s)
+    if (((c | 32) >= 'a' && (c | 32) <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') out += c;
+  return out.substr(0, 16);
+}
+
 namespace {
 
 const char* kAndroidSettings = "/data/data/com.android.providers.settings/databases/settings.db";
@@ -97,6 +107,14 @@ Prefs loadPrefs(const std::string& path) {
   p.brightness = num("brightness", p.brightness);
   p.screenTimeoutMs = num("screenTimeoutMs", p.screenTimeoutMs);
   p.fmVolume = num("fmVolume", p.fmVolume);
+  auto pick = [&](const char* k, int& out, int lo, int hi) { out = std::max(lo, std::min(hi, num(k, out))); };
+  pick("subSize", p.subSize, 0, 3);
+  pick("subColor", p.subColor, 0, 7);
+  pick("subOpacity", p.subOpacity, 25, 100);
+  pick("subBack", p.subBack, 0, 7);
+  pick("subBackOpacity", p.subBackOpacity, 0, 100);
+  pick("subEdge", p.subEdge, 0, 4);
+  if (yyjson_val* v = yyjson_obj_get(root, "subLang"); yyjson_is_str(v)) p.subLang = cleanLang(yyjson_get_str(v));
   auto flag = [&](const char* k, bool& out) {
     yyjson_val* v = yyjson_obj_get(root, k);
     if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -107,6 +125,7 @@ Prefs loadPrefs(const std::string& path) {
   flag("autoTime", p.autoTime);
   flag("autoZone", p.autoZone);
   flag("clock24", p.clock24);
+  flag("subtitles", p.subtitles);
   // a file from before Bluetooth was native: Android's setting, once
   if (yyjson_is_bool(yyjson_obj_get(root, "bluetoothOn"))) flag("bluetoothOn", p.bluetoothOn);
   else fromAndroidGlobal("bluetooth_on", p.bluetoothOn);
@@ -118,14 +137,17 @@ Prefs loadPrefs(const std::string& path) {
 }
 
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[512];
+  char json[1024];
   auto b = [](bool v) { return v ? "true" : "false"; };
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
                    "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
-                   "\"clock24\":%s}\n",
+                   "\"clock24\":%s,\"subtitles\":%s,\"subLang\":\"%s\",\"subSize\":%d,\"subColor\":%d,\"subOpacity\":%d,"
+                   "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
-                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24));
+                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24),
+                   b(p.subtitles), cleanLang(p.subLang).c_str(), p.subSize, p.subColor, p.subOpacity, p.subBack, p.subBackOpacity,
+                   p.subEdge);
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

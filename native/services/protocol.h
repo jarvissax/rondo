@@ -22,6 +22,7 @@ enum CoreCommand : uint32_t {
   kApiGet,             // u32 request id, u32 cache ms, the path
   kApiPost,            // u32 request id, the full URL, a zero byte, the JSON body (no token: pairing)
   kDownload,           // the server's path, a zero byte, the file to write
+  kDownloadCancel,     // the download running stops (its file is not written)
   kScreen = 30,        // u8: the screen is on (Wi-Fi saves power while it is off, as Android had it)
   kClock,              // u8 the time from the network, u8 the time zone from the network (Settings › Date & time)
   kApiReply = 100,     // rondo-core to the UI: u32 request id, i32 HTTP status (0: no connection), the body

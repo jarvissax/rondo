@@ -107,6 +107,10 @@ with the wheel.
 - **Hold center on a song** for the same options as on the card, including **Start radio**.
 - Videos play at the quality set in **Settings › YouTube › Video quality** (Auto picks 360p, the screen's
   size; up to 720p works).
+- **Hold center on a video** to download it to the card (720p, 480p or 360p) with its subtitles, to
+  watch with no connection. **YouTube › Home › Downloads** lists them (also with no connection):
+  center plays one, hold center deletes it, and one on its way can be cancelled there. They're saved
+  in Videos/YouTube on the card, so Library › Videos has them too.
 
 ### Shorts
 
@@ -135,7 +139,11 @@ so moving on takes about a second.
 <p align="center"><img src="images/video.png" width="360" alt="A video, scrubbing with the wheel"></p>
 
 - **Wheel:** volume. **Center:** scrub. **Next / Previous:** 10 seconds forward or back.
-- **Hold center** on a YouTube video to change its quality.
+- **Hold center** for the options: **Quality** (YouTube), **Subtitles** (Off, or one of the video's
+  tracks) and **Download** (YouTube: to the card at the height picked). A YouTube video's tracks are
+  its own and the speech recognition's; a video on the card has the subtitle files beside it
+  (`Movie.srt`, `Movie.en.srt`, `Movie.en.forced.ass`…). The language picked last is shown first
+  in the next video.
 
 ## FM radio
 
@@ -175,6 +183,7 @@ down).
 | **YouTube › Video quality** | Auto, or a fixed height. A video without that height plays the next one down. |
 | **Display › Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
 | **Display › Brightness**, **Screen off after** | |
+| **Display › Subtitles** | Subtitles on or off, the language looked for first, and their look: size, text color and opacity, background color and opacity, edges. A line at the top shows them as they'll look. **Use YouTube's look** goes back to YouTube's own (white on a 75 % black box). |
 | **Display › Open lyrics automatically** | Shows lyrics instead of the cover when a song has them. |
 | **Controls › Wheel acceleration** | Long, fast spins move further. |
 | **Controls › Wheel vibration** | A small buzz on every wheel step: off, light, normal or strong. |

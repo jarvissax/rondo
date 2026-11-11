@@ -308,6 +308,7 @@ void route(const Request& r, Response& out) {
   if (starts(p, "/s/")) return streamRoute(r, out);
   if (starts(p, "/mpd/")) return mpdRoute(r, out);
   if (starts(p, "/resolve/")) return resolveRoute(r, out);
+  if (starts(p, "/captions/")) return captionsRoute(r, out);
   if (p == "/thumb") return thumbRoute(r, out);
   if (p == "/lyrics") {
     std::string title = squeezeField(param(r, "title"));

@@ -1,6 +1,8 @@
 // The YouTube Music building blocks and Up next; see music_list.h.
 #include "music_list.h"
 
+#include "downloads.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -134,9 +136,19 @@ std::vector<Row> videoRows(const std::vector<Item>& items) {
     r.thumb = it.thumb;
     Item item = it;
     r.onSelect = [item] { openVideo(item); };
+    if (!it.id.empty() && it.id[0] != '/') r.onLongSelect = [item] { askDownload(item); };
     rows.push_back(std::move(r));
   }
   return rows;
+}
+
+void askDownload(const Item& item) {
+  if (!downloadedFile(item.id).empty()) return g_app->toast("Already on the card");
+  int now = g_prefs.videoQuality ? g_prefs.videoQuality : 480;
+  g_app->push(makeChoice(
+      "Download", {{"720p", "720"}, {"480p", "480"}, {"360p", "360"}}, [now] { return std::to_string(now); },
+      [item](const std::string& v) { downloadVideo(item, atoi(v.c_str())); },
+      [](const std::string& v) { return std::string(v == "720" ? "the most room" : v == "360" ? "the least room" : ""); }));
 }
 
 bool miniPlayerShown() {

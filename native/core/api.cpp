@@ -132,6 +132,7 @@ struct Sink {
   int64_t done, total;
   const std::function<void(int64_t, int64_t)>* progress;
   int64_t reportedAt;
+  const std::atomic<bool>* cancel = nullptr;
 };
 size_t toFile(char* data, size_t size, size_t n, void* user) {
   Sink* s = static_cast<Sink*>(user);
@@ -147,18 +148,19 @@ size_t toFile(char* data, size_t size, size_t n, void* user) {
 int progressInfo(void* user, curl_off_t total, curl_off_t, curl_off_t, curl_off_t) {
   Sink* s = static_cast<Sink*>(user);
   if (total > 0) s->total = int64_t(total);
-  return 0;
+  return s->cancel && s->cancel->load() ? 1 : 0;  // non-zero: curl stops
 }
 }  // namespace
 
-int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress) {
+int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
+                  const std::atomic<bool>* cancel) {
   if (!configured()) return 0;
   std::string part = file + ".part";
   FILE* f = fopen(part.c_str(), "wb");
   if (!f) return 0;
   curl_slist* headers = curl_slist_append(nullptr, auth_.c_str());
   std::string url = base_ + path;
-  Sink sink{f, 0, -1, &progress, 0};
+  Sink sink{f, 0, -1, &progress, 0, cancel};
   long status = 0;
   bool wide = false;
   for (int attempt = 0; attempt < 20; attempt++) {
@@ -188,11 +190,12 @@ int Api::download(const std::string& path, const std::string& file, const std::f
       wide = true;
       continue;
     }
-    if (!net::retryable(rc)) break;
+    if (!net::retryable(rc) || (cancel && cancel->load())) break;
     usleep(250000);
   }
   curl_slist_free_all(headers);
   curl_easy_reset(curl_);  // the next request sets what it needs again
+  if (cancel && cancel->load()) status = 0;
   bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
   fclose(f);
   if (status != 200 || !ok || rename(part.c_str(), file.c_str()) != 0) {
@@ -287,6 +290,22 @@ bool parseShortInfo(const std::string& json, ShortInfo& out) {
   out.durationSec = yyjson_is_num(d) ? int(yyjson_get_num(d)) : -1;
   yyjson_doc_free(doc);
   return true;
+}
+
+bool parseCaptions(const std::string& json, std::vector<CaptionTrack>& out) {
+  yyjson_doc* doc = yyjson_read(json.data(), json.size(), 0);
+  if (!doc) return false;
+  yyjson_val* tracks = yyjson_obj_get(yyjson_doc_get_root(doc), "tracks");
+  size_t i, n;
+  yyjson_val* t;
+  yyjson_arr_foreach(tracks, i, n, t) {
+    CaptionTrack c;
+    c.id = str(t, "id"), c.lang = str(t, "lang"), c.name = str(t, "name");
+    c.autoGen = yyjson_get_bool(yyjson_obj_get(t, "auto"));
+    if (!c.id.empty()) out.push_back(std::move(c));
+  }
+  yyjson_doc_free(doc);
+  return yyjson_is_arr(tracks);
 }
 
 int Api::health(Health& out) {

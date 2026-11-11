@@ -349,7 +349,7 @@ function enterView(id, force = false) {
   if (id === 'wifi') loadWifi();
   if (id === 'bluetooth') loadBluetooth();
   if (id === 'radio') loadRadio();
-  if (id === 'server') { loadServer(); loadYtAccount(); if (!S.settings) loadSettings(); }
+  if (id === 'server') { loadServer(); loadYtAccount(); loadDownloads(); if (!S.settings) loadSettings(); }
 }
 
 // ---------- status polling ----------
@@ -1857,10 +1857,54 @@ function renderSettings() {
       <div class="row-main"><div class="row-title">Click sound</div><div class="row-sub">The tick on every wheel step, separate from vibration.</div></div>
       <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>`;
   setFill($('#brightness'));
+  renderSubtitles();
+}
+// Subtitles: the same choices as Settings › Display › Subtitles on the Y1, by index
+const SUB_OPACITY = [[25, '25%'], [50, '50%'], [75, '75%'], [100, '100%']];
+const SUB_BACK_OPACITY = [[0, 'None'], [25, '25%'], [50, '50%'], [75, '75%'], [100, '100%']];
+function subLineStyle(s) {
+  const C = s.subChoices.colors;
+  const rgba = (hex, pct) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${pct / 100})`; };
+  const fg = C[s.subColor].hex, bg = C[s.subBack].hex;
+  const edge = fg === '#000000' ? '255,255,255' : '0,0,0', light = edge === '0,0,0' ? '255,255,255' : '0,0,0';
+  const a = Math.min(1, s.subOpacity / 100 + 0.1), la = s.subOpacity / 200;
+  const ring = [];
+  for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) if (x || y) ring.push(`${x}px ${y}px 0 rgba(${edge},${a})`);
+  const shadow = ['none', `2px 2px 3px rgba(${edge},${a})`, `-1px -1px 0 rgba(${light},${la}), 1px 1px 0 rgba(${edge},${a})`,
+    `-1px -1px 0 rgba(${edge},${a}), 1px 1px 0 rgba(${light},${la})`, ring.join(', ')][s.subEdge] || 'none';
+  return `color:${rgba(fg, s.subOpacity)};background:${s.subBackOpacity ? rgba(bg, s.subBackOpacity) : 'transparent'};font-size:${[14, 17, 21, 27][s.subSize]}px;text-shadow:${shadow}`;
+}
+function renderSubtitles() {
+  const s = S.settings, el = $('#subtitleRows');
+  if (!el || !s || !s.subChoices) return;
+  const ch = s.subChoices;
+  const sel = (key, opts, cur, label) => `<div class="select"><select data-key="${key}" aria-label="${esc(label)}">${opts.map(([v, l]) => `<option value="${esc(String(v))}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div>`;
+  const colors = ch.colors.map((c, i) => [i, c.name]);
+  el.innerHTML = `
+    <div class="sub-preview" aria-hidden="true"><span class="sub-line" id="subLine" style="${subLineStyle(s)}">Subtitles look like this</span></div>
+    <div class="row set-row"><span class="tile t-subtitles">${icon('captions')}</span>
+      <div class="row-main"><div class="row-title">Show subtitles</div><div class="row-sub">When a video has them: in the language below, the video’s own track before the speech recognition’s.</div></div>
+      <button class="switch" type="button" role="switch" data-key="subtitles" aria-checked="${!!s.subtitles}" aria-label="Show subtitles"></button></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">Language</div><div class="row-sub">The one looked for first.</div></div>
+      <div class="row-control">${sel('subLang', ch.languages.map((l) => [l.code, l.name]), s.subLang || '', 'Language')}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Size</div></div>
+      <div class="row-control">${segHtml('subSize', ch.sizes.map((n, i) => [i, n]), s.subSize, 'Size')}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">Text color</div></div>
+      <div class="row-control">${sel('subColor', colors, s.subColor, 'Text color')}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Text opacity</div></div>
+      <div class="row-control">${segHtml('subOpacity', SUB_OPACITY, s.subOpacity, 'Text opacity')}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">Background</div></div>
+      <div class="row-control">${sel('subBack', colors, s.subBack, 'Background')}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Background opacity</div></div>
+      <div class="row-control">${segHtml('subBackOpacity', SUB_BACK_OPACITY, s.subBackOpacity, 'Background opacity')}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">Edges</div></div>
+      <div class="row-control">${sel('subEdge', ch.edges.map((n, i) => [i, n]), s.subEdge, 'Edges')}</div></div>
+    <div class="sub-actions"><button class="btn btn-sm" type="button" data-act="sub-reset">Use YouTube’s look</button></div>`;
 }
 const settingsRows = $('#view-settings');
 settingsRows.addEventListener('click', (e) => {
   if (e.target.closest('[data-act="reload"]')) return loadSettings();
+  if (e.target.closest('[data-act="sub-reset"]')) return saveSetting('subReset', true);
   const seg = e.target.closest('.seg[data-key]'), b = e.target.closest('[data-v]');
   if (seg && b) {
     $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
@@ -1882,13 +1926,21 @@ settingsRows.addEventListener('input', (e) => {
   brightTimer = setTimeout(() => saveSetting('brightness', +e.target.value, true), 250);
 });
 settingsRows.addEventListener('change', (e) => {
+  const sel = e.target.closest('select[data-key]');
+  if (sel) return saveSetting(sel.dataset.key, sel.dataset.key === 'subLang' ? sel.value : +sel.value);
   if (e.target.id !== 'brightness') return;
   clearTimeout(brightTimer);
   saveSetting('brightness', +e.target.value);
 });
 async function saveSetting(key, value, quiet = false) {
   try {
+    if (key.startsWith('sub') && S.settings) {  // the preview at once
+      const now = { ...S.settings, [key]: value };
+      const line = $('#subLine');
+      if (line && key !== 'subReset') line.setAttribute('style', subLineStyle(now));
+    }
     S.settings = await api('PUT', '/api/settings', { [key]: value });
+    if (key.startsWith('sub')) renderSubtitles();
     if (!quiet) toast('Saved on your Rondo');
   } catch (e) {
     if (e.status === 401) return;
@@ -2301,6 +2353,83 @@ async function forgetNet(id) {
     loadWifi(true);
   } catch (e) { if (e.status !== 401) toast(`Couldn’t forget it. ${reason(e)}`, 'err'); }
 }
+
+// ---------- YouTube › Download ----------
+// The form (a link or an id, the height), then what's on its way (progress, cancel), then the videos on
+// the card (delete). Asked again every 2 s while one is on its way and the page is open.
+let dlTimer = 0;
+const DL_QUALITY = [[720, '720p'], [480, '480p'], [360, '360p']];
+async function loadDownloads() {
+  clearTimeout(dlTimer);
+  try {
+    S.downloads = await api('GET', '/api/downloads');
+    renderDownloads();
+  } catch (e) {
+    if (e.status !== 401 && !S.downloads) $('#dlBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the downloads. ${esc(reason(e))}</div></div>`;
+  }
+  if (S.route === 'server' && S.downloads?.jobs.some((j) => j.state === 'waiting' || j.state === 'running')) dlTimer = setTimeout(loadDownloads, 2000);
+}
+function renderDownloads() {
+  const d = S.downloads, el = $('#dlBody');
+  if (!el || !d) return;
+  if (!$('#dlForm')) {
+    el.innerHTML = `<div class="group"><form class="dl-form" id="dlForm">
+        <input type="text" id="dlVideo" placeholder="A YouTube link or video id" aria-label="YouTube link or video id" autocomplete="off" spellcheck="false">
+        ${segHtml('dlQuality', DL_QUALITY, S.dlQuality || 480, 'Quality').replace('seg seg-wide', 'seg')}
+        <button class="btn btn-primary" type="submit">${icon('download')}<span>Download</span></button></form></div>
+      <div class="group" id="dlRows"></div>`;
+  }
+  const jobs = d.jobs.filter((j) => j.state !== 'done').reverse();
+  const rows = [
+    ...jobs.map((j) => {
+      const going = j.state === 'running' || j.state === 'waiting';
+      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${j.percent}% · ${j.quality}p` : j.state === 'waiting' ? `Waiting · ${j.quality}p` : `Didn’t download: ${esc(j.error)}`;
+      return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
+        <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${sub}</div>
+          ${j.state === 'running' ? `<div class="dl-bar"><span style="width:${j.percent}%"></span></div>` : ''}</div>
+        ${going ? `<button class="btn btn-sm" type="button" data-dl-cancel="${esc(j.id)}">Cancel</button>`
+          : `<button class="btn btn-sm" type="button" data-dl-again="${esc(j.id)}" data-q="${j.quality}">Try again</button>`}</div>`;
+    }),
+    ...d.files.map((x) => `<div class="row dl-row"><span class="tile t-videos">${icon('film')}</span>
+        <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
+        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
+        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" aria-label="Delete ${esc(x.title)}">${icon('trash')}</button></div>`),
+  ];
+  $('#dlRows').innerHTML = rows.length ? rows.join('') : '<div class="row-empty">Nothing downloaded yet.</div>';
+}
+$('#dlBody').addEventListener('click', async (e) => {
+  const seg = e.target.closest('.seg[data-key="dlQuality"]'), b = e.target.closest('[data-v]');
+  if (seg && b) {
+    $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    S.dlQuality = JSON.parse(b.dataset.v);
+    return;
+  }
+  const cancel = e.target.closest('[data-dl-cancel]'), again = e.target.closest('[data-dl-again]'), del = e.target.closest('[data-dl-delete]');
+  try {
+    if (cancel) S.downloads = await api('POST', '/api/downloads/cancel', { id: cancel.dataset.dlCancel });
+    else if (again) S.downloads = await api('POST', '/api/downloads', { video: again.dataset.dlAgain, quality: +again.dataset.q }, { timeout: 40000 });
+    else if (del) {
+      const name = del.closest('.row').querySelector('.row-title').textContent;
+      if (!await confirmSheet({ title: `Delete “${name}”?`, text: 'It goes from the card with its subtitles.', action: 'Delete' })) return;
+      S.downloads = await api('DELETE', `/api/downloads?file=${encodeURIComponent(del.dataset.dlDelete)}`);
+      toast('Deleted from the card');
+    } else return;
+    renderDownloads();
+    loadDownloads();
+  } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
+});
+$('#dlBody').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#dlVideo'), video = input.value.trim();
+  if (!video) return input.focus();
+  try {
+    S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480 }, { timeout: 40000 });
+    input.value = '';
+    toast('Downloading on your Rondo');
+    renderDownloads();
+    loadDownloads();
+  } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
+});
 
 // ---------- music server ----------
 async function loadServer() {

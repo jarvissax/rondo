@@ -38,6 +38,8 @@ void CoreHost::download(const std::string& path, const std::string& file) {
   send(kDownload, b.data(), uint32_t(b.size()));
 }
 
+void CoreHost::cancelDownload() { send(kDownloadCancel); }
+
 bool CoreHost::alive() {
   if (child_ <= 0) return true;
   int status;

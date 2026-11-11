@@ -21,8 +21,16 @@ struct Prefs {
   // Settings › Date & time: the time and the time zone from the network (each Wi-Fi connection), or
   // as set by hand; the status bar's clock in 24 hours or AM/PM
   bool autoTime = true, autoZone = true, clock24 = true;
+  // Subtitles: shown or not (the video player's hold-center panel turns them on and off), the language
+  // picked last there, and their look (Settings › Display › Subtitles, shell/subtitles.h's choices by
+  // index): YouTube's own by default, white text, 100 %, on black at 75 %, no edge
+  bool subtitles = false;
+  std::string subLang;
+  int subSize = 1, subColor = 0, subOpacity = 100, subBack = 7, subBackOpacity = 75, subEdge = 0;
 };
 
+// a language code kept as it can be written (letters, digits, - and _)
+std::string cleanLang(const std::string& s);
 // The file, or on the first run what 1.0.x's preferences and Android's settings database hold.
 Prefs loadPrefs(const std::string& path);
 bool savePrefs(const std::string& path, const Prefs& p);

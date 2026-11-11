@@ -124,7 +124,8 @@ for spec in "${LIBS[@]}"; do
             -DCURL_USE_LIBSSH2=OFF -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DUSE_LIBIDN2=OFF -DCURL_DISABLE_LDAP=ON \
             -DENABLE_UNIX_SOCKETS=ON -DBUILD_TESTING=OFF -DCURL_CA_BUNDLE=none -DCURL_CA_PATH=none ;;
     ffmpeg)  # LGPL, shared libraries (relinkable): the audio formats people keep music in (lossy, lossless, DSD,
-      # surround downmixed by the player) and the demuxers the card and the server use
+      # surround downmixed by the player), the demuxers the card and the server use, and the mp4 muxer
+      # (YouTube › Download joins a video's picture and sound into one file)
       (cd "$dir" && ./configure --prefix="$OUT" --target-os=android --arch=arm --cpu=cortex-a7 --enable-cross-compile \
         --cc="$BIN/armv7a-linux-androideabi17-clang" --cxx="$BIN/armv7a-linux-androideabi17-clang++" \
         --ar="$BIN/llvm-ar" --ranlib="$BIN/llvm-ranlib" --nm="$BIN/llvm-nm" --strip="$BIN/llvm-strip" \
@@ -134,6 +135,7 @@ for spec in "${LIBS[@]}"; do
         --enable-demuxer=flac,mp3,mov,ogg,wav,w64,aac,matroska,ac3,eac3,dts,dtshd,truehd,mlp,asf,xwma,ape,wv,aiff,dsf,iff,tta,tak,mpc,mpc8,amr,caf,au \
         --enable-decoder=flac,mp3,mp3float,mp2,mp2float,mp1,mp1float,aac,aac_latm,vorbis,opus,alac,ac3,eac3,dca,truehd,mlp,wmav1,wmav2,wmapro,wmalossless,ape,wavpack,tta,tak,mpc7,mpc8,amrnb,amrwb,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be,pcm_u8,pcm_s8,pcm_alaw,pcm_mulaw,adpcm_ms,adpcm_ima_wav,adpcm_ima_qt \
         --enable-parser=flac,mpegaudio,aac,vorbis,opus,ac3,dca,mlp,tak,amr,h264 --enable-bsf=h264_mp4toannexb \
+        --enable-muxer=mp4 \
         --extra-cflags="-O2" >/dev/null && make -j8 >/dev/null 2>&1 && make install >/dev/null)
       echo "deps: ffmpeg built" ;;
     harfbuzz) build harfbuzz "$dir" -DHB_HAVE_FREETYPE=ON -DHB_BUILD_SUBSET=OFF -DHB_BUILD_UTILS=OFF \

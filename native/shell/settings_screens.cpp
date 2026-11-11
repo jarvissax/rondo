@@ -19,6 +19,7 @@
 
 #include "app.h"
 #include "screens.h"
+#include "subtitles.h"
 
 namespace rondo::shell {
 namespace {
@@ -607,6 +608,106 @@ Rows youtubeRows(SettingsGroupScreen&) {
   return rows;
 }
 
+// Settings › Display › Subtitles: shown or not, the language looked for first, and their look, with
+// a line of them over a picture at the top as they will look (the dashboard's General page has the same)
+const char* const kSubLangs[] = {"", "en", "az", "tr", "ru", "de", "fr", "es", "it", "pt", "ar", "fa", "uk", "ja", "ko", "zh", "hi"};
+
+class SubtitlesScreen : public ShellListScreen {
+ public:
+  SubtitlesScreen() : ShellListScreen("Subtitles") { render(); }
+  void onShow() override { render(); }
+  void draw(Env& e, float w, float h) override {
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, e.p.shellBg);
+    // the preview: a dusk-colored "picture" with a subtitle line on it
+    float ph = float(e.dp(62)), m = float(e.dp(8));
+    Rect pic{m, float(e.dp(4)), w - 2 * m, ph};
+    e.c.shape(pic, e.dpf(6), rgb(0x3b4b6b), rgb(0x1a1f2b));
+    e.c.pushClip(pic);
+    e.c.pushOffset(pic.x, 0);
+    drawSubtitleSample(e, "Subtitles look like this", pic.w, pic.y + pic.h - e.dpf(8));
+    e.c.popOffset();
+    e.c.popClip();
+    float top = pic.y + ph + float(e.dp(4));
+    e.c.layer(0);
+    list_.layout(e, w, h - top);
+    list_.draw(e, 0, top);
+  }
+
+ private:
+  void render() {
+    Rows rows;
+    auto row = [&](const char* title, std::string value, std::function<void()> on, bool chevron = true) {
+      Row r;
+      r.title = title, r.trailing = std::move(value), r.chevron = chevron, r.onSelect = std::move(on);
+      rows.push_back(std::move(r));
+    };
+    auto pick = [](const char* title, std::vector<std::pair<std::string, std::string>> c, int* field) {
+      g_app->push(makeChoice(
+          title, std::move(c), [field] { return std::to_string(*field); },
+          [field](const std::string& v) {
+            *field = atoi(v.c_str());
+            savePrefsNow();
+          },
+          [field](const std::string& v) {
+            Prefs d;  // YouTube's own: the default
+            int* dflt = field == &g_prefs.subSize ? &d.subSize : field == &g_prefs.subColor ? &d.subColor
+                        : field == &g_prefs.subOpacity ? &d.subOpacity : field == &g_prefs.subBack ? &d.subBack
+                        : field == &g_prefs.subBackOpacity ? &d.subBackOpacity : &d.subEdge;
+            return std::string(atoi(v.c_str()) == *dflt ? "YouTube's" : "");
+          }));
+    };
+    auto colors = [] {
+      std::vector<std::pair<std::string, std::string>> c;
+      for (int i = 0; i < 8; i++) c.push_back({kSubColors[i].name, std::to_string(i)});
+      return c;
+    };
+    auto percents = [](std::initializer_list<int> list) {
+      std::vector<std::pair<std::string, std::string>> c;
+      for (int v : list) c.push_back({v ? std::to_string(v) + "%" : "None", std::to_string(v)});
+      return c;
+    };
+    row("Subtitles", g_prefs.subtitles ? "On" : "Off", [this] {
+      g_prefs.subtitles = !g_prefs.subtitles;
+      savePrefsNow();
+      render();
+    }, false);
+    row("Language", g_prefs.subLang.empty() ? "The video's own" : languageName(g_prefs.subLang), [] {
+      std::vector<std::pair<std::string, std::string>> c;
+      for (const char* l : kSubLangs) c.push_back({*l ? languageName(l) : "The video's own", l});
+      g_app->push(makeChoice(
+          "Language", std::move(c), [] { return g_prefs.subLang; },
+          [](const std::string& v) {
+            g_prefs.subLang = v;
+            savePrefsNow();
+          },
+          [](const std::string& v) { return std::string(v.empty() ? "its first track" : ""); }));
+    });
+    row("Size", kSubSizes[g_prefs.subSize], [pick] {
+      std::vector<std::pair<std::string, std::string>> c;
+      for (int i = 0; i < 4; i++) c.push_back({kSubSizes[i], std::to_string(i)});
+      pick("Size", c, &g_prefs.subSize);
+    });
+    row("Text color", kSubColors[g_prefs.subColor].name, [pick, colors] { pick("Text color", colors(), &g_prefs.subColor); });
+    row("Text opacity", std::to_string(g_prefs.subOpacity) + "%", [pick, percents] { pick("Text opacity", percents({25, 50, 75, 100}), &g_prefs.subOpacity); });
+    row("Background", kSubColors[g_prefs.subBack].name, [pick, colors] { pick("Background", colors(), &g_prefs.subBack); });
+    row("Background opacity", g_prefs.subBackOpacity ? std::to_string(g_prefs.subBackOpacity) + "%" : "None",
+        [pick, percents] { pick("Background opacity", percents({0, 25, 50, 75, 100}), &g_prefs.subBackOpacity); });
+    row("Edges", kSubEdges[g_prefs.subEdge], [pick] {
+      std::vector<std::pair<std::string, std::string>> c;
+      for (int i = 0; i < 5; i++) c.push_back({kSubEdges[i], std::to_string(i)});
+      pick("Edges", c, &g_prefs.subEdge);
+    });
+    row("Use YouTube's look", "", [this] {
+      resetSubtitleStyle();
+      savePrefsNow();
+      render();
+      g_app->toast("Subtitles look as on YouTube");
+    }, false);
+    list_.setRows(std::move(rows), true);
+  }
+};
+
 // Display: the look, the screen, what Now Playing shows
 Rows displayRows(SettingsGroupScreen& screen) {
   Rows rows;
@@ -647,6 +748,8 @@ Rows displayRows(SettingsGroupScreen& screen) {
         },
         [](const std::string& v) { return atoi(v.c_str()) <= 30000 ? "saves battery" : ""; }));
   }));
+  rows.push_back(settingRow("Subtitles", g_prefs.subtitles ? "On" : "Off", tiles::subtitles, true,
+                            [] { g_app->push(std::unique_ptr<Screen>(new SubtitlesScreen())); }));
   SettingsGroupScreen* self = &screen;
   rows.push_back(settingRow("Open lyrics automatically", onOff(g_config.behavior.lyricsOnOpen), tiles::lyrics, false, [self] {
     g_config.behavior.lyricsOnOpen = !g_config.behavior.lyricsOnOpen;

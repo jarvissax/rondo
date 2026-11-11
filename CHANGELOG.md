@@ -20,6 +20,23 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   History, and YouTube Music's playlists and Liked Music; a cookies.txt (dashboard) adds YouTube
   Music's own home and history. Both stay on the Y1. Headphone match still needs your server.
 
+### Subtitles and downloads
+
+- **Subtitles** on YouTube videos and on the videos on the card: hold center while a video plays and
+  pick a track under **Subtitles**. YouTube's tracks are the video's own and the speech
+  recognition's; on the card they're the .srt, .vtt and .ass files beside the video, named as Jellyfin
+  and Plex name them ("Movie.en.srt"). The last language picked is shown first next time.
+- **Their look, your way:** Settings › Display › Subtitles (and the dashboard's General page, with a
+  preview): size, text color and opacity, background color and opacity, and edges (drop shadow,
+  raised, depressed, outline). It starts as YouTube's own, white on a 75 % black box, and **Use
+  YouTube's look** goes back to it. Through your server, YouTube's subtitles need the 2.0.0 server.
+- **Download YouTube videos** to watch with no connection, at 720p, 480p or 360p (the next height
+  down when a video lacks it), with their subtitles: hold center on a video in a list, choose
+  **Download** in a playing video's options, or paste a link on the dashboard's YouTube page. They're
+  saved in Videos/YouTube and show in Library › Videos and in **YouTube › Home › Downloads** (there
+  even with no connection), where you can cancel one on its way or delete one. Organize leaves them
+  where they are.
+
 ### Rondo, rebuilt
 
 - **Rebuilt, with Android's app layer gone.** Rondo is now a program of its own that draws straight to
@@ -77,6 +94,13 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Uploads** of photos from the Library go to Pictures, and videos to Movies (never into Music).
 
 ### Fixed
+
+- Shorts: moving to the next or previous short showed the one before restarting without sound for a
+  moment; the new short now shows from its own first picture.
+- A press right after the screen dimmed or went dark by itself was sometimes lost: within 5 seconds
+  of the screen timing out, a press wakes it and does what it does (after Power, a press still only
+  wakes it), and a press is never swallowed for long after waking.
+- YouTube's headers and Shorts show only the battery: the clock and the Wi-Fi ran into the tabs.
 
 - Switching between the server and direct mode could keep showing the other source's YouTube and
   YouTube Music for two minutes, and their tabs.
@@ -163,6 +187,13 @@ Nothing changes on the Y1 itself; this release is about the server.
 An update over Wi-Fi, the dashboard or USB: no reinstall needed, and everything on your Y1 stays.
 
 ### Fixed
+
+- Shorts: moving to the next or previous short showed the one before restarting without sound for a
+  moment; the new short now shows from its own first picture.
+- A press right after the screen dimmed or went dark by itself was sometimes lost: within 5 seconds
+  of the screen timing out, a press wakes it and does what it does (after Power, a press still only
+  wakes it), and a press is never swallowed for long after waking.
+- YouTube's headers and Shorts show only the battery: the clock and the Wi-Fi ran into the tabs.
 
 - **Click sound stays off.** Turning off **Settings › Click sound** (or the switch in the
   dashboard) now lasts through a restart. Before, the Y1's own sound profile turned the click

@@ -141,6 +141,8 @@ OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::str
   std::vector<const OrganizeItem*> songs, videos;
   for (const OrganizeItem& it : items) {
     if (it.path.compare(0, card.size() + 1, card + "/") != 0) continue;
+    // YouTube › Download's videos stay where it put them (Videos/YouTube, named by title and id)
+    if (it.video && it.path.compare(0, card.size() + 16, card + "/Videos/YouTube/") == 0) continue;
     (it.video ? videos : songs).push_back(&it);
   }
   std::vector<std::pair<std::string, std::string>> files;  // from, to (kind by the lists above)
@@ -248,7 +250,7 @@ OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::str
     if (DIR* d = opendir(dir.c_str())) {
       while (dirent* e = readdir(d)) {
         std::string x = extOf(e->d_name);
-        if (x == ".lrc" || x == ".srt" || x == ".ass" || x == ".vtt") names.push_back(e->d_name);
+        if (x == ".lrc" || x == ".srt" || x == ".ass" || x == ".ssa" || x == ".vtt") names.push_back(e->d_name);
       }
       closedir(d);
     }
@@ -267,7 +269,7 @@ OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::str
       {
         std::string x = extOf(n);
         bool lyrics = kinds[i] == OrganizeMove::Song && x == ".lrc";
-        bool subs = kinds[i] == OrganizeMove::Video && (x == ".srt" || x == ".ass" || x == ".vtt");
+        bool subs = kinds[i] == OrganizeMove::Video && (x == ".srt" || x == ".ass" || x == ".ssa" || x == ".vtt");
         if (!lyrics && !subs) continue;
         std::string s = stemOf(n);
         // "Movie.srt", or "Movie.en.srt" (a language)

@@ -16,7 +16,8 @@ import {
   type Resolver,
 } from "./resolver.js";
 import { SidxCache, type SegmentRanges } from "./sidx.js";
-import { fetchRange, type UpstreamResponse } from "./upstream.js";
+import { request } from "undici";
+import { dispatcher, fetchRange, type UpstreamResponse } from "./upstream.js";
 
 const STREAM_ITAGS = new Set<number>([...DASH_VIDEO_ITAGS, AUDIO_ITAG, OPUS_ITAG, FALLBACK_ITAG]);
 // googlevideo throttles single requests above ~10 MB to playback speed (a 13.4 MB range took
@@ -175,6 +176,20 @@ export function registerStreamRoutes(
       throw new HttpError(404, "no_dash");
     }
     return reply.type("application/dash+xml").header("cache-control", "no-store").send(xml);
+  });
+
+  // the video's subtitle tracks, and one of them as WebVTT (the Y1 draws them over the video)
+  app.get<{ Params: { id: string } }>("/captions/:id", async (req) => {
+    const video = await resolve(req.params.id);
+    return { tracks: video.captions.map(({ id, lang, name, auto }) => ({ id, lang, name, auto })) };
+  });
+  app.get<{ Params: { id: string; track: string } }>("/captions/:id/:track", async (req, reply) => {
+    const track = (await resolve(req.params.id)).captions.find((c) => c.id === req.params.track);
+    if (!track) throw new HttpError(404, "no_track");
+    const res = await request(track.url, { method: "GET", dispatcher, headersTimeout: 15_000, bodyTimeout: 30_000 });
+    const body = await res.body.text();
+    if (res.statusCode !== 200 || !body.startsWith("WEBVTT")) throw new HttpError(502, "upstream");
+    return reply.type("text/vtt; charset=utf-8").header("cache-control", "private, max-age=3600").send(body);
   });
 
   app.get<{ Params: { id: string; itag: string } }>("/s/:id/:itag", async (req: FastifyRequest<{ Params: { id: string; itag: string } }>, reply: FastifyReply) => {

@@ -48,6 +48,8 @@ const Tile quality{Icon::Diamond, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile output{Icon::Headphones, rgb(0xff7a93), rgb(0xd6304f)};
 // Display, and its Theme
 const Tile theme{Icon::Theme, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile subtitles{Icon::Captions, rgb(0x5fe0b5), rgb(0x10a37a)};  // Display › Subtitles
+const Tile downloads{Icon::Download, rgb(0x7be07b), rgb(0x26a83b)};  // Library › Videos › YouTube downloads
 const Tile brightness{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
 const Tile timer{Icon::Timer, rgb(0x8fa3b8), rgb(0x52657a)};
 const Tile lyrics{Icon::Mic, rgb(0xff8fc8), rgb(0xd6338a)};

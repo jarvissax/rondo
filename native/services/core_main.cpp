@@ -108,9 +108,11 @@ class ApiWorkers {
     pthread_mutex_unlock(&mu_);
   }
   // A file from the server (Software update's bundle), on a thread of its own; one at a time
+  std::atomic<bool> cancelDownload_{false};
   void download(std::string path, std::string file) {
     if (g_shm->downloadState == 1) return;
-    publish([](CoreState& s) { s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0; });
+    cancelDownload_ = false;
+    publish([](CoreState& s) { s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0, s.downloadSeq++; });
     pthread_mutex_lock(&mu_);
     std::string base = base_, token = token_;
     pthread_mutex_unlock(&mu_);
@@ -127,7 +129,7 @@ class ApiWorkers {
       api.configure(job->base, job->token);
       int status = api.download(job->path, job->file, [](int64_t done, int64_t total) {
         publish([&](CoreState& s) { s.downloadDone = done, s.downloadTotal = total; });
-      });
+      }, &job->self->cancelDownload_);
       publish([&](CoreState& s) { s.downloadState = status == 200 ? 2 : 3, s.downloadStatus = status; });
       return nullptr;
     }, j);
@@ -490,6 +492,7 @@ void runCore(int sock, CoreState* shm) {
         if (z != std::string::npos) api.download(s.substr(0, z), s.substr(z + 1));
         break;
       }
+      case kDownloadCancel: api.cancelDownload_ = true; break;
       case kApiGet: {
         if (len < 8) break;
         uint32_t id, ttl;

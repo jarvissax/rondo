@@ -136,3 +136,12 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
   asked of ipwho.is, then ipapi.co; a private address (a Rondo on the server's network) is looked up
   by the server's own public address. Kept 12 hours per address (a miss 10 minutes). Rondo 2.0 asks
   once per Wi-Fi connection and sets the zone when its firmware's tzdata has it.
+
+## Subtitles for the Rondo (device token)
+
+- `GET /captions/:id` → `{"tracks": [{"id", "lang", "name", "auto"}]}`: the video's own subtitle
+  tracks (`id` = the language) and the speech recognition's in the language spoken (`id` =
+  `<lang>.auto`), from yt-dlp's resolve. YouTube's machine translations are left out (Google answers
+  them from a server with 429).
+- `GET /captions/:id/:track` → `text/vtt`: that track as WebVTT, fetched from YouTube when asked.
+  Direct mode on the Y1 answers the same two routes itself (`native/direct/streams.cpp`).

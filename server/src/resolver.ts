@@ -31,10 +31,20 @@ export interface StreamFormat {
   httpHeaders: Record<string, string>;
 }
 
+// a subtitle track: the video's own (id = lang) or the speech recognition's (id = lang + ".auto")
+export interface CaptionTrack {
+  id: string;
+  lang: string;
+  name: string;
+  auto: boolean;
+  url: string; // WebVTT
+}
+
 export interface ResolvedVideo {
   id: string;
   duration: number; // seconds
   formats: Map<number, StreamFormat>;
+  captions: CaptionTrack[];
   expiresAt: number; // earliest expiry among formats
   resolvedAt: number; // epoch ms; googlevideo refuses the URLs for the first ~0.8 s
 }
@@ -61,6 +71,34 @@ interface YtdlpFormat {
   http_headers?: Record<string, string>;
 }
 
+interface YtdlpSubtitle {
+  ext?: string;
+  url?: string;
+  name?: string;
+}
+type YtdlpSubtitles = Record<string, YtdlpSubtitle[] | undefined>;
+
+// The video's own subtitles, and the speech recognition's in the language spoken: yt-dlp lists that
+// one as "<lang>-orig" next to YouTube's machine translations of it, which are left out (Google
+// answers them from a server with 429, and they are machine-made twice over).
+export function parseCaptions(own: YtdlpSubtitles | undefined, auto: YtdlpSubtitles | undefined): CaptionTrack[] {
+  const out: CaptionTrack[] = [];
+  const vtt = (list: YtdlpSubtitle[] | undefined) => list?.find((x) => x.ext === "vtt" && x.url);
+  for (const [lang, list] of Object.entries(own ?? {})) {
+    const v = vtt(list);
+    if (lang === "live_chat" || !v?.url) continue;
+    out.push({ id: lang, lang, name: v.name || lang, auto: false, url: v.url });
+  }
+  for (const [key, list] of Object.entries(auto ?? {})) {
+    const v = vtt(list);
+    if (!key.endsWith("-orig") || !v?.url) continue;
+    const lang = key.slice(0, -5);
+    const name = (v.name || lang).replace(/\s*\(Original\)$/, "");
+    out.push({ id: `${lang}.auto`, lang, name: `${name} (auto-generated)`, auto: true, url: v.url });
+  }
+  return out;
+}
+
 function toFormat(f: YtdlpFormat, itag: number): StreamFormat | undefined {
   if (!f.url) return undefined;
   const url = new URL(f.url);
@@ -84,7 +122,10 @@ function toFormat(f: YtdlpFormat, itag: number): StreamFormat | undefined {
   };
 }
 
-export function parseYtdlp(id: string, json: { duration?: number; formats?: YtdlpFormat[] }): ResolvedVideo {
+export function parseYtdlp(
+  id: string,
+  json: { duration?: number; formats?: YtdlpFormat[]; subtitles?: YtdlpSubtitles; automatic_captions?: YtdlpSubtitles },
+): ResolvedVideo {
   const formats = new Map<number, StreamFormat>();
   // A video YouTube has dubbed has one audio track per language under the same itag ("140-0" …
   // "140-9"): the original is the one with the highest language_preference. "140-drc" is a
@@ -111,7 +152,8 @@ export function parseYtdlp(id: string, json: { duration?: number; formats?: Ytdl
   pick(new Set([FALLBACK_ITAG]));
   if (formats.size === 0) throw new Error(`no usable formats for ${id}`);
   const expiresAt = Math.min(...[...formats.values()].map((f) => f.expiresAt));
-  return { id, duration: json.duration ?? 0, formats, expiresAt, resolvedAt: Date.now() };
+  const captions = parseCaptions(json.subtitles, json.automatic_captions);
+  return { id, duration: json.duration ?? 0, formats, captions, expiresAt, resolvedAt: Date.now() };
 }
 
 export type YtdlpRunner = (args: string[]) => Promise<string>;

@@ -63,6 +63,7 @@ struct CoreState {
   int32_t downloadState;
   int64_t downloadDone, downloadTotal;  // bytes
   int32_t downloadStatus;               // the HTTP status (0: no connection)
+  int32_t downloadSeq;                  // one more for each download started (which one the state is of)
 };
 
 class CoreHost {
@@ -107,6 +108,7 @@ class CoreHost {
   bool pendingSince(uint32_t id) const { return pending_.lower_bound(id) != pending_.end(); }
   // the server's path into a file, the progress in state().download*
   void download(const std::string& path, const std::string& file);
+  void cancelDownload();  // the one running stops: downloadState 3, status 0
   // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.
   int fd() const { return sock_; }
   bool pump();

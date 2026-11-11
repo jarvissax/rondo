@@ -41,6 +41,7 @@
 #include "../../platform/power.h"
 #include "../../platform/haptics.h"
 #include "../../shell/dashboard.h"
+#include "../../shell/downloads.h"
 #include "../../shell/main_queue.h"
 #include "../../platform/video_frame.h"
 #include "../../platform/video_surface.h"
@@ -448,6 +449,7 @@ int main(int argc, char** argv) {
     dispatch.tick(now_ns());
     bluetoothTick();
     fmTick();
+    if (downloadsTick()) changed = true;  // YouTube › Download's queue
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
     playStatsTick();

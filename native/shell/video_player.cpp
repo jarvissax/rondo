@@ -2,13 +2,22 @@
 // picture fit to the screen on black, the overlays for 3 s after any input (and while paused, buffering,
 // scrubbing or choosing a quality). Wheel = volume. Center = scrub (the wheel then moves through the
 // video in steps that scale with its length, center again jumps); Next/Prev = ±10 s, or ±10 % while
-// scrubbing; holding Next/Prev seeks faster the longer it is held; holding center = quality; Menu leaves.
+// scrubbing; holding Next/Prev seeks faster the longer it is held; Menu leaves. Since 2.0 holding center
+// opens the options: QUALITY (YouTube's), SUBTITLES (the video's tracks, or the files beside a card
+// video) and DOWNLOAD (a YouTube video to the card, at a height picked there).
 //
 // The picture is rondo-player's (player/video.h) on the VideoSurface; its sound is the player's queue.
+// The subtitles are drawn over it in the look Settings › Display › Subtitles sets (subtitles.h).
+#include <stdio.h>
+
+#include <functional>
+
 #include "../platform/video_surface.h"
 #include "app.h"
+#include "downloads.h"
 #include "screens.h"
 #include "scrub.h"
+#include "subtitles.h"
 
 namespace rondo::shell {
 namespace {
@@ -23,7 +32,12 @@ std::vector<std::string> pictures(const Item& item, int height) { return videoPi
 
 class VideoPlayerScreen : public Screen {
  public:
-  explicit VideoPlayerScreen(const Item& item) : item_(item), local_(!item.id.empty() && item.id[0] == '/') {}
+  explicit VideoPlayerScreen(const Item& item) : item_(item), local_(!item.id.empty() && item.id[0] == '/') {
+    if (local_) {
+      tracks_ = subtitleFiles(item_.id);
+      tracksKnown_ = true;
+    }
+  }
   ~VideoPlayerScreen() override {
     if (started_) g_player.stopVideo();
   }
@@ -35,6 +49,17 @@ class VideoPlayerScreen : public Screen {
       started_ = true;
       if (VideoSurface* v = VideoSurface::get()) v->clear();  // the last video's picture is not this one's
       g_player.playVideo(videoSound(item_), pictures(item_, g_prefs.videoQuality));
+      if (!local_) {
+        requests_.get("/captions/" + Api::escape(item_.id), 600000, [this](int status, const std::string& body) {
+          std::vector<CaptionTrack> found;
+          if (status == 200) parseCaptions(body, found);
+          for (const CaptionTrack& c : found) tracks_.push_back({c.id, c.lang, c.name, c.autoGen, ""});
+          tracksKnown_ = true;
+          if (g_prefs.subtitles) showTrack(pickTrack(tracks_));
+        });
+      } else if (g_prefs.subtitles) {
+        showTrack(pickTrack(tracks_));
+      }
     }
     showOverlay();
   }
@@ -42,12 +67,19 @@ class VideoPlayerScreen : public Screen {
   bool onAction(Action a, int steps) override {
     showOverlay();
     if (panel_) {
+      std::vector<PanelRow> rows = panelRows();
       switch (a) {
-        case Action::Up: cursor_ = (cursor_ + 3) % 4; break;
-        case Action::Down: cursor_ = (cursor_ + 1) % 4; break;
+        case Action::Up:
+          for (int k = 0; k < std::max(1, steps); k++) cursor_ = moveCursor(rows, cursor_, -1);
+          break;
+        case Action::Down:
+          for (int k = 0; k < std::max(1, steps); k++) cursor_ = moveCursor(rows, cursor_, +1);
+          break;
         case Action::Select:
-          setQuality(kChoices[cursor_]);
-          panel_ = false;
+          if (cursor_ >= 0 && cursor_ < int(rows.size()) && rows[size_t(cursor_)].pick) {
+            panel_ = false;
+            rows[size_t(cursor_)].pick();
+          }
           break;
         case Action::Back: panel_ = false; break;
         default: return false;
@@ -67,15 +99,18 @@ class VideoPlayerScreen : public Screen {
         if (scrubbing) scrub_.commit();
         else scrub_.begin();
         break;
-      case Action::LongSelect:
-        if (!local_) {
-          scrub_.cancel();
-          cursor_ = 0;
-          for (int i = 0; i < 4; i++)
-            if (kChoices[i] == g_prefs.videoQuality) cursor_ = i;
-          panel_ = true;
-        }
+      case Action::LongSelect: {
+        scrub_.cancel();
+        std::vector<PanelRow> rows = panelRows();
+        cursor_ = moveCursor(rows, -1, +1);
+        for (size_t i = 0; i < rows.size(); i++)
+          if (rows[i].checked) {  // the first section's choice in use
+            cursor_ = int(i);
+            break;
+          }
+        panel_ = true;
         break;
+      }
       case Action::Back:
         if (!scrubbing) return false;  // Menu leaves
         scrub_.cancel();
@@ -98,6 +133,10 @@ class VideoPlayerScreen : public Screen {
 
   bool tick(int64_t now) override {
     bool jumped = scrub_.tick(now);
+    if (panel_) {  // a download's progress, the tracks arriving
+      std::string key = panelKey();
+      if (key != panelKey_) panelKey_ = key, jumped = true;
+    }
     Shown s = shown(now);
     bool changed = jumped || !(s == shown_);
     shown_ = s;
@@ -106,6 +145,7 @@ class VideoPlayerScreen : public Screen {
   int64_t wakeAt() const override {
     int64_t w = scrub_.deadline();
     if (shown_.overlay && !shown_.keep && overlayUntil_ && (!w || overlayUntil_ < w)) w = overlayUntil_;
+    if (subWake_ && (!w || subWake_ < w)) w = subWake_;
     return w;
   }
 
@@ -121,10 +161,12 @@ class VideoPlayerScreen : public Screen {
     }
     PlayerState s = g_player.state();
     shown_ = shown(e.now, &s);
+    float subBottom = h - e.dpf(12);
     if (shown_.overlay) {
       drawTop(e, w);
-      drawBottom(e, w, h, s);
+      subBottom = drawBottom(e, w, h, s) - e.dpf(6);
     }
+    if (!cues_.empty()) drawSubtitles(e, cues_, PlayerHost::positionAt(s, e.now), w, subBottom);
     if (panel_) drawPanel(e, w, h);
     if (scrub_.active) drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
     e.c.layer(0);
@@ -135,9 +177,10 @@ class VideoPlayerScreen : public Screen {
     bool overlay = false, keep = false, playing = false;
     int64_t sec = -1, durSec = 0;
     int height = 0, bar = 0, buffered = 0;
+    uint64_t cues = 0;  // which subtitles show
     bool operator==(const Shown& o) const {
       return overlay == o.overlay && keep == o.keep && playing == o.playing && sec == o.sec && durSec == o.durSec &&
-             height == o.height && bar == o.bar && buffered == o.buffered;
+             height == o.height && bar == o.bar && buffered == o.buffered && cues == o.cues;
     }
   };
   // what the overlays show now (a frame is drawn when it changes)
@@ -153,6 +196,13 @@ class VideoPlayerScreen : public Screen {
     v.height = s.videoHeight;
     v.bar = d > 0 ? int(pos * 900 / d) : 0;  // a half-pixel step of the thumb
     v.buffered = d > 0 ? int(s.bufferedMs * 450 / d) : 0;
+    subWake_ = 0;
+    if (!cues_.empty()) {
+      int64_t next = -1;
+      v.cues = cuesAt(cues_, pos, &next);
+      // the next change, while it plays (frames come with the picture anyway; this is for no picture)
+      if (next > pos && playing) subWake_ = now + (next - pos) * kMs;
+    }
     return v;
   }
   void showOverlay() { overlayUntil_ = g_app->now() + 3000 * kMs; }
@@ -185,7 +235,7 @@ class VideoPlayerScreen : public Screen {
   }
 
   // the progress (buffered in light gray), then the state, the times, the hint and the quality
-  void drawBottom(Env& e, float w, float h, const PlayerState& s) {
+  float drawBottom(Env& e, float w, float h, const PlayerState& s) {
     int padL = e.dp(8), padT = e.dp(16), padR = e.dp(10), padB = e.dp(5);
     int progH = e.dp(12), icon = e.dp(9);
     int64_t d = duration(s), pos = PlayerHost::positionAt(s, e.now);
@@ -199,8 +249,8 @@ class VideoPlayerScreen : public Screen {
       qw = ql.w + 2 * e.dp(4), qh = ql.h + 2 * e.dp(1);
     }
     const char* hint = scrub_.active ? "center jumps \xc2\xb7 Menu cancels"
-                       : local_      ? "center: scrub"
-                                     : "center: scrub \xc2\xb7 hold center: quality";
+                       : local_      ? "center: scrub \xc2\xb7 hold center: subtitles"
+                                     : "center: scrub \xc2\xb7 hold center: options";
     float rowX = float(padL + e.dp(4)), rowRight = w - padR;
     float hintX = rowX + icon + e.dp(7) + time.w + e.dp(8);
     float hintW = rowRight - qw - e.dp(8) - hintX;
@@ -220,6 +270,7 @@ class VideoPlayerScreen : public Screen {
     drawLabel(e, time, rowX + icon + e.dp(7), ry + float((rowH - time.h) / 2), white);
     if (hintW > 0) drawLabel(e, hl, centerText(hintX, hintW, hl.w), ry + float((rowH - hl.h) / 2), whiteA(170));
     if (!q.empty()) drawLabel(e, ql, rowRight - qw + e.dp(4), ry + float((rowH - qh) / 2) + e.dp(1), white);
+    return top;
   }
   std::string qualityText(const PlayerState& s) const {
     int height = s.videoHeight;
@@ -229,36 +280,190 @@ class VideoPlayerScreen : public Screen {
     return g_prefs.videoQuality == 0 ? "Auto \xc2\xb7 " + p : p;
   }
 
-  // QUALITY: 130 units wide in the middle, Auto and the three heights, a check at the one in use
+  // The options, a list of sections: QUALITY (YouTube's: Auto and the three heights), SUBTITLES (Off
+  // and the tracks), DOWNLOAD (YouTube's: the three heights, or where it stands); a check at each in use
+  struct PanelRow {
+    bool header = false;
+    std::string text, note;  // note: on the right, dimmed
+    bool checked = false;
+    std::function<void()> pick;  // null: not choosable (a header, "None for this video")
+  };
+  std::vector<PanelRow> panelRows() const {
+    std::vector<PanelRow> rows;
+    auto header = [&](const char* t) {
+      PanelRow r;
+      r.header = true, r.text = t;
+      rows.push_back(r);
+    };
+    VideoPlayerScreen* self = const_cast<VideoPlayerScreen*>(this);
+    if (!local_) {
+      header("QUALITY");
+      for (int q : kChoices) {
+        PanelRow r;
+        r.text = q ? std::to_string(q) + "p" : "Auto";
+        r.checked = g_prefs.videoQuality == q;
+        r.pick = [self, q] { self->setQuality(q); };
+        rows.push_back(r);
+      }
+    }
+    header("SUBTITLES");
+    {
+      PanelRow off;
+      off.text = "Off";
+      off.checked = track_ < 0;
+      off.pick = [self] {
+        g_prefs.subtitles = false;
+        savePrefsNow();
+        self->showTrack(-1);
+      };
+      rows.push_back(off);
+    }
+    if (!tracksKnown_ || tracks_.empty()) {
+      PanelRow r;
+      r.text = tracksKnown_ ? "None for this video" : "Finding subtitles\xe2\x80\xa6";
+      rows.push_back(r);
+    }
+    for (size_t i = 0; i < tracks_.size(); i++) {
+      PanelRow r;
+      r.text = tracks_[i].name;
+      r.checked = track_ == int(i);
+      r.pick = [self, i] {
+        g_prefs.subtitles = true;
+        g_prefs.subLang = cleanLang(self->tracks_[i].lang);
+        savePrefsNow();
+        self->showTrack(int(i));
+      };
+      rows.push_back(r);
+    }
+    if (!local_) {
+      header("DOWNLOAD");
+      const DownloadJob* job = nullptr;
+      for (const DownloadJob& j : downloadJobs())
+        if (j.id == item_.id && j.state != DownloadJob::Failed) job = &j;
+      if (!downloadedFile(item_.id).empty()) {
+        PanelRow r;
+        r.text = "On the card";
+        r.checked = true;
+        rows.push_back(r);
+      } else if (job && job->state != DownloadJob::Done) {
+        PanelRow r;
+        r.text = job->state == DownloadJob::Waiting ? "Waiting" : job->stage.empty() ? "Downloading" : job->stage;
+        r.note = job->state == DownloadJob::Running ? std::to_string(job->percent) + "%" : "";
+        rows.push_back(r);
+        PanelRow c;
+        c.text = "Cancel download";
+        std::string id = item_.id;
+        c.pick = [id] { cancelDownload(id); };
+        rows.push_back(c);
+      } else {
+        for (int q : {720, 480, 360}) {
+          PanelRow r;
+          r.text = std::to_string(q) + "p";
+          r.note = "to the card";
+          Item it = item_;
+          r.pick = [it, q] { downloadVideo(it, q); };
+          rows.push_back(r);
+        }
+      }
+    }
+    return rows;
+  }
+  // what the panel shows that changes by itself (a track list arriving, a download going)
+  std::string panelKey() const {
+    std::string k;
+    for (const PanelRow& r : panelRows()) k += r.text + r.note + (r.checked ? "*" : "") + "|";
+    return k;
+  }
+  // the next row that can be picked from at, going dir (round the ends)
+  static int moveCursor(const std::vector<PanelRow>& rows, int at, int dir) {
+    int n = int(rows.size());
+    for (int k = 1; k <= n; k++) {
+      int i = ((at + dir * k) % n + n) % n;
+      if (rows[size_t(i)].pick) return i;
+    }
+    return at;
+  }
+
+  // A track's cues: a card file read at once, a YouTube track fetched (-1: none shown)
+  void showTrack(int i) {
+    track_ = i < int(tracks_.size()) ? i : -1;
+    cues_.clear();
+    shown_.cues = 0;
+    if (track_ < 0) return;
+    const SubTrack& t = tracks_[size_t(track_)];
+    if (!t.file.empty()) {
+      FILE* f = fopen(t.file.c_str(), "rb");
+      if (!f) return;
+      std::string body;
+      char buf[16384];
+      size_t n;
+      while ((n = fread(buf, 1, sizeof(buf), f)) > 0 && body.size() < (8u << 20)) body.append(buf, n);
+      fclose(f);
+      cues_ = parseSubtitles(std::move(body));
+      return;
+    }
+    int want = track_;
+    requests_.get("/captions/" + Api::escape(item_.id) + "/" + Api::escape(t.id), 600000, [this, want](int status, const std::string& body) {
+      if (status != 200 || track_ != want) return;
+      cues_ = parseSubtitles(body);
+    });
+  }
+
+  // 180 units wide in the middle; taller than the screen, it scrolls to keep the row picked in view
   void drawPanel(Env& e, float w, float h) {
-    int pw = e.dp(130), padV = e.dp(5), rowH = e.dp(26), side = e.dp(12);
-    Label head = label(e, "QUALITY", 10, true);
-    int headH = e.dp(3) + head.h + e.dp(5);
-    int ph = padV + headH + 4 * rowH + padV;
+    std::vector<PanelRow> rows = panelRows();
+    int pw = std::min(e.dp(180), int(w) - 2 * e.dp(10)), padV = e.dp(5), rowH = e.dp(24), side = e.dp(12);
+    Label probe = label(e, "QUALITY", 10, true);
+    int headH = e.dp(3) + probe.h + e.dp(5);
+    int content = 0, cursorTop = 0;
+    for (size_t i = 0; i < rows.size(); i++) {
+      if (int(i) == cursor_) cursorTop = content;
+      content += rows[i].header ? headH : rowH;
+    }
+    int ph = std::min(padV + content + padV, int(h) - 2 * e.dp(8));
+    int view = ph - 2 * padV;
+    float scroll = float(std::max(0, std::min(content - view, cursorTop + rowH / 2 - view / 2)));
     float px = float((int(w) - pw) / 2), py = float((int(h) - ph) / 2);
     e.c.layer(5);
     e.c.shape({px, py, float(pw), float(ph)}, e.dpf(8), 0xf0212121);
-    e.c.layer(6);
-    drawLabel(e, head, px + side, py + padV + e.dp(3), e.p.darkMuted);
-    for (int i = 0; i < 4; i++) {
-      float ry = py + padV + headH + float(i * rowH);
-      if (i == cursor_) {
-        e.c.layer(5);
-        e.c.shape({px, ry, float(pw), float(rowH)}, e.dpf(4), whiteA(70));
+    e.c.pushClip({px, py + padV, float(pw), float(view)});
+    float y = py + padV - scroll;
+    for (size_t i = 0; i < rows.size(); i++) {
+      const PanelRow& r = rows[i];
+      if (r.header) {
         e.c.layer(6);
+        drawLabel(e, label(e, r.text, 10, true), px + side, y + e.dp(3), e.p.darkMuted);
+        y += headH;
+        continue;
       }
-      std::string name = kChoices[i] ? std::to_string(kChoices[i]) + "p" : "Auto";
+      if (int(i) == cursor_) {
+        e.c.layer(5);
+        e.c.shape({px, y, float(pw), float(rowH)}, e.dpf(4), whiteA(70));
+      }
+      e.c.layer(6);
       int cw = e.dp(12), ch = e.dp(10);
-      Label l = label(e, name, 13, false, float(pw - 2 * side - cw));
-      drawLabel(e, l, px + side, ry + float((rowH - l.h) / 2), white);
-      if (kChoices[i] == g_prefs.videoQuality)
-        e.icons.draw(e.c, Icon::Check, {px + pw - side - cw, ry + float((rowH - ch) / 2), float(cw), float(ch)}, white);
+      Label note;
+      if (!r.note.empty()) note = label(e, r.note, 10, false);
+      float right = px + pw - side - (r.checked ? cw + e.dp(6) : 0) - (note.run ? note.w + e.dp(6) : 0);
+      Label l = label(e, r.text, 13, false, std::max(0.f, right - (px + side)));
+      drawLabel(e, l, px + side, y + float((rowH - l.h) / 2), r.pick || r.checked ? white : whiteA(150));
+      if (note.run) drawLabel(e, note, px + pw - side - (r.checked ? cw + e.dp(6) : 0) - note.w, y + float((rowH - note.h) / 2), whiteA(150));
+      if (r.checked) e.icons.draw(e.c, Icon::Check, {px + pw - side - cw, y + float((rowH - ch) / 2), float(cw), float(ch)}, white);
+      y += rowH;
     }
+    e.c.popClip();
   }
 
   Item item_;
   bool local_;
   bool started_ = false;
+  Requests requests_;
+  std::vector<SubTrack> tracks_;
+  bool tracksKnown_ = false;
+  int track_ = -1;            // the track shown (-1: subtitles off)
+  std::vector<Cue> cues_;
+  mutable int64_t subWake_ = 0;  // when the subtitles change next (ns), while playing
+  std::string panelKey_;
   Scrubber scrub_;
   bool panel_ = false;
   int cursor_ = 0;

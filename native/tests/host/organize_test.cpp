@@ -41,6 +41,8 @@ int main() {
   touch(card + "/Videos/Stranger Things (2016-2025)/Stranger.Things.S01E01.en.srt");
   touch(card + "/Videos/Interstellar.2014.1080p.BluRay.x264.mkv");
   touch(card + "/Music/Already/Right (2001)/01 - Done.flac");  // a song that moves next to one in place
+  touch(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].mp4");  // YouTube › Download's: stays
+  touch(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].en.vtt");
   std::vector<OrganizeItem> items = {
       {card + "/Music/Pink Floyd - Comfortably Numb.flac", "Comfortably Numb", "Pink Floyd", "Pink Floyd", "The Wall", 6, 2, 1979, false},
       {card + "/Music/Pink Floyd - Hey You.flac", "Hey You", "Pink Floyd", "Pink Floyd", "The Wall", 1, 2, 1979, false},
@@ -52,6 +54,7 @@ int main() {
       {card + "/Videos/Interstellar.2014.1080p.BluRay.x264.mkv", "Interstellar", "", "", "", 0, 0, 0, true},
       {card + "/Music/Already/Right (2001)/01 - Done.flac", "Done", "Already", "", "Right", 1, 0, 2001, false},
       {"/elsewhere/not-on-card.mp3", "X", "Y", "", "Z", 1, 0, 0, false},
+      {card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].mp4", "Me at the zoo", "", "", "", 0, 0, 0, true},
   };
   OrganizePlan plan = planOrganize(items, card);
   for (const OrganizeMove& m : plan.moves) printf("  %d %s\n    -> %s\n", int(m.kind), m.from.substr(card.size()).c_str(), m.to.substr(card.size()).c_str());
@@ -75,6 +78,8 @@ int main() {
   check(there(card + "/Movies/Interstellar (2014)/Interstellar (2014).mkv"), "a movie into Movies");
   check(!there(card + "/Albums/Disc"), "the folders left empty are gone");
   check(there(card + "/Videos"), "the card's top folders stay");
+  check(there(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].mp4") && there(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].en.vtt"),
+        "YouTube downloads stay where they are");
   std::string cmd = "rm -r '" + card + "'";
   if (card.compare(0, 20, "/tmp/rondo-organize-") == 0) (void)!system(cmd.c_str());
   printf(failures ? "%d failed\n" : "all passed\n", failures);

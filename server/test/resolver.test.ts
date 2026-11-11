@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { InvalidVideoId, parseYtdlp, Resolver } from "../src/resolver.js";
+import { InvalidVideoId, parseCaptions, parseYtdlp, Resolver } from "../src/resolver.js";
 
 const fixture = JSON.parse(readFileSync(new URL("./fixtures/ytdlp-dQw4w9WgXcQ.json", import.meta.url), "utf8"));
 const config = loadConfig({ API_TOKEN: "t".repeat(64), COOKIES_FILE: "/nonexistent" });
@@ -81,5 +81,22 @@ describe("Resolver", () => {
     await r.resolve("dQw4w9WgXcQ");
     await r.resolve("dQw4w9WgXcQ");
     expect(calls).toBe(2);
+  });
+});
+
+describe("parseCaptions", () => {
+  it("keeps the video's own tracks and the speech recognition's original, not its translations", () => {
+    const vtt = (q: string, name: string) => [{ ext: "json3", url: `j${q}`, name }, { ext: "vtt", url: `v${q}`, name }];
+    const tracks = parseCaptions(
+      { en: vtt("en", "English"), live_chat: vtt("chat", "Chat") },
+      { "az-orig": vtt("az", "Azerbaijani (Original)"), az: vtt("az2", "Azerbaijani"), en: vtt("t", "English") },
+    );
+    expect(tracks).toEqual([
+      { id: "en", lang: "en", name: "English", auto: false, url: "ven" },
+      { id: "az.auto", lang: "az", name: "Azerbaijani (auto-generated)", auto: true, url: "vaz" },
+    ]);
+  });
+  it("is empty without subtitles", () => {
+    expect(parseCaptions(undefined, undefined)).toEqual([]);
   });
 });
