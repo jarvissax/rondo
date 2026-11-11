@@ -220,6 +220,47 @@ bool searchMore(const std::string& token, Chunk<Item>& c) {
   return true;
 }
 
+// --- the account's feeds (signed in) ---
+
+// every video of a web browse answer, in page order, and its continuation; the Shorts and news shelves
+// between the rows stay out (the grid's own videos only)
+void webVideos(J o, Chunk<Item>& c, std::set<std::string>& seen, std::string& token, int depth = 0) {
+  if (!o || depth > 40) return;
+  if (yyjson_is_obj(o)) {
+    if (J v = key(o, "videoRenderer")) {
+      Item i = videoRenderer(v);
+      if (i.ok() && seen.insert(i.id).second) c.items.push_back(i);
+      return;
+    }
+    if (J l = key(o, "lockupViewModel")) {
+      Item i = fromLockup(l);
+      if (i.ok() && i.kind == "video" && seen.insert(i.id).second) c.items.push_back(i);
+      return;
+    }
+    if (J ci = key(o, "continuationItemRenderer")) {
+      std::string t = str(path(ci, "continuationEndpoint", "continuationCommand", "token"));
+      if (!t.empty()) token = t;
+      return;
+    }
+    if (key(o, "reelShelfRenderer") || key(o, "richSectionRenderer")) return;
+    size_t k, n;
+    J kk, v;
+    yyjson_obj_foreach(o, k, n, kk, v) webVideos(v, c, seen, token, depth + 1);
+  } else if (yyjson_is_arr(o)) {
+    each(o, [&](J v) { webVideos(v, c, seen, token, depth + 1); });
+  }
+}
+
+bool feedChunk(const std::string& fields, Chunk<Item>& c) {
+  Doc d;
+  if (innertube(rules().web, "browse", fields, d) != 200 || !root(d)) return false;
+  std::set<std::string> seen;
+  std::string token;
+  webVideos(root(d), c, seen, token);
+  if (!token.empty()) c.more = [token](Chunk<Item>& n) { return feedChunk("\"continuation\":" + quote(token), n); };
+  return true;
+}
+
 // --- Shorts ---
 
 // shortItem: a ShortsLockupView (search), or a "watch next" entry, which names only the video
@@ -343,6 +384,12 @@ std::string home() {
   }
   if (out.empty()) return "";
   return "{\"items\":" + json(out) + "}";
+}
+
+std::string feed(const std::string& scope, const std::string& browseId) {
+  std::string fields = "\"browseId\":" + quote(browseId);
+  return page<Item>(
+      scope, [fields](Chunk<Item>& c) { return feedChunk(fields, c); }, 20, byId(), pageJson);
 }
 
 std::string search(const std::string& q) {

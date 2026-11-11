@@ -379,6 +379,18 @@ class AboutScreen : public ShellListScreen {
 // What Settings' rows say, found by the top list and shown in its groups too: the server's state (a
 // request) and a newer Rondo (another)
 std::string g_serverState = "Checking\xe2\x80\xa6", g_latestVersion;
+// direct mode's YouTube account (cookies.txt from the dashboard): "" until asked, "in", "out", "expired"
+std::string g_directAccount, g_directName;
+void askDirectAccount() {
+  if (!directMode()) return;
+  g_core.get("/account", 0, [](int status, const std::string& body) {
+    if (status != 200) return;
+    bool in = body.find("\"signedIn\":true") != std::string::npos;
+    g_directAccount = in ? "in" : body.find("\"expired\":true") != std::string::npos ? "expired" : "out";
+    size_t at = body.find("\"name\":\"");
+    g_directName = at == std::string::npos ? "" : body.substr(at + 8, body.find('"', at + 8) - at - 8);
+  });
+}
 
 using Rows = std::vector<Row>;
 Row settingRow(const char* title, std::string trailing, const Tile& tile, bool chevron, std::function<void()> on) {
@@ -433,6 +445,18 @@ Rows connectionsRows(SettingsGroupScreen&) {
 Rows youtubeRows(SettingsGroupScreen&) {
   Rows rows;
   rows.push_back(settingRow("Connection", g_serverState, tiles::server, true, [] { g_app->push(makeServer()); }));
+  // the account: the server's own (its admin page), or in direct mode a cookies.txt sent from the dashboard
+  if (directMode()) {
+    std::string state = g_directAccount == "in" ? (g_directName.empty() ? "Signed in" : g_directName)
+                        : g_directAccount == "expired" ? "Signed out by YouTube"
+                        : g_directAccount == "out" ? "Signed out" : "";
+    Row r = settingRow("YouTube account", state, tiles::account, true, [] {
+      g_app->toast("Sign in on the dashboard: YouTube \xe2\x80\xba YouTube account");
+      g_app->push(makeDashboard());
+    });
+    r.subtitle = g_directAccount == "in" ? "Library, Subscriptions and History" : "Sign in on the dashboard";
+    rows.push_back(std::move(r));
+  }
   rows.push_back(settingRow("Video quality", g_prefs.videoQuality ? std::to_string(g_prefs.videoQuality) + "p" : "Auto", tiles::quality,
                             true, [] {
                               g_app->push(choice(
@@ -573,7 +597,10 @@ class SettingsScreen : public ShellListScreen {
     rows.push_back(settingRow("Connections", wifi_, tiles::connections, true, [] { pushGroup("Connections", connectionsRows); }));
     rows.push_back(settingRow("YouTube", g_serverState, tiles::video, true, [] {
       // the connection asked again each time the group shows: back from switching it, it says the new one
-      pushGroup("YouTube", youtubeRows, [] { serverState([](const std::string& s) { g_serverState = s; }); });
+      pushGroup("YouTube", youtubeRows, [] {
+        serverState([](const std::string& s) { g_serverState = s; });
+        askDirectAccount();
+      });
     }));
     rows.push_back(settingRow("Sound", soundState(), tiles::equalizer, true, [] { g_app->push(makeSound()); }));
     rows.push_back(settingRow("Display", accentName(g_config.theme.accent), tiles::display, true, [] { pushGroup("Display", displayRows); }));

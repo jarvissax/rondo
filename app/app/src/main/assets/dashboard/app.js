@@ -301,30 +301,34 @@ $('#offlineRetry').addEventListener('click', () => {
 });
 
 // ---------- navigation ----------
+// the sidebar in groups, as on the Rondo: what's on it, how it connects, how it behaves
 const NAV = [
   { id: 'overview', label: 'Overview', tile: 'rondo' },
-  { id: 'library', label: 'Library', tile: 'device', glyph: 'folder' },
-  { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
-  { id: 'settings', label: 'Settings', tile: 'settings', glyph: 'gear' },
-  { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'volume' },
+  { id: 'library', label: 'Library', tile: 'device', glyph: 'library' },
+  { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio' },
+  { group: 'Connections' },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
-  { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio' },
-  { id: 'server', label: 'Server', tile: 'server', glyph: 'cloud' },
+  { id: 'server', label: 'YouTube', tile: 'server', glyph: 'cloud' },
+  { group: 'Settings' },
+  { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'sliders' },
+  { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
+  { id: 'settings', label: 'General', tile: 'settings', glyph: 'gear' },
 ];
+const PAGES = NAV.filter((n) => n.id);
 const tileHtml = (tile, glyph) => `<span class="tile t-${tile}">${glyph ? icon(glyph) : markTile}</span>`;
 function buildNav() {
-  $('#nav').innerHTML = NAV.map((n) => `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
-  $('#tabs').innerHTML = NAV.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
+  $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${n.group}</div>` : `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
+  $('#tabs').innerHTML = PAGES.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
 }
 function route() {
   const id = location.hash.slice(1);
-  const next = NAV.some((n) => n.id === id) ? id : 'overview';
+  const next = PAGES.some((n) => n.id === id) ? id : 'overview';
   const changed = next !== S.route || $(`#view-${next}`).hidden;
   S.route = next;
-  for (const n of NAV) $(`#view-${n.id}`).hidden = n.id !== next;
+  for (const n of PAGES) $(`#view-${n.id}`).hidden = n.id !== next;
   $$('#nav a, #tabs a').forEach((a) => (a.dataset.id === next ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-  document.title = next === 'overview' ? 'Rondo' : `${NAV.find((n) => n.id === next).label} · Rondo`;
+  document.title = next === 'overview' ? 'Rondo' : `${PAGES.find((n) => n.id === next).label} · Rondo`;
   if (changed) window.scrollTo(0, 0);
   enterView(next);
 }
@@ -338,7 +342,7 @@ function enterView(id, force = false) {
   if (id === 'wifi') loadWifi();
   if (id === 'bluetooth') loadBluetooth();
   if (id === 'radio') loadRadio();
-  if (id === 'server') loadServer();
+  if (id === 'server') { loadServer(); loadYtAccount(); if (!S.settings) loadSettings(); }
 }
 
 // ---------- status polling ----------
@@ -801,7 +805,7 @@ function renderLibrary() {
   if (!S.library) return;
   const videos = S.libKind === 'videos';
   libEl.classList.toggle('is-videos', videos);
-  $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
+  showKinds();
   const pls = S.libKind === 'playlists', files = S.libKind === 'files', albumsTab = S.libKind === 'albums', photosTab = S.libKind === 'photos';
   libEl.classList.toggle('is-playlists', pls || files || albumsTab || photosTab);
   if (photosTab) {
@@ -980,10 +984,43 @@ libList.addEventListener('click', (e) => {
   if (e.target.closest('[data-act="play"]')) playItem(it);
   else openItem(it);
 });
+const MUSIC_KINDS = ['songs', 'albums', 'playlists'];
+const sectionOf = (kind) => (MUSIC_KINDS.includes(kind) ? 'music' : kind);
+function showKinds() {
+  const sec = sectionOf(S.libKind);
+  $$('#libSection button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.section === sec)));
+  $$('#libKind button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === S.libKind)));
+  $('#libKind').hidden = sec !== 'music';
+  $('#shuffleBtn').hidden = S.libKind !== 'songs';
+}
+$('#libSection').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-section]');
+  if (!b) return;
+  const kind = b.dataset.section === 'music' ? (S.musicKind || 'songs') : b.dataset.section;
+  if (kind !== S.libKind) setKind(kind);
+});
 $('#libKind').addEventListener('click', (e) => {
   const b = e.target.closest('[data-kind]');
-  if (!b || b.dataset.kind === S.libKind) return;
-  S.libKind = b.dataset.kind;
+  if (!b) return;
+  S.musicKind = b.dataset.kind;
+  if (b.dataset.kind !== S.libKind) setKind(b.dataset.kind);
+});
+// every song shown (the search and sort as they are), in a random order, on the Rondo
+$('#shuffleBtn').addEventListener('click', () => shufflePaths(S.libRows.map((s) => s.path), 'the songs'));
+async function shufflePaths(paths, what) {
+  const q = paths.filter((p) => S.libByPath.has(p));
+  if (!q.length) return toast('No songs to shuffle', 'err');
+  for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
+  try {
+    const st = await api('POST', '/api/player/play', { path: q[0], queue: q });
+    if (S.status) { S.status.player = st; S.statusAt = performance.now(); }
+    renderMini();
+    toast(`Shuffling ${what} on your Rondo`);
+  } catch (e) { if (e.status !== 401) toast(`Couldn’t play them. ${reason(e)}`, 'err'); }
+}
+function setKind(kind) {
+  S.libKind = kind;
+  showKinds();
   S.openPlaylist = null;
   S.openSmart = null;
   if (S.libKind === 'files') return loadFiles(S.filesDir);
@@ -991,7 +1028,7 @@ $('#libKind').addEventListener('click', (e) => {
   if (S.libKind === 'photos') return loadPhotos();
   renderLibrary();
   if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
-});
+}
 let searchTimer = 0;
 $('#libSearch').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
@@ -1212,6 +1249,7 @@ function renderPlaylist() {
       <h2>${esc(p.name)}</h2><p>${esc(plSub(p))}</p>
       <div class="pl-acts">
         <button class="btn btn-primary btn-sm" type="button" data-act="pl-play"${playable ? '' : ' disabled'}>${icon('play')}<span>Play on Rondo</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-shuffle"${playable ? '' : ' disabled'}>${icon('shuffle')}<span>Shuffle</span></button>
         <button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>Add songs</span></button>
         <button class="btn btn-sm" type="button" data-act="pl-rename">Rename</button>
         <button class="btn btn-sm btn-red-text" type="button" data-act="pl-delete">${icon('trash')}<span>Delete</span></button>
@@ -1239,6 +1277,7 @@ async function onPlaylistClick(e) {
   if (!p) return;
   if (act === 'pl-open') { S.openPlaylist = p.name; window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) }); return renderPlaylists(); }
   if (act === 'pl-play') return playPlaylist(p);
+  if (act === 'pl-shuffle') return shufflePaths(p.paths, `“${p.name}”`);
   if (act === 'pl-song') return playPlaylist(p, row.dataset.path);
   if (act === 'pl-add') return addSongsSheet(p.name);
   if (act === 'pl-rename') {
@@ -1784,31 +1823,30 @@ function segHtml(key, options, cur, label) {
 }
 function renderSettings() {
   const s = S.settings;
+  if (S.server) renderQuality();
   $('#settingsRows').innerHTML = `
-    <div class="row row-wide set-row"><span class="tile t-quality">${icon('play')}</span>
-      <div class="row-main"><div class="row-title">Video quality</div><div class="row-sub">Auto picks up to 360p, which plays smoothest.</div></div>
-      <div class="row-control">${segHtml('videoQuality', QUALITY, s.videoQuality ?? null, 'Video quality')}</div></div>
     <div class="row row-wide set-row"><span class="tile t-brightness">${icon('sun')}</span>
       <div class="row-main"><div class="row-title">Brightness</div><div class="row-sub">Lower saves battery.</div></div>
       <div class="row-control"><div class="range-row">${icon('sun')}<input type="range" id="brightness" min="10" max="100" step="5" value="${s.brightness}" aria-label="Brightness"><output id="brightnessOut">${s.brightness}%</output></div></div></div>
     <div class="row row-wide set-row"><span class="tile t-timer">${icon('timer')}</span>
       <div class="row-main"><div class="row-title">Screen off after</div><div class="row-sub">Shorter saves battery.</div></div>
       <div class="row-control">${segHtml('screenTimeoutSec', TIMEOUTS, s.screenTimeoutSec, 'Screen off after')}</div></div>
-    <div class="row set-row"><span class="tile t-lyrics">${icon('lyrics')}</span>
+    <div class="row set-row"><span class="tile t-lyrics">${icon('mic')}</span>
       <div class="row-main"><div class="row-title">Open lyrics automatically</div><div class="row-sub">Show the lyrics when Now Playing opens.</div></div>
-      <button class="switch" type="button" role="switch" data-key="lyricsOnOpen" aria-checked="${!!s.lyricsOnOpen}" aria-label="Open lyrics automatically"></button></div>
-    <div class="row row-wide set-row"><span class="tile t-wheel">${icon('disc')}</span>
+      <button class="switch" type="button" role="switch" data-key="lyricsOnOpen" aria-checked="${!!s.lyricsOnOpen}" aria-label="Open lyrics automatically"></button></div>`;
+  $('#controlRows').innerHTML = `
+    <div class="row row-wide set-row"><span class="tile t-accel">${icon('gauge')}</span>
       <div class="row-main"><div class="row-title">Wheel acceleration</div><div class="row-sub">Long lists scroll faster when you keep spinning the wheel quickly.</div></div>
       <div class="row-control">${segHtml('wheelAcceleration', WHEEL, s.wheelAcceleration, 'Wheel acceleration')}</div></div>
-    <div class="row row-wide set-row"><span class="tile t-wheel">${icon('disc')}</span>
+    <div class="row row-wide set-row"><span class="tile t-vibrate">${icon('vibrate')}</span>
       <div class="row-main"><div class="row-title">Wheel vibration</div><div class="row-sub">A short buzz on every wheel step, like Rockbox. Normal matches Rockbox’s intensity 5.</div></div>
       <div class="row-control">${segHtml('wheelVibration', BUZZ, s.wheelVibration ?? 'normal', 'Wheel vibration')}</div></div>
-    <div class="row set-row"><span class="tile t-sound">${icon('volume')}</span>
+    <div class="row set-row"><span class="tile t-click">${icon('volume')}</span>
       <div class="row-main"><div class="row-title">Click sound</div><div class="row-sub">The tick on every wheel step, separate from vibration.</div></div>
       <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>`;
   setFill($('#brightness'));
 }
-const settingsRows = $('#settingsRows');
+const settingsRows = $('#view-settings');
 settingsRows.addEventListener('click', (e) => {
   if (e.target.closest('[data-act="reload"]')) return loadSettings();
   const seg = e.target.closest('.seg[data-key]'), b = e.target.closest('[data-v]');
@@ -2264,17 +2302,81 @@ async function loadServer() {
 }
 // a plain-http address (a server at home reached by IP) is fine on your own Wi-Fi only
 const insecure = (url) => /^http:\/\//i.test(url || '');
+// direct mode's YouTube account: a cookies.txt sent to the Rondo, which signs its own requests with it
+async function loadYtAccount(quiet = true) {
+  try {
+    S.ytAccount = await api('GET', '/api/youtube/account', undefined, { timeout: 30000 });
+  } catch (e) { if (e.status === 401) return; S.ytAccount = { mode: 'direct', signedIn: false, unreachable: true }; }
+  if (S.server) renderAccount();
+}
+function renderAccount() {
+  const el = $('#ytAccount');
+  if (!el) return;
+  const a = S.ytAccount;
+  if (!S.server?.direct) {
+    el.innerHTML = `<div class="group"><div class="row set-row"><span class="tile t-account">${icon('key')}</span>
+      <div class="row-main"><div class="row-title">YouTube account</div><div class="row-sub">Your server has its own: sign in on its admin page${S.server?.url ? ` (<a class="link" href="${esc(S.server.url.replace(/\/+$/, ''))}/admin" target="_blank" rel="noopener">open it</a>)` : ''}.</div></div></div></div>`;
+    return;
+  }
+  const state = !a ? 'Checking…' : a.signedIn ? `Signed in${a.name ? ` as <b>${esc(a.name)}</b>` : ''}${a.handle ? ` (${esc(a.handle)})` : ''}${a.unchecked ? ' (not checked: no internet)' : ''}`
+    : a.expired ? 'Signed out: YouTube no longer takes these cookies. Export them again.' : a.unreachable ? 'Couldn’t ask your Rondo.' : 'Signed out';
+  el.innerHTML = `<div class="group">
+      <div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
+        <div class="row-main"><div class="row-title">YouTube account</div><div class="row-sub">${state}</div>
+          <div class="row-sub">Signed in, YouTube Music has your Library and your own home, and YouTube your Subscriptions and History.</div></div>
+        <div class="row-control acct-actions">
+          <button class="btn btn-primary btn-sm" type="button" data-act="cookies">${icon('upload')}<span>${a?.signedIn ? 'Replace cookies.txt' : 'Upload cookies.txt'}</span></button>
+          ${a?.signedIn || a?.expired ? '<button class="btn btn-sm" type="button" data-act="signout">Sign out</button>' : ''}
+          <input type="file" id="cookiesFile" accept=".txt,text/plain" hidden></div></div>
+    </div>
+    <h2 class="gh">Export cookies.txt safely</h2>
+    <div class="group"><ol class="steps">
+      <li><b>Open a private window</b> (incognito) in your browser on a computer.</li>
+      <li><b>Sign in to youtube.com</b> (or music.youtube.com: the same cookies) in that window.</li>
+      <li><b>Export the cookies</b> with a cookies.txt browser extension while that page is open, then upload the file here.</li>
+      <li><b>Close the private window at once.</b> If a browser keeps using that session, Google signs it out and your Rondo loses access.</li>
+    </ol><p class="row-sub steps-note">A separate Google account for your Rondo is the safest choice. The file stays on your Rondo and this page never shows what’s inside.</p></div>`;
+}
+// a cookies.txt cut to its youtube.com lines (an export of every site is large, and none of the rest is needed)
+function youtubeCookies(text) {
+  return text.split(/\r?\n/).filter((l) => {
+    if (!l.trim()) return false;
+    if (l.startsWith('#') && !l.startsWith('#HttpOnly_')) return l.startsWith('# Netscape');
+    const domain = l.replace(/^#HttpOnly_/, '').split('\t')[0] || '';
+    return /(^|\.)youtube\.com$/.test(domain);
+  }).join('\n') + '\n';
+}
+async function sendCookies(file) {
+  if (file.size > 4 * 1024 * 1024) return toast('That file is too large to be a cookies.txt file. Export it again.', 'err');
+  const text = youtubeCookies(await file.text());
+  try {
+    S.ytAccount = await api('PUT', '/api/youtube/cookies', { cookies: text }, { timeout: 40000 });
+    renderAccount();
+    toast(S.ytAccount.signedIn ? `Signed in${S.ytAccount.name ? ` as ${S.ytAccount.name}` : ''}` : 'YouTube didn’t take these cookies. Export them again.', S.ytAccount.signedIn ? undefined : 'err');
+  } catch (e) { if (e.status !== 401) toast(reason(e), 'err'); }
+}
+function renderQuality() {
+  const el = $('#ytQuality');
+  if (!el || !S.settings) return;
+  el.innerHTML = `<div class="group"><div class="row row-wide set-row"><span class="tile t-quality">${icon('diamond')}</span>
+      <div class="row-main"><div class="row-title">Video quality</div><div class="row-sub">Auto picks up to 360p, which plays smoothest. A video without the one picked plays the next one down.</div></div>
+      <div class="row-control">${segHtml('videoQuality', QUALITY, S.settings.videoQuality ?? null, 'Video quality')}</div></div></div>`;
+}
 function renderServer() {
   const s = S.server;
   const admin = s.url ? `${s.url.replace(/\/+$/, '')}/admin` : '';
   $('#serverBody').innerHTML = `
     <div class="group">
       <div class="row row-wide set-row"><span class="tile t-server">${icon('cloud')}</span>
-        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? 'Rondo talks to YouTube itself: nothing to set up. Library, Subscriptions and History need your server.' : 'Everything goes through your server.'}</div></div>
+        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? 'Rondo talks to YouTube itself: nothing to set up. Sign in below for Library, Subscriptions and History.' : 'Everything goes through your server.'}</div></div>
         <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="Connect to" id="srvMode">
           <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">Directly to YouTube</button>
           <button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0"${s.url ? '' : ' disabled title="Connect to a server below first"'}>My server</button></div></div></div>
     </div>
+    <div id="ytAccount"></div>
+    <h2 class="gh">Playback</h2>
+    <div id="ytQuality"></div>
+    <h2 class="gh">Your server</h2>
     <div class="group">
       <div class="srv-field">
         <div class="row-title">Your server</div>
@@ -2318,14 +2420,32 @@ function renderServer() {
         <button class="btn btn-primary" type="button" id="srvTest">${icon('refresh')}<span>Test</span></button></div>
       <div class="test-res" id="testRes" hidden></div>
     </div>`;
+  renderAccount();
+  renderQuality();
 }
 const serverBody = $('#serverBody');
+serverBody.addEventListener('change', (e) => { if (e.target.id === 'cookiesFile' && e.target.files[0]) sendCookies(e.target.files[0]); });
 serverBody.addEventListener('click', async (e) => {
+  const seg = e.target.closest('#ytQuality .seg[data-key]'), v = e.target.closest('#ytQuality [data-v]');
+  if (seg && v) {
+    $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === v)));
+    return saveSetting(seg.dataset.key, JSON.parse(v.dataset.v));
+  }
+  if (e.target.closest('[data-act="cookies"]')) return $('#cookiesFile').click();
+  if (e.target.closest('[data-act="signout"]')) {
+    try {
+      S.ytAccount = await api('DELETE', '/api/youtube/cookies', undefined, { timeout: 30000 });
+      renderAccount();
+      toast('Signed out on your Rondo');
+    } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
+    return;
+  }
   const b = e.target.closest('#srvMode [data-direct]');
   if (!b || b.disabled || b.getAttribute('aria-checked') === 'true') return;
   try {
     S.server = await api('PUT', '/api/server', { direct: b.dataset.direct === '1' });
     renderServer();
+    loadYtAccount();
     toast('Saved on your Rondo');
   } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
 });
@@ -2491,17 +2611,17 @@ function renderDateTime() {
   if (!d) return;
   const zones = d.zones.map((z) => `<option value="${esc(z.id)}"${z.id === d.zone ? ' selected' : ''}>${esc(z.gmt)} · ${esc(z.city)}</option>`).join('');
   $('#dateRows').innerHTML = `
-    <div class="row set-row"><span class="tile t-timer">${icon('timer')}</span>
+    <div class="row set-row"><span class="tile t-sync">${icon('sync')}</span>
       <div class="row-main"><div class="row-title">Set automatically</div><div class="row-sub">From the network when Wi-Fi is on. Now: <b id="dtNow">${esc(rondoClock(d))}</b></div></div>
       <button class="switch" type="button" role="switch" data-dt="autoTime" aria-checked="${d.autoTime}" aria-label="Set the time automatically"></button></div>
-    ${d.autoTime ? '' : `<div class="row row-wide set-row"><span class="tile t-timer">${icon('timer')}</span>
+    ${d.autoTime ? '' : `<div class="row row-wide set-row"><span class="tile t-clock">${icon('clock')}</span>
       <div class="row-main"><div class="row-title">Date and time</div><div class="row-sub">Set on your Rondo, in its time zone.</div></div>
       <div class="row-control date-set"><input type="datetime-local" id="dtValue" value="${esc(rondoLocal(d))}" aria-label="Date and time">
         <button class="btn btn-sm" type="button" id="dtFromHere">Use this computer’s time</button><button class="btn btn-sm btn-primary" type="button" id="dtSet">Set</button></div></div>`}
-    <div class="row set-row"><span class="tile t-wifi">${icon('wifi')}</span>
+    <div class="row set-row"><span class="tile t-zone">${icon('broadcast')}</span>
       <div class="row-main"><div class="row-title">Time zone automatically</div><div class="row-sub">Where your Rondo is online. Now: ${esc(d.city)} (${esc(d.zone)})</div></div>
       <button class="switch" type="button" role="switch" data-dt="autoZone" aria-checked="${d.autoZone}" aria-label="Set the time zone automatically"></button></div>
-    ${d.autoZone ? '' : `<div class="row row-wide set-row"><span class="tile t-wifi">${icon('wifi')}</span>
+    ${d.autoZone ? '' : `<div class="row row-wide set-row"><span class="tile t-globe">${icon('globe')}</span>
       <div class="row-main"><div class="row-title">Time zone</div></div>
       <div class="row-control"><div class="select"><select id="dtZone" aria-label="Time zone">${zones}</select>${icon('down')}</div></div></div>`}
     <div class="row set-row"><span class="tile t-timer">${icon('timer')}</span>
@@ -2573,42 +2693,42 @@ function renderSound() {
   const user = o.preset.startsWith('user:') ? o.preset.slice(5) : '';
   const limitName = (v) => (v >= s.maxVolume ? 'No limit' : `${v} of ${s.maxVolume}`);
   $('#soundBody').innerHTML = `
-    <div class="group"><div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+    <div class="group"><div class="row row-wide set-row"><span class="tile t-output">${icon('headphones')}</span>
       <div class="row-main"><div class="row-title">Output</div><div class="row-sub">The one music plays on now is marked “playing”. Changes to another apply when it plays.</div></div>
       <div class="row-control"><div class="seg seg-wide sound-out" role="radiogroup" aria-label="Output" id="soundOuts">${outs}</div></div></div></div>
     <h2 class="gh">${esc(o.label)}</h2>
     <div class="group">
-      <div class="row row-wide set-row"><span class="tile t-sound">${icon('bars')}</span>
+      <div class="row row-wide set-row"><span class="tile t-eq">${icon('sliders')}</span>
         <div class="row-main"><div class="row-title">Equalizer</div><div class="row-sub">Moving a band makes it your own (Custom).</div></div>
         <div class="row-control"><div class="select"><select id="eqPreset" aria-label="Equalizer preset">${presets.map(([v, l]) => `<option value="${esc(v)}"${v === o.preset ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div></div></div>
       <div class="eq" id="eqBands">${bands}</div>
       <div class="eq-actions"><button class="btn btn-sm" type="button" id="eqFlat">Flat</button><button class="btn btn-sm" type="button" id="eqSave">${icon('plus')}<span>Save as a preset</span></button>
         ${user ? `<button class="btn btn-sm btn-red-text" type="button" id="eqDelete" data-name="${esc(user)}">${icon('trash')}<span>Delete “${esc(user)}”</span></button>` : ''}</div>
-      ${o.key === 'speaker' ? '' : `<div class="row set-row"><span class="tile t-sound">${icon('search')}</span>
+      ${o.key === 'speaker' ? '' : `<div class="row set-row"><span class="tile t-search">${icon('search')}</span>
         <div class="row-main"><div class="row-title">Headphone match</div><div class="row-sub">${o.match ? `${esc(o.match.name)}, measured by ${esc(o.match.source)}${o.preset === 'autoeq' ? ' · in use' : ''}` : 'A correction for your model, from AutoEq’s measurements of about 9,000 headphones.'}</div></div>
         <button class="btn btn-sm" type="button" id="matchFind">${o.match ? 'Change model' : 'Find your model'}</button></div>`}
-      <div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+      <div class="row row-wide set-row"><span class="tile t-now">${icon('volume')}</span>
         <div class="row-main"><div class="row-title">Loudness boost</div><div class="row-sub">Louder; the peaks are held, never clipped.</div></div>
         <div class="row-control">${segHtml('boostDb', BOOSTS, o.boostDb, 'Loudness boost')}</div></div>
     </div>
     <h2 class="gh">Playback</h2>
     <div class="group">
-      <div class="row row-wide set-row"><span class="tile t-sound">${icon('bars')}</span>
+      <div class="row row-wide set-row"><span class="tile t-crossfade">${icon('queue')}</span>
         <div class="row-main"><div class="row-title">Crossfade</div><div class="row-sub">Each song fades into the next. Off: one after the other, with no gap.</div></div>
         <div class="row-control">${segHtml('crossfadeSec', CROSSFADES, s.crossfadeSec ?? 0, 'Crossfade')}</div></div>
-      <div class="row set-row"><span class="tile t-sound">${icon('pause')}</span>
+      <div class="row set-row"><span class="tile t-fade">${icon('pause')}</span>
         <div class="row-main"><div class="row-title">Fade on pause and play</div><div class="row-sub">Music fades out when it pauses and back in when it plays.</div></div>
         <button class="switch" type="button" role="switch" data-key="fadePause" aria-checked="${s.fadePause !== false}" aria-label="Fade on pause and play"></button></div>
     </div>
     <h2 class="gh">Every output</h2>
     <div class="group">
-      <div class="row set-row"><span class="tile t-sound">${icon('bars')}</span>
+      <div class="row set-row"><span class="tile t-level">${icon('gauge')}</span>
         <div class="row-main"><div class="row-title">Volume leveling</div><div class="row-sub">${esc(s.levelingNote)}</div></div>
         <button class="switch" type="button" role="switch" data-key="leveling" aria-checked="${s.leveling}" aria-label="Volume leveling"></button></div>
-      ${s.amplifier >= 0 ? `<div class="row row-wide set-row"><span class="tile t-sound">${icon('bolt')}</span>
+      ${s.amplifier >= 0 ? `<div class="row row-wide set-row"><span class="tile t-amp">${icon('bolt')}</span>
         <div class="row-main"><div class="row-title">Amplifier</div><div class="row-sub">The Y1’s own, for headphones and the speaker. Standard is the cleanest, +6 dB the loudest with more hiss.</div></div>
         <div class="row-control">${segHtml('amplifier', AMPS, s.amplifier, 'Amplifier')}</div></div>` : ''}
-      <div class="row row-wide set-row"><span class="tile t-sound">${icon('volume')}</span>
+      <div class="row row-wide set-row"><span class="tile t-limit">${icon('lock')}</span>
         <div class="row-main"><div class="row-title">Volume limit</div><div class="row-sub">The highest step the wheel and this page can set, on every output. Anything louder comes down to it.</div></div>
         <div class="row-control"><div class="range-row">${icon('volume')}<input type="range" id="volLimit" min="1" max="${s.maxVolume}" step="1" value="${s.volumeLimit}" aria-label="Volume limit"><output id="volLimitOut">${limitName(s.volumeLimit)}</output></div></div></div>
     </div>`;

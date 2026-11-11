@@ -482,6 +482,34 @@ std::string home() {
       });
 }
 
+namespace {
+// the library's grid: every MusicTwoRowItem that is a playlist (the New playlist button isn't one)
+void libraryItems(J o, std::vector<Item>& out, std::set<std::string>& seen, int depth = 0) {
+  if (!o || depth > 40) return;
+  if (yyjson_is_obj(o)) {
+    if (J r = key(o, "musicTwoRowItemRenderer")) {
+      Item i = fromNode(twoRow(r));
+      if (i.ok() && i.kind == "playlist" && seen.insert(i.id).second) out.push_back(i);
+      return;
+    }
+    size_t k, n;
+    J kk, v;
+    yyjson_obj_foreach(o, k, n, kk, v) libraryItems(v, out, seen, depth + 1);
+  } else if (yyjson_is_arr(o)) {
+    each(o, [&](J v) { libraryItems(v, out, seen, depth + 1); });
+  }
+}
+}  // namespace
+
+std::string library() {
+  Doc d;
+  if (call("browse", "\"browseId\":\"FEmusic_liked_playlists\"", d) != 200 || !root(d)) return "";
+  std::vector<Item> items;
+  std::set<std::string> seen;
+  libraryItems(root(d), items, seen);
+  return "{\"playlists\":" + json(items) + "}";
+}
+
 std::string search(const std::string& q, const std::string& type) {
   static const std::map<std::string, std::string> kParams = {
       {"song", "EgWKAQIIAQ%3D%3D"}, {"video", "EgWKAQIQAQ%3D%3D"}, {"album", "EgWKAQIYAQ%3D%3D"},

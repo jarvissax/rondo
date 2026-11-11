@@ -29,14 +29,18 @@ struct Cached {
 std::mutex g_cacheMu;
 std::map<std::string, Cached> g_cache;
 
-bool fromCache(const std::string& k, std::string& body) {
+// answers are the account's: another sign-in (or none) starts afresh
+std::string accountKey(const std::string& k) { return std::to_string(accountGeneration()) + "|" + k; }
+bool fromCache(const std::string& key, std::string& body) {
+  std::string k = accountKey(key);
   std::lock_guard<std::mutex> l(g_cacheMu);
   auto it = g_cache.find(k);
   if (it == g_cache.end() || nowMs() - it->second.at > 120000) return false;
   body = it->second.body;
   return true;
 }
-void toCache(const std::string& k, const std::string& body) {
+void toCache(const std::string& key, const std::string& body) {
+  std::string k = accountKey(key);
   std::lock_guard<std::mutex> l(g_cacheMu);
   if (g_cache.size() > 200) g_cache.clear();
   g_cache[k] = {body, nowMs()};
@@ -213,10 +217,16 @@ Request parseTarget(const std::string& method, const std::string& target) {
 void route(const Request& r, Response& out) {
   const std::string& p = r.path;
   if (p == "/healthz") {
-    // what the screens read: up, and no account (signing in to YouTube in direct mode comes later)
+    // what the screens read: up, and whether the account's tabs show (signed in with cookies)
     int ok = lastResolveOk();
+    const char* in = signedIn() ? "true" : "false";
     out.body = std::string("{\"ok\":true,\"ytdlp\":\"direct\",\"lastResolveOk\":") + (ok < 0 ? "null" : ok ? "true" : "false") +
-               ",\"cookiesOk\":false,\"account\":{\"music\":false,\"videos\":false}}";
+               ",\"cookiesOk\":" + (hasCookies() ? "true" : "false") + ",\"account\":{\"music\":" + in + ",\"videos\":" + in + "}}";
+    return;
+  }
+  if (p == "/account") {  // who the cookies sign in as (the dashboard, Settings › YouTube)
+    if (!param(r, "reload").empty()) reloadAccount();
+    out.body = accountJson();
     return;
   }
   if (p == "/time") {
@@ -232,7 +242,10 @@ void route(const Request& r, Response& out) {
     if (param(r, "next").empty() && q.empty()) return out.error(400, "query");
     return list(r, out, "music/search", [q, type] { return music::search(q, type); }, false);
   }
-  if (p == "/music/library") return out.error(503, "no_cookies");
+  if (p == "/music/library") {
+    if (!signedIn()) return out.error(503, "no_cookies");
+    return list(r, out, "music/library", [] { return music::library(); });
+  }
   if (starts(p, "/music/playlist/")) {
     std::string id = uriDecode(p.substr(16));
     if (starts(id, "VL") && id.size() > 3) id = id.substr(2);
@@ -255,8 +268,16 @@ void route(const Request& r, Response& out) {
     return list(r, out, "music/next/" + id, [id] { return music::next(id); });
   }
   // --- YouTube ---
-  if (p == "/video/home") return list(r, out, "video/home", [] { return video::home(); });
-  if (p == "/video/subscriptions" || p == "/video/history") return out.error(503, "no_cookies");
+  if (p == "/video/home")  // signed in: what YouTube picks for the account; else the TV app's topics
+    return list(r, out, "video/home", [] {
+      std::string picks = signedIn() ? video::feed("video/home", "FEwhat_to_watch") : "";
+      return picks.empty() || picks.find("\"id\"") == std::string::npos ? video::home() : picks;
+    });
+  if (p == "/video/subscriptions" || p == "/video/history") {
+    if (!signedIn()) return out.error(503, "no_cookies");
+    std::string id = p == "/video/history" ? "FEhistory" : "FEsubscriptions";
+    return list(r, out, p.substr(1), [p, id] { return video::feed(p.substr(1), id); });
+  }
   if (p == "/video/search") {
     std::string q = trim(param(r, "q"));
     if (param(r, "next").empty() && q.empty()) return out.error(400, "query");

@@ -32,6 +32,19 @@ struct Rules {
 
 // Where direct mode keeps its state (the visitor id, the rules); "" keeps nothing.
 void setDataDir(const std::string& dir);
+
+// The YouTube account direct mode signs in with, as the Rondo server does: a cookies.txt exported from a
+// browser signed in to YouTube, uploaded on the dashboard to <data>/youtube-cookies.txt (0600, never
+// leaves the Y1). It is read again when it changes. The web clients (WEB, WEB_REMIX) send it, signed
+// (SAPISIDHASH); the TV, visionOS and Android clients stay signed out.
+bool hasCookies();
+int accountGeneration();  // changes with the file: answers cached before belong to the other account
+// {"signedIn": bool, "name", "handle"}: YouTube's account menu, asked at most every 10 minutes
+std::string accountJson();
+bool signedIn();  // the last answer (true until one says otherwise, while there are cookies)
+void reloadAccount();  // the file read again now (the dashboard just changed it)
+// a Netscape cookies.txt with at least one youtube.com cookie (admin.ts's isCookiesFile)
+bool isCookiesText(const std::string& text);
 const Rules& rules();
 
 struct DocFree {

@@ -1,6 +1,10 @@
 // innertube.h.
 #include "innertube.h"
 
+#include <openssl/sha.h>
+#include <sys/stat.h>
+#include <time.h>
+
 #include <curl/curl.h>
 #include <stdio.h>
 #include <string.h>
@@ -152,6 +156,174 @@ void setDataDir(const std::string& dir) {
   loadRules();
 }
 
+// --- the account ---
+
+namespace {
+
+struct Account {
+  std::string header;                        // Cookie: for youtube.com
+  std::string sapisid, sapisid1p, sapisid3p;  // what SAPISIDHASH signs with
+};
+std::mutex g_accMu;
+Account g_account;
+int64_t g_accStatMs = 0, g_accMtime = -1, g_accSize = -1;
+int g_accGen = 0;
+int g_accChecked = -1;  // the generation the last account menu was for
+int64_t g_accCheckedMs = 0;
+std::string g_accJson;
+bool g_accSignedIn = true;
+
+int64_t monoMs() {
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
+}
+
+Account parseCookies(const std::string& text) {
+  Account a;
+  time_t now = time(nullptr);
+  size_t at = 0;
+  while (at < text.size()) {
+    size_t nl = text.find('\n', at);
+    std::string line = text.substr(at, nl == std::string::npos ? std::string::npos : nl - at);
+    at = nl == std::string::npos ? text.size() : nl + 1;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.compare(0, 10, "#HttpOnly_") == 0) line = line.substr(10);
+    if (line.empty() || line[0] == '#') continue;
+    std::vector<std::string> f;
+    for (size_t a0 = 0;;) {
+      size_t t = line.find('\t', a0);
+      f.push_back(line.substr(a0, t == std::string::npos ? std::string::npos : t - a0));
+      if (t == std::string::npos) break;
+      a0 = t + 1;
+    }
+    if (f.size() < 7) continue;
+    const std::string& domain = f[0];
+    bool yt = domain == "youtube.com" || (domain.size() >= 12 && domain.compare(domain.size() - 12, 12, ".youtube.com") == 0);
+    if (!yt) continue;
+    long long exp = atoll(f[4].c_str());
+    if (exp > 0 && exp < now) continue;
+    a.header += (a.header.empty() ? "" : "; ") + f[5] + "=" + f[6];
+    if (f[5] == "SAPISID") a.sapisid = f[6];
+    else if (f[5] == "__Secure-1PAPISID") a.sapisid1p = f[6];
+    else if (f[5] == "__Secure-3PAPISID") a.sapisid3p = f[6];
+  }
+  if (a.sapisid.empty()) a.sapisid = a.sapisid3p;
+  return a;
+}
+
+// the file read again when it changed (looked at every 2 s at most); under g_accMu
+void refreshAccountLocked() {
+  int64_t now = monoMs();
+  if (g_accStatMs && now - g_accStatMs < 2000) return;
+  g_accStatMs = now;
+  std::string dir;
+  {
+    std::lock_guard<std::mutex> l(g_mu);
+    dir = g_dataDir;
+  }
+  struct stat st;
+  int64_t mtime = -1, size = -1;
+  std::string file = dir + "/youtube-cookies.txt";
+  if (!dir.empty() && stat(file.c_str(), &st) == 0) mtime = int64_t(st.st_mtime), size = int64_t(st.st_size);
+  if (mtime == g_accMtime && size == g_accSize) return;
+  g_accMtime = mtime, g_accSize = size;
+  g_account = mtime < 0 ? Account() : parseCookies(readFile(file));
+  g_accGen++;
+  g_accSignedIn = !g_account.header.empty();
+  fprintf(stderr, "rondo-direct: YouTube account %s\n", g_account.header.empty() ? "signed out" : "cookies read");
+}
+
+std::string sha1Hex(const std::string& s) {
+  unsigned char md[SHA_DIGEST_LENGTH];
+  SHA1(reinterpret_cast<const unsigned char*>(s.data()), s.size(), md);
+  static const char* hex = "0123456789abcdef";
+  std::string out;
+  for (unsigned char b : md) out += hex[b >> 4], out += hex[b & 15];
+  return out;
+}
+
+// SAPISIDHASH <time>_<sha1(time SAPISID origin)> (and the 1P and 3P forms when the cookies have them),
+// as youtube.com's own pages send it
+std::string authorization(const Account& a, const std::string& origin) {
+  std::string ts = std::to_string(time(nullptr)), out;
+  auto one = [&](const char* name, const std::string& sid) {
+    if (sid.empty()) return;
+    out += (out.empty() ? "" : " ") + std::string(name) + " " + ts + "_" + sha1Hex(ts + " " + sid + " " + origin);
+  };
+  one("SAPISIDHASH", a.sapisid);
+  one("SAPISID1PHASH", a.sapisid1p);
+  one("SAPISID3PHASH", a.sapisid3p);
+  return out;
+}
+
+}  // namespace
+
+bool hasCookies() {
+  std::lock_guard<std::mutex> l(g_accMu);
+  refreshAccountLocked();
+  return !g_account.header.empty();
+}
+int accountGeneration() {
+  std::lock_guard<std::mutex> l(g_accMu);
+  refreshAccountLocked();
+  return g_accGen;
+}
+bool signedIn() {
+  std::lock_guard<std::mutex> l(g_accMu);
+  refreshAccountLocked();
+  return !g_account.header.empty() && g_accSignedIn;
+}
+bool isCookiesText(const std::string& text) { return !parseCookies(text).header.empty(); }
+void reloadAccount() {
+  std::lock_guard<std::mutex> l(g_accMu);
+  g_accStatMs = 0;
+  refreshAccountLocked();
+}
+
+// the account menu's header: who the cookies sign in as (none: they're signed out, or expired)
+namespace {
+void findHeader(J o, J& found, int depth = 0) {
+  if (!o || found || depth > 30) return;
+  if (yyjson_is_obj(o)) {
+    if (J h = key(o, "activeAccountHeaderRenderer")) {
+      found = h;
+      return;
+    }
+    size_t k, n;
+    J kk, v;
+    yyjson_obj_foreach(o, k, n, kk, v) findHeader(v, found, depth + 1);
+  } else if (yyjson_is_arr(o)) {
+    size_t k, n;
+    J v;
+    yyjson_arr_foreach(o, k, n, v) findHeader(v, found, depth + 1);
+  }
+}
+}  // namespace
+
+std::string accountJson() {
+  int gen;
+  {
+    std::lock_guard<std::mutex> l(g_accMu);
+    refreshAccountLocked();
+    if (g_account.header.empty()) return "{\"signedIn\":false}";
+    gen = g_accGen;
+    if (g_accChecked == gen && monoMs() - g_accCheckedMs < 10 * 60 * 1000) return g_accJson;
+  }
+  Doc d;
+  int status = innertube(rules().web, "account/account_menu", "", d);
+  if (status == 0) return "{\"signedIn\":true,\"unchecked\":true}";  // no connection: as far as we know
+  J h = nullptr;
+  findHeader(root(d), h);
+  std::string name = h ? text(key(h, "accountName")) : "", handle = h ? text(key(h, "channelHandle")) : "";
+  bool in = h != nullptr;
+  std::string j = in ? "{\"signedIn\":true,\"name\":" + quote(name) + ",\"handle\":" + quote(handle) + "}"
+                     : "{\"signedIn\":false,\"expired\":true}";
+  std::lock_guard<std::mutex> l(g_accMu);
+  if (gen == g_accGen) g_accChecked = gen, g_accCheckedMs = monoMs(), g_accJson = j, g_accSignedIn = in;
+  return j;
+}
+
 const Rules& rules() {
   std::lock_guard<std::mutex> l(g_mu);
   if (!g_rulesLoaded) loadRules();
@@ -185,6 +357,23 @@ int innertube(const Client& c, const char* endpointName, const std::string& fiel
   hs = curl_slist_append(hs, ("Referer: https://" + c.host + "/").c_str());
   hs = curl_slist_append(hs, "Accept-Language: en");
   if (!visitor.empty()) hs = curl_slist_append(hs, ("X-Goog-Visitor-Id: " + visitor).c_str());
+  // signed in: the web clients carry the account (the others take no cookies)
+  if (c.name == "WEB" || c.name == "WEB_REMIX") {
+    Account a;
+    {
+      std::lock_guard<std::mutex> l(g_accMu);
+      refreshAccountLocked();
+      a = g_account;
+    }
+    if (!a.header.empty()) {
+      std::string origin = "https://" + c.host;
+      hs = curl_slist_append(hs, ("Cookie: " + a.header).c_str());
+      if (!a.sapisid.empty()) hs = curl_slist_append(hs, ("Authorization: " + authorization(a, origin)).c_str());
+      hs = curl_slist_append(hs, "X-Goog-AuthUser: 0");
+      hs = curl_slist_append(hs, ("X-Origin: " + origin).c_str());
+      hs = curl_slist_append(hs, "X-Youtube-Bootstrap-Logged-In: true");
+    }
+  }
   std::string answer;
   Collect col{&answer, 16u << 20};
   curl_easy_setopt(h, CURLOPT_URL, url.c_str());

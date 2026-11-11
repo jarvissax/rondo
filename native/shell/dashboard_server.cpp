@@ -37,6 +37,7 @@
 #include "app.h"
 #include "dashboard.h"
 #include "file_ops.h"
+#include "../direct/innertube.h"
 #include "main_queue.h"
 #include "screens.h"
 
@@ -361,6 +362,23 @@ int coreCall(bool post, const std::string& path, const std::string& json, std::s
   body = w->body;
   pthread_mutex_unlock(&w->mu);
   return status;
+}
+
+// direct mode's account as the dashboard shows it: {"mode": "direct"|"server", "signedIn", "name",
+// "handle", "expired"}; reload: the cookies file just changed
+template <class T>
+T onUiValue(std::function<T()> fn) {
+  auto out = std::make_shared<T>();
+  onMain([out, fn] { *out = fn(); });
+  return *out;
+}
+Response youtubeAccount(bool reload) {
+  bool direct = onUiValue<bool>([] { return directMode(); });
+  if (!direct) return json("{\"mode\":\"server\"}");
+  std::string body;
+  int st = coreCall(false, reload ? "/account?reload=1" : "/account", "", body, 25000);
+  if (st != 200 || body.size() < 2 || body[0] != '{') return json("{\"mode\":\"direct\",\"signedIn\":false,\"unreachable\":true}");
+  return json("{\"mode\":\"direct\"," + body.substr(1));
 }
 
 // --- the card ---
@@ -1916,6 +1934,37 @@ Response Server::api(Request& r, const std::string& path) {
       else g_core.btForget(address);
       return json(bluetoothJson());
     });
+  }
+  // direct mode's YouTube account: who the cookies.txt uploaded here signs in as; in server mode the
+  // server has its own (its admin page)
+  if (path == "/youtube/account" && m == "GET") return youtubeAccount(false);
+  if (path == "/youtube/cookies" && (m == "PUT" || m == "DELETE")) {
+    std::string text;
+    if (m == "PUT") {
+      b->text("cookies", text);
+      if (!direct::isCookiesText(text)) return error(400, "That isn\xe2\x80\x99t a cookies.txt file with youtube.com cookies. Export it again while youtube.com is open.");
+    }
+    std::string ok = onUiValue<std::string>([text, m] {
+      std::string file = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "youtube-cookies.txt";
+      if (m == "DELETE") {
+        unlink(file.c_str());
+      } else {
+        std::string tmp = file + ".part";
+        int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);  // the account: nobody else's to read
+        bool w = fd >= 0 && write(fd, text.data(), text.size()) == ssize_t(text.size());
+        if (fd >= 0) w = close(fd) == 0 && w;
+        if (!w || rename(tmp.c_str(), file.c_str()) != 0) {
+          unlink(tmp.c_str());
+          return std::string("Couldn't save it on the Rondo");
+        }
+      }
+      // the cached answers were the other account's: on disk too (the cache's mark says whose)
+      unlink((g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache/server").c_str());
+      if (g_onServerChanged) g_onServerChanged();
+      return std::string();
+    });
+    if (!ok.empty()) return error(500, ok);
+    return youtubeAccount(true);
   }
   if (path == "/server" && m == "GET")
     return ui([] { return serverInfoJson(); });

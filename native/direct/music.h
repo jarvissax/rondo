@@ -14,6 +14,7 @@ std::string playlist(const std::string& id);                   // /music/playlis
 std::string album(const std::string& id);                      // /music/album/:id
 std::string artist(const std::string& id);                     // /music/artist/:id: {title, thumb, sections}
 std::string next(const std::string& videoId);                  // /music/next/:id: {items}
+std::string library();  // /music/library, signed in: the account's playlists, Liked music first: {playlists}
 
 // A song's lyrics as YouTube Music has them (timed when it can): {synced, plain} JSON members, or ""
 struct Lyrics {
