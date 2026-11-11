@@ -17,6 +17,9 @@ std::unique_ptr<Screen> makeDevice();
 std::unique_ptr<Screen> makeFolders();  // Library › Folders: the card as it is
 std::unique_ptr<Screen> makeCoverFlow();  // Library › Cover Flow: the albums' covers
 std::unique_ptr<Screen> makePhotos();     // Library › Photos: the pictures on the card
+std::unique_ptr<Screen> makePhotoViewer(const std::vector<std::string>& paths, int at);  // these, full screen
+std::unique_ptr<Screen> makeFiles(const std::string& dir = "");  // Library › Files: a folder, or the storages
+std::unique_ptr<Screen> makeLibraryMusic();  // Library › Music: the songs every way
 const Tile& photoTile();
 // every photo on the card and the internal storage, the newest first: path, time (s); a thread's work
 void findPhotos(std::vector<std::pair<std::string, int64_t>>& out);

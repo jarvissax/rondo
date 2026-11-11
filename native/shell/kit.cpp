@@ -22,42 +22,83 @@ void drawLabel(Env& e, const Label& l, float x, float top, Color c) {
 }
 
 namespace tiles {
+// the brands
 const Tile music{Icon::Note, rgb(0x3a3a3a), rgb(0x141414), 2};
 const Tile video{Icon::Play, rgb(0x3a3a3a), rgb(0x141414), 1};
-const Tile device{Icon::Folder, rgb(0x5fb7ff), rgb(0x1f73e0)};
+// the main menu
 const Tile nowPlaying{Icon::Bars, rgb(0x7be07b), rgb(0x26a83b)};
-const Tile settings{Icon::Gear, rgb(0xb8bcc4), rgb(0x6f747d)};
-const Tile wifi{Icon::Wifi, rgb(0x5fb7ff), rgb(0x1f73e0)};
-const Tile bluetooth{Icon::Bluetooth, rgb(0x6a8cff), rgb(0x2c4fd6)};
-const Tile quality{Icon::Play, rgb(0xffb04d), rgb(0xf07a12)};
-const Tile server{Icon::Cloud, rgb(0x7be07b), rgb(0x26a83b)};
-const Tile about{Icon::Info, rgb(0xb8bcc4), rgb(0x6f747d)};
-const Tile songs{Icon::Note, rgb(0xff5e7e), rgb(0xe0144c)};
-const Tile artists{Icon::Person, rgb(0xc58cff), rgb(0x7b3fe0)};
-const Tile albums{Icon::Disc, rgb(0xffb04d), rgb(0xf07a12)};
-const Tile dashboard{Icon::Screen, rgb(0x3fd0c9), rgb(0x0f8f96)};
-const Tile brightness{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
-const Tile timer{Icon::Timer, rgb(0x9a8cff), rgb(0x5a3fe0)};
-const Tile clock{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile device{Icon::Library, rgb(0x5fb7ff), rgb(0x1f73e0)};  // Library
 const Tile radio{Icon::Radio, rgb(0xffb04d), rgb(0xf07a12)};
-const Tile lyrics{Icon::Note, rgb(0xff8fc8), rgb(0xd6338a)};
-const Tile sound{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};
-const Tile accel{Icon::Bars, rgb(0x6a8cff), rgb(0x2c4fd6)};
-const Tile equalizer{Icon::Bars, rgb(0xff7a93), rgb(0xd6304f)};  // Settings › Sound (2.0)
-const Tile wheel{Icon::Disc, rgb(0x6a8cff), rgb(0x2c4fd6)};
-const Tile videos{Icon::Play, rgb(0xff6b5a), rgb(0xe01e1e)};
-const Tile shuffle{Icon::Shuffle, rgb(0x7be07b), rgb(0x26a83b)};
+const Tile settings{Icon::Gear, rgb(0xb8bcc4), rgb(0x6f747d)};
+// Settings: its groups
+const Tile dashboard{Icon::Screen, rgb(0x3fd0c9), rgb(0x0f8f96)};
+const Tile connections{Icon::Broadcast, rgb(0x5fb7ff), rgb(0x1f73e0)};
+const Tile equalizer{Icon::Sliders, rgb(0xff7a93), rgb(0xd6304f)};  // Sound
+const Tile display{Icon::Device, rgb(0x8c7bff), rgb(0x4b36d6)};
+const Tile controls{Icon::Wheel, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile system{Icon::Chip, rgb(0x9aa0a8), rgb(0x5b616a)};
+// Connections
+const Tile wifi{Icon::Wifi, rgb(0x4fc3f7), rgb(0x0288d1)};
+const Tile bluetooth{Icon::Bluetooth, rgb(0x6a8cff), rgb(0x2c4fd6)};
+// YouTube
+const Tile server{Icon::Cloud, rgb(0x7be07b), rgb(0x26a83b)};
+const Tile account{Icon::Key, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile quality{Icon::Diamond, rgb(0xffb04d), rgb(0xf07a12)};
+// Sound
+const Tile output{Icon::Headphones, rgb(0xff7a93), rgb(0xd6304f)};
+// Display, and its Theme
+const Tile theme{Icon::Theme, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile brightness{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
+const Tile timer{Icon::Timer, rgb(0x8fa3b8), rgb(0x52657a)};
+const Tile lyrics{Icon::Mic, rgb(0xff8fc8), rgb(0xd6338a)};
+const Tile textSize{Icon::Type, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile menuOrder{Icon::Menu, rgb(0x6a8cff), rgb(0x2c4fd6)};
+// Controls
+const Tile accel{Icon::Gauge, rgb(0x6a8cff), rgb(0x2c4fd6)};
+const Tile wheel{Icon::Vibrate, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile sound{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};  // Click sound
+// System
+const Tile clock{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile update{Icon::Download, rgb(0x5fb7ff), rgb(0x1f73e0)};
+const Tile about{Icon::Info, rgb(0xb8bcc4), rgb(0x6f747d)};
 const Tile power{Icon::Power, rgb(0xff7a7a), rgb(0xe0283c)};
 const Tile restart{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
-const Tile theme{Icon::Theme, rgb(0xc58cff), rgb(0x7b3fe0)};
-const Tile playlists{Icon::Playlist, rgb(0x5fb7ff), rgb(0x1f73e0)};
-const Tile add{Icon::Plus, rgb(0x7be07b), rgb(0x26a83b)};
+// Library: its sections
+const Tile musicSection{Icon::Headphones, rgb(0xff5e7e), rgb(0xe0144c)};
+const Tile videos{Icon::Film, rgb(0xff6b5a), rgb(0xe01e1e)};
+const Tile photos{Icon::Photo, rgb(0xffd24d), rgb(0xf0a012)};
+const Tile files{Icon::File, rgb(0x5fb7ff), rgb(0x1f73e0)};
+// Library › Music
+const Tile shuffle{Icon::Shuffle, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile search{Icon::Search, rgb(0xb8bcc4), rgb(0x6f747d)};
-const Tile recent{Icon::Timer, rgb(0x3fd0c9), rgb(0x0f8f96)};
+const Tile playlists{Icon::Playlist, rgb(0x5fb7ff), rgb(0x1f73e0)};
+const Tile songs{Icon::Note, rgb(0xff5e7e), rgb(0xe0144c)};
+const Tile artists{Icon::Person, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile albumArtists{Icon::People, rgb(0x9a8cff), rgb(0x5a3fe0)};
+const Tile albums{Icon::Disc, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile coverFlow{Icon::Stack, rgb(0x8fa3b8), rgb(0x52657a)};
+const Tile genres{Icon::Tag, rgb(0xff8fc8), rgb(0xd6338a)};
+const Tile folders{Icon::Folder, rgb(0x4fc3f7), rgb(0x0288d1)};
+const Tile recent{Icon::Sparkle, rgb(0x3fd0c9), rgb(0x0f8f96)};  // Recently added
+const Tile mostPlayed{Icon::Flame, rgb(0xff8a65), rgb(0xf4511e)};
+const Tile played{Icon::History, rgb(0x8c7bff), rgb(0x4b36d6)};  // Recently played
+const Tile topRated{Icon::Star, rgb(0xf5d76e), rgb(0xc99a00)};
+const Tile rescan{Icon::Sync, rgb(0x9aa0a8), rgb(0x5b616a)};
+const Tile organize{Icon::Tree, rgb(0xd4a373), rgb(0x9c6a3a)};
+// playlists, Up next
+const Tile smart{Icon::Wand, rgb(0xe28cff), rgb(0xb03fe0)};
+const Tile add{Icon::Plus, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile del{Icon::Trash, rgb(0xff7a7a), rgb(0xe0283c)};
-const Tile rescan{Icon::Refresh, rgb(0xb8bcc4), rgb(0x6f747d)};
+const Tile repeat{Icon::Repeat, rgb(0x6a8cff), rgb(0x2c4fd6)};
+// Files' actions
+const Tile openFile{Icon::Chevron, rgb(0x7be07b), rgb(0x26a83b)};
+const Tile newFolder{Icon::Plus, rgb(0x4fc3f7), rgb(0x0288d1)};
+const Tile renameTo{Icon::Type, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile moveTo{Icon::Tree, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile copyTo{Icon::Stack, rgb(0x8c7bff), rgb(0x4b36d6)};
+// the rest
+const Tile usb{Icon::Usb, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile shorts{Icon::Shorts, rgb(0xff6b5a), rgb(0xe01e1e)};
-const Tile update{Icon::Refresh, rgb(0x5fb7ff), rgb(0x1f73e0)};
 }  // namespace tiles
 
 // IconTile: the gradient tile (radius 7 units) with a 16-unit white glyph, or the white brand tile with

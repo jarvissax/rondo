@@ -1,6 +1,6 @@
-// Settings (SettingsScreen.kt and ThemeScreens.kt in 1.0.x), ported 1:1: the list, the choice
-// screens, Theme with its accent, text size and main menu order, and About; each system service
-// (Wi-Fi, Bluetooth, Dashboard, Server, Software update, Sound, Shut down) leads to its screen.
+// Settings (SettingsScreen.kt and ThemeScreens.kt in 1.0.x): since 2.0 in groups (Connections, YouTube,
+// Sound, Display, Controls, System) under the Dashboard, the choice screens, Theme with its accent, text
+// size and main menu order, and About; each system service leads to its screen.
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -229,7 +229,7 @@ class ThemeScreen : public ShellListScreen {
     Row size;
     size.title = "Text size";
     size.trailing = textSizeName(t.textScale);
-    size.tile = &tiles::lyrics;
+    size.tile = &tiles::textSize;
     size.chevron = true;
     size.onSelect = [] {
       std::vector<ChoiceScreen::Choice> c;
@@ -248,7 +248,7 @@ class ThemeScreen : public ShellListScreen {
     size_t shown = 0;
     for (auto& m : t.menu) shown += m.visible;
     menu.trailing = std::to_string(shown) + " of " + std::to_string(t.menu.size()) + " shown";
-    menu.tile = &tiles::accel;
+    menu.tile = &tiles::menuOrder;
     menu.chevron = true;
     menu.onSelect = [] { g_app->push(std::unique_ptr<Screen>(new MenuOrderScreen())); };
     rows.push_back(menu);
@@ -376,6 +376,170 @@ class AboutScreen : public ShellListScreen {
 };
 
 // SettingsScreen
+// What Settings' rows say, found by the top list and shown in its groups too: the server's state (a
+// request) and a newer Rondo (another)
+std::string g_serverState = "Checking\xe2\x80\xa6", g_latestVersion;
+
+using Rows = std::vector<Row>;
+Row settingRow(const char* title, std::string trailing, const Tile& tile, bool chevron, std::function<void()> on) {
+  Row r;
+  r.title = title, r.trailing = std::move(trailing), r.tile = &tile, r.chevron = chevron;
+  r.onSelect = std::move(on);
+  return r;
+}
+
+// One group of Settings: its rows made again when it shows and whenever what they say changes (Wi-Fi
+// joined, the clock, a toggle)
+class SettingsGroupScreen : public ShellListScreen {
+ public:
+  using Make = std::function<Rows(SettingsGroupScreen&)>;
+  SettingsGroupScreen(std::string title, Make make, std::function<void()> shown)
+      : ShellListScreen(std::move(title)), make_(std::move(make)), shown_(std::move(shown)) {
+    render();
+  }
+  void onShow() override {
+    if (shown_) shown_();
+    render();
+  }
+  bool tick(int64_t) override {
+    Rows rows = make_(*this);
+    if (same(rows, list_.rows())) return false;
+    list_.setRows(std::move(rows), true);
+    return true;
+  }
+  void render() { list_.setRows(make_(*this), true); }
+
+ private:
+  static bool same(const Rows& a, const Rows& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t k = 0; k < a.size(); k++)
+      if (a[k].title != b[k].title || a[k].trailing != b[k].trailing || a[k].subtitle != b[k].subtitle) return false;
+    return true;
+  }
+  Make make_;
+  std::function<void()> shown_;  // each time it shows (YouTube: the server asked again)
+};
+void pushGroup(const char* title, SettingsGroupScreen::Make make, std::function<void()> shown = nullptr) {
+  g_app->push(std::unique_ptr<Screen>(new SettingsGroupScreen(title, std::move(make), std::move(shown))));
+}
+
+// Connections: Wi-Fi and Bluetooth
+Rows connectionsRows(SettingsGroupScreen&) {
+  return {settingRow("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); }),
+          settingRow("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); })};
+}
+
+// YouTube: where it comes from and how videos play
+Rows youtubeRows(SettingsGroupScreen&) {
+  Rows rows;
+  rows.push_back(settingRow("Connection", g_serverState, tiles::server, true, [] { g_app->push(makeServer()); }));
+  rows.push_back(settingRow("Video quality", g_prefs.videoQuality ? std::to_string(g_prefs.videoQuality) + "p" : "Auto", tiles::quality,
+                            true, [] {
+                              g_app->push(choice(
+                                  "Video quality", {{"Auto", "0"}, {"720p", "720"}, {"480p", "480"}, {"360p", "360"}},
+                                  [] { return std::to_string(g_prefs.videoQuality); },
+                                  [](const std::string& v) {
+                                    g_prefs.videoQuality = atoi(v.c_str());
+                                    savePrefsNow();
+                                  },
+                                  [](const std::string& v) { return v == "0" ? "up to 360p" : ""; }));
+                            }));
+  return rows;
+}
+
+// Display: the look, the screen, what Now Playing shows
+Rows displayRows(SettingsGroupScreen& screen) {
+  Rows rows;
+  rows.push_back(settingRow("Theme", accentName(g_config.theme.accent), tiles::theme, true,
+                            [] { g_app->push(std::unique_ptr<Screen>(new ThemeScreen())); }));
+  rows.push_back(settingRow("Brightness", std::to_string(brightnessPercent()) + "%", tiles::brightness, true, [] {
+    std::vector<ChoiceScreen::Choice> c;
+    for (int v : {10, 25, 40, 60, 80, 100}) c.push_back({std::to_string(v) + "%", std::to_string(v)});
+    g_app->push(choice(
+        "Brightness", c,
+        [] {  // the nearest choice to the backlight's value
+          int best = 10;
+          for (int v : {10, 25, 40, 60, 80, 100})
+            if (abs(v * 255 / 100 - g_prefs.brightness) < abs(best * 255 / 100 - g_prefs.brightness)) best = v;
+          return std::to_string(best);
+        },
+        [](const std::string& v) {
+          g_prefs.brightness = std::max(10, std::min(255, atoi(v.c_str()) * 255 / 100));
+          applyBrightness(g_prefs.brightness);
+          savePrefsNow();
+        },
+        [](const std::string& v) { return atoi(v.c_str()) <= 40 ? "saves battery" : ""; }));
+  }));
+  rows.push_back(settingRow("Screen off after", timeoutName(g_prefs.screenTimeoutMs), tiles::timer, true, [] {
+    std::vector<ChoiceScreen::Choice> c;
+    for (int v : {15000, 30000, 60000, 120000, 300000, 600000}) c.push_back({timeoutName(v), std::to_string(v)});
+    g_app->push(choice(
+        "Screen off after", c,
+        [] {
+          int best = 15000;
+          for (int v : {15000, 30000, 60000, 120000, 300000, 600000})
+            if (abs(v - g_prefs.screenTimeoutMs) < abs(best - g_prefs.screenTimeoutMs)) best = v;
+          return std::to_string(best);
+        },
+        [](const std::string& v) {  // power_screens.cpp turns the screen off after it
+          g_prefs.screenTimeoutMs = atoi(v.c_str());
+          savePrefsNow();
+        },
+        [](const std::string& v) { return atoi(v.c_str()) <= 30000 ? "saves battery" : ""; }));
+  }));
+  SettingsGroupScreen* self = &screen;
+  rows.push_back(settingRow("Open lyrics automatically", onOff(g_config.behavior.lyricsOnOpen), tiles::lyrics, false, [self] {
+    g_config.behavior.lyricsOnOpen = !g_config.behavior.lyricsOnOpen;
+    saveConfigNow();
+    self->render();
+  }));
+  return rows;
+}
+
+// Controls: the wheel and the buttons
+Rows controlsRows(SettingsGroupScreen& screen) {
+  Rows rows;
+  rows.push_back(settingRow("Wheel acceleration", accelerationName(g_config.behavior.wheelAcceleration), tiles::accel, true, [] {
+    g_app->push(choice(
+        "Wheel acceleration", {{"Off", "off"}, {"Normal", "normal"}, {"Fast", "fast"}},
+        [] { return g_config.behavior.wheelAcceleration; },
+        [](const std::string& v) {
+          g_config.behavior.wheelAcceleration = v;
+          saveConfigNow();
+          if (g_app->onAccelerationChanged) g_app->onAccelerationChanged();
+        },
+        [](const std::string& v) { return v == "off" ? "one step a pulse" : v == "fast" ? "after a short spin" : "after a long spin"; }));
+  }));
+  rows.push_back(settingRow("Wheel vibration", vibrationName(g_config.behavior.wheelVibration), tiles::wheel, true, [] {
+    g_app->push(choice(
+        "Wheel vibration", {{"Off", "off"}, {"Light", "light"}, {"Normal", "normal"}, {"Strong", "strong"}},
+        [] { return g_config.behavior.wheelVibration; },
+        [](const std::string& v) {
+          g_config.behavior.wheelVibration = v;
+          saveConfigNow();
+        },
+        [](const std::string& v) { return v == "normal" ? "like Rockbox" : ""; }));
+  }));
+  SettingsGroupScreen* self = &screen;
+  rows.push_back(settingRow("Click sound", onOff(g_prefs.clickSound), tiles::sound, false, [self] {
+    g_prefs.clickSound = !g_prefs.clickSound;
+    savePrefsNow();
+    self->render();
+  }));
+  return rows;
+}
+
+// System: the clock, updates, this Rondo, turning it off
+Rows systemRows(SettingsGroupScreen&) {
+  return {settingRow("Date & time", clockTime(time(nullptr), g_prefs.clock24), tiles::clock, true, [] { g_app->push(makeDateTime()); }),
+          settingRow("Software update", g_latestVersion.empty() ? "" : g_latestVersion + " is out", tiles::update, true,
+                     [] { g_app->push(makeSoftwareUpdate()); }),
+          settingRow("About", std::string("Rondo ") + kVersion, tiles::about, true,
+                     [] { g_app->push(std::unique_ptr<Screen>(new AboutScreen())); }),
+          settingRow("Shut down", "", tiles::power, true, [] { g_app->push(makePower()); })};
+}
+
+// Settings: the dashboard, then the groups, each saying what matters most in it
 class SettingsScreen : public ShellListScreen {
  public:
   SettingsScreen() : ShellListScreen("Settings") { render(); }
@@ -389,7 +553,7 @@ class SettingsScreen : public ShellListScreen {
       g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
         if (!*alive || status != 200) return;
         std::string v = updateVersion(body);
-        latest_ = isNewerVersion(v, kVersion) ? v : "";
+        g_latestVersion = isNewerVersion(v, kVersion) ? v : "";
         render();
       });
     }
@@ -403,118 +567,32 @@ class SettingsScreen : public ShellListScreen {
 
  private:
   void render() {
-    std::vector<Row> rows;
-    auto add = [&](const char* title, std::string trailing, const Tile& tile, bool chevron, std::function<void()> on) {
-      Row r;
-      r.title = title, r.trailing = std::move(trailing), r.tile = &tile, r.chevron = chevron;
-      r.onSelect = std::move(on);
-      rows.push_back(std::move(r));
-    };
-    add("Dashboard", "", tiles::dashboard, true, [] { g_app->push(makeDashboard()); });
-    add("Wi-Fi", wifiName(), tiles::wifi, true, [] { g_app->push(makeWifi()); });
-    add("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); });
-    add("Sound", soundState(), tiles::equalizer, true, [] { g_app->push(makeSound()); });
     wifi_ = wifiName();
-    add("Theme", accentName(g_config.theme.accent), tiles::theme, true,
-        [] { g_app->push(std::unique_ptr<Screen>(new ThemeScreen())); });
-    add("Video quality", g_prefs.videoQuality ? std::to_string(g_prefs.videoQuality) + "p" : "Auto", tiles::quality, true, [] {
-      g_app->push(choice(
-          "Video quality", {{"Auto", "0"}, {"720p", "720"}, {"480p", "480"}, {"360p", "360"}},
-          [] { return std::to_string(g_prefs.videoQuality); },
-          [](const std::string& v) {
-            g_prefs.videoQuality = atoi(v.c_str());
-            savePrefsNow();
-          },
-          [](const std::string& v) { return v == "0" ? "up to 360p" : ""; }));
-    });
-    add("Brightness", std::to_string(brightnessPercent()) + "%", tiles::brightness, true, [] {
-      std::vector<ChoiceScreen::Choice> c;
-      for (int v : {10, 25, 40, 60, 80, 100}) c.push_back({std::to_string(v) + "%", std::to_string(v)});
-      g_app->push(choice(
-          "Brightness", c,
-          [] {  // the nearest choice to the backlight's value
-            int best = 10;
-            for (int v : {10, 25, 40, 60, 80, 100})
-              if (abs(v * 255 / 100 - g_prefs.brightness) < abs(best * 255 / 100 - g_prefs.brightness)) best = v;
-            return std::to_string(best);
-          },
-          [](const std::string& v) {
-            g_prefs.brightness = std::max(10, std::min(255, atoi(v.c_str()) * 255 / 100));
-            applyBrightness(g_prefs.brightness);
-            savePrefsNow();
-          },
-          [](const std::string& v) { return atoi(v.c_str()) <= 40 ? "saves battery" : ""; }));
-    });
-    add("Screen off after", timeoutName(g_prefs.screenTimeoutMs), tiles::timer, true, [] {
-      std::vector<ChoiceScreen::Choice> c;
-      for (int v : {15000, 30000, 60000, 120000, 300000, 600000}) c.push_back({timeoutName(v), std::to_string(v)});
-      g_app->push(choice(
-          "Screen off after", c,
-          [] {
-            int best = 15000;
-            for (int v : {15000, 30000, 60000, 120000, 300000, 600000})
-              if (abs(v - g_prefs.screenTimeoutMs) < abs(best - g_prefs.screenTimeoutMs)) best = v;
-            return std::to_string(best);
-          },
-          [](const std::string& v) {  // power_screens.cpp turns the screen off after it
-            g_prefs.screenTimeoutMs = atoi(v.c_str());
-            savePrefsNow();
-          },
-          [](const std::string& v) { return atoi(v.c_str()) <= 30000 ? "saves battery" : ""; }));
-    });
-    add("Open lyrics automatically", onOff(g_config.behavior.lyricsOnOpen), tiles::lyrics, false, [this] {
-      g_config.behavior.lyricsOnOpen = !g_config.behavior.lyricsOnOpen;
-      saveConfigNow();
-      render();
-    });
-    add("Wheel acceleration", accelerationName(g_config.behavior.wheelAcceleration), tiles::accel, true, [] {
-      g_app->push(choice(
-          "Wheel acceleration", {{"Off", "off"}, {"Normal", "normal"}, {"Fast", "fast"}},
-          [] { return g_config.behavior.wheelAcceleration; },
-          [](const std::string& v) {
-            g_config.behavior.wheelAcceleration = v;
-            saveConfigNow();
-            if (g_app->onAccelerationChanged) g_app->onAccelerationChanged();
-          },
-          [](const std::string& v) {
-            return v == "off" ? "one step a pulse" : v == "fast" ? "after a short spin" : "after a long spin";
-          }));
-    });
-    add("Wheel vibration", vibrationName(g_config.behavior.wheelVibration), tiles::wheel, true, [] {
-      g_app->push(choice(
-          "Wheel vibration", {{"Off", "off"}, {"Light", "light"}, {"Normal", "normal"}, {"Strong", "strong"}},
-          [] { return g_config.behavior.wheelVibration; },
-          [](const std::string& v) {
-            g_config.behavior.wheelVibration = v;
-            saveConfigNow();
-          },
-          [](const std::string& v) { return v == "normal" ? "like Rockbox" : ""; }));
-    });
-    add("Click sound", onOff(g_prefs.clickSound), tiles::sound, false, [this] {
-      g_prefs.clickSound = !g_prefs.clickSound;
-      savePrefsNow();
-      render();
-    });
-    add("Date & time", clockTime(time(nullptr), g_prefs.clock24), tiles::clock, true, [] { g_app->push(makeDateTime()); });
-    add("Server", server_, tiles::server, true, [] { g_app->push(makeServer()); });
-    add("Software update", latest_.empty() ? "" : latest_ + " is out", tiles::update, true, [] { g_app->push(makeSoftwareUpdate()); });
-    add("About", std::string("Rondo ") + kVersion, tiles::about, true,
-        [] { g_app->push(std::unique_ptr<Screen>(new AboutScreen())); });
-    add("Shut down", "", tiles::power, true, [] { g_app->push(makePower()); });
+    Rows rows;
+    rows.push_back(settingRow("Dashboard", "", tiles::dashboard, true, [] { g_app->push(makeDashboard()); }));
+    rows.push_back(settingRow("Connections", wifi_, tiles::connections, true, [] { pushGroup("Connections", connectionsRows); }));
+    rows.push_back(settingRow("YouTube", g_serverState, tiles::video, true, [] {
+      // the connection asked again each time the group shows: back from switching it, it says the new one
+      pushGroup("YouTube", youtubeRows, [] { serverState([](const std::string& s) { g_serverState = s; }); });
+    }));
+    rows.push_back(settingRow("Sound", soundState(), tiles::equalizer, true, [] { g_app->push(makeSound()); }));
+    rows.push_back(settingRow("Display", accentName(g_config.theme.accent), tiles::display, true, [] { pushGroup("Display", displayRows); }));
+    rows.push_back(settingRow("Controls", "", tiles::controls, true, [] { pushGroup("Controls", controlsRows); }));
+    rows.push_back(settingRow("System", g_latestVersion.empty() ? std::string("Rondo ") + kVersion : g_latestVersion + " is out", tiles::system,
+                              true, [] { pushGroup("System", systemRows); }));
     list_.setRows(std::move(rows), true);
   }
-  // on opening Settings: the row says Checking… until the server answers
+  // on opening Settings: the YouTube row says Checking… until the server answers
   void checkServer() {
-    server_ = "Checking\xe2\x80\xa6";
+    g_serverState = "Checking\xe2\x80\xa6";
     render();
     auto alive = alive_;
     serverState([this, alive](const std::string& s) {
-      if (!*alive) return;
-      server_ = s;
-      render();
+      g_serverState = s;
+      if (*alive) render();
     });
   }
-  std::string wifi_, server_ = "Checking\xe2\x80\xa6", latest_;
+  std::string wifi_;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 

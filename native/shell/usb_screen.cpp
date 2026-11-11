@@ -67,9 +67,9 @@ class UsbDriveScreen : public ShellListScreen {
       rows.push_back(std::move(r));
     };
     if (switching_) {
-      add(target_ ? "Turning on\xe2\x80\xa6" : "Turning off\xe2\x80\xa6", nullptr, &tiles::device, false, nullptr);
+      add(target_ ? "Turning on\xe2\x80\xa6" : "Turning off\xe2\x80\xa6", nullptr, &tiles::usb, false, nullptr);
     } else if (on_) {
-      add("USB drive is on", "Copy files on your computer", &tiles::device, false, nullptr);
+      add("USB drive is on", "Copy files on your computer", &tiles::usb, false, nullptr);
       add("Turn off USB drive", "Eject it on the computer first", nullptr, true, [this] { switchTo(false); });
       Row h;
       h.header = true;
@@ -77,7 +77,7 @@ class UsbDriveScreen : public ShellListScreen {
       rows.push_back(h);
       add("Music on the card is paused", "It comes back when the drive is off", nullptr, false, nullptr);
     } else {
-      add("Use as USB drive", "Copy files from your computer", &tiles::device, true, [this] { switchTo(true); });
+      add("Use as USB drive", "Copy files from your computer", &tiles::usb, true, [this] { switchTo(true); });
       add("Not now", "Keep listening while it charges", nullptr, true, [] { g_app->pop(); });
     }
     list_.setRows(std::move(rows));

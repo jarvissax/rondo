@@ -291,6 +291,190 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.circle(12, 12, 9)}, 2.2f);
       p.stroke({p.poly({12, 12, 12, 6.5f}, false), p.poly({12, 12, 16, 13.5f}, false)}, 2.2f);
       break;
+    case Icon::Star: {  // ratings, Top rated: five points
+      Contour c{{}, true};
+      for (int i = 0; i < 10; i++) {
+        float a = float((-90 + i * 36) * M_PI / 180), r = i % 2 ? 4.4f : 10;
+        p.lineTo(c, 12 + r * cosf(a), 12.8f + r * sinf(a));
+      }
+      p.fill({c});
+      break;
+    }
+    case Icon::Photo:  // a landscape in a frame
+      p.stroke({p.roundRect(2.5f, 4.5f, 21.5f, 19.5f, 2.5f)}, 2);
+      p.fill({p.poly({5, 17.2f, 10, 10.5f, 13.5f, 14.8f, 15.6f, 12.6f, 19, 17.2f}, true)});
+      p.fill({p.circle(16, 8.8f, 1.8f)});
+      break;
+    case Icon::File:  // a page with its corner folded
+      p.stroke({p.poly({6, 2.5f, 14, 2.5f, 19, 7.5f, 19, 21.5f, 6, 21.5f}, true)}, 2);
+      p.stroke({p.poly({14, 2.5f, 14, 7.5f, 19, 7.5f}, false)}, 2);
+      p.stroke({p.poly({9, 12.5f, 16, 12.5f}, false), p.poly({9, 16.5f, 16, 16.5f}, false)}, 1.8f);
+      break;
+    case Icon::Headphones:
+      p.stroke({p.arc(4, 4, 20, 20, 180, 180)}, 2.2f);
+      p.stroke({p.poly({4, 12, 4, 15}, false), p.poly({20, 12, 20, 15}, false)}, 2.2f);
+      p.fill({p.roundRect(2.5f, 13, 8, 21, 2), p.roundRect(16, 13, 21.5f, 21, 2)});
+      break;
+    case Icon::Film:  // a strip with a play button
+      p.stroke({p.roundRect(3, 3.5f, 21, 20.5f, 2)}, 2);
+      p.stroke({p.poly({7.2f, 3.5f, 7.2f, 20.5f}, false), p.poly({16.8f, 3.5f, 16.8f, 20.5f}, false)}, 1.6f);
+      p.fill({p.poly({10.2f, 8.8f, 10.2f, 15.2f, 14.6f, 12}, true)});
+      break;
+    case Icon::People: {  // two people: album artists
+      p.fill({p.circle(16.2f, 7.6f, 3.1f)});
+      Contour back{{}, true};
+      p.moveTo(back, 13, 13.6f);
+      p.cubic(back, 17, 11.8f, 21.6f, 13.5f, 22, 19.5f);
+      p.lineTo(back, 15.5f, 19.5f);
+      p.fill({back});
+      p.fill({p.circle(9, 8.6f, 3.8f)});
+      Contour front{{}, true};
+      p.moveTo(front, 2, 21);
+      p.cubic(front, 2.4f, 14.2f, 15.6f, 14.2f, 16, 21);
+      p.fill({front});
+      break;
+    }
+    case Icon::Tag:  // genres
+      p.stroke({p.poly({3, 3, 11.5f, 3, 21, 12.5f, 12.5f, 21, 3, 11.5f}, true)}, 2.2f);
+      p.fill({p.circle(7.6f, 7.6f, 1.8f)});
+      break;
+    case Icon::Flame: {  // Most played
+      Contour c{{}, true};
+      p.moveTo(c, 12, 2.2f);
+      p.cubic(c, 15.5f, 6.5f, 19.5f, 9.8f, 19, 15);
+      p.cubic(c, 18.6f, 19.4f, 15.6f, 21.8f, 12, 21.8f);
+      p.cubic(c, 8.4f, 21.8f, 5, 19.4f, 5, 15);
+      p.cubic(c, 5, 11.6f, 7.2f, 9.6f, 8.4f, 7.2f);
+      p.cubic(c, 9.4f, 9.4f, 10.4f, 10.4f, 11.2f, 11);
+      p.cubic(c, 12.2f, 8.2f, 12.6f, 5.4f, 12, 2.2f);
+      p.fill({c});
+      break;
+    }
+    case Icon::History: {  // Recently played: a clock face turning back
+      p.stroke({p.arc(3.5f, 3.5f, 20.5f, 20.5f, 205, 295)}, 2.2f);
+      p.stroke({p.poly({12, 7.5f, 12, 12, 15, 14}, false)}, 2.2f);
+      // the arrow at the arc's start, pointing back along it
+      float a = float(205 * M_PI / 180), x = 12 + 8.5f * cosf(a), y = 12 + 8.5f * sinf(a);
+      float dx = sinf(a), dy = -cosf(a);  // against the arc's direction
+      p.fill({p.poly({x + dx * 3.4f, y + dy * 3.4f, x - dy * 3 - dx * 0.6f, y + dx * 3 - dy * 0.6f, x + dy * 3 - dx * 0.6f,
+                      y - dx * 3 - dy * 0.6f},
+                     true)});
+      break;
+    }
+    case Icon::Sparkle:  // Recently added, smart playlists: a four-point star and a small one
+      p.fill({p.poly({11, 3, 13, 10, 20, 12, 13, 14, 11, 21, 9, 14, 2, 12, 9, 10}, true)});
+      p.fill({p.poly({19, 2, 19.8f, 4.2f, 22, 5, 19.8f, 5.8f, 19, 8, 18.2f, 5.8f, 16, 5, 18.2f, 4.2f}, true)});
+      break;
+    case Icon::Stack:  // Cover Flow: a cover facing you between two turned ones
+      p.fill({p.poly({2, 7, 6.5f, 5.6f, 6.5f, 16.4f, 2, 15}, true), p.poly({17.5f, 5.6f, 22, 7, 22, 15, 17.5f, 16.4f}, true)});
+      p.fill({p.roundRect(8, 4, 16, 17, 1.2f)});
+      p.fill({p.rect(8, 18.6f, 16, 20)});
+      break;
+    case Icon::Tree:  // Organize: folders under one
+      p.fill({p.roundRect(2.5f, 2.5f, 10, 7.5f, 1.5f)});
+      p.stroke({p.poly({6, 7.5f, 6, 17.5f, 11, 17.5f}, false), p.poly({6, 10.5f, 11, 10.5f}, false)}, 2);
+      p.fill({p.roundRect(11.5f, 8, 21, 13, 1.5f), p.roundRect(11.5f, 15, 21, 20, 1.5f)});
+      break;
+    case Icon::Sliders:  // Sound: three faders
+      p.stroke({p.poly({6, 3, 6, 21}, false), p.poly({12, 3, 12, 21}, false), p.poly({18, 3, 18, 21}, false)}, 2);
+      p.fill({p.circle(6, 15, 2.8f), p.circle(12, 8, 2.8f), p.circle(18, 13, 2.8f)});
+      break;
+    case Icon::Gauge:  // Wheel acceleration
+      p.stroke({p.arc(3, 4.5f, 21, 22.5f, 180, 180)}, 2.2f);
+      p.stroke({p.poly({12, 13.5f, 16.6f, 8}, false)}, 2.4f);
+      p.fill({p.circle(12, 13.5f, 2.2f)});
+      p.stroke({p.poly({3, 13.5f, 5, 13.5f}, false), p.poly({19, 13.5f, 21, 13.5f}, false), p.poly({12, 4.5f, 12, 6.5f}, false)}, 1.8f);
+      break;
+    case Icon::Vibrate:  // Wheel vibration: a buzz on both sides
+      p.stroke({p.roundRect(8, 3.5f, 16, 20.5f, 2)}, 2);
+      p.stroke({p.poly({4.5f, 8, 2.5f, 10, 4.5f, 12, 2.5f, 14, 4.5f, 16}, false),
+                p.poly({19.5f, 8, 21.5f, 10, 19.5f, 12, 21.5f, 14, 19.5f, 16}, false)},
+               1.6f);
+      break;
+    case Icon::Wheel:  // Controls: the click wheel and its center button
+      p.stroke({p.circle(12, 12, 9)}, 2.2f);
+      p.fill({p.circle(12, 12, 3)});
+      p.fill({p.circle(12, 5.6f, 1.1f), p.circle(12, 18.4f, 1.1f), p.circle(5.6f, 12, 1.1f), p.circle(18.4f, 12, 1.1f)});
+      break;
+    case Icon::Chip:  // System
+      p.stroke({p.roundRect(6, 6, 18, 18, 2)}, 2);
+      p.fill({p.rect(9.5f, 9.5f, 14.5f, 14.5f)});
+      p.stroke({p.poly({9.5f, 2.5f, 9.5f, 6}, false), p.poly({14.5f, 2.5f, 14.5f, 6}, false), p.poly({9.5f, 18, 9.5f, 21.5f}, false),
+                p.poly({14.5f, 18, 14.5f, 21.5f}, false), p.poly({2.5f, 9.5f, 6, 9.5f}, false), p.poly({2.5f, 14.5f, 6, 14.5f}, false),
+                p.poly({18, 9.5f, 21.5f, 9.5f}, false), p.poly({18, 14.5f, 21.5f, 14.5f}, false)},
+               1.8f);
+      break;
+    case Icon::Key:  // the YouTube account
+      p.stroke({p.circle(7.5f, 12, 4.5f)}, 2.2f);
+      p.stroke({p.poly({12, 12, 21.5f, 12}, false), p.poly({18, 12, 18, 15.5f}, false), p.poly({21, 12, 21, 14.8f}, false)}, 2.2f);
+      break;
+    case Icon::Diamond:  // Video quality
+      p.stroke({p.poly({7, 4, 17, 4, 21.5f, 9.5f, 12, 20.5f, 2.5f, 9.5f}, true)}, 2);
+      p.stroke({p.poly({2.5f, 9.5f, 21.5f, 9.5f}, false), p.poly({9.5f, 4, 12, 9.5f, 14.5f, 4}, false), p.poly({12, 9.5f, 12, 19}, false)},
+               1.6f);
+      break;
+    case Icon::Queue:  // Up next: the list and what plays next
+      p.stroke({p.poly({3, 6, 16, 6}, false), p.poly({3, 11, 16, 11}, false), p.poly({3, 16, 9.5f, 16}, false)}, 2.2f);
+      p.fill({p.poly({13, 13.5f, 13, 21.5f, 20.5f, 17.5f}, true)});
+      break;
+    case Icon::Seek:  // Scrub: fast forward
+      p.fill({p.poly({2.5f, 6, 2.5f, 18, 11.5f, 12}, true), p.poly({12, 6, 12, 18, 21, 12}, true)});
+      break;
+    case Icon::Download:  // Software update
+      p.stroke({p.poly({12, 3, 12, 14.5f}, false), p.poly({7.2f, 10, 12, 14.8f, 16.8f, 10}, false)}, 2.2f);
+      p.stroke({p.poly({4, 15, 4, 20.5f, 20, 20.5f, 20, 15}, false)}, 2.2f);
+      break;
+    case Icon::Sync: {  // Rescan: two arrows chasing each other
+      p.stroke({p.arc(4, 4, 20, 20, 205, 125), p.arc(4, 4, 20, 20, 25, 125)}, 2.2f);
+      for (float end : {330.f, 150.f}) {
+        float a = float(end * M_PI / 180), x = 12 + 8 * cosf(a), y = 12 + 8 * sinf(a);
+        float dx = -sinf(a), dy = cosf(a);  // along the arc
+        p.fill({p.poly({x + dx * 3.2f, y + dy * 3.2f, x - dy * 2.8f - dx * 0.5f, y + dx * 2.8f - dy * 0.5f, x + dy * 2.8f - dx * 0.5f,
+                        y - dx * 2.8f - dy * 0.5f},
+                       true)});
+      }
+      break;
+    }
+    case Icon::Usb:  // the USB drive: the trident
+      p.stroke({p.poly({12, 3.5f, 12, 18}, false), p.poly({12, 14, 6.5f, 10.5f, 6.5f, 7.5f}, false), p.poly({12, 12, 17.5f, 8.5f, 17.5f, 6.5f}, false)},
+               2);
+      p.fill({p.poly({9.4f, 5, 14.6f, 5, 12, 1.5f}, true)});
+      p.fill({p.circle(12, 19.5f, 2.4f), p.circle(6.5f, 6.4f, 1.8f), p.rect(15.8f, 3.4f, 19.2f, 6.8f)});
+      break;
+    case Icon::Device:  // Display: the Y1, its screen over its wheel
+      p.stroke({p.roundRect(5, 1.8f, 19, 22.2f, 3)}, 2);
+      p.fill({p.roundRect(7.6f, 4.4f, 16.4f, 10.6f, 1)});
+      p.stroke({p.circle(12, 16.2f, 3.2f)}, 1.8f);
+      break;
+    case Icon::Broadcast:  // Connections: waves both ways
+      p.fill({p.circle(12, 12, 2.3f)});
+      p.stroke({p.arc(7, 7, 17, 17, 140, 80), p.arc(7, 7, 17, 17, -40, 80), p.arc(2.5f, 2.5f, 21.5f, 21.5f, 140, 80),
+                p.arc(2.5f, 2.5f, 21.5f, 21.5f, -40, 80)},
+               2.1f);
+      break;
+    case Icon::Library:  // the main menu's Library: records on a shelf
+      p.fill({p.roundRect(3, 4, 7, 20, 1), p.roundRect(9, 4, 13, 20, 1)});
+      p.fill({p.poly({15, 5.2f, 18.6f, 4.2f, 22, 18.8f, 18.4f, 19.8f}, true)});
+      p.fill({p.rect(2, 21, 22, 22.6f)});
+      break;
+    case Icon::Type:  // Text size: a big T and a small one
+      p.stroke({p.poly({3.5f, 5, 14.5f, 5}, false), p.poly({9, 5, 9, 20}, false)}, 2.4f);
+      p.stroke({p.poly({13.5f, 11, 21, 11}, false), p.poly({17.25f, 11, 17.25f, 20}, false)}, 2);
+      break;
+    case Icon::Menu:  // Main menu: the rows, each with its tile
+      p.fill({p.roundRect(2.5f, 4, 7, 8.5f, 1), p.roundRect(2.5f, 9.75f, 7, 14.25f, 1), p.roundRect(2.5f, 15.5f, 7, 20, 1)});
+      p.stroke({p.poly({10, 6.25f, 21, 6.25f}, false), p.poly({10, 12, 21, 12}, false), p.poly({10, 17.75f, 21, 17.75f}, false)}, 2);
+      break;
+    case Icon::Wand:  // smart playlists
+      p.stroke({p.poly({4, 20, 14.5f, 9.5f}, false)}, 2.8f);
+      p.fill({p.poly({17.5f, 2, 18.6f, 5.4f, 22, 6.5f, 18.6f, 7.6f, 17.5f, 11, 16.4f, 7.6f, 13, 6.5f, 16.4f, 5.4f}, true)});
+      p.fill({p.circle(9, 4.5f, 1.2f), p.circle(20, 15, 1.2f)});
+      break;
+    case Icon::Mic:  // lyrics: what's sung
+      p.fill({p.roundRect(9, 2.5f, 15, 14, 3)});
+      p.stroke({p.arc(5.5f, 4.5f, 18.5f, 17.5f, 0, 180)}, 2);
+      p.stroke({p.poly({12, 17.5f, 12, 21}, false), p.poly({8.5f, 21.2f, 15.5f, 21.2f}, false)}, 2);
+      break;
     default: break;
   }
 }

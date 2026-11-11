@@ -408,7 +408,7 @@ class SoundScreen : public ShellListScreen {
     on.title = "Playing on";
     on.subtitle = "Each output keeps its own sound";
     on.trailing = out_.label;
-    on.tile = &tiles::equalizer;
+    on.tile = &tiles::output;
     on.enabled = false;
     rows.push_back(on);
     Row eq;

@@ -738,7 +738,7 @@ class NowPlayingScreen : public Screen {
     } else {
       shuffleShown_ = repeatShown_ = -1;
     }
-    int pw = e.dp(190), rowH = e.dp(28), pad = e.dp(5);
+    int pw = e.dp(214), rowH = e.dp(28), pad = e.dp(5);
     int n = optionCount();
     if (cursor_ >= n) cursor_ = n - 1;  // the song changed to one without a rating
     int ph = pad + n * rowH + pad;
@@ -749,8 +749,13 @@ class NowPlayingScreen : public Screen {
       bool on = i == cursor_;
       Rect r{x + pad, y + pad + float(i * rowH), float(pw - 2 * pad), float(rowH)};
       if (on) e.c.shape(r, e.dpf(6), white);
-      Label l = label(e, optionLabel(i, s), 13, on, r.w - 2 * e.dp(12));
-      drawLabel(e, l, r.x + e.dp(12), r.y + float((rowH - l.h) / 2), on ? e.p.dark : white);
+      static const Icon kGlyphs[] = {Icon::Seek, Icon::Queue, Icon::Shuffle, Icon::Repeat, Icon::Star};
+      int g = e.dp(14), gx = e.dp(10);
+      Color ink = on ? e.p.dark : white;
+      e.icons.draw(e.c, kGlyphs[std::min(i, 4)], {r.x + gx, r.y + float((rowH - g) / 2), float(g), float(g)}, ink);
+      float tx = r.x + gx + g + e.dp(9);
+      Label l = label(e, optionLabel(i, s), 13, on, r.x + r.w - e.dp(10) - tx);
+      drawLabel(e, l, tx, r.y + float((rowH - l.h) / 2), ink);
     }
   }
 

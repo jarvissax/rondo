@@ -36,6 +36,7 @@
 #include "../ui/image.h"
 #include "app.h"
 #include "dashboard.h"
+#include "file_ops.h"
 #include "main_queue.h"
 #include "screens.h"
 
@@ -2015,93 +2016,46 @@ Response Server::api(Request& r, const std::string& path) {
     return onUi([b] {
       std::string dir, name;
       b->text("path", dir), b->text("name", name);
-      name = entryName(name);
-      if (name.empty()) return error(400, "Type a name");
-      if (!(isRoot(dir) || inside(dir)) || !isDirPath(dir)) return error(404, "not found");
-      std::string p = dir + "/" + name;
-      struct stat st;
-      if (stat(p.c_str(), &st) == 0) return error(409, "Something by that name is there already");
-      if (mkdir(p.c_str(), 0775) != 0) return error(500, strerror(errno));
+      std::string why = files::makeFolder(dir, name);
+      if (!why.empty()) return error(why == "That folder isn't there" ? 404 : 409, why);
       return json(filesJson(dir));
     });
   if (path == "/files/rename" && m == "POST")  // a file or folder, in its folder
     return onUi([b] {
       std::string from, name;
       b->text("path", from), b->text("name", name);
-      name = entryName(name);
-      if (name.empty()) return error(400, "Type a name");
-      if (!inside(from) || isRoot(from)) return error(404, "not found");
-      std::string dir = from.substr(0, from.rfind('/')), to = dir + "/" + name;
-      struct stat st;
-      if (stat(from.c_str(), &st) != 0) return error(404, "not found");
-      if (to != from && strcasecmp(to.c_str(), from.c_str()) != 0 && stat(to.c_str(), &st) == 0)
-        return error(409, "Something by that name is there already");
-      if (rename(from.c_str(), to.c_str()) != 0) return error(500, strerror(errno));
-      filesMoved({{from, to}});
-      return json(filesJson(dir));
+      std::string why = files::renameEntry(from, name);
+      if (!why.empty()) return error(why == "It isn't there any more" ? 404 : 409, why);
+      return json(filesJson(from.substr(0, from.rfind('/'))));
     });
-  if (path == "/files/move" && m == "POST")  // files and folders into another folder
+  // files and folders into another folder: at once on one storage; between the card and the internal
+  // storage they're copied, then deleted, in the background (background: how many)
+  if (path == "/files/move" && m == "POST")
     return onUi([b] {
       bool has;
       std::vector<std::string> paths = b->strings("paths", has);
       std::string to;
       b->text("to", to);
-      if (!(isRoot(to) || inside(to)) || !isDirPath(to)) return error(404, "That folder isn't there");
-      std::vector<std::pair<std::string, std::string>> moved;
-      std::vector<std::string> errors;
-      for (const std::string& from : paths) {
-        if (!inside(from) || isRoot(from)) continue;
-        std::string name = from.substr(from.rfind('/') + 1), target = to + "/" + name;
-        if (target == from) continue;
-        if (to.compare(0, from.size() + 1, from + "/") == 0 || to == from) {
-          errors.push_back(name + ": can't go into itself");
-          continue;
-        }
-        struct stat st;
-        if (stat(target.c_str(), &st) == 0) {
-          errors.push_back(name + ": something by that name is there already");
-          continue;
-        }
-        if (rename(from.c_str(), target.c_str()) != 0) {
-          errors.push_back(name + ": " + strerror(errno));
-          continue;
-        }
-        moved.push_back({from, target});
-      }
-      filesMoved(moved);
+      bool copy = false;
+      b->flag("copy", copy);
+      auto answer = std::make_shared<files::Result>();
+      auto finished = std::make_shared<bool>(false);
+      bool started = files::transfer(paths, to, copy, [answer, finished](const files::Result& r) { *answer = r, *finished = true; });
+      if (!started) return error(409, "Wait for the copy under way to finish");
       std::vector<std::string> errs;
-      for (const std::string& e : errors) errs.push_back(str(e));
-      return json(obj({{"moved", num(int64_t(moved.size()))}, {"errors", arr(errs)}}));
+      for (const std::string& e : answer->errors) errs.push_back(str(e));
+      bool background = !*finished;  // a copy on its thread: done later
+      return json(obj({{"moved", num(int64_t(answer->done))}, {"errors", arr(errs)}, {"background", boolean(background)},
+                       {"status", str(files::transferStatus())}}));
     });
   if (path == "/files/delete" && m == "POST")  // files, and folders with all they hold
     return onUi([b] {
       bool has;
       std::vector<std::string> paths = b->strings("paths", has);
-      int deleted = 0;
-      std::vector<std::string> errors;
-      for (const std::string& p : paths) {
-        if (!inside(p) || isRoot(p)) continue;
-        std::vector<std::string> all;
-        if (isDirPath(p)) walkDeep(p, all);
-        all.push_back(p);
-        for (const std::string& q : all) {
-          bool ok;
-          if (isDirPath(q)) {
-            ok = rmdir(q.c_str()) == 0;
-          } else if (const Track* t = g_library.find(q)) {  // a song or video: out of the library too
-            ok = g_library.deleteFile(t->path);
-            if (ok) g_playlists.forget(q);
-          } else {
-            struct stat st;
-            ok = unlink(q.c_str()) == 0 || stat(q.c_str(), &st) != 0;  // an .lrc deleteFile took already
-          }
-          if (ok) deleted++;
-          else errors.push_back(q.substr(q.rfind('/') + 1) + ": " + strerror(errno));
-        }
-      }
+      files::Result r = files::remove(paths);
       std::vector<std::string> errs;
-      for (const std::string& e : errors) errs.push_back(str(e));
-      return json(obj({{"deleted", num(int64_t(deleted))}, {"errors", arr(errs)}}));
+      for (const std::string& e : r.errors) errs.push_back(str(e));
+      return json(obj({{"deleted", num(int64_t(r.done))}, {"errors", arr(errs)}}));
     });
   if (path == "/organize/status" && m == "GET") return ui([] { return organizeStatusJson(); });
   if (path == "/organize" && m == "POST")

@@ -28,7 +28,6 @@ namespace rondo::shell {
 
 namespace {
 
-const Tile kPhotoTile{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
 constexpr ui::Color white = 0xffffffff;
 inline ui::Color whiteA(int a) { return uint32_t(a) << 24 | 0xffffff; }
 
@@ -379,7 +378,7 @@ class PhotoFoldersScreen : public ShellListScreen {
 
 }  // namespace
 
-const Tile& photoTile() { return kPhotoTile; }
+const Tile& photoTile() { return tiles::photos; }
 void findPhotos(std::vector<std::pair<std::string, int64_t>>& out) {
   std::vector<Photo> all;
   for (const char* r : {"/storage/sdcard0", "/storage/sdcard1"}) walk(r, 0, all);
@@ -387,5 +386,14 @@ void findPhotos(std::vector<std::pair<std::string, int64_t>>& out) {
   for (Photo& p : all) out.push_back({std::move(p.path), p.modified});
 }
 std::unique_ptr<Screen> makePhotos() { return std::unique_ptr<Screen>(new PhotoFoldersScreen()); }
+std::unique_ptr<Screen> makePhotoViewer(const std::vector<std::string>& paths, int at) {
+  auto photos = std::make_shared<std::vector<Photo>>();
+  for (const std::string& p : paths) {
+    struct stat st;
+    photos->push_back({p, stat(p.c_str(), &st) == 0 ? int64_t(st.st_mtime) : 0});
+  }
+  if (photos->empty()) photos->push_back({"", 0});
+  return std::unique_ptr<Screen>(new PhotoViewerScreen(photos, std::max(0, std::min(at, int(photos->size()) - 1))));
+}
 
 }  // namespace rondo::shell

@@ -231,7 +231,7 @@ class OrganizeConfirmScreen : public ShellListScreen {
     Row go;
     go.title = "Organize";
     go.subtitle = "Playlists, plays and ratings go along";
-    go.tile = &tiles::device;
+    go.tile = &tiles::organize;
     go.onSelect = [] {
       std::string why = organizeStart();
       g_app->pop();
@@ -285,7 +285,7 @@ class OrganizeScreen : public ShellListScreen {
       Row go;
       go.title = "Organize";
       go.subtitle = "Moves the files on the card";
-      go.tile = &tiles::device;
+      go.tile = &tiles::organize;
       go.chevron = true;
       int n = int(moves.size());
       go.onSelect = [n] { g_app->push(std::unique_ptr<Screen>(new OrganizeConfirmScreen(n))); };

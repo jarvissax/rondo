@@ -80,6 +80,13 @@ class LocalSongsScreen : public LetterListScreen {
     else snprintf(h, sizeof(h), "%zu songs", tracks_.size());
     head.title = h;
     rows.push_back(head);
+    if (tracks_.size() > 1) {
+      Row sh;
+      sh.title = "Shuffle";
+      sh.tile = &tiles::shuffle;
+      sh.onSelect = [this] { shuffleAll(); };
+      rows.push_back(sh);
+    }
     first_ = int(rows.size());
     rows.resize(rows.size() + tracks_.size());  // filled in when drawn
     for (size_t k = 0; k < tracks_.size(); k++) {  // Select plays them all from here; holding it, the song's menu
@@ -117,6 +124,14 @@ class LocalSongsScreen : public LetterListScreen {
     paths.reserve(tracks_.size());
     for (const Track* t : tracks_) paths.push_back(t->path);
     g_player.playQueue(paths, k);
+    openNowPlaying();
+  }
+  void shuffleAll() {
+    std::vector<std::string> paths;
+    for (const Track* t : tracks_) paths.push_back(t->path);
+    static std::mt19937 rng(uint32_t(time(nullptr)));
+    std::shuffle(paths.begin(), paths.end(), rng);
+    g_player.playQueue(paths, 0);
     openNowPlaying();
   }
   std::vector<const Track*> tracks_;
@@ -164,11 +179,13 @@ Item cardVideo(const Track& t) {
   return i;
 }
 
+// a list of card videos (all of them, the newest, one folder's)
 class LocalVideosScreen : public ShellListScreen {
  public:
-  LocalVideosScreen() : ShellListScreen("Videos") {
-    std::vector<Row> rows{searchRow(Scope::Videos)};
-    for (const Track* t : g_library.videos()) {
+  LocalVideosScreen(std::string title, std::vector<const Track*> videos, bool search) : ShellListScreen(std::move(title)) {
+    std::vector<Row> rows;
+    if (search) rows.push_back(searchRow(Scope::Videos));
+    for (const Track* t : videos) {
       Row r;
       r.title = t->title;
       r.subtitle = subtitleOf(*t);
@@ -177,6 +194,49 @@ class LocalVideosScreen : public ShellListScreen {
       Item item = cardVideo(*t);
       r.onSelect = [item] { openVideo(item); };
       rows.push_back(std::move(r));
+    }
+    if (rows.empty()) list_.setMessage("No videos here");
+    else list_.setRows(std::move(rows));
+  }
+};
+
+// Library › Videos: all of them, the newest first, and each folder that has some
+class VideosSectionScreen : public ShellListScreen {
+ public:
+  VideosSectionScreen() : ShellListScreen("Videos") {
+    std::vector<const Track*> all = g_library.videos();
+    if (all.empty()) {
+      list_.setMessage("No videos on the card.\nCopy MP4, MKV or WebM files to it.");
+      return;
+    }
+    std::vector<Row> rows;
+    auto add = [&](const std::string& title, const Tile* tile, const std::string& thumb, std::string trailing, std::function<void()> on) {
+      Row r;
+      r.title = title, r.tile = tile, r.thumb = thumb, r.trailing = std::move(trailing), r.chevron = true;
+      r.onSelect = std::move(on);
+      rows.push_back(std::move(r));
+    };
+    add("All videos", &tiles::videos, "", std::to_string(all.size()), [all] {
+      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen("All videos", all, true)));
+    });
+    std::vector<const Track*> newest = all;
+    std::stable_sort(newest.begin(), newest.end(), [](const Track* a, const Track* b) { return a->modified > b->modified; });
+    add("Recently added", &tiles::recent, "", "", [newest] {
+      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen("Recently added", newest, false)));
+    });
+    std::map<std::string, std::vector<const Track*>> byFolder;
+    for (const Track* t : all) byFolder[t->path.substr(0, t->path.rfind('/'))].push_back(t);
+    if (byFolder.size() > 1) {
+      Row h;
+      h.header = true;
+      h.title = "Folders";
+      rows.push_back(h);
+      for (auto& kv : byFolder) {
+        std::string name = kv.first.substr(kv.first.rfind('/') + 1);
+        std::vector<const Track*> v = kv.second;
+        add(name, nullptr, v.front()->path, std::to_string(v.size()),
+            [name, v] { g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(name, v, false))); });
+      }
     }
     list_.setRows(std::move(rows));
   }
@@ -433,23 +493,28 @@ std::unique_ptr<Screen> makeSearchToAdd(const std::string& playlist) {
   return std::unique_ptr<Screen>(new LibrarySearchScreen(Scope::All, playlist));
 }
 
-// DeviceScreen: the card, in the iPod's own words.
-class DeviceScreen : public ShellListScreen {
+// Library › Music: the songs every way, in groups (Browse, Playlists, Listening, the card)
+class MusicSectionScreen : public ShellListScreen {
  public:
-  DeviceScreen() : ShellListScreen("Library") { render(); }
+  MusicSectionScreen() : ShellListScreen("Music") { render(); }
 
  private:
   void render() {
     // the counts only (copying the groups cost 3 ms of the opening)
-    size_t songs = g_library.songCount(), videos = g_library.videoCount();
-    if (!songs && !videos && !scanning_) {
-      list_.setMessage("No music or videos on the card.\nCopy files to the card over USB.");
+    size_t songs = g_library.songCount();
+    if (!songs && !scanning_) {
+      list_.setMessage("No music on the card.\nCopy files to it over USB, or upload them on the dashboard.");
       return;
     }
     size_t artists = g_library.artistCount(), albums = g_library.albumCount();
     std::vector<Row> rows;
-    auto add = [&](const char* title, const Tile& tile, std::string trailing, bool chevron, bool enabled,
-                   std::function<void()> on) {
+    auto header = [&](const char* title) {
+      Row h;
+      h.header = true;
+      h.title = title;
+      rows.push_back(h);
+    };
+    auto add = [&](const char* title, const Tile& tile, std::string trailing, bool chevron, bool enabled, std::function<void()> on) {
       Row r;
       r.title = title, r.tile = &tile, r.trailing = std::move(trailing), r.chevron = chevron, r.enabled = enabled;
       r.onSelect = std::move(on);
@@ -464,45 +529,43 @@ class DeviceScreen : public ShellListScreen {
       openNowPlaying();
     });
     add("Search", tiles::search, "", true, true, [] { g_app->push(makeSearch(Scope::All)); });
-    size_t playlists = g_playlists.all().size();
-    add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true,
-        [] { g_app->push(makePlaylists()); });
+    header("Browse");
     add("Songs", tiles::songs, std::to_string(songs), true, songs != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Songs", g_library.songs(), true, true)));
     });
     add("Artists", tiles::artists, std::to_string(artists), true, artists != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Artists", g_library.artists(), Scope::Artists)));
     });
-    add("Albums", tiles::albums, albums == 0 ? "reading tags\xe2\x80\xa6" : std::to_string(albums), true,
-        albums != 0, [] {
-          g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Albums", g_library.albums(), Scope::Albums)));
-        });
-    add("Cover Flow", tiles::albums, "", true, albums != 0, [] { g_app->push(makeCoverFlow()); });
     size_t albumArtists = g_library.albumArtistCount(), genres = g_library.genreCount();
-    add("Album artists", tiles::artists, std::to_string(albumArtists), true, albumArtists != 0, [] {
+    add("Album artists", tiles::albumArtists, std::to_string(albumArtists), true, albumArtists != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Album artists", g_library.albumArtists(), Scope::Artists)));
     });
-    add("Genres", tiles::songs, std::to_string(genres), true, genres != 0, [] {
+    add("Albums", tiles::albums, albums == 0 ? "reading tags\xe2\x80\xa6" : std::to_string(albums), true, albums != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Albums", g_library.albums(), Scope::Albums)));
+    });
+    add("Cover Flow", tiles::coverFlow, "", true, albums != 0, [] { g_app->push(makeCoverFlow()); });
+    add("Genres", tiles::genres, std::to_string(genres), true, genres != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Genres", g_library.genres(), Scope::Songs)));
     });
-    add("Folders", tiles::device, "", true, true, [] { g_app->push(makeFolders()); });
+    add("Folders", tiles::folders, "", true, true, [] { g_app->push(makeFolders()); });
+    header("Playlists");
+    size_t playlists = g_playlists.all().size();
+    add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true, [] { g_app->push(makePlaylists()); });
+    header("Listening");
+    size_t most = g_library.mostPlayed(1).size(), rated = g_library.topRated().size();
     add("Recently added", tiles::recent, "", true, songs != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Recently added", recent(), false, true)));
     });
-    // smart lists: what you play
-    size_t most = g_library.mostPlayed(1).size(), rated = g_library.topRated().size();
-    add("Most played", tiles::playlists, "", true, most != 0, [] {
+    add("Most played", tiles::mostPlayed, "", true, most != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Most played", g_library.mostPlayed(), false, true)));
     });
-    add("Recently played", tiles::recent, "", true, most != 0, [] {
+    add("Recently played", tiles::played, "", true, most != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Recently played", g_library.recentlyPlayed(), false, true)));
     });
-    add("Top rated", tiles::playlists, rated ? std::to_string(rated) : "", true, rated != 0, [] {
+    add("Top rated", tiles::topRated, rated ? std::to_string(rated) : "", true, rated != 0, [] {
       g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Top rated", g_library.topRated(), false, true)));
     });
-    add("Videos", tiles::videos, std::to_string(videos), true, videos != 0,
-        [] { g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen())); });
-    add("Photos", photoTile(), "", true, true, [] { g_app->push(makePhotos()); });
+    header("The card");
     Row rescan;
     rescan.title = "Rescan the card";
     rescan.subtitle = "After copying files to it";
@@ -518,14 +581,14 @@ class DeviceScreen : public ShellListScreen {
     Row organize;
     organize.title = "Organize the card";
     organize.subtitle = "Folders by artist and album, as Jellyfin expects";
-    organize.tile = &tiles::device;
+    organize.tile = &tiles::organize;
     organize.chevron = true;
-    organize.enabled = songs + videos != 0;
+    organize.enabled = songs + g_library.videoCount() != 0;
     organize.onSelect = [] { g_app->push(makeOrganize()); };
     rows.push_back(std::move(organize));
     list_.setRows(std::move(rows), true);
   }
-  // the card read again when Library opens and the last scan is over 30 s old (DeviceScreens.kt)
+  // the card read again when Music opens and the last scan is over 30 s old (DeviceScreens.kt)
   void onShow() override {
     g_library.rescanIfStale();
     scanning_ = g_library.scanning();
@@ -543,7 +606,44 @@ class DeviceScreen : public ShellListScreen {
   uint64_t generation_ = 0;
 };
 
+// DeviceScreen: Library, in four: Music, Videos, Photos and the files themselves
+class DeviceScreen : public ShellListScreen {
+ public:
+  DeviceScreen() : ShellListScreen("Library") { render(); }
+
+ private:
+  void render() {
+    size_t songs = g_library.songCount(), videos = g_library.videoCount();
+    std::vector<Row> rows;
+    auto add = [&](const char* title, const Tile& tile, std::string subtitle, std::string trailing, std::function<void()> on) {
+      Row r;
+      r.title = title, r.tile = &tile, r.subtitle = std::move(subtitle), r.trailing = std::move(trailing), r.chevron = true;
+      r.onSelect = std::move(on);
+      rows.push_back(std::move(r));
+    };
+    add("Music", tiles::musicSection, "Songs, albums, artists, playlists", songs ? std::to_string(songs) : "",
+        [] { g_app->push(makeLibraryMusic()); });
+    add("Videos", tiles::videos, "", videos ? std::to_string(videos) : "",
+        [] { g_app->push(std::unique_ptr<Screen>(new VideosSectionScreen())); });
+    add("Photos", tiles::photos, "", "", [] { g_app->push(makePhotos()); });
+    add("Files", tiles::files, "Every folder on the card and the internal storage", "", [] { g_app->push(makeFiles()); });
+    list_.setRows(std::move(rows), true);
+  }
+  void onShow() override {
+    g_library.rescanIfStale();
+    render();
+  }
+  bool tick(int64_t) override {
+    if (generation_ == g_library.generation()) return false;
+    generation_ = g_library.generation();
+    render();  // the counts
+    return true;
+  }
+  uint64_t generation_ = 0;
+};
+
 std::unique_ptr<Screen> makeDevice() { return std::unique_ptr<Screen>(new DeviceScreen()); }
+std::unique_ptr<Screen> makeLibraryMusic() { return std::unique_ptr<Screen>(new MusicSectionScreen()); }
 
 }  // namespace rondo::shell
 
@@ -621,7 +721,7 @@ class FolderScreen : public ShellListScreen {
     for (const std::string& name : folders) {
       Row r;
       r.title = name;
-      r.tile = &tiles::device;
+      r.tile = &tiles::folders;
       r.chevron = true;
       std::string p = dir_ + "/" + name;
       r.onSelect = [p, name] { g_app->push(std::unique_ptr<Screen>(new FolderScreen(p, name))); };
@@ -676,7 +776,7 @@ class FolderRootsScreen : public ShellListScreen {
       if (stat(r.path, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
       Row row;
       row.title = r.name;
-      row.tile = &tiles::device;
+      row.tile = &tiles::folders;
       row.chevron = true;
       std::string p = r.path, n = r.name;
       row.onSelect = [p, n] { g_app->push(std::unique_ptr<Screen>(new FolderScreen(p, n))); };

@@ -455,7 +455,7 @@ class PlaylistsScreen : public RenderedList {
       r.title = p.name;
       r.subtitle = "Made on the dashboard";
       r.trailing = std::to_string(SmartPlaylists::songs(p, g_library).size());
-      r.tile = &tiles::recent;
+      r.tile = &tiles::smart;
       r.chevron = true;
       SmartPlaylist copy = p;
       r.onSelect = [copy] { g_app->push(makeSongList(copy.name, SmartPlaylists::songs(copy, g_library))); };

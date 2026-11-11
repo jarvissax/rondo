@@ -19,6 +19,10 @@ enum class Icon : uint8_t {
   Chevron, Play, Pause, Battery, Wifi, Search, Note, Shuffle, Repeat, Volume, Check, Bluetooth, Gear, Folder,
   Bars, Info, Person, Disc, Sun, Timer, Screen, Cloud, Radio, Power, Theme, Playlist, Plus, Trash, Refresh,
   Shorts, Clock,
+  // 2.0's: one glyph for each place (Settings' groups, Library's sections), none used twice
+  Star, Photo, File, Headphones, Film, People, Tag, Flame, History, Sparkle, Stack, Tree, Sliders, Gauge,
+  Vibrate, Wheel, Chip, Key, Diamond, Queue, Seek, Download, Sync, Usb, Device, Broadcast, Library, Mic,
+  Type, Menu, Wand,
   // the two brand logos, each in two colors (drawn as their two masks)
   MusicLogoDisc, MusicLogoMarks, VideoLogoButton, VideoLogoPlay,
   // the battery's two parts: the outline and tip (icon color) and the charge (by level)

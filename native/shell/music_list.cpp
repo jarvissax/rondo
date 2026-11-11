@@ -319,6 +319,7 @@ class QueueScreen : public MusicListScreen {
     Row sh;
     sh.title = "Shuffle";
     sh.trailing = shuffle_ ? "On" : "Off";
+    sh.tile = &tiles::shuffle;
     sh.onSelect = [this] {
       shuffle_ = !shuffle_;
       g_player.setShuffle(shuffle_);
@@ -328,6 +329,7 @@ class QueueScreen : public MusicListScreen {
     Row rp;
     rp.title = "Repeat";
     rp.trailing = repeat_ == 1 ? "All" : repeat_ == 2 ? "One" : "Off";
+    rp.tile = &tiles::repeat;
     rp.onSelect = [this] {
       repeat_ = repeat_ == 0 ? 1 : repeat_ == 1 ? 2 : 0;
       g_player.setRepeat(repeat_);

@@ -3068,7 +3068,10 @@ async function moveSheet(paths) {
       try {
         const r = await api('POST', '/api/files/move', { paths, to: L.path }, { timeout: 120000 });
         sheet.close();
-        if (r.errors.length) toast(r.errors[0], 'err'); else toast(`Moved ${plural(r.moved, 'item')} to ${relName(L.path)}`);
+        if (r.errors.length) toast(r.errors[0], 'err');
+        else if (r.background) toast(`Moving to ${relName(L.path)} in the background (between the card and the internal storage)`);
+        else toast(`Moved ${plural(r.moved, 'item')} to ${relName(L.path)}`);
+        if (r.background) setTimeout(() => { loadFiles(S.files.path, true); loadLibrary(true); }, 8000);
         S.fileSel = new Set();
         loadFiles(S.files.path, true); loadLibrary(true);
       } catch (e) { if (e.status !== 401) toast(`Not moved. ${reason(e)}`, 'err'); }

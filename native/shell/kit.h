@@ -67,9 +67,14 @@ struct Tile {
   bool glyph = true;  // false: the color alone (the accent swatches)
 };
 namespace tiles {
+// Each screen's rows have tiles of their own: no glyph and no color twice on one screen
 extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,
     albums, dashboard, brightness, timer, radio, lyrics, sound, accel, wheel, videos, shuffle, power, restart, theme,
-    playlists, add, search, recent, del, rescan, shorts, update, equalizer, clock;
+    playlists, add, search, recent, del, rescan, shorts, update, equalizer, clock,
+    // 2.0: Settings' groups, Library's sections and the rows in them
+    connections, display, controls, system, account, output, textSize, menuOrder, repeat, musicSection, photos, files,
+    folders, organize, usb, albumArtists, genres, coverFlow, played, mostPlayed, topRated, smart, newFolder, copyTo, moveTo,
+    renameTo, openFile;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 
