@@ -23,6 +23,7 @@ class VideoSurface {
   // A picture has been latched since clear(): a video that is starting shows black until then.
   virtual bool hasPicture() const = 0;
   virtual void clear() = 0;
+  virtual unsigned latches() const = 0;  // pictures taken so far (a later one: a newer picture)
 
   virtual unsigned texture() const = 0;       // GL_TEXTURE_EXTERNAL_OES
   virtual const float* transform() const = 0;  // the picture's texture transform, 4x4 column-major

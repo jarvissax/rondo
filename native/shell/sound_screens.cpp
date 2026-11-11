@@ -543,43 +543,6 @@ class SoundScreen : public ShellListScreen {
       rows.push_back(lim);
       limit_ = limit;
     }
-    Row ph;
-    ph.header = true;
-    ph.title = "Playback";
-    rows.push_back(ph);
-    Row xf;
-    xf.title = "Crossfade";
-    xf.tile = &tiles::crossfade;
-    xf.subtitle = "Songs fade into each other";
-    xf.trailing = g_prefs.crossfadeSec ? std::to_string(g_prefs.crossfadeSec) + " s" : "Off";
-    xf.chevron = true;
-    xf.onSelect = [] {
-      std::vector<std::pair<std::string, std::string>> c = {{"Off", "0"}};
-      for (int sec : {2, 4, 6, 8, 10, 12}) c.push_back({std::to_string(sec) + " seconds", std::to_string(sec)});
-      g_app->push(makeChoice(
-          "Crossfade", c, [] { return std::to_string(g_prefs.crossfadeSec); },
-          [](const std::string& v) {
-            g_prefs.crossfadeSec = atoi(v.c_str());
-            savePrefsNow();
-            g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);
-          },
-          [](const std::string& v) {
-            return std::string(v == "0" ? "one after the other, no gap" : v == "6" ? "like a DJ" : "");
-          }));
-    };
-    rows.push_back(xf);
-    Row fp;
-    fp.title = "Fade on pause and play";
-    fp.tile = &tiles::fadePause;
-    fp.subtitle = "Music fades out and back in";
-    fp.trailing = g_prefs.fadePause ? "On" : "Off";
-    fp.onSelect = [this] {
-      g_prefs.fadePause = !g_prefs.fadePause;
-      savePrefsNow();
-      g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);
-      render();
-    };
-    rows.push_back(fp);
     amp_ = ps.amplifier;
     list_.setRows(std::move(rows), true);
   }

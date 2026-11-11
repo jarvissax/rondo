@@ -118,6 +118,7 @@ void VideoDecoder::play(const std::vector<std::string>& sources, const std::stri
   startThreads();
   want_ = true;
   job_++;
+  rendered_ = 0;
   sources_ = sources, token_ = token;
   seekGen_++;
   seekMs_ = atMs;
@@ -499,6 +500,7 @@ void VideoDecoder::renderLoop() {
             codec->renderOutputBufferAndRelease(size_t(held));
             lastShown = ns;
             shown++;
+            if (job_ == job) rendered_++;  // this video's own (a stopped one's last frames aren't)
           }
           held = -1;
           if (first && log) {

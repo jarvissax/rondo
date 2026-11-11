@@ -1210,8 +1210,7 @@ std::string soundPageJson(int askedAmp = -9, int askedLimit = -1) {
   int amp = askedAmp != -9 ? askedAmp : s.amplifier;
   int limit = askedLimit >= 0 ? askedLimit : std::min(maxVol, std::max(0, int(s.volumeLimit)));
   return j + ",\"amplifier\":" + std::to_string(amp) + ",\"volumeLimit\":" + std::to_string(limit) +
-         ",\"maxVolume\":" + std::to_string(maxVol) + ",\"crossfadeSec\":" + std::to_string(g_prefs.crossfadeSec) +
-         ",\"fadePause\":" + (g_prefs.fadePause ? "true" : "false") + "}";
+         ",\"maxVolume\":" + std::to_string(maxVol) + "}";
 }
 
 Response putSound(const Body& b) {
@@ -1244,13 +1243,6 @@ Response putSound(const Body& b) {
     if (n < 0 || n > 3 || g_player.state().amplifier < 0) return error(400, "amplifier");
     g_player.amplifier(int(n), g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin");
     askedAmp = int(n);
-  }
-  bool playbackChanged = false;
-  if (b.integer("crossfadeSec", n)) g_prefs.crossfadeSec = int(std::max<int64_t>(0, std::min<int64_t>(12, n))), playbackChanged = true;
-  if (b.flag("fadePause", f)) g_prefs.fadePause = f, playbackChanged = true;
-  if (playbackChanged) {
-    savePrefsNow();
-    g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);
   }
   if (b.integer("volumeLimit", n)) {
     PlayerState s = g_player.state();

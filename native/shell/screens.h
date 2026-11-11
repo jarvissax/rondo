@@ -202,6 +202,8 @@ bool artColor(Env& e, const std::string& path, int sourcePx, Color* out, int sou
 float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi = true, bool hidePercent = false, bool hideDate = false);
 float statusIconsWidth(Env& e, bool showWifi, bool hidePercent = false, bool hideDate = false);
 float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool showWifi);
+// the battery alone (YouTube's and Shorts' headers: the clock and Wi-Fi took room from the pills); its left edge
+float batteryIcon(Env& e, float right, int rowH, Color c);
 
 }  // namespace rondo::shell
 

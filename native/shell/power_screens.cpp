@@ -5,11 +5,13 @@
 //   the last fifth, at most 7 s, at brightness 10); the video player and Shorts keep it on.
 // - Black or asleep, any press (center, which is also the Y1's power button, any other button, the
 //   wheel) only wakes the screen: that press and its release do nothing else (no lyrics opening, no song
-//   skipped). The wheel, center and Menu are also swallowed for 600 ms after
-//   waking. Power (KEY_POWER, if it comes) turns the screen off; held, it opens the Power screen.
+//   skipped). The wheel, center and Menu are also swallowed for 300 ms after waking. Within 5 s of the
+//   screen going dark by itself, a press wakes it and does what it does (it timed out while being
+//   looked at: the press was meant). A swallowed key is let go after 3 s, even if its release is lost. Power (KEY_POWER, if it comes) turns the screen off; held, it opens the Power screen.
 // - Off, the backlight goes first (a key brings it back at once); 10 s later early suspend. A wakelock
 //   is held while anything plays.
 // - The battery: shut down at 0 % unplugged and above 68 °C (BatteryService), "Battery low" at 15 %.
+#include <map>
 #include <set>
 
 #include "../platform/power.h"
@@ -37,7 +39,7 @@ enum Stage { kOn, kDim, kOff, kSuspended };
 Stage g_stage = kOn;
 int64_t g_activity = 0, g_offAt = 0, g_wokeAt = 0, g_powerDown = 0, g_lastBattery = 0;
 bool g_powerLong = false, g_backlightPending = false;
-std::set<Key> g_swallowing;
+std::map<Key, int64_t> g_swallowing;  // the keys whose release is swallowed, since when
 int g_emptyReadings = 0, g_hotReadings = 0;
 bool g_lowWarned = false;
 int g_lastLevel = -1;
@@ -46,8 +48,11 @@ constexpr int64_t kDimBrightness = 10;  // config_screenBrightnessDim
 
 bool navigation(Key k) { return k == Key::WheelCw || k == Key::WheelCcw || k == Key::Center || k == Key::Menu; }
 
+bool g_offByPower = false;  // dark because Power was pressed (not the timeout)
+
 void goToSleep(int64_t now) {
   g_stage = kOff;
+  g_offByPower = false;  // Power says otherwise after
   g_offAt = now;
   power::setBacklight(0);
   if (g_onSleep) g_onSleep();
@@ -192,31 +197,47 @@ bool powerFilter(const InputEvent& ev) {
         g_powerLong = false;
       }
     } else {
-      if (g_powerDown && !g_powerLong && g_stage < kOff) goToSleep(now);
+      if (g_powerDown && !g_powerLong && g_stage < kOff) {
+        goToSleep(now);
+        g_offByPower = true;
+      }
       g_powerDown = 0;
     }
     return false;
   }
   if (g_stage >= kOff) {
-    // black or asleep: any press only wakes it; its release is swallowed too
+    // just gone dark by itself (the timeout, not Power): the press was meant for what's on the screen
+    bool meant = g_stage == kOff && !g_offByPower && now - g_offAt < 5000 * kMs;
     if (ev.down) {
       wake(now);
-      if (ev.key != Key::WheelCw && ev.key != Key::WheelCcw) g_swallowing.insert(ev.key);
+      if (meant) {
+        g_wokeAt = 0;  // no swallowing after this wake
+      } else {
+        // black or asleep: the press only wakes it; its release is swallowed too
+        if (ev.key != Key::WheelCw && ev.key != Key::WheelCcw) g_swallowing[ev.key] = now;
+        return false;
+      }
+    } else {
+      return false;
     }
-    return false;
   }
   g_activity = now;  // user activity: the timeout starts again, a dimmed screen brightens
   if (g_stage == kDim) {
     g_stage = kOn;
     applyBrightness(g_prefs.brightness);
   }
-  if (navigation(ev.key) && now - g_wokeAt < 600 * kMs) {
-    if (ev.down && ev.key != Key::WheelCw && ev.key != Key::WheelCcw) g_swallowing.insert(ev.key);
+  if (g_wokeAt && navigation(ev.key) && now - g_wokeAt < 300 * kMs) {
+    if (ev.down && ev.key != Key::WheelCw && ev.key != Key::WheelCcw) g_swallowing[ev.key] = now;
     return false;
   }
-  if (g_swallowing.count(ev.key)) {
-    if (!ev.down) g_swallowing.erase(ev.key);
-    return false;
+  auto sw = g_swallowing.find(ev.key);
+  if (sw != g_swallowing.end()) {
+    if (now - sw->second > 3000 * kMs) {
+      g_swallowing.erase(sw);  // its release never came: this is a new press
+    } else {
+      if (!ev.down) g_swallowing.erase(sw);  // the release ends it (a held key's repeats stay swallowed)
+      return false;
+    }
   }
   return true;
 }
@@ -250,7 +271,10 @@ bool powerTick(int64_t now) {
       g_stage = kDim;
       power::setBacklight(std::min<int>(int(kDimBrightness), g_prefs.brightness));
     }
-    if (g_stage == kDim && now - g_activity >= timeout) goToSleep(now);
+    if (g_stage == kDim && now - g_activity >= timeout) {
+      goToSleep(now);
+      g_offByPower = false;
+    }
   }
   if (g_stage == kOff && now - g_offAt >= 10000 * kMs) {
     g_stage = kSuspended;

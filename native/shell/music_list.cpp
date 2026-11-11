@@ -27,7 +27,8 @@ void darkHeader(Env& e, float w, const std::string& title, HeaderLogo logo, Colo
     else e.icons.draw(e.c, Icon::Wifi, r, white);
     x += s + e.dp(7);
   }
-  float iconsLeft = statusIcons(e, w - pad, h, e.p.darkMuted);
+  // YouTube's lists: the battery alone (as its home and Shorts); the others the whole group
+  float iconsLeft = logo == HeaderLogo::Video ? batteryIcon(e, w - pad, h, e.p.darkMuted) : statusIcons(e, w - pad, h, e.p.darkMuted);
   Label t = label(e, title, 14, true, iconsLeft - x);
   drawLabel(e, t, x, float((h - t.h) / 2), titleColor);
 }

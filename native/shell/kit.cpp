@@ -104,8 +104,6 @@ const Tile boost{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile leveling{Icon::Gauge, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile amplifier{Icon::Bolt, rgb(0xffd24d), rgb(0xf0a012)};
 const Tile limit{Icon::Lock, rgb(0xff7a7a), rgb(0xe0283c)};
-const Tile crossfade{Icon::Crossfade, rgb(0x8c7bff), rgb(0x4b36d6)};
-const Tile fadePause{Icon::Pause, rgb(0x5fb7ff), rgb(0x1f73e0)};
 // the rest
 const Tile usb{Icon::Usb, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile shorts{Icon::Shorts, rgb(0xff6b5a), rgb(0xe01e1e)};

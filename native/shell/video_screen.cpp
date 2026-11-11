@@ -52,9 +52,9 @@ class VideoScreen : public TabbedListScreen {
     e.icons.videoLogo(e.c, {x, float((H - lh) / 2), float(lw), float(lh)});
     x += lw + e.dp(9);
     float pillsEnd = drawPills(e, x, H, h);
-    // battery only; with three pills the date, then the percentage go when there is no room (StatusIcons.onLayout)
-    float right = w - e.dp(10), searchEnd = pillsEnd + e.dp(10);
-    statusIconsFit(e, searchEnd, right, H, e.p.darkMuted, false);
+    // the battery alone: a clock beside three pills ran into the search button
+    (void)pillsEnd;
+    batteryIcon(e, w - e.dp(10), H, e.p.darkMuted);
   }
   void load(int tab) override {
     static const char* feeds[] = {"/video/home", "/video/subscriptions", "/video/history"};

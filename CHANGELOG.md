@@ -69,9 +69,6 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Photos slide** from one to the next on the Y1 and the dashboard (a swipe there too), and the
   grid's highlight glides. **Cover Flow** has a wider, deeper stage.
 - **Previous slides** the cover in from the left, as Next does from the right.
-- **Crossfades over sound:** the silence at the end of a song and at the start of the next is left
-  out, so the two really overlap; an album's next track plays on gapless. Resuming fades in over
-  0.4 s, pausing fades out in 0.25 s.
 - **The equalizer on the Y1** as on the dashboard: a slider for each band, its gain over it. Every
   Sound row has its icon.
 - **The dashboard on a phone:** five tabs (Overview, Library, Radio, YouTube, Settings) instead of
@@ -84,8 +81,6 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - Switching between the server and direct mode could keep showing the other source's YouTube and
   YouTube Music for two minutes, and their tabs.
 - A video quality the video lacks fell to 360p; it now plays the next height down (720p → 480p).
-- A crossfade could jump the earlier song's level (by the two songs' loudness tags) with volume
-  leveling off.
 - Photos: the grid's highlight missed the first press.
 - Videos shorter than 10 seconds had no thumbnail.
 
@@ -115,8 +110,6 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Photos** (Library) on the Y1 and the dashboard: the pictures on the card by folder, full screen,
   with a slideshow; camera photos turned the right way up.
 - **Cover Flow** (Library) on the Y1 and the dashboard.
-- **Crossfade** (Settings › Sound › Playback, and on the dashboard): songs fade into each other over
-  2 to 12 seconds, on the card and streamed. **Fade on pause and play**, on as it ships.
 - **Volume limit** (Settings › Sound, and on the dashboard): the loudest step the wheel can set, on
   every output.
 - **Artwork that comes every time.** Card videos show their picture again, in Rondo and on the

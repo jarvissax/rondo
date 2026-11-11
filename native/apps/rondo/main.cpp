@@ -258,7 +258,6 @@ int main(int argc, char** argv) {
   g_prefs = loadPrefs(prefsPath);
   // the screen at its brightness whatever the last owner left (Android's 0, or a dimmed screen)
   applyBrightness(g_prefs.brightness);
-  g_player.playback(g_prefs.crossfadeSec * 1000, g_prefs.fadePause);  // Settings › Sound › Playback
   // the server's answers kept for two minutes, on disk too: beside the prefs
   const std::string apiCache = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache";
   g_core.apiConfigure(apiBase(), apiToken(), apiCache);

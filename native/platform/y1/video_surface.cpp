@@ -103,9 +103,11 @@ class Y1VideoSurface : public VideoSurface {
     h_ = crop.isEmpty() ? int(b->getHeight()) : crop.height();
     bool changed = b.get() != before || !has_;
     has_ = true;
+    if (changed) latches_++;
     return changed;
   }
   bool hasPicture() const override { return has_; }
+  unsigned latches() const override { return latches_; }
   void clear() override { has_ = false; }
   unsigned texture() const override { return tex_; }
   const float* transform() const override { return m_; }
@@ -121,6 +123,7 @@ class Y1VideoSurface : public VideoSurface {
   float m_[16];
   int w_ = 0, h_ = 0;
   bool has_ = false;
+  unsigned latches_ = 0;
 };
 
 }  // namespace

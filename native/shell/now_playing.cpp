@@ -175,6 +175,12 @@ float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool sh
   return statusIcons(e, right, rowH, c, showWifi, hidePercent, hideDate);
 }
 
+float batteryIcon(Env& e, float right, int rowH, Color c) {
+  int bw = e.dp(18), bh = e.dp(11);
+  e.icons.battery(e.c, {right - bw, float((rowH - bh) / 2), float(bw), float(bh)}, c, g_app->status().battery);
+  return right - bw;
+}
+
 float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hidePercent, bool hideDate) {
   const Status& st = g_app->status();
   char pct[8];

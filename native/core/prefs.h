@@ -21,10 +21,6 @@ struct Prefs {
   // Settings › Date & time: the time and the time zone from the network (each Wi-Fi connection), or
   // as set by hand; the status bar's clock in 24 hours or AM/PM
   bool autoTime = true, autoZone = true, clock24 = true;
-  // Settings › Sound › Playback: songs into each other over crossfadeSec (0: one after the other,
-  // gapless); a short fade when music pauses and plays again
-  int crossfadeSec = 0;
-  bool fadePause = true;
 };
 
 // The file, or on the first run what 1.0.x's preferences and Android's settings database hold.

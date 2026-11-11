@@ -44,6 +44,9 @@ class VideoDecoder {
   void setLatency(int64_t us) { latencyUs_ = us; }  // how long the sound takes to come out after the clock
 
   int height() const { return height_.load(); }        // the picture's height (0 until known)
+  // pictures rendered for the video asked for last (0 until its first): what was on the surface before
+  // it, still arriving after a switch, isn't counted
+  uint32_t rendered() const { return rendered_.load(); }
   int64_t readMs() const { return readMs_.load(); }    // how far ahead the stream has been read
 
  private:
@@ -65,6 +68,7 @@ class VideoDecoder {
   Clock clock_;
   std::atomic<int64_t> latencyUs_{0};
   std::atomic<int> height_{0};
+  std::atomic<uint32_t> rendered_{0};
   std::atomic<int64_t> readMs_{0};
   std::atomic<uint32_t> latestSeek_{0}, shownSeek_{0};
   std::atomic<bool> failed_{false};

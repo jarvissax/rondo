@@ -149,6 +149,21 @@ class ShortsScreen : public Screen {
   const Item* current() const { return index_ >= 0 && index_ < int(items_.size()) ? &items_[size_t(index_)] : nullptr; }
 
   // what the screen shows now (onTick in 1.0.x); before the first short, its build state
+  // A picture of the short now playing is on the surface: one taken after its video rendered its first.
+  // The one before keeps sending its last pictures for a moment after a switch; shown, they looked like
+  // it starting again without sound.
+  bool ownPicture(const PlayerState& s, VideoSurface* vs) const {
+    if (!vs || !vs->hasPicture()) return false;
+    if (armedAt_ < 0) {
+      bool started = s.video && s.videoFrames > 0 && expectPath_ == s.path;
+      if (!started) return false;
+      armedAt_ = int64_t(vs->latches());  // the next picture taken is this short's
+      armedNs_ = now_ns();
+      return false;
+    }
+    // paused on its first picture, no newer one comes: by then the old pictures are long gone
+    return int64_t(vs->latches()) > armedAt_ || now_ns() - armedNs_ > 400 * kMs;
+  }
   Shown shown(const PlayerState& s, int64_t now) const {
     Shown v;
     v.index = index_, v.count = int(items_.size()), v.more = !next_.empty();
@@ -158,7 +173,7 @@ class ShortsScreen : public Screen {
       return v;  // (1.0.x shows the pause sign while the list loads)
     }
     VideoSurface* vs = VideoSurface::made();
-    v.picture = vs && vs->hasPicture() && vs->width() > 0 && vs->height() > 0;
+    v.picture = ownPicture(s, vs) && vs->width() > 0 && vs->height() > 0;
     v.waiting = !v.picture;
     v.paused = v.picture && !s.playing;
     v.described = details_.count(it->id) > 0;
@@ -208,11 +223,11 @@ class ShortsScreen : public Screen {
     int icon = e.dp(14), headH = headHeight(e);
     e.c.layer(2);
     e.icons.draw(e.c, Icon::Shorts, {left, top + float((headH - icon) / 2), float(icon), float(icon)}, e.p.red);
-    float statusX = right - statusIconsWidth(e, true);
+    float statusX = right - e.dp(18);  // the battery alone
     drawLabel(e, label(e, "Shorts", 14, true, std::max(0.f, statusX - (left + icon + e.dp(5)))), left + icon + e.dp(5),
               top + float((headH - name.h) / 2), white);
     e.c.pushOffset(0, top);
-    statusIcons(e, right, headH, e.p.darkMuted, true);
+    batteryIcon(e, right, headH, e.p.darkMuted);
     e.c.popOffset();
   }
 
@@ -304,6 +319,7 @@ class ShortsScreen : public Screen {
     const Item& item = items_[size_t(i)];
     if (savedRepeat_ < 0) savedRepeat_ = g_player.state().repeat;
     if (VideoSurface* v = VideoSurface::get()) v->clear();  // the still until this one's video draws
+    expectPath_ = videoSound(item), armedAt_ = -1;
     g_player.playVideo(videoSound(item), videoPictures(item, g_prefs.videoQuality));
     g_player.setRepeat(2);  // shorts loop, as in the app
     describe(item);
@@ -381,6 +397,9 @@ class ShortsScreen : public Screen {
   int dir_ = 0;  // 1: the next came from below, -1: the previous from above
   Canvas* canvas_ = nullptr;
   int boxW_ = 0, boxH_ = 0;
+  // the short asked for last: its sound's path, and the surface's picture count when its video began
+  std::string expectPath_;
+  mutable int64_t armedAt_ = -1, armedNs_ = 0;
 };
 
 }  // namespace

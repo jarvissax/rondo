@@ -2756,7 +2756,6 @@ setInterval(() => { const el = document.getElementById('dtNow'); if (el && S.dat
 let soundOut = null, eqTimer = 0;
 const BOOSTS = [[0, 'Off'], [3, '+3 dB'], [6, '+6 dB'], [9, '+9 dB'], [12, '+12 dB']];
 const AMPS = [[0, 'Standard'], [1, '+2 dB'], [2, '+4 dB'], [3, '+6 dB']];
-const CROSSFADES = [[0, 'Off'], [2, '2 s'], [4, '4 s'], [6, '6 s'], [8, '8 s'], [10, '10 s'], [12, '12 s']];
 const freqName = (f) => (f >= 1000 ? `${f / 1000}k` : String(f));
 const gainName = (g) => (g > 0 ? `+${g.toFixed(1)}` : g.toFixed(1)).replace('.0', '');
 async function loadSound(quiet = false) {
@@ -2801,15 +2800,6 @@ function renderSound() {
         <div class="row-main"><div class="row-title">Loudness boost</div><div class="row-sub">Louder; the peaks are held, never clipped.</div></div>
         <div class="row-control">${segHtml('boostDb', BOOSTS, o.boostDb, 'Loudness boost')}</div></div>
     </div>
-    <h2 class="gh">Playback</h2>
-    <div class="group">
-      <div class="row row-wide set-row"><span class="tile t-crossfade">${icon('queue')}</span>
-        <div class="row-main"><div class="row-title">Crossfade</div><div class="row-sub">Each song fades into the next. Off: one after the other, with no gap.</div></div>
-        <div class="row-control">${segHtml('crossfadeSec', CROSSFADES, s.crossfadeSec ?? 0, 'Crossfade')}</div></div>
-      <div class="row set-row"><span class="tile t-fade">${icon('pause')}</span>
-        <div class="row-main"><div class="row-title">Fade on pause and play</div><div class="row-sub">Music fades out when it pauses and back in when it plays.</div></div>
-        <button class="switch" type="button" role="switch" data-key="fadePause" aria-checked="${s.fadePause !== false}" aria-label="Fade on pause and play"></button></div>
-    </div>
     <h2 class="gh">Every output</h2>
     <div class="group">
       <div class="row set-row"><span class="tile t-level">${icon('gauge')}</span>
@@ -2847,7 +2837,7 @@ soundBody.addEventListener('click', async (e) => {
     return putSound({ [seg.dataset.key]: JSON.parse(b.dataset.v) });
   }
   const sw = e.target.closest('.switch[data-key]');
-  if (sw) return putSound({ [sw.dataset.key]: sw.getAttribute('aria-checked') !== 'true' });  // leveling, fadePause
+  if (sw) return putSound({ [sw.dataset.key]: sw.getAttribute('aria-checked') !== 'true' });  // leveling
   if (e.target.closest('#eqFlat')) return putSound({ preset: 'flat' });
   if (e.target.closest('#eqSave')) {
     const name = await promptSheet({ title: 'Name this preset', text: 'Kept with the presets, for every output.', action: 'Save', placeholder: 'Name' });

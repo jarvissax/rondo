@@ -43,6 +43,7 @@ struct PlayerState {
   int32_t videoHeight;   // the picture's height (0 until known)
   int64_t bufferedMs;    // how far the video's picture has been read
   int32_t videoFailed;   // the video's picture can't be shown (its sound may still play)
+  uint32_t videoFrames;  // pictures this video has rendered (0 until its first): Shorts waits for it
   int32_t failed;        // a streamed song stopped where it couldn't be read: Play goes on from there
   int32_t loudnessKnown, loudnessTotal;  // Volume leveling: the library's songs measured, of all
   int32_t amplifier;  // the Y1's amplifier: -1 not known, else its level 0..3 (amplifier.h)
@@ -88,7 +89,6 @@ class PlayerHost {
   void setRepeat(int mode);
   void changeVolume(int delta);  // one step of STREAM_MUSIC (1.0.x's wheel in Now Playing)
   void setVolumeLimit(int limit);  // Settings › Sound › Volume limit: the highest step, 0-13
-  void playback(int crossfadeMs, bool fadePause);  // Settings › Sound › Playback
   void release();                // paused, the song's file closed (the USB drive); Play picks it up again
   void configure(const std::string& baseUrl, const std::string& token);  // where /s/<id>/140 streams come from
   // A video (1.0.x's playVideo): whatever played stops; the sound plays as the queue's one item, the
