@@ -31,6 +31,9 @@ sends it to the Y1, which installs it and restarts with everything kept (the das
 it). **Update from a file**, under the Rondo row, does the same with a `rondo-<version>.rondo` you
 downloaded (Rondo 1.0: an APK).
 
+The sidebar has the pages in groups: **Overview**, **Library** and **FM Radio**, then
+**Connections** (Wi-Fi, Bluetooth, YouTube) and **Settings** (Sound, Theme, General).
+
 ## Library
 
 Everything on the card, as songs, albums (Cover Flow: arrow keys, the mouse wheel or a drag move
@@ -72,11 +75,11 @@ The Y1 redraws while you change things here.
 - **Text size:** small, medium or large.
 - **Main menu:** show, hide and reorder the entries. Settings is always there.
 
-## Settings
+## General
 
 The same settings as on the Y1 (see [Using Rondo](using.md#settings)): video quality,
 brightness, screen timeout, lyrics, wheel acceleration, wheel vibration and the click sound. The
-Theme page above matches the Y1's **Settings › Theme**.
+Theme page above matches the Y1's **Settings › Display › Theme**.
 
 **Date & time**, as on the Y1: the time and the time zone each set automatically or by hand, and
 24-hour time. By hand, set the date and the time (or take your computer's) and pick the time zone.
@@ -115,11 +118,20 @@ and the speaker. You can also name, reorder and delete saved stations, save the 
 found, and set the region. Wired headphones must be plugged into the Y1, because they're the
 antenna.
 
-## Server
+## YouTube
 
 Where YouTube Music and YouTube come from: **Directly to YouTube** (nothing to set up) or **My
 server**, the [Rondo server](server.md) the Y1 uses, and whether it's reachable. The Y1's own
-**Settings › Server** does the same.
+**Settings › YouTube** does the same on the Y1.
+
+- **YouTube account** (directly to YouTube): sign in with a **cookies.txt** from a browser, as the
+  server's admin page does. Open a private window, sign in at youtube.com, export the cookies with a
+  cookies.txt browser extension, close the window at once, then **Upload cookies.txt** here. The
+  page says who is signed in. The file stays on your Rondo (only its youtube.com lines are sent) and
+  is never shown; **Sign out** deletes it. A separate Google account for your Rondo is the safest
+  choice. Signed in, YouTube Music has your Library and your own home, and YouTube your
+  Subscriptions, History and its picks for you. With a server, the server's own account counts.
+- **Video quality:** Auto, or a fixed height (it was under Settings before).
 
 - **Connect to a server:** enter the server's address and the code from its admin page
   (**Device › Connect a Rondo**), then press **Connect**.

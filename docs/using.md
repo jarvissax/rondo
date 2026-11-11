@@ -23,7 +23,7 @@ next, previous, volume) work with the screen on or off, like Bluetooth headphone
 ## Main menu
 
 **Now Playing**, **Library**, **YouTube**, **YouTube Music**, **FM Radio** and **Settings**. The
-right side shows what's highlighted, or what's playing. **Settings › Theme › Main menu** changes
+right side shows what's highlighted, or what's playing. **Settings › Display › Theme › Main menu** changes
 the order and which entries show up.
 
 <p align="center">
@@ -37,14 +37,23 @@ Rondo looks through the whole microSD card (and the Y1's internal storage) for m
 You don't need a special folder layout. Songs are listed by title, artist and album, using the
 files' tags. Without tags, a file named `Artist - Title.flac` is read the obvious way.
 
+Library has four parts: **Music**, **Videos**, **Photos** and **Files**.
+
+**Music** starts with Shuffle songs and Search, then **Browse** (Songs, Artists, Album artists,
+Albums, Cover Flow, Genres, Folders), **Playlists**, **Listening** (Recently added, Most played,
+Recently played, Top rated) and **The card** (Rescan, Organize). Every list of songs starts with
+**Shuffle**.
+
 - **Search** finds songs, artists, albums, videos and playlists as you type, on the wheel
   keyboard. Songs, Artists, Albums, Videos and Playlists each start with a Search of their own.
 - **Album artists** and **Genres** group songs by their album artist (else their artist) and their
   genre tag. **Albums** show the album artist and the year; two albums of one name by different
   artists stay apart, and an album's songs play in disc and track order.
-- **Cover Flow** shows the albums' covers side by side in perspective, each above its reflection:
-  turn the wheel to glide through them (Next and Prev jump ten), press center for the album's songs.
-- **Folders** shows the card as it is: open folders, play a folder's songs from any of them, or a video.
+- **Cover Flow** shows the albums' covers on a wide stage, the one in front facing you and the
+  others turned and set back, each above its reflection: turn the wheel to glide through them
+  (Next and Prev jump ten), press center for the album's songs.
+- **Folders** shows the card's music as it is: open folders, play a folder's songs from any of
+  them, or a video.
 - **Recently added** lists the newest songs first.
 - **Most played**, **Recently played** and **Top rated** (4 stars and up): a song counts as played
   once it's half over or 4 minutes in.
@@ -56,10 +65,17 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
   below them and pick their songs anew each time you open one.
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
   delete it from the card.
+- **Videos** lists all the videos on the card, the newest first, and each folder that has some.
 - **Photos** shows the JPEG and PNG pictures on the card and the internal storage, by folder (and
   all of them, the newest first), as a grid: turn the wheel to pick one, press center to see it full
-  screen. There the wheel (or Next and Prev) goes from one to the next, center shows its name and
+  screen. There the wheel (or Next and Prev) slides from one to the next, center shows its name and
   date, and Play starts or stops a slideshow. Pictures from a camera show the right way up.
+- **Files** is a file manager for the card and the internal storage: every folder and file, not
+  only music. Center opens a folder, plays a song (the folder's songs after it), a video or a photo.
+  **Hold center** on a file or folder to **Rename** it, **Copy** or **Move** it to another folder
+  (on either storage: between the two it copies in the background, and the list says how far it
+  is), or **Delete** it. Each folder starts with **New folder**. Songs keep their plays, ratings and
+  playlists when they move.
 - **Rescan the card** after copying files to it another way than the USB drive.
 - **Organize the card** puts every song in `Music/Artist/Album (Year)/01 - Title` (a `Disc 1`
   folder for each disc of a multi-disc album), episodes in `Shows/Series (Year)/Season 01/` and
@@ -90,7 +106,7 @@ with the wheel.
 - With a YouTube account connected to the server, you also get **Library** (your playlists and
   liked songs) in YouTube Music, and **Subscriptions** and **History** in YouTube.
 - **Hold center on a song** for the same options as on the card, including **Start radio**.
-- Videos play at the quality set in **Settings › Video quality** (Auto picks 360p, the screen's
+- Videos play at the quality set in **Settings › YouTube › Video quality** (Auto picks 360p, the screen's
   size; up to 720p works).
 
 ### Shorts
@@ -109,6 +125,7 @@ so moving on takes about a second.
 </p>
 
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
+- **Next / Previous:** the next or the song before; the cover slides in from that side.
 - **Hold center** for options: scrub through the song, see what's up next, shuffle and repeat,
   and for a song on the card its **rating**: center gives it one star more (after five, none).
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
@@ -143,23 +160,30 @@ turns the radio off.
   <img src="images/accent-colors.png" width="360" alt="Choosing an accent color">
 </p>
 
+Settings has the **Dashboard** at the top, then six groups: **Connections** (Wi-Fi, Bluetooth),
+**YouTube** (the connection, the account, video quality), **Sound**, **Display** (theme, brightness,
+screen off, lyrics), **Controls** (the wheel) and **System** (date and time, updates, About, shut
+down).
+
 | Setting | |
 | --- | --- |
 | **Dashboard** | Starts the dashboard; see below. |
-| **Wi-Fi** | Join networks. Hold center on a saved network to forget it. |
-| **Bluetooth** | Pair and connect headphones or speakers. |
+| **Connections › Wi-Fi** | Join networks. Hold center on a saved network to forget it. |
+| **Connections › Bluetooth** | Pair and connect headphones or speakers. |
 | **Sound** | How music sounds, kept for each output: the speaker, wired headphones and each Bluetooth device. An **equalizer** with presets (or ten bands of your own), **Headphone match** (a correction for your headphone model from [AutoEq](https://github.com/jaakkopasanen/AutoEq), looked up through your server), a **loudness boost** whose peaks are held so they never clip, and **volume leveling** (songs at one loudness, measured as they play and while the Y1 charges). **Amplifier** sets the Y1's own amplifier: Standard as it ships, or +2, +4 or +6 dB louder for headphones and the speaker; the loudest steps add some hiss. **Volume limit** sets the loudest step the wheel goes to, on every output (No limit as it ships). **Playback:** **Crossfade** fades each song into the next over 2 to 12 seconds (Off: one after the other with no gap), and **Fade on pause and play** fades music out when it pauses and back in when it plays. |
-| **Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
-| **Video quality** | Auto, or a fixed height. |
-| **Brightness**, **Screen off after** | |
-| **Open lyrics automatically** | Shows lyrics instead of the cover when a song has them. |
-| **Wheel acceleration** | Long, fast spins move further. |
-| **Wheel vibration** | A small buzz on every wheel step: off, light, normal or strong. |
-| **Click sound** | A tick on every wheel step. |
-| **Server** | Whether the server answers, a connection test, and connecting to a server with its address and code. |
-| **Software update** | Installs a newer Rondo over Wi-Fi, keeping everything, or says when a release needs Innioasis Updater CE ([more](install.md#updating-rondo)). |
-| **About** | Rondo's version, the battery, free space, Wi-Fi and the server. |
-| **Shut down** | Shut down or restart. Holding the Power button opens the same choices. |
+| **YouTube › Connection** | Directly to YouTube or through your server: whether the server answers, a connection test, and connecting to a server with its address and code. YouTube Music and YouTube show the new source's home and tabs at once. |
+| **YouTube › YouTube account** | Directly to YouTube: who is signed in. Sign in on the dashboard (YouTube page) with a cookies.txt; signed in, YouTube Music has your Library and your own home, and YouTube your Subscriptions and History. With a server, the server's own account counts. |
+| **YouTube › Video quality** | Auto, or a fixed height. A video without that height plays the next one down. |
+| **Display › Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
+| **Display › Brightness**, **Screen off after** | |
+| **Display › Open lyrics automatically** | Shows lyrics instead of the cover when a song has them. |
+| **Controls › Wheel acceleration** | Long, fast spins move further. |
+| **Controls › Wheel vibration** | A small buzz on every wheel step: off, light, normal or strong. |
+| **Controls › Click sound** | A tick on every wheel step. |
+| **System › Date & time** | Set automatically or by hand, the time zone, 24-hour time. |
+| **System › Software update** | Installs a newer Rondo over Wi-Fi, keeping everything, or says when a release needs Innioasis Updater CE ([more](install.md#updating-rondo)). |
+| **System › About** | Rondo's version, the battery, free space, Wi-Fi and the server. |
+| **System › Shut down** | Shut down or restart. Holding the Power button opens the same choices. |
 
 ## The dashboard
 

@@ -30,7 +30,7 @@ If the Updater offers **Keep Data**, choose it to keep your settings, Wi-Fi and 
 
 ### Software update says "Couldn't check"
 
-The Y1 asks your Rondo server, so it needs Wi-Fi and a connected server (Settings › Server).
+The Y1 asks your Rondo server, so it needs Wi-Fi and a connected server (Settings › YouTube › Connection).
 Without a server, update [from the dashboard or over USB](install.md#updating-rondo).
 
 ### The update page doesn't list the Y1, or can't connect
@@ -58,16 +58,16 @@ Settings › Software update, or report it with the log in `/data/rondo/rondo.lo
 
 ### "No music server yet"
 
-The Y1 isn't connected to a server. Set one up and connect it in Settings › Server
+The Y1 isn't connected to a server. Set one up and connect it in Settings › YouTube › Connection
 ([server guide](server.md#finish-the-setup)).
 
-### Settings › Server says "Unreachable"
+### Settings › YouTube says "Unreachable"
 
 - **At home:** the Y1 and the server must be on the same network, and the server's address must
   not have changed. Give the server a fixed address in your router.
 - **On a VPS:** check the HTTPS from a computer with the `openssl` command in the
   [server guide](server.md#on-a-vps). If you use Cloudflare, the record must be "DNS only".
-- Check the address in **Settings › Server**: `http://` for home, `https://` for a VPS,
+- Check the address in **Settings › YouTube › Connection**: `http://` for home, `https://` for a VPS,
   and the right port.
 
 ### "Token refused"
@@ -78,7 +78,7 @@ up again. Connect again with a new code from the admin page (**Device › Connec
 ### Songs or videos won't play, or stop partway
 
 YouTube changes things often. On the admin page, open **Resolver** and press **Update now**,
-then **Test playback**. **Activity** shows the errors behind it. Settings › Server on the Y1 says
+then **Test playback**. **Activity** shows the errors behind it. Settings › YouTube on the Y1 says
 "Playback failing" while this is the problem.
 
 ### Library, Subscriptions or History are missing

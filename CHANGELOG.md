@@ -11,11 +11,13 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 
 ### YouTube without a server
 
-- **YouTube and YouTube Music straight from the Y1.** Settings › Server › Connect to: **Directly to
+- **YouTube and YouTube Music straight from the Y1.** Settings › YouTube › Connection: **Directly to
   YouTube** or **My server**. Directly, there is nothing to set up: home, search, albums, artists,
   playlists, up next, Shorts, lyrics and playback (Opus, or AAC where a song has no Opus) all come
-  from YouTube itself. A Y1 without a server uses it on its own. Signed out for now: Library,
-  Subscriptions, History and Headphone match still need your server.
+  from YouTube itself. A Y1 without a server uses it on its own.
+- **Sign in to YouTube directly:** upload a cookies.txt on the dashboard (YouTube page), as on the
+  server's admin page, for YouTube Music's Library and your own home, and YouTube's Subscriptions
+  and History. The file stays on the Y1. Headphone match still needs your server.
 
 ### Rondo, rebuilt
 
@@ -49,6 +51,30 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   charger and battery warnings (voltage too high, battery too hot, charging too long) appear as they
   did on the stock firmware, in the Y1's words.
 
+### Library, Settings and the dashboard
+
+- **Library in four:** Music (in groups: Browse, Playlists, Listening, the card), Videos (all, the
+  newest, by folder), Photos and **Files**, a file manager for the card and the internal storage:
+  open, rename, copy, move (between the two storages too, in the background), delete, new folder.
+- **Settings in groups:** the Dashboard, then Connections, YouTube, Sound, Display, Controls and
+  System.
+- **A glyph and a color for every row:** no screen shows one twice; Shuffle and Repeat have theirs
+  everywhere, and every list of songs starts with Shuffle.
+- **Every common music format:** WMA, APE, WavPack, AIFF, AC-3, E-AC-3, DTS, DSD, TTA, TAK,
+  Musepack, MKA, CAF, AMR, MP2 and AU besides MP3, AAC, ALAC, FLAC, Ogg, Opus and WAV, with their
+  tags, lengths and covers; surround mixes down to stereo.
+- **The dashboard in groups too:** Connections (Wi-Fi, Bluetooth, YouTube) and Settings (Sound,
+  Theme, General); its Library in Music, Videos, Photos and Files, with Shuffle.
+- **Photos slide** from one to the next on the Y1 and the dashboard (a swipe there too), and the
+  grid's highlight glides. **Cover Flow** has a wider, deeper stage.
+- **Previous slides** the cover in from the left, as Next does from the right.
+
+### Fixed
+
+- Switching between the server and direct mode could keep showing the other source's YouTube and
+  YouTube Music for two minutes, and their tabs.
+- A video quality the video lacks fell to 360p; it now plays the next height down (720p → 480p).
+
 ### Smaller changes
 
 - It starts about a second sooner, and screens open without a stutter, also when their content
@@ -60,7 +86,7 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   Most played, Recently played and Top rated; rate a song in Now Playing (hold center) or on the
   dashboard, which also sorts by genre, year, plays and rating. Rondo reads every song's tags once
   more after the update.
-- **A file manager:** Library › Folders on the Y1 opens the card's folders; the dashboard's Files tab
+- **A file manager:** Library › Files on the Y1 and the dashboard's Files tab; the dashboard
   also makes folders, renames, moves and deletes (several at once), uploads into any folder and
   downloads files. Plays, ratings and playlists follow what moves.
 - **Organize the card** (Library, and on the dashboard): songs into Artist/Album (Year) folders,
@@ -87,7 +113,7 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
   About shows it.
 - **The date and the time in the status bar,** in your time zone, kept while the Y1 is off.
-- **Settings › Date & time:** the time and the time zone each set automatically or by hand. Set
+- **Settings › System › Date & time:** the time and the time zone each set automatically or by hand. Set
   automatically, the Y1 takes the time from the network and the time zone of wherever it is online,
   each time it joins Wi-Fi. By hand, you set the date, the time and the time zone yourself, and choose
   24-hour time or AM/PM. A new Y1 starts in UTC (it used to stay on China's time zone).

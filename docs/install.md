@@ -51,14 +51,14 @@ Without it they start fresh. Your music and playlists on the card are never touc
 
 ## First start
 
-1. **Wi-Fi:** Settings › Wi-Fi. Turn the wheel to pick your network and type the password on the
+1. **Wi-Fi:** Settings › Connections › Wi-Fi. Turn the wheel to pick your network and type the password on the
    on-screen keyboard. Only 2.4 GHz networks show up.
 2. **Your music:** plug the Y1 into your computer. Rondo asks whether to use it as a **USB drive**;
    choose it, and the microSD card shows up on your computer. Copy music and videos onto it (any
    folders), eject it on the computer, then choose **Turn off USB drive** on the Y1. Music from
    any music player works: FLAC, MP3, M4A, AAC, OGG, Opus and WAV.
 3. **YouTube Music and YouTube:** [set up a server](server.md), then connect the Y1 to it in
-   **Settings › Server › Connect to a server**.
+   **Settings › YouTube › Connection › Connect to a server**.
 
 Then see [Using Rondo](using.md) for what the wheel and each button do.
 

@@ -92,11 +92,11 @@ Your server's address is `https://music.example.com`.
    the log and choose an admin password.
 2. **Connect the Y1:** on the admin page, go to **Device** and press **Connect a Rondo**. It shows
    a 6-digit code, good for 10 minutes.
-3. On the Y1, open **Settings › Server › Connect to a server**. Type your server's address and,
+3. On the Y1, open **Settings › YouTube › Connection › Connect to a server**. Type your server's address and,
    on the next screen, the code from step 2. (Typing is quicker in the dashboard: open **Settings ›
    Dashboard** on the Y1, the address it shows on your phone or computer, then its **Server** page.)
 
-**Settings › Server** on the Y1 now says it's connected; **Connection test** checks it. YouTube
+**Settings › YouTube** on the Y1 now says it's connected; **Connection test** checks it. YouTube
 Music and YouTube are ready.
 
 ## The admin page

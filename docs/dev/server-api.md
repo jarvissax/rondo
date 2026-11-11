@@ -16,7 +16,7 @@ how it works and its API; for setting a server up, see [docs/server.md](../serve
 - **Admin sign-in:** password → session cookie `rondo_admin` (HttpOnly, SameSite=Strict, Secure
   when the request came over HTTPS), 12 h. 5 wrong passwords a minute → `429`.
 - **The device token:** one at a time. The admin page creates a 6-digit **connect code** (10
-  minutes, one use). On the Rondo, Settings › Server › Connect to a server (or the dashboard's Server
+  minutes, one use). On the Rondo, Settings › YouTube › Connection › Connect to a server (or the dashboard's YouTube
   page) takes the server address and that code; the Rondo calls `POST /device/pair` and keeps the
   token it gets back. Pairing replaces the previous
   token (the old device stops working). "Disconnect" removes it.
