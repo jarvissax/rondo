@@ -5,6 +5,7 @@
 
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -42,6 +43,12 @@ int grabVideoFrame(const char* path, int64_t atUs, ui::Pixels& out) {
   if (set != OK) fprintf(stderr, "rondo-media: no frame of %s: setDataSource %d\n", path, int(set));
   if (set == OK) {
     sp<IMemory> mem = r->getFrameAtTime(atUs, 2 /* OPTION_CLOSEST_SYNC, getFrameAtTime(us)'s */);
+    if (mem == nullptr && atUs > 0) {  // a clip shorter than that: a frame a third of the way in
+      const char* d = r->extractMetadata(METADATA_KEY_DURATION);
+      int64_t ms = d ? atoll(d) : 0;
+      if (ms > 0 && ms * 1000 < atUs) mem = r->getFrameAtTime(ms * 1000 / 3, 2);
+      else if (ms <= 0) mem = r->getFrameAtTime(0, 2);  // its length unknown (Matroska here): its first picture
+    }
     if (mem == nullptr) fprintf(stderr, "rondo-media: no frame of %s at %lld us\n", path, (long long)atUs);
     // the frame's memory mapped into this process: it can fail (Nov 10: a null pointer, which crashed
     // rondo-media and the dashboard), and then the file isn't to blame

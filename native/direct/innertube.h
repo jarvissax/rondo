@@ -32,6 +32,7 @@ struct Rules {
 
 // Where direct mode keeps its state (the visitor id, the rules); "" keeps nothing.
 void setDataDir(const std::string& dir);
+std::string dataDir();  // "" when none yet
 
 // The YouTube account direct mode signs in with, as the Rondo server does: a cookies.txt exported from a
 // browser signed in to YouTube, uploaded on the dashboard to <data>/youtube-cookies.txt (0600, never
@@ -64,6 +65,8 @@ struct Fetched {
   int64_t total = -1;  // from Content-Range's /total
 };
 Fetched get(const std::string& url, const std::vector<std::string>& headers = {}, size_t maxBytes = 8 << 20);
+// A POST of body to a full URL (the TV sign-in's JSON)
+Fetched post(const std::string& url, const std::string& body, const std::vector<std::string>& headers = {});
 // A GET whose body goes to `sink` as it comes (false from it stops); the status and headers first,
 // to `head` (false stops before any body)
 int getStreamed(const std::string& url, const std::vector<std::string>& headers,

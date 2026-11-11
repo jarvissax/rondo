@@ -372,6 +372,28 @@ T onUiValue(std::function<T()> fn) {
   onMain([out, fn] { *out = fn(); });
   return *out;
 }
+// the answers kept for the other account go (memory and disk), and the tabs follow the new one: after a
+// sign-in or out. UI thread.
+void accountChanged() {
+  unlink((g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache/server").c_str());
+  if (g_onServerChanged) g_onServerChanged();
+}
+// direct mode's code sign-in (direct/tv_auth.h) through the local server: /tv, /tv/begin, /tv/cancel,
+// /tv/signout; {"mode": "server"} with a server (its own admin page signs in)
+Response youtubeTv(const std::string& action) {
+  bool direct = onUiValue<bool>([] { return directMode(); });
+  if (!direct) return json("{\"mode\":\"server\"}");
+  std::string body;
+  int st = coreCall(false, action.empty() ? "/tv" : "/tv/" + action, "", body, 40000);
+  if (st != 200 || body.size() < 2 || body[0] != '{') return error(502, "Couldn't ask YouTube. Is the Rondo online?");
+  // signed in or out since the last look: what was cached for the other account goes
+  static int lastIn = -1;
+  int in = body.find("\"signedIn\":true") != std::string::npos;
+  if (lastIn >= 0 && in != lastIn) onMain([] { accountChanged(); });
+  lastIn = in;
+  return json("{\"mode\":\"direct\"," + body.substr(1));
+}
+
 Response youtubeAccount(bool reload) {
   bool direct = onUiValue<bool>([] { return directMode(); });
   if (!direct) return json("{\"mode\":\"server\"}");
@@ -1382,9 +1404,21 @@ std::string libraryJson() {
                             {"modified", num(t->modified)}}));
     songsPart = arr(songs), videosPart = arr(videos);
   }
+  // the storages' top folders (the card's first): where the page puts an upload by its kind (Music,
+  // Movies or Videos, Pictures), and the card's own Music when there is none yet
   std::vector<std::string> folders;
-  for (const char* r : kRoots)
-    if (isDir(r)) folders.push_back(str(std::string(r) + "/Music"));
+  for (const char* r : kRoots) {
+    if (!isDir(r)) continue;
+    std::vector<std::string> names;
+    if (DIR* d = opendir(r)) {
+      while (dirent* e = readdir(d))
+        if (e->d_name[0] != '.' && isDir(std::string(r) + "/" + e->d_name)) names.push_back(e->d_name);
+      closedir(d);
+    }
+    std::sort(names.begin(), names.end());
+    if (std::find(names.begin(), names.end(), "Music") == names.end()) folders.push_back(str(std::string(r) + "/Music"));
+    for (const std::string& n : names) folders.push_back(str(std::string(r) + "/" + n));
+  }
   return obj({{"songs", songsPart}, {"videos", videosPart}, {"scanning", boolean(g_library.scanning())}, {"folders", arr(folders)}});
 }
 
@@ -1933,6 +1967,10 @@ Response Server::api(Request& r, const std::string& path) {
   // direct mode's YouTube account: who the cookies.txt uploaded here signs in as; in server mode the
   // server has its own (its admin page)
   if (path == "/youtube/account" && m == "GET") return youtubeAccount(false);
+  if (path == "/youtube/tv" && m == "GET") return youtubeTv("");
+  if (path == "/youtube/tv/begin" && m == "POST") return youtubeTv("begin");
+  if (path == "/youtube/tv/cancel" && m == "POST") return youtubeTv("cancel");
+  if (path == "/youtube/tv/signout" && m == "POST") return youtubeTv("signout");
   if (path == "/youtube/cookies" && (m == "PUT" || m == "DELETE")) {
     std::string text;
     if (m == "PUT") {
@@ -1953,9 +1991,7 @@ Response Server::api(Request& r, const std::string& path) {
           return std::string("Couldn't save it on the Rondo");
         }
       }
-      // the cached answers were the other account's: on disk too (the cache's mark says whose)
-      unlink((g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache/server").c_str());
-      if (g_onServerChanged) g_onServerChanged();
+      accountChanged();  // the cached answers were the other account's
       return std::string();
     });
     if (!ok.empty()) return error(500, ok);

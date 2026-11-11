@@ -261,6 +261,45 @@ bool feedChunk(const std::string& fields, Chunk<Item>& c) {
   return true;
 }
 
+// --- signed in with a code: the TV app's feeds ---
+
+// the token for more of the page itself: section lists and grids, not one shelf's sideways list
+// (tv.ts's tvContinuation)
+void tvNext(J o, bool inShelf, std::string& found, int depth = 0) {
+  if (!o || !found.empty() || depth > 40) return;
+  if (yyjson_is_obj(o)) {
+    size_t k, n;
+    J kk, v;
+    yyjson_obj_foreach(o, k, n, kk, v) {
+      const char* name = yyjson_get_str(kk);
+      if (!inShelf && !strcmp(name, "nextContinuationData")) {
+        found = str(key(v, "continuation"));
+        if (!found.empty()) return;
+      }
+      tvNext(v, inShelf || !strcmp(name, "horizontalListRenderer") || !strcmp(name, "horizontalListContinuation"), found, depth + 1);
+    }
+  } else if (yyjson_is_arr(o)) {
+    each(o, [&](J v) { tvNext(v, inShelf, found, depth + 1); });
+  }
+}
+
+bool tvChunk(const std::string& fields, const std::string& kind, Chunk<Item>& c) {
+  Doc d;
+  if (innertube(rules().tv, "browse", fields, d) != 200 || !root(d)) return false;
+  std::vector<Item> all;
+  std::set<std::string> seen;
+  tvItems(root(d), all, seen);
+  for (Item& i : all) {
+    if (kind == "song" ? i.kind != "video" : i.kind != kind) continue;
+    if (kind == "song") i.kind = "song";
+    c.items.push_back(i);
+  }
+  std::string token;
+  tvNext(root(d), false, token);
+  if (!token.empty()) c.more = [token, kind](Chunk<Item>& n) { return tvChunk("\"continuation\":" + quote(token), kind, n); };
+  return true;
+}
+
 // --- Shorts ---
 
 // shortItem: a ShortsLockupView (search), or a "watch next" entry, which names only the video
@@ -390,6 +429,41 @@ std::string feed(const std::string& scope, const std::string& browseId) {
   std::string fields = "\"browseId\":" + quote(browseId);
   return page<Item>(
       scope, [fields](Chunk<Item>& c) { return feedChunk(fields, c); }, 20, byId(), pageJson);
+}
+
+std::string tvFeed(const std::string& scope, const std::string& browseId) {
+  std::string fields = "\"browseId\":" + quote(browseId);
+  return page<Item>(
+      scope, [fields](Chunk<Item>& c) { return tvChunk(fields, "video", c); }, 20, byId(), pageJson);
+}
+
+std::string tvLibrary() {
+  Chunk<Item> c;
+  if (!tvChunk("\"browseId\":\"FEplaylist_aggregation\"", "playlist", c)) return "";
+  Item liked;
+  liked.kind = "playlist", liked.id = "LM", liked.title = "Liked Music", liked.subtitle = "Auto playlist";
+  std::vector<Item> out{liked};
+  for (Item& i : c.items)
+    if (i.id != "LM" && i.id != "LL" && i.id != "WL") out.push_back(i);
+  return "{\"playlists\":" + json(out) + "}";
+}
+
+std::string tvPlaylist(const std::string& id) {
+  std::string fields = "\"browseId\":" + quote("VL" + id), title = id == "LM" ? "Liked Music" : "Playlist";
+  return page<Item>(
+      "music/playlist/" + id, [fields](Chunk<Item>& c) { return tvChunk(fields, "song", c); }, 20, byId(),
+      [title](const Page<Item>& p) {
+        std::string s = "{\"title\":" + quote(title) + ",\"subtitle\":" +
+                        quote(p.items.empty() ? "" : std::to_string(p.items.size()) + (p.next.empty() ? "" : "+") + " songs") +
+                        ",\"items\":" + json(p.items);
+        if (!p.next.empty()) s += ",\"next\":" + quote(p.next);
+        return s + "}";
+      },
+      [](const Page<Item>& p) {
+        std::string s = "{\"items\":" + json(p.items);
+        if (!p.next.empty()) s += ",\"next\":" + quote(p.next);
+        return s + "}";
+      });
 }
 
 std::string search(const std::string& q) {

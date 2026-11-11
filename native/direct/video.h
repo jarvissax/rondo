@@ -13,5 +13,11 @@ std::string shortInfo(const std::string& id);  // /video/short/:id: {id, title, 
 // signed in (innertube.h's cookies): one of the account's web feeds, FEwhat_to_watch (the home YouTube
 // picks), FEsubscriptions, FEhistory: {items, next}
 std::string feed(const std::string& scope, const std::string& browseId);
+// signed in with a code (tv_auth.h): the TV app's own feeds for the account, {items, next}; the
+// account's playlists, Liked Music first, {playlists}; and a playlist (Liked Music, a private one) as
+// songs, {title, subtitle, items, next}
+std::string tvFeed(const std::string& scope, const std::string& browseId);
+std::string tvLibrary();
+std::string tvPlaylist(const std::string& id);
 
 }  // namespace rondo::direct::video

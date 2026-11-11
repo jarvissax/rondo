@@ -303,23 +303,29 @@ $('#offlineRetry').addEventListener('click', () => {
 // ---------- navigation ----------
 // the sidebar in groups, as on the Rondo: what's on it, how it connects, how it behaves
 const NAV = [
-  { id: 'overview', label: 'Overview', tile: 'rondo' },
-  { id: 'library', label: 'Library', tile: 'device', glyph: 'library' },
-  { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio' },
+  { id: 'overview', label: 'Overview', tile: 'rondo', tab: true },
+  { id: 'library', label: 'Library', tile: 'device', glyph: 'library', tab: true },
+  { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio', tab: true },
   { group: 'Connections' },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
-  { id: 'server', label: 'YouTube', tile: 'server', glyph: 'cloud' },
+  { id: 'server', label: 'YouTube', tile: 'server', glyph: 'cloud', tab: true },
   { group: 'Settings' },
   { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'sliders' },
   { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
   { id: 'settings', label: 'General', tile: 'settings', glyph: 'gear' },
 ];
-const PAGES = NAV.filter((n) => n.id);
+// the phone's fifth tab: the pages without a tab of their own, in the sidebar's groups
+const MORE = { id: 'more', label: 'Settings', tile: 'settings', glyph: 'gear' };
+const PAGES = [...NAV.filter((n) => n.id), MORE];
+const TABS = [...NAV.filter((n) => n.tab), MORE];
+const inMore = (id) => !TABS.some((t) => t.id === id && t !== MORE);
 const tileHtml = (tile, glyph) => `<span class="tile t-${tile}">${glyph ? icon(glyph) : markTile}</span>`;
 function buildNav() {
   $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${n.group}</div>` : `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
-  $('#tabs').innerHTML = PAGES.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
+  $('#moreRows').innerHTML = NAV.filter((n) => !n.tab).map((n) => n.group ? `</div><h2 class="gh">${n.group}</h2><div class="group">`
+    : `<a class="row more-row" href="#${n.id}">${tileHtml(n.tile, n.glyph)}<div class="row-main"><div class="row-title">${n.label}</div></div>${icon('chevron', 'chev')}</a>`).join('').replace(/^<\/div>/, '') + '</div>';
+  $('#tabs').innerHTML = TABS.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
 }
 function route() {
   const id = location.hash.slice(1);
@@ -328,6 +334,7 @@ function route() {
   S.route = next;
   for (const n of PAGES) $(`#view-${n.id}`).hidden = n.id !== next;
   $$('#nav a, #tabs a').forEach((a) => (a.dataset.id === next ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+  if (inMore(next)) $('#tabs a[data-id="more"]')?.setAttribute('aria-current', 'page');  // a page of Settings
   document.title = next === 'overview' ? 'Rondo' : `${PAGES.find((n) => n.id === next).label} · Rondo`;
   if (changed) window.scrollTo(0, 0);
   enterView(next);
@@ -703,7 +710,8 @@ $('#deviceRows').addEventListener('click', async (e) => {
 const AUDIO = ['flac', 'mp3', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opus', 'wav', 'w64', 'aif', 'aiff', 'aifc', 'wma',
   'ape', 'wv', 'ac3', 'eac3', 'ec3', 'dts', 'mka', 'dsf', 'dff', 'tta', 'tak', 'mpc', 'amr', 'awb', 'mp2', 'caf', 'au'];
 const VIDEO = ['mp4', 'm4v', 'mkv', '3gp', 'webm'];
-const ALLOWED = [...AUDIO, ...VIDEO, 'lrc'];
+const PHOTOS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'];
+const ALLOWED = [...AUDIO, ...VIDEO, ...PHOTOS, 'lrc'];
 // what can go anywhere on the card from the Files tab: pictures, subtitles, playlists too
 const ALLOWED_FILES = [...ALLOWED, 'srt', 'ass', 'vtt', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'm3u8', 'm3u'];
 const extOf = (n) => (n.split('.').pop() || '').toLowerCase();
@@ -1415,11 +1423,15 @@ $('#uploadBtn').addEventListener('click', () => fileInput.click());
 $('#dropPick').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => { enqueue([...fileInput.files]); fileInput.value = ''; });
 
+// where an upload goes by its kind, as Jellyfin keeps them: Music, Movies (else an existing Videos
+// folder), Pictures (else an existing Photos or DCIM folder), each made on the card when missing
 function folderFor(ext) {
   const folders = S.library?.folders || [];
-  const music = folders.find((f) => /\/music$/i.test(f)) || folders[0] || '/storage/sdcard0/Music';
-  if (VIDEO.includes(ext)) return folders.find((f) => /movie|video/i.test(f)) || music;
-  return music;
+  const root = (folders[0] || '/storage/sdcard0/Music').split('/').slice(0, 3).join('/');
+  const top = (re) => folders.find((f) => f.split('/').length === 4 && re.test(f.split('/')[3]));
+  if (VIDEO.includes(ext)) return top(/^movies$/i) || top(/^videos?$/i) || `${root}/Movies`;
+  if (PHOTOS.includes(ext)) return top(/^pictures$/i) || top(/^photos$/i) || top(/^dcim$/i) || `${root}/Pictures`;
+  return top(/^music$/i) || `${root}/Music`;
 }
 // folder: where they go (the Files tab's folder), else Music or a video folder by their kind
 function enqueue(files, folder = null) {
@@ -2302,12 +2314,81 @@ async function loadServer() {
 }
 // a plain-http address (a server at home reached by IP) is fine on your own Wi-Fi only
 const insecure = (url) => /^http:\/\//i.test(url || '');
-// direct mode's YouTube account: a cookies.txt sent to the Rondo, which signs its own requests with it
+// direct mode's YouTube account, as on the server's admin page: the code sign-in (the TV app's, like a
+// smart TV) for the YouTube feeds and YouTube Music's playlists, and cookies.txt for YouTube Music's own
+// home and history; the Rondo signs its own requests with them
 async function loadYtAccount(quiet = true) {
-  try {
-    S.ytAccount = await api('GET', '/api/youtube/account', undefined, { timeout: 30000 });
-  } catch (e) { if (e.status === 401) return; S.ytAccount = { mode: 'direct', signedIn: false, unreachable: true }; }
+  const [acct, tv] = await Promise.all([
+    api('GET', '/api/youtube/account', undefined, { timeout: 30000 }).catch((e) => (e.status === 401 ? null : { mode: 'direct', signedIn: false, unreachable: true })),
+    api('GET', '/api/youtube/tv', undefined, { timeout: 30000 }).catch((e) => (e.status === 401 ? null : { mode: 'direct', signedIn: false, unreachable: true })),
+  ]);
+  if (acct) S.ytAccount = acct;
+  if (tv) S.ytTv = tv;
   if (S.server) renderAccount();
+  watchTv();
+}
+// while a code waits for its approval: asked every 3 s, the countdown every second
+let tvTimer = 0, tvTick = 0;
+function watchTv() {
+  clearTimeout(tvTimer);
+  clearInterval(tvTick);
+  if (!S.ytTv?.pending) return;
+  tvTick = setInterval(() => {
+    const cd = $('#tvCountdown'), p = S.ytTv?.pending;
+    if (!cd || !p) return clearInterval(tvTick);
+    const left = Math.max(0, Math.ceil((p.expiresAt - Date.now()) / 1000));
+    cd.textContent = left ? `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'This code expired. Get a new one.';
+  }, 1000);
+  tvTimer = setTimeout(async () => {
+    if (S.route !== 'server') return;
+    try {
+      const was = S.ytTv;
+      S.ytTv = await api('GET', '/api/youtube/tv', undefined, { timeout: 30000 });
+      if (!was?.signedIn && S.ytTv.signedIn) toast(`Signed in${S.ytTv.name ? ` as ${S.ytTv.name}` : ''}`);
+      if (S.ytTv.error && !S.ytTv.pending && was?.pending) toast(TV_ERRORS[S.ytTv.error] || 'The sign-in didn’t work. Try again.', 'err');
+      renderAccount();
+    } catch (e) { if (e.status === 401) return; }
+    watchTv();
+  }, 3000);
+}
+const TV_ERRORS = {
+  denied: 'The sign-in was refused at Google.',
+  expired: 'The code expired before it was entered. Get a new one.',
+  revoked: 'The sign-in was removed from the Google account. Sign in again.',
+  failed: 'YouTube didn’t give a code. Check the Rondo’s Wi-Fi and try again.',
+};
+async function tvAct(action) {
+  try {
+    S.ytTv = await api('POST', `/api/youtube/tv/${action}`, {}, { timeout: 45000 });
+    renderAccount();
+    watchTv();
+    if (action === 'signout') toast('Signed out on your Rondo');
+  } catch (e) { if (e.status !== 401) toast(reason(e), 'err'); }
+}
+function tvHtml() {
+  const t = S.ytTv;
+  if (!t) return `<div class="row set-row"><span class="tile t-account">${icon('key')}</span><div class="row-main"><div class="row-title">Sign in with a code</div><div class="row-sub">Checking…</div></div></div>`;
+  if (t.pending) {
+    return `<div class="row row-wide set-row tv-pending"><span class="tile t-account">${icon('key')}</span>
+      <div class="row-main"><div class="row-title">Enter this code</div>
+        <div class="tv-code" aria-label="The code">${esc(t.pending.code)}</div>
+        <ol class="steps tv-steps">
+          <li>On your phone or computer, open <a class="link" href="${esc(t.pending.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(t.pending.url.replace(/^https?:\/\//, ''))}</b></a>.</li>
+          <li>Enter the code and pick the Google account for your Rondo.</li>
+          <li>Allow access. This page updates by itself.</li>
+        </ol>
+        <div class="row-sub"><span id="tvCountdown"></span> · Waiting for Google…</div></div>
+      <div class="row-control acct-actions"><button class="btn btn-sm" type="button" data-act="tv-copy">Copy code</button><button class="btn btn-sm" type="button" data-act="tv-cancel">Cancel</button></div></div>`;
+  }
+  if (t.signedIn) {
+    return `<div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
+      <div class="row-main"><div class="row-title">Signed in${t.name ? ` as ${esc(t.name)}` : ''}</div><div class="row-sub">${t.handle ? `${esc(t.handle)} · ` : ''}YouTube’s home, Subscriptions and History; YouTube Music’s playlists and Liked Music.</div></div>
+      <div class="row-control acct-actions"><button class="btn btn-sm btn-red-text" type="button" data-act="tv-signout">Sign out</button></div></div>`;
+  }
+  const err = t.error && TV_ERRORS[t.error] ? `<div class="row-sub tv-err">${TV_ERRORS[t.error]}</div>` : '';
+  return `<div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
+      <div class="row-main"><div class="row-title">Sign in with a code</div><div class="row-sub">Like signing in a smart TV: get a code, enter it at google.com/device. Brings your YouTube home, Subscriptions and History, and your YouTube Music playlists.</div>${err}</div>
+      <div class="row-control acct-actions"><button class="btn btn-primary btn-sm" type="button" data-act="tv-begin">${icon('key')}<span>Get a code</span></button></div></div>`;
 }
 function renderAccount() {
   const el = $('#ytAccount');
@@ -2320,10 +2401,12 @@ function renderAccount() {
   }
   const state = !a ? 'Checking…' : a.signedIn ? `Signed in${a.name ? ` as <b>${esc(a.name)}</b>` : ''}${a.handle ? ` (${esc(a.handle)})` : ''}${a.unchecked ? ' (not checked: no internet)' : ''}`
     : a.expired ? 'Signed out: YouTube no longer takes these cookies. Export them again.' : a.unreachable ? 'Couldn’t ask your Rondo.' : 'Signed out';
-  el.innerHTML = `<div class="group">
-      <div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
-        <div class="row-main"><div class="row-title">YouTube account</div><div class="row-sub">${state}</div>
-          <div class="row-sub">Signed in, YouTube Music has your Library and your own home, and YouTube your Subscriptions and History.</div></div>
+  el.innerHTML = `<h2 class="gh">YouTube account</h2><div class="group">${tvHtml()}</div>
+    <h2 class="gh">YouTube Music home and history</h2>
+    <div class="group">
+      <div class="row row-wide set-row"><span class="tile t-cookies">${icon('file')}</span>
+        <div class="row-main"><div class="row-title">cookies.txt</div><div class="row-sub">${state}</div>
+          <div class="row-sub">Optional: only YouTube Music’s own home and history need a cookies.txt from a browser; everything else works with the code sign-in.</div></div>
         <div class="row-control acct-actions">
           <button class="btn btn-primary btn-sm" type="button" data-act="cookies">${icon('upload')}<span>${a?.signedIn ? 'Replace cookies.txt' : 'Upload cookies.txt'}</span></button>
           ${a?.signedIn || a?.expired ? '<button class="btn btn-sm" type="button" data-act="signout">Sign out</button>' : ''}
@@ -2432,6 +2515,13 @@ serverBody.addEventListener('click', async (e) => {
     return saveSetting(seg.dataset.key, JSON.parse(v.dataset.v));
   }
   if (e.target.closest('[data-act="cookies"]')) return $('#cookiesFile').click();
+  if (e.target.closest('[data-act="tv-begin"]')) return tvAct('begin');
+  if (e.target.closest('[data-act="tv-cancel"]')) return tvAct('cancel');
+  if (e.target.closest('[data-act="tv-signout"]')) return tvAct('signout');
+  if (e.target.closest('[data-act="tv-copy"]')) {
+    try { await navigator.clipboard.writeText(S.ytTv?.pending?.code || ''); toast('Code copied'); } catch { toast('Couldn’t copy: type it in', 'err'); }
+    return;
+  }
   if (e.target.closest('[data-act="signout"]')) {
     try {
       S.ytAccount = await api('DELETE', '/api/youtube/cookies', undefined, { timeout: 30000 });

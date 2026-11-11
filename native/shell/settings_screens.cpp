@@ -381,8 +381,130 @@ class AboutScreen : public ShellListScreen {
 std::string g_serverState = "Checking\xe2\x80\xa6", g_latestVersion;
 // direct mode's YouTube account (cookies.txt from the dashboard): "" until asked, "in", "out", "expired"
 std::string g_directAccount, g_directName;
+// the code sign-in's state (direct/tv_auth.h): "" until asked, "in", "out"; its name
+std::string g_tvState, g_tvName;
+std::string field(const std::string& body, const char* name) {  // a string member of a small answer
+  std::string k = std::string("\"") + name + "\":\"";
+  size_t at = body.find(k);
+  return at == std::string::npos ? "" : body.substr(at + k.size(), body.find('"', at + k.size()) - at - k.size());
+}
+void takeTv(const std::string& body) {
+  g_tvState = body.find("\"signedIn\":true") != std::string::npos ? "in" : "out";
+  g_tvName = field(body, "name");
+}
+// a sign-in or out: what was cached for the other account goes, the tabs follow
+void accountSwitched() {
+  unlink((g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache/server").c_str());
+  if (g_onServerChanged) g_onServerChanged();
+}
+
+// Settings › YouTube › YouTube account › Sign in with a code: the code to enter at google.com/device,
+// as a smart TV shows it; it closes by itself once Google says yes. Menu cancels.
+class TvCodeScreen : public Screen {
+ public:
+  TvCodeScreen() {
+    auto alive = alive_;
+    g_core.get("/tv/begin", 0, [this, alive](int status, const std::string& body) {
+      if (!*alive) return;
+      take(status, body);
+    });
+  }
+  ~TvCodeScreen() override {
+    *alive_ = false;
+    if (!code_.empty() && !done_) g_core.get("/tv/cancel", 0, [](int, const std::string&) {});
+  }
+  std::string title() const override { return "Sign in"; }
+  bool keepScreenOn() const override { return true; }  // while the code is typed elsewhere
+  bool onAction(Action, int) override { return false; }
+  bool tick(int64_t now) override {
+    if (done_ || code_.empty() || now < nextAsk_) return secondChanged(now);
+    nextAsk_ = now + 3000 * kMs;
+    auto alive = alive_;
+    g_core.get("/tv", 0, [this, alive](int status, const std::string& body) {
+      if (!*alive) return;
+      take(status, body);
+    });
+    return secondChanged(now);
+  }
+  int64_t wakeAt() const override { return done_ ? 0 : now_ns() + 1000 * kMs; }
+  void draw(Env& e, float w, float h) override {
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, e.p.shellBg);
+    e.c.layer(1);
+    float y = float(e.dp(18)), pad = float(e.dp(16));
+    auto line = [&](const std::string& t, int size, bool bold, ui::Color c, float gap) {
+      Label l = label(e, t, size, bold, w - 2 * pad);
+      drawLabel(e, l, (w - l.w) / 2, y, c);
+      y += l.h + gap;
+    };
+    if (!problem_.empty()) {
+      line("Couldn't get a code", 16, true, e.p.text, float(e.dp(8)));
+      line(problem_, 12, false, e.p.muted, 0);
+      return;
+    }
+    if (code_.empty()) {
+      line("Asking YouTube for a code\xe2\x80\xa6", 14, false, e.p.muted, 0);
+      return;
+    }
+    line("On your phone or computer, open", 13, false, e.p.muted, float(e.dp(2)));
+    line(url_, 17, true, e.p.text, float(e.dp(14)));
+    line("and enter", 13, false, e.p.muted, float(e.dp(8)));
+    line(code_, 34, true, e.p.accent, float(e.dp(14)));
+    int64_t left = std::max<int64_t>(0, expiresAt_ - int64_t(time(nullptr)) * 1000) / 1000;
+    char b[64];
+    snprintf(b, sizeof(b), "Waiting for Google \xc2\xb7 expires in %d:%02d", int(left / 60), int(left % 60));
+    line(b, 11, false, e.p.muted, float(e.dp(4)));
+    line("Pick the Google account for your Rondo and allow access", 11, false, e.p.muted, 0);
+  }
+
+ private:
+  void take(int status, const std::string& body) {
+    if (status != 200) {
+      problem_ = "Is the Rondo online? Try again in a moment.";
+      return;
+    }
+    takeTv(body);
+    if (g_tvState == "in") {
+      done_ = true;
+      accountSwitched();
+      g_app->toast(g_tvName.empty() ? "Signed in to YouTube" : "Signed in as " + g_tvName);
+      g_app->pop();
+      return;
+    }
+    std::string code = field(body, "code");
+    if (code.empty() && !code_.empty()) {  // no code any more: refused or expired
+      std::string err = field(body, "error");
+      problem_ = err == "denied" ? "The sign-in was refused at Google." : "The code expired before it was entered.";
+      code_.clear();
+      return;
+    }
+    if (code.empty()) {
+      problem_ = "YouTube didn't give a code. Check Wi-Fi and try again.";
+      return;
+    }
+    code_ = code, url_ = field(body, "url");
+    if (url_.compare(0, 8, "https://") == 0) url_ = url_.substr(8);
+    size_t at = body.find("\"expiresAt\":");
+    expiresAt_ = at == std::string::npos ? 0 : atoll(body.c_str() + at + 12);
+    nextAsk_ = now_ns() + 3000 * kMs;
+  }
+  bool secondChanged(int64_t now) {
+    int64_t sec = now / (1000 * kMs);
+    if (sec == lastSec_) return false;
+    lastSec_ = sec;
+    return true;
+  }
+  std::string code_, url_, problem_;
+  int64_t expiresAt_ = 0, nextAsk_ = 0, lastSec_ = 0;
+  bool done_ = false;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+};
+
 void askDirectAccount() {
   if (!directMode()) return;
+  g_core.get("/tv", 0, [](int status, const std::string& body) {
+    if (status == 200) takeTv(body);
+  });
   g_core.get("/account", 0, [](int status, const std::string& body) {
     if (status != 200) return;
     bool in = body.find("\"signedIn\":true") != std::string::npos;
@@ -445,16 +567,30 @@ Rows connectionsRows(SettingsGroupScreen&) {
 Rows youtubeRows(SettingsGroupScreen&) {
   Rows rows;
   rows.push_back(settingRow("Connection", g_serverState, tiles::server, true, [] { g_app->push(makeServer()); }));
-  // the account: the server's own (its admin page), or in direct mode a cookies.txt sent from the dashboard
+  // the account: the server's own (its admin page); in direct mode the code sign-in, here or on the
+  // dashboard, and cookies.txt from the dashboard
   if (directMode()) {
-    std::string state = g_directAccount == "in" ? (g_directName.empty() ? "Signed in" : g_directName)
-                        : g_directAccount == "expired" ? "Signed out by YouTube"
-                        : g_directAccount == "out" ? "Signed out" : "";
-    Row r = settingRow("YouTube account", state, tiles::account, true, [] {
-      g_app->toast("Sign in on the dashboard: YouTube \xe2\x80\xba YouTube account");
-      g_app->push(makeDashboard());
+    bool tvIn = g_tvState == "in";
+    std::string state = tvIn ? (g_tvName.empty() ? "Signed in" : g_tvName)
+                        : g_directAccount == "in" ? (g_directName.empty() ? "Signed in" : g_directName)
+                        : g_tvState.empty() ? "" : "Signed out";
+    Row r = settingRow("YouTube account", state, tiles::account, true, [tvIn] {
+      if (!tvIn) return g_app->push(std::unique_ptr<Screen>(new TvCodeScreen()));
+      g_app->push(makeChoice(
+          "YouTube account", {{"Stay signed in", "stay"}, {"Sign out", "out"}}, [] { return std::string("stay"); },
+          [](const std::string& v) {
+            if (v != "out") return;
+            g_core.get("/tv/signout", 0, [](int status, const std::string& body) {
+              if (status == 200) takeTv(body);
+              accountSwitched();
+              g_app->toast("Signed out of YouTube");
+            });
+          },
+          [](const std::string& v) { return std::string(v == "out" ? "the code sign-in, here and at Google" : ""); }));
     });
-    r.subtitle = g_directAccount == "in" ? "Library, Subscriptions and History" : "Sign in on the dashboard";
+    r.subtitle = tvIn ? "Home, Subscriptions, History, playlists"
+                 : g_directAccount == "in" ? "With cookies.txt from the dashboard"
+                                           : "Sign in with a code, like a smart TV";
     rows.push_back(std::move(r));
   }
   rows.push_back(settingRow("Video quality", g_prefs.videoQuality ? std::to_string(g_prefs.videoQuality) + "p" : "Auto", tiles::quality,

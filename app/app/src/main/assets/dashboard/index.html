@@ -171,6 +171,11 @@
 
   <main class="main" id="main">
 
+    <section class="view" id="view-more" aria-labelledby="h-more" hidden>
+      <header class="vh"><h1 id="h-more">Settings</h1></header>
+      <div id="moreRows"></div>
+    </section>
+
     <section class="view" id="view-overview" aria-labelledby="h-overview" hidden>
       <header class="vh"><h1 id="h-overview">Overview</h1></header>
       <article class="np is-empty" id="np" aria-label="Now playing">
@@ -213,7 +218,7 @@
           <button class="btn" type="button" id="rescanBtn"><svg class="i"><use href="#i-refresh"/></svg><span>Rescan</span></button>
           <button class="btn" type="button" id="organizeBtn"><svg class="i"><use href="#i-folder"/></svg><span>Organize</span></button>
           <button class="btn btn-primary" type="button" id="uploadBtn"><svg class="i"><use href="#i-upload"/></svg><span>Upload</span></button>
-          <input type="file" id="fileInput" multiple hidden accept="audio/*,.flac,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.w64,.aif,.aiff,.aifc,.wma,.ape,.wv,.ac3,.eac3,.ec3,.dts,.mka,.dsf,.dff,.tta,.tak,.mpc,.amr,.awb,.mp2,.caf,.au,.mp4,.m4v,.mkv,.3gp,.webm,.lrc">
+          <input type="file" id="fileInput" multiple hidden accept="audio/*,.flac,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.w64,.aif,.aiff,.aifc,.wma,.ape,.wv,.ac3,.eac3,.ec3,.dts,.mka,.dsf,.dff,.tta,.tak,.mpc,.amr,.awb,.mp2,.caf,.au,.mp4,.m4v,.mkv,.3gp,.webm,.jpg,.jpeg,.png,.webp,.gif,.bmp,.lrc">
         </div>
       </header>
 

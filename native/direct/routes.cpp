@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "innertube.h"
+#include "tv_auth.h"
 #include "json.h"
 #include "lyrics.h"
 #include "model.h"
@@ -219,11 +220,16 @@ void route(const Request& r, Response& out) {
   if (p == "/healthz") {
     // what the screens read: up, and whether the account's tabs show (signed in with cookies)
     int ok = lastResolveOk();
-    const char* in = signedIn() ? "true" : "false";
+    const char* in = signedIn() || tv::signedIn() ? "true" : "false";  // cookies.txt, or the code sign-in
     out.body = std::string("{\"ok\":true,\"ytdlp\":\"direct\",\"lastResolveOk\":") + (ok < 0 ? "null" : ok ? "true" : "false") +
                ",\"cookiesOk\":" + (hasCookies() ? "true" : "false") + ",\"account\":{\"music\":" + in + ",\"videos\":" + in + "}}";
     return;
   }
+  // the code sign-in (tv_auth.h): its state, a new code, cancel, sign out
+  if (p == "/tv") return void(out.body = tv::stateJson());
+  if (p == "/tv/begin") return void(out.body = tv::begin());
+  if (p == "/tv/cancel") return tv::cancel(), void(out.body = tv::stateJson());
+  if (p == "/tv/signout") return tv::signOut(), void(out.body = tv::stateJson());
   if (p == "/account") {  // who the cookies sign in as (the dashboard, Settings › YouTube)
     if (!param(r, "reload").empty()) reloadAccount();
     out.body = accountJson();
@@ -242,15 +248,21 @@ void route(const Request& r, Response& out) {
     if (param(r, "next").empty() && q.empty()) return out.error(400, "query");
     return list(r, out, "music/search", [q, type] { return music::search(q, type); }, false);
   }
-  if (p == "/music/library") {
-    if (!signedIn()) return out.error(503, "no_cookies");
-    return list(r, out, "music/library", [] { return music::library(); });
+  if (p == "/music/library") {  // cookies.txt's (YouTube Music's own), else the code sign-in's
+    if (signedIn()) return list(r, out, "music/library", [] { return music::library(); });
+    if (tv::signedIn()) return list(r, out, "music/library", [] { return video::tvLibrary(); });
+    return out.error(503, "no_cookies");
   }
   if (starts(p, "/music/playlist/")) {
     std::string id = uriDecode(p.substr(16));
     if (starts(id, "VL") && id.size() > 3) id = id.substr(2);
     if (!validPlaylist(id)) return out.error(400, "id");
-    return list(r, out, "music/playlist/" + id, [id] { return music::playlist(id); });
+    // Liked Music and private playlists: YouTube Music's own with cookies.txt, else the TV app's with the code sign-in
+    return list(r, out, "music/playlist/" + id, [id] {
+      bool tvOnly = tv::signedIn() && !signedIn();
+      std::string page = tvOnly && id == "LM" ? "" : music::playlist(id);
+      return page.empty() && tvOnly ? video::tvPlaylist(id) : page;
+    });
   }
   if (starts(p, "/music/album/")) {
     std::string id = uriDecode(p.substr(13));
@@ -270,12 +282,15 @@ void route(const Request& r, Response& out) {
   // --- YouTube ---
   if (p == "/video/home")  // signed in: what YouTube picks for the account; else the TV app's topics
     return list(r, out, "video/home", [] {
-      std::string picks = signedIn() ? video::feed("video/home", "FEwhat_to_watch") : "";
+      std::string picks = tv::signedIn() ? video::tvFeed("video/home", "FEwhat_to_watch")
+                          : signedIn()   ? video::feed("video/home", "FEwhat_to_watch")
+                                         : "";
       return picks.empty() || picks.find("\"id\"") == std::string::npos ? video::home() : picks;
     });
-  if (p == "/video/subscriptions" || p == "/video/history") {
-    if (!signedIn()) return out.error(503, "no_cookies");
+  if (p == "/video/subscriptions" || p == "/video/history") {  // the code sign-in's, else cookies.txt's
     std::string id = p == "/video/history" ? "FEhistory" : "FEsubscriptions";
+    if (tv::signedIn()) return list(r, out, p.substr(1), [p, id] { return video::tvFeed(p.substr(1), id); });
+    if (!signedIn()) return out.error(503, "no_cookies");
     return list(r, out, p.substr(1), [p, id] { return video::feed(p.substr(1), id); });
   }
   if (p == "/video/search") {

@@ -687,6 +687,10 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
   .rz .btn, .row-wrap .btn { margin-left: 46px; }
 }
 @media (max-width: 599px) {
+  /* the account rows: the state pill under the words when they need the width */
+  .acct { flex-wrap: wrap; row-gap: 8px; }
+  .acct .row-main { flex: 1 1 200px; }
+  .acct .pill { margin-left: 64px; }
   .todo li { flex-wrap: wrap; row-gap: 8px; }
   .todo span { flex-basis: calc(100% - 40px); }
   .todo .btn { margin-left: 30px; }

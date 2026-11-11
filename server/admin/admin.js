@@ -626,7 +626,7 @@ function renderTv() {
     return;
   }
   const err = tv.error && TV_ERRORS[tv.error] ? `<div class="note err">${icon('alert')}<span>${TV_ERRORS[tv.error]}</span></div>` : '';
-  setHtml(body, `${err}<div class="group"><div class="row">${ytTile()}
+  setHtml(body, `${err}<div class="group"><div class="row row-wrap">${ytTile()}
       <div class="row-main"><div class="row-title">Not signed in</div><div class="row-sub">Get a code, enter it at google.com/device, and the server uses that account for your home, subscriptions, history and playlists.</div></div>
       <button class="btn btn-primary${S.tvBusy ? ' is-busy' : ''}" type="button" data-act="tvStart"${S.tvBusy ? ' disabled' : ''}>${S.tvBusy ? spinner() : icon('account')}<span>Get a code</span></button>
     </div></div>`);

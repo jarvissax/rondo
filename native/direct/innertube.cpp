@@ -12,6 +12,7 @@
 #include <mutex>
 
 #include "json.h"
+#include "tv_auth.h"
 #ifdef __ANDROID__
 #include "../core/net.h"
 #endif
@@ -149,6 +150,34 @@ size_t onHeader(char* d, size_t s, size_t n, void* p) {
 
 }  // namespace
 
+std::string dataDir() {
+  std::lock_guard<std::mutex> l(g_mu);
+  return g_dataDir;
+}
+
+Fetched post(const std::string& url, const std::string& body, const std::vector<std::string>& headers) {
+  Fetched f;
+  CURL* h = handle();
+  curl_slist* hs = nullptr;
+  for (const std::string& x : headers) hs = curl_slist_append(hs, x.c_str());
+  Collect col{&f.body, 1u << 20};
+  curl_easy_setopt(h, CURLOPT_URL, url.c_str());
+  if (hs) curl_easy_setopt(h, CURLOPT_HTTPHEADER, hs);
+  curl_easy_setopt(h, CURLOPT_USERAGENT, "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version");
+  curl_easy_setopt(h, CURLOPT_POST, 1L);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body.c_str());
+  curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, long(body.size()));
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, collect);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &col);
+  CURLcode rc = curl_easy_perform(h);
+  long status = 0;
+  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+  if (hs) curl_slist_free_all(hs);
+  f.status = rc == CURLE_OK ? int(status) : 0;
+  return f;
+}
+
 void setDataDir(const std::string& dir) {
   std::lock_guard<std::mutex> l(g_mu);
   g_dataDir = dir;
@@ -265,9 +294,10 @@ bool hasCookies() {
   return !g_account.header.empty();
 }
 int accountGeneration() {
+  int tvGen = tv::generation();  // the code sign-in's, then the cookies'
   std::lock_guard<std::mutex> l(g_accMu);
   refreshAccountLocked();
-  return g_accGen;
+  return g_accGen * 1000 + tvGen;
 }
 bool signedIn() {
   std::lock_guard<std::mutex> l(g_accMu);
@@ -331,6 +361,8 @@ const Rules& rules() {
 }
 
 int innertube(const Client& c, const char* endpointName, const std::string& fields, Doc& out) {
+  // signed in with a code: the TV client carries its token (asked first: a refresh uses this thread's handle)
+  std::string bearer = c.name == "TVHTML5" ? tv::bearer() : "";
   std::string visitor;
   {
     std::lock_guard<std::mutex> l(g_mu);
@@ -357,6 +389,7 @@ int innertube(const Client& c, const char* endpointName, const std::string& fiel
   hs = curl_slist_append(hs, ("Referer: https://" + c.host + "/").c_str());
   hs = curl_slist_append(hs, "Accept-Language: en");
   if (!visitor.empty()) hs = curl_slist_append(hs, ("X-Goog-Visitor-Id: " + visitor).c_str());
+  if (!bearer.empty()) hs = curl_slist_append(hs, ("Authorization: Bearer " + bearer).c_str());
   // signed in: the web clients carry the account (the others take no cookies)
   if (c.name == "WEB" || c.name == "WEB_REMIX") {
     Account a;

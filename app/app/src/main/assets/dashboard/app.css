@@ -223,6 +223,7 @@ input { caret-color: var(--accent-hi); }
 .t-eq { --t1: #ffb04d; --t2: #f07a12; }
 .t-limit { --t1: #ff7a7a; --t2: #e0283c; }
 .t-shuffle { --t1: #7be07b; --t2: #26a83b; }
+.t-cookies { --t1: #d4a373; --t2: #9c6a3a; }
 .t-rondo { --t1: #1d1d20; --t2: #050506; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14); }
 .t-rondo .i { width: 24px; height: 24px; }
 .t-low { --t1: #ff7a6b; --t2: #e0242a; }
@@ -1042,3 +1043,24 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .acct-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .steps { margin: 0; padding: 14px 18px 4px 34px; display: grid; gap: 8px; font-size: 14px; line-height: 1.45; }
 .steps-note { padding: 4px 18px 14px; }
+
+/* phones: Settings' list of pages (the sidebar's groups), links as rows */
+.more-row { text-decoration: none; color: var(--text); }
+.more-row .chev { width: 8px; height: 12px; margin-left: auto; color: var(--text-3, #6b6b72); }
+#moreRows .gh:first-child { margin-top: 0; }
+@media (max-width: 899px) {
+  /* the Library's bar: the search a row of its own, the order and Shuffle under it */
+  .lib-bar { grid-template-columns: minmax(0, 1fr) auto; }
+  .lib-bar .search { grid-column: 1 / -1; }
+  .lib-bar .select { min-width: 0; }
+  .lib-bar .select select { width: 100%; }
+  /* Sound › Output: each output a line of its own, whatever its name's length */
+  .sound-out { flex-direction: column; align-items: stretch; width: 100%; }
+  .sound-out button { justify-content: flex-start; text-align: left; white-space: normal; min-height: 40px; padding: 8px 14px; }
+  .row-wide .row-control:has(.sound-out) { width: 100%; }
+}
+
+/* YouTube › Sign in with a code */
+.tv-code { font: 600 34px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; margin: 10px 0 6px; color: var(--text); user-select: all; }
+.tv-steps { padding: 6px 0 6px 20px; font-size: 13.5px; }
+.tv-err { color: var(--red, #ff6b6b); margin-top: 4px; }
