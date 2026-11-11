@@ -32,7 +32,8 @@ it). **Update from a file**, under the Rondo row, does the same with a `rondo-<v
 downloaded (Rondo 1.0: an APK).
 
 The sidebar has the pages in groups: **Overview**, **Library** and **FM Radio**, then
-**Connections** (Wi-Fi, Bluetooth, YouTube) and **Settings** (Sound, Theme, General).
+**Connections** (Wi-Fi, Bluetooth, YouTube) and **Settings** (Sound, Theme, General). On a phone the
+tabs at the bottom are Overview, Library, Radio, YouTube and **Settings**, which lists the rest.
 
 ## Library
 
@@ -41,8 +42,9 @@ through the covers, and the album's songs are listed below) or videos, with sear
 artist, genre, year or date added, and by what you listen to: most played, recently played and
 rating. A song's details show its tags and plays, with stars to rate it.
 
-- **Upload** music or videos straight onto the card, several at a time. Expect about 3 MB a
-  second over the Y1's Wi-Fi.
+- **Upload** music, videos and photos straight onto the card, several at a time: music goes to
+  Music, videos to Movies (or the Videos folder you have), photos to Pictures; **Organize** then
+  puts them where Jellyfin expects them. Expect about 3 MB a second over the Y1's Wi-Fi.
 - **Play** a song on the Y1, or **delete** it.
 - **Rescan** after copying files onto the card some other way.
 - **Photos:** every picture on the card by folder; click one to see it large, with the arrow keys,
@@ -124,8 +126,12 @@ Where YouTube Music and YouTube come from: **Directly to YouTube** (nothing to s
 server**, the [Rondo server](server.md) the Y1 uses, and whether it's reachable. The Y1's own
 **Settings › YouTube** does the same on the Y1.
 
-- **YouTube account** (directly to YouTube): sign in with a **cookies.txt** from a browser, as the
-  server's admin page does. Open a private window, sign in at youtube.com, export the cookies with a
+- **YouTube account** (directly to YouTube): **Sign in with a code**, as the server's admin page
+  does: **Get a code**, open google.com/device, enter the code and allow access; the page updates by
+  itself. That brings YouTube's home, Subscriptions and History, and YouTube Music's playlists and
+  Liked Music. The Y1 can do the same itself (Settings › YouTube › YouTube account).
+- **YouTube Music home and history** (optional): a **cookies.txt** from a browser, as the
+  server's admin page takes it. Open a private window, sign in at youtube.com, export the cookies with a
   cookies.txt browser extension, close the window at once, then **Upload cookies.txt** here. The
   page says who is signed in. The file stays on your Rondo (only its youtube.com lines are sent) and
   is never shown; **Sign out** deletes it. A separate Google account for your Rondo is the safest

@@ -15,9 +15,10 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   YouTube** or **My server**. Directly, there is nothing to set up: home, search, albums, artists,
   playlists, up next, Shorts, lyrics and playback (Opus, or AAC where a song has no Opus) all come
   from YouTube itself. A Y1 without a server uses it on its own.
-- **Sign in to YouTube directly:** upload a cookies.txt on the dashboard (YouTube page), as on the
-  server's admin page, for YouTube Music's Library and your own home, and YouTube's Subscriptions
-  and History. The file stays on the Y1. Headphone match still needs your server.
+- **Sign in to YouTube directly, with a code** like a smart TV: on the Y1 (Settings › YouTube ›
+  YouTube account) or the dashboard's YouTube page. It brings YouTube's home, Subscriptions and
+  History, and YouTube Music's playlists and Liked Music; a cookies.txt (dashboard) adds YouTube
+  Music's own home and history. Both stay on the Y1. Headphone match still needs your server.
 
 ### Rondo, rebuilt
 
@@ -68,12 +69,25 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
 - **Photos slide** from one to the next on the Y1 and the dashboard (a swipe there too), and the
   grid's highlight glides. **Cover Flow** has a wider, deeper stage.
 - **Previous slides** the cover in from the left, as Next does from the right.
+- **Crossfades over sound:** the silence at the end of a song and at the start of the next is left
+  out, so the two really overlap; an album's next track plays on gapless. Resuming fades in over
+  0.4 s, pausing fades out in 0.25 s.
+- **The equalizer on the Y1** as on the dashboard: a slider for each band, its gain over it. Every
+  Sound row has its icon.
+- **The dashboard on a phone:** five tabs (Overview, Library, Radio, YouTube, Settings) instead of
+  nine, the Library's search on a row of its own, the outputs in Sound one per line. The server's
+  admin page fits a phone too.
+- **Uploads** of photos from the Library go to Pictures, and videos to Movies (never into Music).
 
 ### Fixed
 
 - Switching between the server and direct mode could keep showing the other source's YouTube and
   YouTube Music for two minutes, and their tabs.
 - A video quality the video lacks fell to 360p; it now plays the next height down (720p → 480p).
+- A crossfade could jump the earlier song's level (by the two songs' loudness tags) with volume
+  leveling off.
+- Photos: the grid's highlight missed the first press.
+- Videos shorter than 10 seconds had no thumbnail.
 
 ### Smaller changes
 
