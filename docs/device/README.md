@@ -4,6 +4,10 @@ What we learned about the Y1 while building Rondo, on a Y1 running the community
 "Android 4.2 (Dev)" firmware. Each fact comes from a file in this folder or from the command named
 next to it. If you're writing your own software for the Y1, start here.
 
+Rondo 1.0 was an Android app, so much of this page is about Android 4.2's framework on the Y1, and
+the files named here (`.kt`) are 1.0's, in `app/`. Rondo 2.0 runs without Android's Java layer:
+what it does instead, and what that took, is in [native code on the Y1](native.md).
+
 **The wheel in one sentence:** the click wheel is plain key events, not an axis or a touch ring.
 Every detent sends an instant press and release on `/dev/input/event2` ("mtk-tpd"): clockwise
 `KEY_DOWN` (108 → `DPAD_RIGHT`) and counter-clockwise `KEY_UP` (103 → `DPAD_LEFT`), about two
@@ -34,19 +38,21 @@ pulses per felt detent. On the same device, Menu sends `KEY_BACK` (158 → `BACK
   `firmware/target/hosted/android/button-android.c`) posts a button for every key event, so two
   steps per click, and buzzes the vibrator on each: `duration_mapping[intensity]` (5 ms per level,
   so level 5 = 25 ms) plus 20 / 8 / 2 / 0 ms as a spin goes on (pulses under HZ/6.5 ≈ 154 ms
-  apart). Rondo does the same (`input/WheelInput.kt`, `input/WheelHaptics.kt`). Measured with
-  injected pulses: a pulse reaches the app in about 25 ms when idle and 50–85 ms while a video
-  plays; a volume step takes 4–9 ms.
+  apart). Rondo does the same (1.0: `input/WheelInput.kt`, `input/WheelHaptics.kt`; 2.0 reads
+  `/dev/input` itself, `native/platform/y1/input.cpp`). Measured on 1.0 with injected pulses: a
+  pulse reaches the app in about 25 ms when idle and 50–85 ms while a video plays; a volume step
+  takes 4–9 ms.
 - **Vibrator:** `/sys/class/timed_output/vibrator`. The MTK driver logs each request in `dmesg`
   ("vibrator first in value = N") and runs for at least 60 ms ("cust timer: 60"). `adb shell` is
   root on this firmware, so `sendevent`, or writing `input_event` structs to `/dev/input/event2`,
   injects real wheel pulses for tests.
 - **The wheel's click sound comes from the system UI.** With no app sound, a wheel pulse still
   plays a short tick from `com.android.systemui` (Innioasis' addition, in every app) while
-  `Settings.System.SOUND_EFFECTS_ENABLED` is 1; setting it to 0 silences it at once. Rondo's
+  `Settings.System.SOUND_EFFECTS_ENABLED` is 1; setting it to 0 silences it at once. Rondo 1.0's
   **Click sound** setting writes this switch. The Rondo firmware has no SystemUI, so Rondo plays
-  the tick itself there (see "The Rondo firmware" below).
-- **MediaTek's sound profiles put it back at every boot.** The `audioprofile` service
+  the tick itself there (2.0: `native/player/click.cpp`; see "The Rondo firmware" below).
+- **MediaTek's sound profiles put it back at every boot** (Android's framework, so 1.0 only). The
+  `audioprofile` service
   (`com.mediatek.audioprofile.AudioProfileManager`, profiles General, Silent, Meeting and Outdoor;
   `mtk_audioprofile_active` is `mtk_audioprofile_general`) keeps its own "sound effects" value per
   profile, defaulting to on for General, and copies it into `SOUND_EFFECTS_ENABLED` when the Y1
@@ -65,9 +71,10 @@ pulses per felt detent. On the same device, Menu sends `KEY_BACK` (158 → `BACK
   the other buttons don't wake the screen.
 - **Android's own lists ignore the wheel.** `DPAD_LEFT/RIGHT` don't move the focus in Android's
   vertical Settings lists or in the "Complete action using" dialog, and the Wi-Fi password dialog
-  needs the touch keyboard. Rondo has its own Wi-Fi and Bluetooth screens: joining uses the hidden
-  `WifiManager.connect(config|netId, listener)`, and pairing and A2DP use the hidden
-  `createBond`, `BluetoothA2dp.connect/disconnect` and `removeBond`, by reflection.
+  needs the touch keyboard. Rondo has its own Wi-Fi and Bluetooth screens: in 1.0, joining uses
+  the hidden `WifiManager.connect(config|netId, listener)`, and pairing and A2DP use the hidden
+  `createBond`, `BluetoothA2dp.connect/disconnect` and `removeBond`, by reflection. 2.0 talks to
+  wpa_supplicant and MediaTek's Bluetooth daemon itself ([native.md](native.md#wi-fi)).
 
 ### How other launchers read it
 
@@ -106,9 +113,9 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
   `com.innioasis.y1/.activity.SplashActivity`: MAIN + HOME but no LAUNCHER, so
   `getLaunchIntentForPackage` returns null and it has to be opened by component. Menu does
   nothing at its top level, so the way out is a restart. It runs as the system user.
-- **Home screen:** Rondo's `ShellActivity` declares HOME + DEFAULT and is made the default with
-  the "Complete action using" dialog (Rondo, then Always). Uninstalling Rondo brings the dialog
-  back on the next HOME.
+- **Home screen (1.0):** Rondo's `ShellActivity` declares HOME + DEFAULT and is made the default
+  with the "Complete action using" dialog (Rondo, then Always). Uninstalling Rondo brings the
+  dialog back on the next HOME.
 - **Settings and Bluetooth:** `com.android.settings` has `WifiSettingsActivity`,
   `BluetoothSettingsActivity`, `DateTimeSettingsActivity`, `DisplaySettingsActivity` and
   `AudioProfileSettingsActivity`. The Bluetooth stack is `com.mediatek.bluetooth`. There's no
@@ -124,8 +131,33 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
 
 ### The Rondo firmware
 
-`firmware/build.sh` builds it from the y1-community "Android 4.2 (Dev)" Type A ROM. Facts that
-came out of running it on the Y1:
+`firmware/build.sh` builds it from the y1-community "Android 4.2 (Dev)" Type A ROM
+([Building Rondo](../building.md#the-firmware)). Facts that came out of running it on the Y1:
+
+- **No Java layer (2.0).** The boot image's `init.rc` has zygote disabled and a `rondo` service
+  that runs `/system/rondo/start` (`tools/firmware/BootImage.java`); `/system/app` is empty.
+  SurfaceFlinger still starts, to set the panel up as it always has, and the start script stops it
+  before Rondo draws to the framebuffer itself. There's no boot animation
+  (`debug.sf.nobootanimation=1`): the boot logo stays until Rondo's first frame.
+- **60 Hz (2.0).** The boot image's kernel has the panel driver's 60 Hz values in place of the
+  stock 42 Hz ones ([native.md](native.md#display)).
+- **Current time zones.** The base ROM's tzdata is 2012h; the firmware has IANA's 2026 data
+  (`firmware/zoneinfo`).
+- **The firmware's number.** `firmware/build.sh` adds `ro.rondo.firmware=<n>` to
+  `/system/build.prop`: 2 for the 2.0 firmware (`kFirmwareNeeded` in `native/core/version.h`), 1
+  for 1.0.x's (`firmwareLevel` in `app/app/build.gradle.kts`; the first, 1.0.0, has no property
+  and counts as 1). Updates over Wi-Fi, the dashboard and the update page install only when the
+  firmware is at least as new as the release needs.
+- **Updates without a flash (2.0).** A signed bundle unpacks into `/data/rondo/<version>`, named
+  by `/data/rondo/current`; the start script runs it instead of `/system/rondo`, and after three
+  quick ends in a row goes back to the firmware's copy ([Building Rondo](../building.md#updates)).
+- **adb stays on**, as root, for logs and the update page.
+- **The Y1 doesn't start by itself after a flash.** Press and hold center (the power button) once
+  the Updater says it's done.
+
+#### Rondo 1.0's firmware
+
+The 1.0.x firmware keeps Android's Java layer, with Rondo as its only app with a screen:
 
 - **No SystemUI.** On this ROM SystemUI opens its own touch-only "USB connected" screen when a
   computer is plugged in, and crashes if that screen is disabled, so it is removed. Its other
@@ -142,19 +174,16 @@ came out of running it on the Y1:
   has changed hands, and `isUsbMassStorageEnabled` asks vold about the wrong volume (vold calls the
   card `sdcard2`) and always says no. `Environment.getExternalStorageState()` reads `shared` while
   a computer has the card. The card shows up on a Mac as a 62.5 GB FAT32 volume named `NO NAME`.
+  (2.0 asks vold itself, over its socket: `native/platform/y1/usb_drive.cpp`.)
 - **Updates without a flash.** Rondo has `INSTALL_PACKAGES` as a built-in app, and `pm install -r`
   run by Rondo installs a newer APK over the firmware's copy: Android keeps `/system/app/Rondo.apk`,
   runs the update from `/data/app`, and grants it the built-in permissions the firmware's copy had
   (not new ones). Android stops Rondo for the swap and starts it again as the home screen; it's
   back on screen about 10 s after `pm` starts. Only an APK signed with the firmware copy's key is
-  accepted. adb's `install -r` does the same.
-- **The firmware's number.** `firmware/build.sh` adds `ro.rondo.firmware=<n>` to `/system/build.prop`
-  (`firmwareLevel` in `app/app/build.gradle.kts`), and every Rondo APK names the number it needs
-  (`rondo.firmware` in its manifest). Updates over Wi-Fi, the dashboard and the update page install
-  only when the firmware is at least that new. The first Rondo firmware, 1.0.0, has no property and
-  counts as 1.
-- **The Y1 doesn't start by itself after a flash.** Press Power once the Updater says it's done;
-  the first boot is slower (Android optimizes every app), later ones take about 30 s.
+  accepted. adb's `install -r` does the same. Every Rondo APK names the firmware number it needs
+  (`rondo.firmware` in its manifest).
+- **Booting** after a flash is slower the first time (Android optimizes every app); later boots
+  take about 30 s.
 
 ## Hardware, storage, network, time
 
@@ -168,17 +197,20 @@ came out of running it on the Y1:
     `platform.xml`; `READ_EXTERNAL_STORAGE` isn't enough.
   - There's no MediaProvider scan to rely on, so Rondo walks the card itself.
     `MediaMetadataRetriever` reads FLAC tags and embedded covers on 4.2, but not lyrics
-    (`local/EmbeddedLyrics.kt` reads those).
+    (`local/EmbeddedLyrics.kt` reads those). 2.0 reads every tag itself (`native/core/tags.cpp`).
   - `/system` is 629 MB (read-only), `/data` 1.9 GB, `/cache` 503 MB.
 - **Wi-Fi:** 2.4 GHz only. The scan list shows a fake network called "NVRAM WARNING: Err = 0x10",
   MediaTek's sign that the Wi-Fi calibration and MAC aren't provisioned. The MAC address changes on
-  every Wi-Fi start. There's no `wpa_cli`; Wi-Fi is switched with `svc wifi disable|enable`.
+  every Wi-Fi start (the 2.0 firmware gives it a fixed one: [native.md](native.md#wi-fi)). There's
+  no `wpa_cli`; on Android, Wi-Fi is switched with `svc wifi disable|enable`.
 - **Flaky networks:** on one phone hotspot, about 70% of new TCP connections to the internet were
   refused instantly (`EHOSTUNREACH`), while ICMP and established connections were fine. Rondo
-  retries refused connects every 250 ms, up to 20 times (`net/ConnectRetry.kt`), which took video
-  start from 12.7 s to 2.2–2.8 s there.
-- **Time:** automatic time and timezone are on, but the timezone is `Asia/Shanghai` and there's no
-  modem to correct it. The clock survives a restart with Wi-Fi off.
+  retries refused connects every 250 ms, up to 20 times (1.0: `net/ConnectRetry.kt`; 2.0:
+  `native/core/api.cpp`), which took video start from 12.7 s to 2.2–2.8 s there.
+- **Time:** on the stock firmware automatic time and timezone are on, but the timezone is
+  `Asia/Shanghai` and there's no modem to correct it. The clock survives a restart with Wi-Fi off.
+  Rondo 2.0 starts in UTC and sets the time and the time zone itself (the time zone notes are
+  under [Wi-Fi in native.md](native.md#wi-fi)).
 - **Battery:** there's no fuel gauge (`/sys/devices/platform/battery_meter/FG_*` all read 0).
   `/sys/class/power_supply/battery/BatteryAverageCurrent` (mA) is the only current reading, and on
   USB it shows the charging current, so measure discharge unplugged (adb over Wi-Fi).
@@ -235,9 +267,13 @@ came out of running it on the Y1:
   one adaptive selection and changes the preferred height in place: no buffering, and the switch
   lands in about 4 s. Auto stops at 360p, the panel's size.
 - **The log buffer is tiny.** ExoPlayer and MediaCodec push other lines out within seconds; stream
-  it during tests: `adb logcat -v time -s Y1:V > file`.
+  it during tests: `adb logcat -v time -s Y1:V > file` (1.0; 2.0 writes its own log to
+  `/data/rondo/rondo.log`).
 
-## Drawing on Android 4.2
+The TimestampFix and QualitySelection files are 1.0's, around ExoPlayer; 2.0 decodes with the
+native `MediaCodec` and handles the same timestamps itself ([native.md](native.md#video)).
+
+## Drawing on Android 4.2 (Rondo 1.0)
 
 - **Shapes under a scale come out blurry** with the GPU renderer: a path or circle is drawn at its
   own size and then enlarged. Large icons are drawn with a software layer (`ui/IconView.kt`).
@@ -259,8 +295,10 @@ came out of running it on the Y1:
 The bootloader and kernel show images 0 and 38 of the MediaTek `logo` partition (in
 `/proc/dumchar_info`: `mmcblk0` offset `0x2a40000`, 3 MB; a "LOGO" header and 39 zlib-compressed
 480×360 RGB565 images, of which 1–37 are the charging animation). Android's `bootanimation` reads
-`/data/local/bootanimation.zip` before `/system/media/bootanimation.zip`, so a boot animation can
-be replaced without touching the system partition (see `tools/bootscreen`).
+`/data/local/bootanimation.zip` before `/system/media/bootanimation.zip`, so on a firmware with a
+boot animation (the stock one, or Rondo 1.0's) it can be replaced without touching the system
+partition (see `tools/bootscreen`). The 2.0 firmware has none: image 0 stays until Rondo's first
+frame.
 
 ## Files
 
@@ -275,6 +313,6 @@ be replaced without touching the system partition (see `tools/bootscreen`).
 | `keylayout-mtk-kpd.kl` | The unused keypad layout (Center would be `DPAD_CENTER` here). |
 | `keylayout-ls.txt` | The key layout files on the device. |
 | `dumpsys-display.txt`, `lcd-density.txt` | 480×360, density 160, 36.43 fps as Android reports it (the panel runs at 42.14 Hz). |
-| `native.md` | Native programs with the Java layer stopped: display, vsync, latency, sound, building against the firmware's libraries. |
+| `native.md` | Rondo 2.0 without Android's Java layer: its processes and files, the display at 60 Hz, vsync, sound, video, Wi-Fi, power, Bluetooth, FM, building against the firmware's libraries. |
 | `wm-size.txt`, `wm-density.txt` | `wm` is missing on 4.2. |
 | `proc-cpuinfo.txt`, `proc-meminfo.txt`, `proc-version.txt` | CPU, RAM, kernel. |

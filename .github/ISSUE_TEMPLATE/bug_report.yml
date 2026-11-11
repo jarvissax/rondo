@@ -42,12 +42,13 @@ body:
     attributes:
       label: Your server
       options:
-        - No server, card only
+        - Directly to YouTube (no server)
+        - No YouTube, card only
         - At home
         - On a VPS
   - type: textarea
     id: log
     attributes:
       label: Log
-      description: "Optional. With the Y1 plugged in: adb logcat -d -v time -s Y1. For the server: docker logs rondo 2>&1 | tail -200"
+      description: "Optional. With the Y1 plugged in: adb pull /data/rondo/rondo.log. For the server: docker logs rondo 2>&1 | tail -200"
       render: text

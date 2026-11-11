@@ -170,8 +170,11 @@ void finish(DownloadJob::State state, const std::string& error = "") {
 }
 
 // Picture and sound into one .mp4 as they are (no re-encoding), its index at the front so it starts
-// at once; the parts are what /s/ served (YouTube's fragmented MP4: H.264 and AAC)
-bool join(const std::string& video, const std::string& audio, const std::string& out) {
+// at once; the parts are what /s/ served (YouTube's fragmented MP4: H.264 and AAC). Tagged with its
+// title and channel, so the library doesn't guess them from the file's name ("Title - Part" read as
+// an artist and a title).
+bool join(const std::string& video, const std::string& audio, const std::string& out, const std::string& title,
+          const std::string& channel, const std::string& id) {
   AVFormatContext* in[2] = {nullptr, nullptr};
   AVFormatContext* o = nullptr;
   bool ok = false;
@@ -203,6 +206,9 @@ bool join(const std::string& video, const std::string& audio, const std::string&
       }
     }
     if (bad || o->nb_streams == 0) break;
+    av_dict_set(&o->metadata, "title", title.c_str(), 0);
+    if (!channel.empty()) av_dict_set(&o->metadata, "artist", channel.c_str(), 0);
+    av_dict_set(&o->metadata, "comment", ("https://www.youtube.com/watch?v=" + id).c_str(), 0);
     if (avio_open(&o->pb, out.c_str(), AVIO_FLAG_WRITE) < 0) break;
     AVDictionary* opts = nullptr;
     av_dict_set(&opts, "movflags", "+faststart", 0);
@@ -275,8 +281,9 @@ void startCaptions() {
       g_joined = 0;
       std::string base = partsBase(j->id);
       std::string video = base + ".video", audio = g_audioItag ? base + ".audio" : "", out = base + ".mp4.part";
+      std::string title = j->title, channel = j->channel, id = j->id;
       if (g_joiner.joinable()) g_joiner.join();
-      g_joiner = std::thread([video, audio, out] { g_joined = join(video, audio, out) ? 1 : 2; });
+      g_joiner = std::thread([video, audio, out, title, channel, id] { g_joined = join(video, audio, out, title, channel, id) ? 1 : 2; });
     };
     if (keep.empty()) return joinNow();
     for (const CaptionTrack& t : keep) {

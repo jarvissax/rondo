@@ -1,8 +1,26 @@
 # Native code on the Y1
 
-What we learned running native programs (C++, NDK r23c, Android API 17) on the Y1 with Android's Java
-layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test programs are in
-`native/tests/`, built with `tools/native/build.sh`.
+How Rondo 2.0 runs on the Y1 without Android's Java layer, and what we learned getting there: first
+with native test programs (C++, NDK r23c, Android API 17) on the 1.0 firmware with the Java layer
+stopped (`adb shell stop zygote`; `start zygote` brings it back), then on the 2.0 firmware, where
+init never starts it. The test programs are in `native/tests/`, built with `tools/native/build.sh`;
+how the firmware is put together is in [Building Rondo](../building.md#the-firmware).
+
+## Rondo 2.0 on the Y1
+
+- **Processes:** init's `rondo` service runs `/system/rondo/start`, which runs `rondo` (the screens,
+  drawn with GLES2 straight to the framebuffer) and starts it again whenever it ends. `rondo` starts
+  `rondo-player` (sound, video, FM), `rondo-core` (Wi-Fi, Bluetooth, the clock, and the YouTube
+  client's local server on `127.0.0.1:47811`) and a helper that decodes images. Of Android, only
+  native daemons run (vold, netd, mediaserver and MediaTek's own, among them), and SurfaceFlinger
+  for a moment at boot.
+- **Its files:** the firmware's copy in `/system/rondo` (the binary, FFmpeg's libraries, fonts,
+  the dashboard's page, `start`, `VERSION`), an update in `/data/rondo/<version>` named by
+  `/data/rondo/current`. In `/data/rondo` (0700): `config.json` (the server, the theme, the
+  radio; 1.0's is taken over on the first start), `prefs.json`, `library.db`, `thumbs/`, the
+  YouTube sign-ins (`youtube-tv.json`, `youtube-cookies.txt`, both 0600), `rondo.log` (and
+  `rondo.log.1`, the run before) and `rondo.pid`.
+- **Development runs** from `/data/local/tmp/rondo` keep their files there instead.
 
 ## Display
 
@@ -270,7 +288,9 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   frame in each process ever came (Nov 10). Open it (`ProcessState::self()`) on the process's main
   thread, after any fork: `prepareVideoFrames()` in `native/platform/video_frame.h`.
 
-## Keeping frames on time (measured with the N1 UI engine)
+## Keeping frames on time
+
+Measured with the first version of Rondo's UI engine.
 
 - **The render process's address space must stay quiet.** Page faults and large allocations (anything
   `malloc` serves with `mmap`, 64 KB and up) on any thread of the process that draws take its
@@ -295,7 +315,7 @@ layer stopped (`adb shell stop zygote`; `start zygote` brings it back). The test
   per glyph. A screen's first frame with 70 new glyphs missed its refresh, so the engine rasterizes the
   common glyphs of every text style while idle, uploads them while idle, and shapes a sample per font
   so HarfBuzz builds its plans early.
-- **Only one core is usually online.** The `hotplug` cpufreq governor
+- **Only one core is usually online** as the governor ships. The `hotplug` cpufreq governor
   (`/sys/devices/system/cpu/cpufreq/hotplug/`) adds the second core after 300 ms above 90 % load
   (`cpu_up_avg_times` 10 × 30 ms samples) and removes it after 1.5 s. `cpu_num_base` sets the minimum
-  number of cores online.
+  number of cores online; Rondo keeps it at 2 while the screen is lit (see Power).

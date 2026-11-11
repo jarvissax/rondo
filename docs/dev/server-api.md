@@ -1,16 +1,21 @@
 # Rondo server admin
 
-The music server's own admin page, at `<server>/admin`: set up a fresh server, sign in its
-YouTube account (cookies.txt), connect the one Rondo device, keep yt-dlp current, see what went
-wrong. Served by the server itself (any time, from any browser), in the same look as the device
-and its dashboard (`docs/dev/dashboard-api.md`). It works over `http://` (at home, by IP) and
-`https://` (on a VPS behind Caddy), and pairs **one device with one token**. This page describes
-how it works and its API; for setting a server up, see [docs/server.md](../server.md).
+The optional Rondo server's admin page, at `<server>/admin`: set up a fresh server, sign in its
+YouTube account (with a code, or cookies.txt), connect the one Rondo device, keep yt-dlp current,
+see what went wrong. Served by the server itself (any time, from any browser), in the same look as
+the device and its dashboard (`docs/dev/dashboard-api.md`). It works over `http://` (at home, by
+IP) and `https://` (on a VPS behind Caddy), and pairs **one device with one token**. This page
+describes how it works, its API and the routes the Rondo itself calls besides browsing and
+streams; for setting a server up, see [docs/server.md](../server.md).
+
+A Rondo set to **Directly to YouTube** uses none of this: its own YouTube client
+(`native/direct/`) answers the same device API on the Y1 (`127.0.0.1:47811`), so the screens ask
+the same paths either way.
 
 ## How it fits together
 
 - **First run:** no admin password yet. The server prints a one-time **setup code** in its log
-  (`docker logs y1`): `Rondo setup: open <base>/admin and enter 482-913`. The page asks for that
+  (`docker logs rondo`): `Rondo setup: open <base>/admin and enter 482-913`. The page asks for that
   code and a new admin password (at least 10 characters). The code changes on every restart until
   setup is done.
 - **Admin sign-in:** password → session cookie `rondo_admin` (HttpOnly, SameSite=Strict, Secure
@@ -35,7 +40,7 @@ how it works and its API; for setting a server up, see [docs/server.md](../serve
 - **Forgotten admin password:** remove `adminHash` from `/data/config.json` and restart; the log
   shows a new setup code (`docs/server.md` has the command). The device stays connected.
 - **http and https:** the server speaks plain HTTP on port 3000. On a VPS, Caddy in front adds
-  HTTPS (with the Android 4.2 cipher settings, see CLAUDE.md). At home, the Rondo can use
+  HTTPS (with the Android 4.2 cipher settings, see `infra/Caddyfile`). At home, the Rondo can use
   `http://<server-ip>:3000` directly; the admin page and the dashboard mark such a connection
   "not encrypted: use it only on your home network".
 - Settings are kept in `/data/config.json` on the server's volume (admin password hash, device
@@ -118,16 +123,36 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 
 ## Software updates for the Rondo (device token)
 
-- `GET /update?firmware=1` → `{"version": "1.0.1", "size": 6413645, "notes": "<release page>", "firmware": 1}`
+Rondo 1.0.x asks its server for updates. Rondo 2.0 asks GitHub itself, server or not: its own
+YouTube client answers the same two routes on the Y1 from the update page
+(`native/direct/routes.cpp`). The server keeps them for 1.0.x, and so that a 1.0.x Rondo hears of
+2.0.
+
+- `GET /update?firmware=<n>` → `{"version": "2.0.0", "size": 9437184, "notes": "<release page>", "firmware": 2}`
   for the newest Rondo release on the update page (`jarvissax.github.io/rondo/latest.json`, out once
   the release's `rom.zip` is built), or `{"version": null}`. The device compares it with its own version
   (Settings › Software update). `firmware` in the query is the device's firmware number
-  (`ro.rondo.firmware`); a release whose `firmware` is higher installs only with Innioasis Updater CE,
-  and the device says so instead of offering it. Without the query (Rondo 1.0.0, from before
-  firmware numbers) only releases for firmware 1 are named.
-- `GET /update/rondo.apk` → that APK (the update page's `rondo.apk`), passed through as it downloads
-  (`application/vnd.android.package-archive`), so the Y1 never talks to anyone but its server.
-  Android on the Y1 installs it only when it's signed with the same key as the firmware's Rondo.
+  (`ro.rondo.firmware`): 1 hears of the release's APK, 2 and up of its signed bundle. A release whose
+  `firmware` is higher installs only with Innioasis Updater CE, and the device says so instead of
+  offering it (`size` is then 0 when there's nothing it could install). Without the query (Rondo
+  1.0.0, from before firmware numbers) only releases for firmware 1 are named.
+- `GET /update/rondo.rondo` → the release's signed bundle (the update page's `rondo.rondo`), passed
+  through as it downloads. Rondo installs it only when it's signed with the bundle key.
+- `GET /update/rondo.apk` → a 1.0.x release's APK (the update page's `rondo.apk`), passed through
+  as it downloads (`application/vnd.android.package-archive`), so a 1.0.x Y1 never talks to anyone
+  but its server. Android on the Y1 installs it only when it's signed with the same key as the
+  firmware's Rondo.
+
+## Headphone match for the Rondo (device token)
+
+Settings › Sound › Headphone match (`server/src/eq.ts`): AutoEq's parametric corrections, fetched
+by the server from GitHub (the index once a day, a model once a week). Direct mode has no such
+route: it answers `503 {"error": "needs_server"}`.
+
+- `GET /eq/search?q=<model>` → `{"items": [{"id", "name", "source"}]}`, at most 20, best first;
+  `502` when AutoEq's index didn't load.
+- `GET /eq/preset?id=<id>` → `{"id", "name", "source", "preampDb", "filters": [{"type": "PK" | "LSC" | "HSC" | "LPQ" | "HPQ", "freq", "gainDb", "q"}]}`;
+  `404` for an unknown model. An id is the model's folder under AutoEq's `results/`.
 
 ## Time zone for the Rondo (device token)
 
@@ -135,7 +160,8 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
   tell. The zone of the public address the request came from (`X-Forwarded-For` behind a proxy),
   asked of ipwho.is, then ipapi.co; a private address (a Rondo on the server's network) is looked up
   by the server's own public address. Kept 12 hours per address (a miss 10 minutes). Rondo 2.0 asks
-  once per Wi-Fi connection and sets the zone when its firmware's tzdata has it.
+  once per Wi-Fi connection and sets the zone when its firmware's tzdata has it. Directly to
+  YouTube, the Y1's own client asks the same two services itself.
 
 ## Subtitles for the Rondo (device token)
 

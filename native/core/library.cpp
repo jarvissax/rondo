@@ -29,7 +29,7 @@ namespace {
 const char* kAudio[] = {"flac", "mp3", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "w64", "aif", "aiff", "aifc", "wma",
                         "ape", "wv", "ac3", "eac3", "ec3", "dts", "mka", "dsf", "dff", "tta", "tak", "mpc", "amr", "awb",
                         "mp2", "caf", "au"};
-const char* kVideo[] = {"mp4", "m4v", "mkv", "3gp", "webm"};
+const char* kVideo[] = {"mp4", "m4v", "mov", "mkv", "3gp", "webm"};
 const char* kSkip[] = {"android", "lost.dir", "dcim", ".thumbnails"};
 const char* kGenericFolders[] = {"music", "video", "videos", "movies", "sdcard0", "sdcard1"};
 const char* kRoots[] = {"/storage/sdcard0", "/storage/sdcard1"};  // the card, the internal storage
@@ -411,7 +411,7 @@ void Library::list(const std::string& dir, int depth, std::vector<FileEntry>& ou
     }
     size_t dot = name.rfind('.');
     std::string ext = dot == std::string::npos ? "" : asciiLower(name.substr(dot + 1));
-    bool video = in(kVideo, 5, ext);
+    bool video = in(kVideo, 6, ext);
     if (!video && !isAudioExtension(ext)) continue;
     out.push_back({path, int64_t(st.st_size), int64_t(st.st_mtime) * 1000, video});
   }

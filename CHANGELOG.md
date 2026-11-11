@@ -4,21 +4,25 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
-## 2.0.0 (not released yet)
+## 2.0.0 (November 11, 2026)
 
-A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to keep your settings
-([moving from 1.0](docs/install.md#moving-from-rondo-10)).
+A new firmware, with Rondo rebuilt as a program of its own, and YouTube that no longer needs a
+server. Install it with Innioasis Updater CE and choose **Keep Data** to keep your settings
+([moving from 1.0](docs/install.md#moving-from-rondo-10)). From then on, updates come over Wi-Fi
+straight from GitHub.
 
 ### YouTube without a server
 
-- **YouTube and YouTube Music straight from the Y1.** Settings › YouTube › Connection: **Directly to
-  YouTube** or **My server**. Directly, there is nothing to set up: home, search, albums, artists,
-  playlists, up next, Shorts, lyrics and playback (Opus, or AAC where a song has no Opus) all come
-  from YouTube itself. A Y1 without a server uses it on its own.
+- **YouTube and YouTube Music straight from the Y1.** Settings › YouTube › Connection: **Directly
+  to YouTube** or **My server**. Directly, there is nothing to set up: home, search, albums,
+  artists, playlists, up next, Shorts and playback come from YouTube itself, and lyrics from
+  YouTube Music and LRCLIB. A Y1 without a server uses it on its own.
 - **Sign in to YouTube directly, with a code** like a smart TV: on the Y1 (Settings › YouTube ›
   YouTube account) or the dashboard's YouTube page. It brings YouTube's home, Subscriptions and
   History, and YouTube Music's playlists and Liked Music; a cookies.txt (dashboard) adds YouTube
-  Music's own home and history. Both stay on the Y1. Headphone match still needs your server.
+  Music's own home and history. Both stay on the Y1.
+- **Your own server is optional now.** With **My server**, the Y1 reaches YouTube only through
+  it, as in 1.0, and it adds **Headphone match** (below). A server you already have keeps working.
 
 ### Subtitles and downloads
 
@@ -44,21 +48,86 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   and works as in 1.0.
 - **60 frames a second.** The screen refreshes at 60 Hz instead of 42, so scrolling and slides are
   smoother and videos at 30 frames a second play evenly.
-- **Motion like an iPod.** Screens slide in and out, lists glide, and artwork fades in.
+- **Motion like an iPod.** Screens slide in and out, lists and their highlight glide, and artwork
+  fades in. On Now Playing, the next song's cover slides in from the right and the one before from
+  the left.
 - **Shorts swipe like on a phone:** the short slides up and away as the next one comes in.
-- **Pocket-safe wake.** With the screen off, any press only wakes it; nothing else happens.
+- **Pocket-safe wake.** With the screen off, any press only wakes it; nothing else happens. Within
+  5 seconds of the screen dimming or going dark by itself, a press wakes it and does what it does
+  (after Power, a press still only wakes it).
 - **Wired headset buttons** work: play/pause, next, previous and volume, screen on or off.
 - **Back where you were.** After a restart, the queue and the place in the song come back.
+
+### Library
+
+- **Library in four:** Music (in groups: Browse, Playlists, Listening, the card), Videos (all, the
+  newest, by folder), Photos and **Files**, a file manager for the card and the internal storage:
+  open, rename, copy, move (between the two storages too, in the background), delete, new folder.
+  Plays, ratings and playlists follow what moves.
+- **A richer library:** Album artists and Genres. Albums show their year, two albums of one name by
+  different artists stay apart, and songs play in disc and track order. Most played, Recently
+  played and Top rated; rate a song in Now Playing (hold center) or on the dashboard. Rondo reads
+  every song's tags once more after the update.
+- **Cover Flow** (Library › Music › Browse) on the Y1 and the dashboard: the albums' covers on a
+  wide stage, the one in front facing you.
+- **Photos** on the Y1 and the dashboard: the pictures on the card by folder, full screen, sliding
+  from one to the next, with a slideshow; camera photos turned the right way up.
+- **Smart playlists:** songs picked by rules (a genre, a year, a folder, ratings, plays, when they
+  were added or last played), made on the dashboard and played from Library › Playlists. They
+  follow your library as it changes.
+- **Organize the card** (Library, and on the dashboard): songs into Artist/Album (Year) folders,
+  episodes into Shows and other videos into Movies, as Jellyfin, Plex and Kodi expect. You see every
+  move first; lyrics, subtitles, covers, playlists, plays, ratings and the queue go along.
+- **Every common music format:** WMA, APE, WavPack, AIFF, AC-3, E-AC-3, DTS, DSD, TTA, TAK,
+  Musepack, MKA, CAF, AMR, MP2 and AU besides MP3, AAC, ALAC, FLAC, Ogg, Opus and WAV, with their
+  tags, lengths and covers; surround mixes down to stereo.
 
 ### Sound
 
 - **Settings › Sound:** an equalizer with presets or ten bands of your own, kept for each output (the
-  speaker, wired headphones, each Bluetooth device).
+  speaker, wired headphones, each Bluetooth device). **Edit equalizer** has a slider for each band,
+  as on the dashboard, and saves your bands as a preset.
 - **Headphone match:** a correction for your headphone model, from AutoEq, through your server.
 - **Loudness boost** (peaks held, never clipped) and **volume leveling** (songs at one loudness).
 - **Amplifier:** the Y1's own amplifier, as it ships or 2, 4 or 6 dB louder.
-- **Opus for YouTube Music:** songs stream as YouTube's Opus where your server and the song offer it
-  (Now Playing says "Streaming · Opus"), else AAC as before. Needs the 2.0.0 server.
+- **Volume limit:** the loudest step the wheel can set, on every output.
+- **Opus for YouTube Music:** songs stream as YouTube's Opus where the song has it (Now Playing
+  says "Streaming · Opus"), else AAC as before. Through your server, this needs the 2.0.0 server.
+
+### Settings and the clock
+
+- **Settings in groups:** the Dashboard, then Connections, YouTube, Sound, Display, Controls and
+  System.
+- **A glyph and a color for every row:** no screen shows one twice; Shuffle and Repeat have theirs
+  everywhere, and every list of songs starts with Shuffle.
+- **The date and the time in the status bar,** in your time zone, kept while the Y1 is off.
+  YouTube's headers keep only the battery, to leave room for their tabs.
+- **Settings › System › Date & time:** the time and the time zone each set automatically or by hand. Set
+  automatically, the Y1 takes the time from the network and the time zone of wherever it is online,
+  each time it joins Wi-Fi. By hand, you set the date, the time and the time zone yourself, and choose
+  24-hour time or AM/PM. A new Y1 starts in UTC (it used to stay on China's time zone).
+- **Current time zone rules.** The firmware's time zone data was from 2012, so clocks in Russia, Turkey,
+  Mexico and other places that changed their rules since were an hour off for part of the
+  year. Rondo's firmware has IANA's 2026 data.
+- **A fixed Wi-Fi address.** The Y1 shipped without one, so it showed up on the network as a new
+  device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
+  System › About shows it.
+
+### The dashboard
+
+- **Every setting:** a Sound page (each output's equalizer, your own presets, headphone match,
+  loudness boost, volume leveling, the amplifier, the volume limit), Subtitles, Date & time, and
+  the choice between YouTube directly and your server, with the YouTube sign-in and downloads.
+- **In groups:** Connections (Wi-Fi, Bluetooth, YouTube) and Settings (Sound, Theme, General); its
+  Library in Music, Videos, Photos and Files, with Shuffle, sorting by genre, year, plays and
+  rating, and Cover Flow.
+- **A file manager:** the dashboard's Files makes folders, renames, moves and deletes (several at
+  once), uploads into any folder and downloads files.
+- **On a phone:** five tabs (Overview, Library, Radio, YouTube, Settings) instead of nine, the
+  Library's search on a row of its own, the outputs in Sound one per line. The server's admin page
+  fits a phone too.
+- **Uploads** of photos from the Library go to Pictures, and videos to Movies (never into Music).
+- The Overview shows the Wi-Fi address and the time zone.
 
 ### Battery and safety
 
@@ -69,43 +138,23 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   charger and battery warnings (voltage too high, battery too hot, charging too long) appear as they
   did on the stock firmware, in the Y1's words.
 
-### Library, Settings and the dashboard
+### Updates
 
-- **Library in four:** Music (in groups: Browse, Playlists, Listening, the card), Videos (all, the
-  newest, by folder), Photos and **Files**, a file manager for the card and the internal storage:
-  open, rename, copy, move (between the two storages too, in the background), delete, new folder.
-- **Settings in groups:** the Dashboard, then Connections, YouTube, Sound, Display, Controls and
-  System.
-- **A glyph and a color for every row:** no screen shows one twice; Shuffle and Repeat have theirs
-  everywhere, and every list of songs starts with Shuffle.
-- **Every common music format:** WMA, APE, WavPack, AIFF, AC-3, E-AC-3, DTS, DSD, TTA, TAK,
-  Musepack, MKA, CAF, AMR, MP2 and AU besides MP3, AAC, ALAC, FLAC, Ogg, Opus and WAV, with their
-  tags, lengths and covers; surround mixes down to stereo.
-- **The dashboard in groups too:** Connections (Wi-Fi, Bluetooth, YouTube) and Settings (Sound,
-  Theme, General); its Library in Music, Videos, Photos and Files, with Shuffle.
-- **Photos slide** from one to the next on the Y1 and the dashboard (a swipe there too), and the
-  grid's highlight glides. **Cover Flow** has a wider, deeper stage.
-- **Previous slides** the cover in from the left, as Next does from the right.
-- **The equalizer on the Y1** as on the dashboard: a slider for each band, its gain over it. Every
-  Sound row has its icon.
-- **The dashboard on a phone:** five tabs (Overview, Library, Radio, YouTube, Settings) instead of
-  nine, the Library's search on a row of its own, the outputs in Sound one per line. The server's
-  admin page fits a phone too.
-- **Uploads** of photos from the Library go to Pictures, and videos to Movies (never into Music).
+- **Software update comes from GitHub, with or without a server.** Settings › System › Software
+  update checks the update page itself and installs a new Rondo over Wi-Fi, so a Rondo without a
+  server gets its updates there too. The dashboard's **Install** downloads them from GitHub as
+  before, and the update page installs them over USB.
+- **Signed updates:** an update is now a signed Rondo bundle (`rondo-<version>.rondo`), and Rondo
+  installs only its own. An update that fails to start three times in a row is set aside and the
+  firmware's own Rondo runs.
+- Rondo 1.0 hears of 2.0 on its dashboard (and, with a server, in Settings › Software update) and
+  points to Innioasis Updater CE, since 2.0 needs its new firmware.
 
 ### Fixed
 
 - Shorts: moving to the next or previous short showed the one before restarting without sound for a
   moment; the new short now shows from its own first picture.
-- A press right after the screen dimmed or went dark by itself was sometimes lost: within 5 seconds
-  of the screen timing out, a press wakes it and does what it does (after Power, a press still only
-  wakes it), and a press is never swallowed for long after waking.
-- YouTube's headers and Shorts show only the battery: the clock and the Wi-Fi ran into the tabs.
-
-- Switching between the server and direct mode could keep showing the other source's YouTube and
-  YouTube Music for two minutes, and their tabs.
 - A video quality the video lacks fell to 360p; it now plays the next height down (720p → 480p).
-- Photos: the grid's highlight missed the first press.
 - Videos shorter than 10 seconds had no thumbnail.
 
 ### Smaller changes
@@ -114,56 +163,19 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   arrives as they slide in.
 - Long Wi-Fi names and titles in the header end in "…" instead of running into the status icons.
 - Emoji in titles show in color, and long titles wrap without breaking them apart.
-- **A richer library:** Album artists and Genres in Library. Albums show their year, two
-  albums of one name by different artists stay apart, and songs play in disc and track order.
-  Most played, Recently played and Top rated; rate a song in Now Playing (hold center) or on the
-  dashboard, which also sorts by genre, year, plays and rating. Rondo reads every song's tags once
-  more after the update.
-- **A file manager:** Library › Files on the Y1 and the dashboard's Files tab; the dashboard
-  also makes folders, renames, moves and deletes (several at once), uploads into any folder and
-  downloads files. Plays, ratings and playlists follow what moves.
-- **Organize the card** (Library, and on the dashboard): songs into Artist/Album (Year) folders,
-  episodes into Shows and other videos into Movies, as Jellyfin, Plex and Kodi expect. You see every
-  move first; lyrics, subtitles, covers, playlists, plays, ratings and the queue go along.
-- **Smart playlists:** songs picked by rules (a genre, a year, a folder, ratings, plays, when they
-  were added or last played), made on the dashboard and played from Library › Playlists. They
-  follow your library as it changes.
-- **The dashboard has every setting:** a Sound page (each output's equalizer, your own presets,
-  headphone match, loudness boost, volume leveling, the amplifier), Date & time, and the choice
-  between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.
-- **Photos** (Library) on the Y1 and the dashboard: the pictures on the card by folder, full screen,
-  with a slideshow; camera photos turned the right way up.
-- **Cover Flow** (Library) on the Y1 and the dashboard.
-- **Volume limit** (Settings › Sound, and on the dashboard): the loudest step the wheel can set, on
-  every output.
 - **Artwork that comes every time.** Card videos show their picture again, in Rondo and on the
   dashboard. Covers that don't arrive at once (Wi-Fi, a busy moment) are asked for again, on the Y1
   and on the dashboard. On the dashboard, the song playing from YouTube Music shows its cover.
-- The Wi-Fi switch, the music volume of each output and the clock are kept without Android.
-- **A fixed Wi-Fi address.** The Y1 shipped without one, so it showed up on the network as a new
-  device at every start. Rondo now gives it one of its own, the same after any reinstall. Settings ›
-  About shows it.
-- **The date and the time in the status bar,** in your time zone, kept while the Y1 is off.
-- **Settings › System › Date & time:** the time and the time zone each set automatically or by hand. Set
-  automatically, the Y1 takes the time from the network and the time zone of wherever it is online,
-  each time it joins Wi-Fi. By hand, you set the date, the time and the time zone yourself, and choose
-  24-hour time or AM/PM. A new Y1 starts in UTC (it used to stay on China's time zone).
-- **Current time zone rules.** The firmware's time zone data was from 2012, so clocks in Russia, Turkey,
-  Mexico and other places that changed their rules since were an hour off for part of the
-  year. Rondo's firmware has IANA's 2026 data.
-
-### Updates
-
-- Updates are now signed Rondo bundles (`rondo-<version>.rondo`): Settings › Software update, the
-  dashboard and the update page install them. An update that fails to start three times in a row is
-  set aside and the firmware's own Rondo runs.
+- The Wi-Fi switch, the music volume of each output and the clock are kept across restarts.
 
 ### Server
 
-- The server streams YouTube's Opus audio as well, which 2.0 plays songs as. Update it with
-  **Update** on its admin page once 2.0.0 is out; an older server keeps working, with AAC.
+- The server streams YouTube's Opus audio and the videos' subtitles as well, and looks up
+  Headphone match's corrections (from AutoEq). Update it with **Update** on its admin page; an
+  older server keeps working, with AAC, and without subtitles or Headphone match.
 - The server tells the Y1 its time zone, from the Y1's public address
-  ([privacy](docs/server.md#privacy)). With an older server the Y1 stays in UTC.
+  ([privacy](docs/server.md#privacy)). With an older server the Y1 stays in UTC until you set the
+  time zone by hand.
 
 ## 1.0.2 (November 3, 2026)
 
@@ -187,13 +199,6 @@ Nothing changes on the Y1 itself; this release is about the server.
 An update over Wi-Fi, the dashboard or USB: no reinstall needed, and everything on your Y1 stays.
 
 ### Fixed
-
-- Shorts: moving to the next or previous short showed the one before restarting without sound for a
-  moment; the new short now shows from its own first picture.
-- A press right after the screen dimmed or went dark by itself was sometimes lost: within 5 seconds
-  of the screen timing out, a press wakes it and does what it does (after Power, a press still only
-  wakes it), and a press is never swallowed for long after waking.
-- YouTube's headers and Shorts show only the battery: the clock and the Wi-Fi ran into the tabs.
 
 - **Click sound stays off.** Turning off **Settings › Click sound** (or the switch in the
   dashboard) now lasts through a restart. Before, the Y1's own sound profile turned the click

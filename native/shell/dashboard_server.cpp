@@ -432,7 +432,7 @@ std::string extOf(const std::string& name) {
 }
 // what may be copied to the card: music (Library's formats, isAudioExtension), videos, lyrics,
 // subtitles, pictures, playlists
-const std::set<std::string> kOtherMediaExt = {"mp4", "m4v", "mkv", "3gp", "webm", "lrc", "srt", "ass", "vtt",
+const std::set<std::string> kOtherMediaExt = {"mp4", "m4v", "mov", "mkv", "3gp", "webm", "lrc", "srt", "ass", "vtt",
                                               "jpg", "jpeg", "png", "gif", "webp", "bmp", "m3u8", "m3u"};
 bool isMediaExt(const std::string& x) { return isAudioExtension(x) || kOtherMediaExt.count(x); }
 
@@ -972,7 +972,7 @@ Response Server::art(const std::string& path, int size) {
         ok = ui::decodeImage(cover.data(), cover.size(), tw, th, px);
       }
     } else {
-      static const std::set<std::string> video = {"mp4", "m4v", "mkv", "3gp", "webm"};
+      static const std::set<std::string> video = {"mp4", "m4v", "mov", "mkv", "3gp", "webm"};
       ui::Pixels frame;
       struct stat st;
       bool isVideo = video.count(extOf(path)) && stat(path.c_str(), &st) == 0;
@@ -1525,7 +1525,7 @@ std::string kindOfFile(const std::string& name, bool dir) {
   if (dir) return "folder";
   std::string x = extOf(name);
   if (isAudioExtension(x)) return "song";
-  static const std::set<std::string> video = {"mp4", "m4v", "mkv", "3gp", "webm"}, image = {"jpg", "jpeg", "png", "gif", "webp", "bmp"},
+  static const std::set<std::string> video = {"mp4", "m4v", "mov", "mkv", "3gp", "webm"}, image = {"jpg", "jpeg", "png", "gif", "webp", "bmp"},
                                       text = {"lrc", "srt", "ass", "vtt", "txt", "m3u8", "m3u", "json"};
   if (video.count(x)) return "video";
   if (image.count(x)) return "image";

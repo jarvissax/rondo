@@ -1,9 +1,19 @@
 # Setting up a Rondo server
 
-Your music card and the FM radio work without a server. YouTube Music and YouTube need one: a
-small service that browses YouTube for the Y1 and passes the audio and video through in a form
-Android 4.2 can play. You run it yourself, so it uses your own YouTube account (or none), and
-nothing goes through anyone else's computer.
+**You don't need a server.** Rondo talks to YouTube Music and YouTube itself, straight from the
+Y1 (**Directly to YouTube**, what a Rondo without a server uses), and the card, the radio, the
+dashboard and updates never needed one. A Rondo server is optional: a small service you run
+yourself, at home or on a VPS, that does the YouTube part for the Y1 instead. With it:
+
+- **The Y1 never talks to YouTube or Google.** The server browses YouTube for it and passes the
+  audio and video through, so YouTube sees the server, not the Y1.
+- **yt-dlp finds the streams.** It keeps up with YouTube's changes and the server updates it every
+  day.
+- **The server has its own YouTube account**, signed in on its admin page.
+- **Headphone match** (Settings › Sound) looks up your headphone model's correction through it.
+
+Rondo 1.0 needed a server for YouTube; Rondo 2.0 doesn't. Nothing goes through anyone else's
+computer either way.
 
 One server serves one Y1. It needs [Docker](https://docs.docker.com/get-docker/) with Compose,
 about 1 GB of disk, and has to stay on while you listen.
@@ -21,7 +31,8 @@ uses to reach YouTube aren't made for them. So far it has been tested on x86-64 
 | Address | `http://192.168.1.10:3000` | `https://music.example.com` |
 | Compose file | `infra/compose.home.yaml` | `infra/compose.vps.yaml` |
 
-At home is simplest. Pick a VPS if you want YouTube on the Y1 away from home too.
+At home is simplest. Pick a VPS if you want the Y1 to use your server away from home too. (Away
+from a home server, you can switch the Y1 to **Directly to YouTube**.)
 
 ## At home
 
@@ -77,7 +88,7 @@ It should print a certificate chain and `Verify return code: 0 (ok)`.
 
 Two things that break the Y1's connection:
 
-- **Cloudflare's proxy.** If your DNS is on Cloudflare, set the record to "DNS only" (grey cloud).
+- **Cloudflare's proxy.** If your DNS is on Cloudflare, set the record to "DNS only" (gray cloud).
   Cloudflare's HTTPS doesn't offer what Android 4.2 needs.
 - **Another web server's defaults.** If the VPS already runs Caddy or nginx on 80/443, use
   `compose.home.yaml` behind it instead, and give your site the `tls` settings from
@@ -92,12 +103,15 @@ Your server's address is `https://music.example.com`.
    the log and choose an admin password.
 2. **Connect the Y1:** on the admin page, go to **Device** and press **Connect a Rondo**. It shows
    a 6-digit code, good for 10 minutes.
-3. On the Y1, open **Settings › YouTube › Connection › Connect to a server**. Type your server's address and,
-   on the next screen, the code from step 2. (Typing is quicker in the dashboard: open **Settings ›
-   Dashboard** on the Y1, the address it shows on your phone or computer, then its **Server** page.)
+3. On the Y1, open **Settings › YouTube › Connection › Connect to a server**. Type your server's
+   address and, on the next screen, the code from step 2. (Typing is quicker in the dashboard:
+   open **Settings › Dashboard** on the Y1, the address it shows on your phone or computer, then
+   its **YouTube** page.)
 
-**Settings › YouTube** on the Y1 now says it's connected; **Connection test** checks it. YouTube
-Music and YouTube are ready.
+**Settings › YouTube › Connection** on the Y1 now has **My server** chosen and says it's
+connected; **Connection test** checks it. YouTube Music and YouTube now go through your server.
+To go back to YouTube directly at any time, choose **Directly to YouTube** there; the server stays
+connected for when you switch back.
 
 ## The admin page
 
@@ -120,6 +134,9 @@ hours.
 - **Admin account:** change the password or sign out.
 
 ## Your YouTube account (optional)
+
+This is the server's own account, which a Y1 on **My server** uses. (Directly to YouTube, the Y1
+signs in by itself: Settings › YouTube › YouTube account, or the dashboard's YouTube page.)
 
 Without an account you can still search and play anything, open artists, albums and public
 playlists, and see a general home page. Rondo hides Library, Subscriptions and History until an
@@ -169,10 +186,10 @@ session:
   A server set up before 1.0.2 built itself and has no updater yet; those four lines move it to the
   ready-made images, with **Update** from then on. Your admin password, account and connected Y1
   are kept on a Docker volume and survive updates either way.
-- **Updating the Y1:** the server also hands the Y1 its updates. **Settings › Software update** on
-  the Y1 shows a newer Rondo and installs it; the server fetches it from Rondo's update page and
-  passes it on. When a release needs a new firmware, the Y1 says so and points to Innioasis
-  Updater CE instead.
+- **Updating the Y1:** Rondo 2.0 checks GitHub for its own updates, server or not
+  (**Settings › System › Software update**, see [Updating Rondo](install.md#updating-rondo)). The
+  server still hands a Rondo 1.0 its updates, and tells it when a release needs a new firmware, as
+  2.0 does: it fetches them from Rondo's update page and passes them on.
 - **The server and Rondo share a version number.** When the admin page says a newer Rondo is out,
   update the server too (above), even if only the Y1 changed; that keeps them in step.
 - **One Y1 per server.** Connecting another Rondo disconnects the previous one.
@@ -187,14 +204,17 @@ session:
 
 ## Privacy
 
-The server doesn't store audio or video; it passes streams through as they play. Your cookies and
-the code sign-in stay on the server's Docker volume, readable only by the server, and are never
-shown or written to the logs. The Y1 talks only to your server, never to Google.
+The server doesn't store audio or video; it passes streams through as they play. (A video you
+download is saved on the Y1's card, not on the server.) Your cookies and the code sign-in stay on
+the server's Docker volume, readable only by the server, and are never shown or written to the
+logs. With **My server** chosen, the Y1 reaches YouTube only through your server, never Google
+directly. It still checks GitHub for Rondo's own updates.
 
-Rondo 2.0 sets its time zone from your server: once each time the Y1 joins Wi-Fi, the server asks
+With a server, Rondo sets its time zone from it: once each time the Y1 joins Wi-Fi, the server asks
 [ipwho.is](https://ipwho.is) (or, if that fails, [ipapi.co](https://ipapi.co)) which time zone the
 Y1's public IP address is in. Only that address is sent; a Y1 on the same network as the server is
-looked up by the server's own address. Answers are kept for 12 hours. Until the server has named a
-zone, the Y1 uses UTC.
+looked up by the server's own address. Answers are kept for 12 hours. Until a zone is named, the
+Y1 uses UTC. Directly to YouTube, the Y1 asks the same two services itself. Either way, **Settings ›
+System › Date & time** can set the time zone by hand instead.
 
 How the server works, and its API, are described in [docs/dev/server-api.md](dev/server-api.md).

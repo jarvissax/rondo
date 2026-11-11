@@ -44,7 +44,7 @@ std::string extOf(const std::string& name) {
 }
 bool isVideoName(const std::string& n) {
   std::string x = extOf(n);
-  return x == "mp4" || x == "m4v" || x == "mkv" || x == "3gp" || x == "webm";
+  return x == "mp4" || x == "m4v" || x == "mov" || x == "mkv" || x == "3gp" || x == "webm";
 }
 std::string nameOf(const std::string& p) { return p.substr(p.rfind('/') + 1); }
 std::string parentOf(const std::string& p) { return p.substr(0, p.rfind('/')); }

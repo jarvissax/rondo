@@ -709,7 +709,7 @@ $('#deviceRows').addEventListener('click', async (e) => {
 // the music Rondo plays (core/library.cpp kAudio): every common format, lossy and lossless
 const AUDIO = ['flac', 'mp3', 'm4a', 'm4b', 'aac', 'ogg', 'oga', 'opus', 'wav', 'w64', 'aif', 'aiff', 'aifc', 'wma',
   'ape', 'wv', 'ac3', 'eac3', 'ec3', 'dts', 'mka', 'dsf', 'dff', 'tta', 'tak', 'mpc', 'amr', 'awb', 'mp2', 'caf', 'au'];
-const VIDEO = ['mp4', 'm4v', 'mkv', '3gp', 'webm'];
+const VIDEO = ['mp4', 'm4v', 'mov', 'mkv', '3gp', 'webm'];
 const PHOTOS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'];
 const ALLOWED = [...AUDIO, ...VIDEO, ...PHOTOS, 'lrc'];
 // what can go anywhere on the card from the Files tab: pictures, subtitles, playlists too

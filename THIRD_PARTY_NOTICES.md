@@ -3,7 +3,25 @@
 Rondo is MIT-licensed (see [LICENSE](LICENSE)). It's built on the projects below, each under its
 own license.
 
-## In the Android app (and the APK)
+## In the Rondo 2.0 firmware and its update bundles (`rondo-<version>.rondo`)
+
+| Project | License |
+| --- | --- |
+| [FFmpeg](https://ffmpeg.org) (libavformat, libavcodec, libavutil, libswresample), as shared libraries so they can be replaced | LGPL-2.1+ (built without GPL parts; `tools/native/deps.sh` has the configuration and fetches the source) |
+| [curl](https://curl.se) | curl license (MIT-style) |
+| [OpenSSL](https://www.openssl.org) | Apache-2.0 |
+| [nghttp2](https://nghttp2.org) | MIT |
+| [HarfBuzz](https://harfbuzz.github.io) | MIT ("Old MIT") |
+| [FreeType](https://freetype.org) | FreeType License (BSD-style) |
+| [libpng](http://www.libpng.org/pub/png/libpng.html) and [zlib](https://zlib.net) | libpng License, zlib License |
+| [libjpeg-turbo](https://libjpeg-turbo.org) | IJG and BSD-3-Clause |
+| [SQLite](https://sqlite.org) | public domain |
+| [yyjson](https://github.com/ibireme/yyjson) | MIT |
+| [Roboto](https://github.com/googlefonts/roboto-3-classic) font | SIL Open Font License 1.1 |
+| [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) font | SIL Open Font License 1.1 |
+| ISRG Root X1 and ISRG Root YR certificates ([Let's Encrypt](https://letsencrypt.org/certificates/)) | public certificates |
+
+## In the Rondo 1.0 Android app (and its APK)
 
 | Project | License |
 | --- | --- |

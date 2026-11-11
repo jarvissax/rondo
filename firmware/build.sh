@@ -210,7 +210,7 @@ name = Rondo
 version = ${RONDO_VERSION}
 model = Y1
 type = Type A
-description = An iPod-style player for the Y1: the music and videos on the card, YouTube Music and YouTube through your own Rondo server, and FM radio. Installing replaces everything on the player itself; the microSD card is left alone.
+description = An iPod-style player for the Y1: the music, videos and photos on the card, YouTube Music and YouTube (straight from YouTube, or through your own Rondo server), and FM radio. Installing replaces everything on the player itself; the microSD card is left alone.
 EOF
 cp "$HERE/updater.png" "$WORK/rom/updater.png"
 (cd "$WORK/rom" && zip -q -9 -r -X "$OUT" .)

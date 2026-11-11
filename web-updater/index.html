@@ -21,12 +21,13 @@
   <section class="note" id="unsupported" hidden>
     <b>This browser can't talk to USB devices.</b> Open this page in <b>Chrome</b> or <b>Edge</b>
     on a computer, or in Chrome on an Android phone with a USB-C cable. Or update over Wi-Fi from
-    the Y1 itself (Settings › Software update) or from its dashboard.
+    the Y1 itself (Settings › System › Software update) or from its dashboard.
   </section>
 
   <section class="note">
     This is for a Y1 that already runs the <b>Rondo firmware</b>. To install Rondo for the first
-    time, use <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md">Innioasis Updater CE</a>.
+    time, or to move from Rondo 1.0 to 2.0, use
+    <a href="https://github.com/jarvissax/rondo/blob/main/docs/install.md">Innioasis Updater CE</a>.
   </section>
 
   <ol class="steps">
@@ -72,7 +73,8 @@
         (it shows up as "Android ADB Interface" in Device Manager).</li>
       <li><b>Linux:</b> your user needs access to the device. A udev rule for USB ID
         <code>0bb4:0c03</code>, or the <code>plugdev</code> group, does it.</li>
-      <li>With adb, the same update is <code>adb install -r rondo-&lt;version&gt;.apk</code>.</li>
+      <li>With adb, the same update takes three commands;
+        <a href="https://github.com/jarvissax/rondo/blob/main/docs/building.md#the-update-bundle">Building Rondo</a> has them.</li>
     </ul>
   </details>
 

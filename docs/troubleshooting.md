@@ -27,11 +27,14 @@ there's nothing to install.
 That release changes the firmware around Rondo, not just Rondo, so it can't install over Wi-Fi or
 USB. Install it with Innioasis Updater CE, [the same way as the first time](install.md#install-with-innioasis-updater-ce).
 If the Updater offers **Keep Data**, choose it to keep your settings, Wi-Fi and server connection.
+(This is how Rondo 1.0 moves to 2.0.)
 
 ### Software update says "Couldn't check"
 
-The Y1 asks your Rondo server, so it needs Wi-Fi and a connected server (Settings › YouTube › Connection).
-Without a server, update [from the dashboard or over USB](install.md#updating-rondo).
+Rondo asks GitHub (the update page's site) for the newest release, so it needs Wi-Fi that reaches
+the internet; no server is involved. "No Wi-Fi connection" means the Y1 isn't online (Settings ›
+Connections › Wi-Fi); "GitHub didn't answer" usually passes, so choose **Try again** in a moment.
+Meanwhile you can update [from the dashboard or over USB](install.md#updating-rondo).
 
 ### The update page doesn't list the Y1, or can't connect
 
@@ -43,23 +46,58 @@ Without a server, update [from the dashboard or over USB](install.md#updating-ro
   for the Y1; without it, the browser can't see it.
 - **Linux:** give your user access to USB ID `0bb4:0c03` with a udev rule.
 
-### "The update's signature isn't Rondo's" (or "That APK isn't signed by Rondo's key")
+### "The update's signature isn't Rondo's"
 
-Only Rondo's own releases install over the Rondo in the firmware. A build you made yourself is
-signed with your key; put it in a firmware of your own instead ([Building Rondo](building.md)).
+Only Rondo's own releases install over the Rondo in the firmware: each update is signed, and Rondo
+checks the signature before it installs anything. A build you made yourself is signed with your
+own key; put it in a firmware of your own instead ([Building Rondo](building.md)). (Rondo 1.0
+says "That APK isn't signed by Rondo's key" for the same reason.)
 
 ### Rondo went back to an older version after an update
 
 An update that ends three times in a row within half a minute is set aside, and the Rondo that
 came with the firmware runs instead, so the Y1 stays usable. Install the update again from
-Settings › Software update, or report it with the log in `/data/rondo/rondo.log` (adb).
+Settings › System › Software update, or report it with Rondo's log ([how](#still-stuck)).
 
 ## YouTube Music and YouTube
 
-### "No music server yet"
+### "Couldn't load Home: couldn't reach YouTube" (or "No Wi-Fi connection")
 
-The Y1 isn't connected to a server. Set one up and connect it in Settings › YouTube › Connection
-([server guide](server.md#finish-the-setup)).
+Rondo talks to YouTube itself, so it only needs Wi-Fi that reaches the internet. Check that the Y1
+is on Wi-Fi (Settings › Connections › Wi-Fi), then press center to try again. **Settings ›
+YouTube › Connection › Connection test** asks YouTube and says how long it took and whether
+playback works. Some guest and office networks block YouTube.
+
+### Songs or videos won't play, or stop partway
+
+YouTube changes things often.
+
+- **Directly to YouTube:** try again in a moment, and run the **Connection test** in Settings ›
+  YouTube › Connection. If playback keeps failing, look for a newer Rondo in Settings › System ›
+  Software update.
+- **With a server:** on the admin page, open **Resolver** and press **Update now**, then **Test
+  playback**. **Activity** shows the errors behind it. Settings › YouTube on the Y1 says "Playback
+  failing" while this is the problem.
+
+### Library, Subscriptions or History are missing
+
+They only appear when you're signed in to YouTube. Directly to YouTube, sign in with a code in
+**Settings › YouTube › YouTube account** (or on the dashboard's YouTube page). With a server, sign
+the server in on its admin page ([details](server.md#your-youtube-account-optional)).
+
+### YouTube Music's home looks generic
+
+Your own YouTube Music home and history need a cookies.txt: on the dashboard's YouTube page
+directly to YouTube, or on the server's admin page with a server. If you uploaded one and it
+stopped working, the dashboard (or the admin page's **Activity**) says the cookies were signed
+out. Export new ones in a private window, and close the window right after.
+
+### Headphone match says "The server didn't answer"
+
+Headphone match looks your headphone model up through a [Rondo server](server.md), so it needs one
+connected (**My server**). Everything else in Settings › Sound works without one.
+
+## With a server
 
 ### Settings › YouTube says "Unreachable"
 
@@ -69,28 +107,12 @@ The Y1 isn't connected to a server. Set one up and connect it in Settings › Yo
   [server guide](server.md#on-a-vps). If you use Cloudflare, the record must be "DNS only".
 - Check the address in **Settings › YouTube › Connection**: `http://` for home, `https://` for a VPS,
   and the right port.
+- Away from home with a home server, choose **Directly to YouTube** there instead.
 
 ### "Token refused"
 
 The server no longer knows this Y1. Another Rondo may have been connected, or the server was set
 up again. Connect again with a new code from the admin page (**Device › Connect a Rondo**).
-
-### Songs or videos won't play, or stop partway
-
-YouTube changes things often. On the admin page, open **Resolver** and press **Update now**,
-then **Test playback**. **Activity** shows the errors behind it. Settings › YouTube on the Y1 says
-"Playback failing" while this is the problem.
-
-### Library, Subscriptions or History are missing
-
-They only appear when the server has a YouTube account. Sign in with a code on the admin page
-([details](server.md#your-youtube-account-optional)).
-
-### YouTube Music's home looks generic
-
-Your own YouTube Music home and history need a cookies.txt on the server. If you uploaded one and
-it stopped working, the admin page's **Activity** says the cookies were signed out. Export new ones
-in a private window, and close the window right after.
 
 ## The Y1
 
@@ -112,7 +134,8 @@ its own network name.
 ### The dashboard won't open
 
 - The phone or computer must be on the same Wi-Fi as the Y1, and **Settings › Dashboard** must
-  stay open on the Y1.
+  stay open on the Y1. After 15 minutes without use it stops by itself; press center on the Y1 to
+  start it again.
 - **macOS:** browsers need permission to reach devices on your network. Check System Settings ›
   Privacy & Security › Local Network, and switch it on for your browser.
 - Some guest and office networks keep devices from seeing each other. Use a home network.
@@ -124,8 +147,8 @@ search on the Y1 or in the dashboard.
 
 ### The wheel feels too fast or too slow
 
-Try **Settings › Wheel acceleration**: Off moves one step per wheel pulse, Fast jumps further on
-long spins. **Wheel vibration** and **Click sound** change how each step feels.
+Try **Settings › Controls › Wheel acceleration**: Off moves one step per wheel pulse, Fast jumps
+further on long spins. **Wheel vibration** and **Click sound** change how each step feels.
 
 ### Getting back to the Y1's original software
 
@@ -139,5 +162,8 @@ happened. If you can, include Rondo's log. adb works on the Rondo firmware: plug
 **Not now** when it offers the USB drive) and run
 
 ```bash
-adb logcat -d -v time -s Y1 > rondo-log.txt
+adb pull /data/rondo/rondo.log rondo-log.txt
 ```
+
+That's the log since Rondo last started; `/data/rondo/rondo.log.1` is the one before it (after a
+restart or a crash). Have a quick look before you post it: it can name your Wi-Fi network.

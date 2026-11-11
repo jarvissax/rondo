@@ -26,11 +26,12 @@ The more of this you include, the faster it gets fixed:
 
 - what you did, what you expected, and what happened instead,
 - Rondo's version (Settings › About on the Y1),
-- whether YouTube goes through a server at home or on a VPS, or you only use the card,
+- whether YouTube goes straight from the Y1 (Directly to YouTube) or through a server at home or on
+  a VPS, or you only use the card,
 - Rondo's log, if you can get it with the Y1 plugged in:
 
   ```bash
-  adb logcat -d -v time -s Y1 > rondo-log.txt
+  adb pull /data/rondo/rondo.log rondo-log.txt
   ```
 
 - for server problems, the server's log: `docker logs rondo 2>&1 | tail -200`.
@@ -42,7 +43,7 @@ rather keep it to yourself.
 A screenshot of the Y1 says a lot:
 
 ```bash
-adb shell screencap -p /data/local/tmp/shot.png && adb pull /data/local/tmp/shot.png
+adb shell 'kill -USR1 $(cat /data/rondo/rondo.pid)' && sleep 1 && adb pull /data/rondo/shot.png
 ```
 
 ## Suggesting a feature
@@ -50,7 +51,8 @@ adb shell screencap -p /data/local/tmp/shot.png && adb pull /data/local/tmp/shot
 Describe what you'd like to do on the Y1, not only the fix you have in mind. Some things are out
 of reach on purpose or by necessity:
 
-- **No downloads.** Rondo streams YouTube live and never saves audio or video from it. That stays.
+- **Downloads only when you ask.** Rondo streams YouTube live; the only videos it saves are the ones
+  you download yourself (YouTube › Download). Nothing is cached behind your back.
 - **Wheel and five buttons only.** The Y1 has no touchscreen, so every screen has to work with
   the wheel.
 - **Android 4.2.** Anything that needs a newer Android can't run on the Y1.
@@ -62,11 +64,12 @@ and run each part, and the mock servers for working on the dashboard and admin p
 
 The ground rules:
 
-- **API 17.** The app runs on Android 4.2. Every library has to work there, which rules out
-  Jetpack Compose, Media3, OkHttp 4 and anything else that needs API 21 or newer.
-- **No media caching.** The server passes audio and video through as they're requested and the
-  app never downloads them. Caching metadata (stream URLs, index ranges, thumbnails) is fine.
-- **The Y1 only talks to its own server.** No request from the app goes to Google directly.
+- **Android 4.2's kernel and libraries.** Rondo 2.0 is a native program (C++, OpenGL ES 2) on the
+  Y1's Android 4.2 system; everything it uses has to build with the NDK for API 17.
+- **No media caching.** Audio and video stream as they're requested; only a video the user
+  downloads is saved (on the Y1's card). Caching metadata (stream URLs, index ranges, thumbnails) is fine.
+- **Two ways to YouTube.** Directly from the Y1, or through the user's own server, where no request
+  from the Y1 goes to Google. Nothing outside the stream client assumes one or the other.
 - **Two YouTube libraries, one job each.** youtubei.js for everything you see (home pages, search,
   playlists, up next). yt-dlp only to turn a video ID into stream URLs.
 - **Test app changes on a real Y1.** There's no emulator for the wheel. For the server, run
