@@ -67,8 +67,10 @@ files' tags. Without tags, a file named `Artist - Title.flac` is read the obviou
   shows how many files would move and where (**See the moves**) and moves nothing until you choose
   **Organize**. Lyrics (`.lrc`), subtitles and a one-album folder's cover picture go along, and so
   do your playlists, plays, ratings and the queue.
-- **Formats:** FLAC, MP3, M4A, AAC, OGG, Opus and WAV for music; MP4 (H.264) and similar for
-  video. **Covers** come from the file's embedded artwork. **Lyrics** come from the file's tags
+- **Formats:** every common one for music: MP3, AAC and M4A/M4B (with ALAC), FLAC, Ogg Vorbis,
+  Opus, WAV, AIFF, WMA (and WMA Lossless), APE, WavPack, AC-3 and E-AC-3, DTS, DSD (DSF and DFF),
+  TTA, TAK, Musepack, MKA, CAF, AMR, MP2 and AU; surround is mixed down to stereo. MP4 (H.264) and
+  similar for video. **Covers** come from the file's embedded artwork. **Lyrics** come from the file's tags
   or from an `.lrc` file with the same name next to it, and timed lyrics scroll along. Songs on
   the card never fetch anything from the internet.
 

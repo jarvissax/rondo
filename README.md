@@ -42,7 +42,8 @@ computer turns the card into a USB drive.
   </tr>
 </table>
 
-FLAC, MP3, M4A, AAC, OGG, Opus and WAV. Lyrics come from the file's tags or an `.lrc` file next to
+Every common music format: MP3, AAC/M4A, ALAC, FLAC, Ogg, Opus, WAV, AIFF, WMA, APE, WavPack,
+AC-3, DTS, DSD and more. Lyrics come from the file's tags or an `.lrc` file next to
 it. Nothing on the card ever needs the internet.
 
 ### YouTube Music and YouTube

@@ -33,6 +33,9 @@
 #include "../../core/clock.h"
 #include "../../core/config.h"
 #include "../../core/library.h"
+#include "../../core/cover.h"
+#include "../../core/tags.h"
+#include "../../player/probe.h"
 #include "../../platform/platform.h"
 #include "../../platform/usb_drive.h"
 #include "../../platform/power.h"
@@ -237,6 +240,9 @@ int main(int argc, char** argv) {
     g_dashboardAssets = dir.substr(0, dir.rfind('/'));
   }
   // first, while this is the only thread: it forks the decoding process
+  // the music formats core/ reads no further than their names: FFmpeg reads their tags and covers
+  setFallbackTagsReader(probeTags);
+  setFallbackCoverReader(probeCover);
   ui::setFrameGrabber(grabVideoFrame, prepareVideoFrames);  // card videos' artwork: a frame (in rondo-media)
   ImageLoader loader;
   // four decoders: two mostly wait on the network for remote artwork (direct mode fetches from Google)

@@ -16,6 +16,9 @@ struct sqlite3;
 
 namespace rondo {
 
+// the music files Rondo plays, by extension (lower case, no dot): every common format, lossy and lossless
+bool isAudioExtension(const std::string& ext);
+
 struct Track {
   std::string path;
   int64_t size = 0, modified = 0;  // modified: ms since 1970, like Java's File.lastModified()

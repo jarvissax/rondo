@@ -26,7 +26,9 @@
 namespace rondo {
 namespace {
 
-const char* kAudio[] = {"flac", "mp3", "m4a", "aac", "ogg", "wav", "opus"};
+const char* kAudio[] = {"flac", "mp3", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "w64", "aif", "aiff", "aifc", "wma",
+                        "ape", "wv", "ac3", "eac3", "ec3", "dts", "mka", "dsf", "dff", "tta", "tak", "mpc", "amr", "awb",
+                        "mp2", "caf", "au"};
 const char* kVideo[] = {"mp4", "m4v", "mkv", "3gp", "webm"};
 const char* kSkip[] = {"android", "lost.dir", "dcim", ".thumbnails"};
 const char* kGenericFolders[] = {"music", "video", "videos", "movies", "sdcard0", "sdcard1"};
@@ -128,6 +130,8 @@ struct TagResult {
 };
 
 }  // namespace
+
+bool isAudioExtension(const std::string& ext) { return in(kAudio, sizeof(kAudio) / sizeof(kAudio[0]), ext); }
 
 // The library's thread: jobs in order (a scan, then the saves), so the database has one writer
 struct Library::Worker {
@@ -408,7 +412,7 @@ void Library::list(const std::string& dir, int depth, std::vector<FileEntry>& ou
     size_t dot = name.rfind('.');
     std::string ext = dot == std::string::npos ? "" : asciiLower(name.substr(dot + 1));
     bool video = in(kVideo, 5, ext);
-    if (!video && !in(kAudio, 7, ext)) continue;
+    if (!video && !isAudioExtension(ext)) continue;
     out.push_back({path, int64_t(st.st_size), int64_t(st.st_mtime) * 1000, video});
   }
   closedir(d);

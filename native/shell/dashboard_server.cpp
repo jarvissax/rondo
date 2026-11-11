@@ -387,9 +387,11 @@ std::string extOf(const std::string& name) {
   for (char& c : e) c = char(tolower((unsigned char)c));
   return e;
 }
-const std::set<std::string> kMediaExt = {"flac", "mp3", "m4a", "aac", "ogg", "opus", "wav", "mp4", "m4v", "mkv", "3gp", "webm", "lrc",
-                                         "srt", "ass", "vtt", "jpg", "jpeg", "png", "gif", "webp", "bmp", "m3u8", "m3u"};
-const std::set<std::string> kSongExt = {"flac", "mp3", "m4a", "aac", "ogg", "opus", "wav"};
+// what may be copied to the card: music (Library's formats, isAudioExtension), videos, lyrics,
+// subtitles, pictures, playlists
+const std::set<std::string> kOtherMediaExt = {"mp4", "m4v", "mkv", "3gp", "webm", "lrc", "srt", "ass", "vtt",
+                                              "jpg", "jpeg", "png", "gif", "webp", "bmp", "m3u8", "m3u"};
+bool isMediaExt(const std::string& x) { return isAudioExtension(x) || kOtherMediaExt.count(x); }
 
 // WifiManager.calculateSignalLevel(rssi, 5)
 int signalLevel(int rssi) {
@@ -982,7 +984,7 @@ Response Server::upload(Request& r) {
   while (!name.empty() && name[0] == ' ') name.erase(0, 1);
   if (name.empty() || name[0] == '.') return error(400, "name");
   std::string ext = extOf(name);
-  if (!kMediaExt.count(ext)) return error(415, "type");
+  if (!isMediaExt(ext)) return error(415, "type");
   std::string root = cardRoot().empty() ? kRoots[0] : cardRoot();
   std::string folder = r.hasParam("folder") ? r.param("folder") : root + "/Music";
   while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
@@ -1416,7 +1418,7 @@ bool smartFrom(const Body& b, SmartPlaylist& p) {
 std::string kindOfFile(const std::string& name, bool dir) {
   if (dir) return "folder";
   std::string x = extOf(name);
-  if (kSongExt.count(x)) return "song";
+  if (isAudioExtension(x)) return "song";
   static const std::set<std::string> video = {"mp4", "m4v", "mkv", "3gp", "webm"}, image = {"jpg", "jpeg", "png", "gif", "webp", "bmp"},
                                       text = {"lrc", "srt", "ass", "vtt", "txt", "m3u8", "m3u", "json"};
   if (video.count(x)) return "video";
@@ -1515,7 +1517,7 @@ std::vector<std::string> songPaths(const Body& b, bool& ok) {
   std::vector<std::string> in = b.strings("paths", ok), out;
   std::set<std::string> seen;
   for (const std::string& p : in)
-    if (inside(p) && kSongExt.count(extOf(p)) && seen.insert(p).second) out.push_back(p);
+    if (inside(p) && isAudioExtension(extOf(p)) && seen.insert(p).second) out.push_back(p);
   return out;
 }
 
@@ -1804,7 +1806,7 @@ Response Server::api(Request& r, const std::string& path) {
   }
   if (path == "/library" && m == "DELETE") {
     std::string p = r.param("path");
-    if (!inside(p) || !kMediaExt.count(extOf(p))) return error(400, "path");
+    if (!inside(p) || !isMediaExt(extOf(p))) return error(400, "path");
     struct stat st;
     if (stat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return error(404, "not found");
     if (unlink(p.c_str()) != 0) return error(500, "cannot delete");

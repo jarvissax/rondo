@@ -54,6 +54,17 @@ extern "C" {
 namespace rondo {
 namespace {
 
+// A file that says how many channels but not which (WAV, AIFF, CAF without a channel mask): the usual
+// layout for that many, so the downmix to stereo knows the center and the surrounds. Always true.
+bool knownLayout(AVChannelLayout& l) {
+  if (l.order == AV_CHANNEL_ORDER_UNSPEC && l.nb_channels > 0) {
+    int n = l.nb_channels;
+    av_channel_layout_uninit(&l);
+    av_channel_layout_default(&l, n);
+  }
+  return true;
+}
+
 constexpr int kRate = 44100;
 constexpr int kBufferFrames = 2048;  // per OpenSL buffer: 46 ms
 constexpr int kBuffers = 3;
@@ -931,7 +942,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
       dec = avcodec_alloc_context3(codec);
       AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
       if (avcodec_parameters_to_context(dec, fmt->streams[stream]->codecpar) >= 0 && avcodec_open2(dec, codec, nullptr) == 0 &&
-          swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0,
+          knownLayout(dec->ch_layout) && swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &dec->ch_layout, dec->sample_fmt, dec->sample_rate, 0,
                               nullptr) == 0 &&
           swr_init(swr) == 0)
         ok = true;
@@ -1112,7 +1123,7 @@ float Engine::measureFile(const std::string& path) {
   SwrContext* swr = nullptr;
   AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
   if (ctx && avcodec_parameters_to_context(ctx, fmt->streams[si]->codecpar) >= 0 && avcodec_open2(ctx, codec, nullptr) >= 0 &&
-      swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &ctx->ch_layout, ctx->sample_fmt, ctx->sample_rate, 0,
+      knownLayout(ctx->ch_layout) && swr_alloc_set_opts2(&swr, &stereo, AV_SAMPLE_FMT_S16, kRate, &ctx->ch_layout, ctx->sample_fmt, ctx->sample_rate, 0,
                           nullptr) >= 0 &&
       swr_init(swr) >= 0) {
     LoudnessMeter meter;

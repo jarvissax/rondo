@@ -119,14 +119,19 @@ bool id3(int fd, std::vector<uint8_t>& out) {
   return false;
 }
 
+CoverReader g_fallback = nullptr;
+
 }  // namespace
+
+void setFallbackCoverReader(CoverReader reader) { g_fallback = reader; }
 
 bool readCover(const char* path, std::vector<uint8_t>& out) {
   int fd = open(path, O_RDONLY);
   if (fd < 0) return false;
   uint8_t magic[12];
-  bool ok = false;
+  bool ok = false, known = false;  // known: a format read here (its picture, if any, is found here)
   if (readAt(fd, 0, magic, 12)) {
+    known = !memcmp(magic, "fLaC", 4) || !memcmp(magic + 4, "ftyp", 4) || !memcmp(magic, "ID3", 3);
     if (!memcmp(magic, "fLaC", 4)) {
       ok = flac(fd, 0, out);
     } else if (!memcmp(magic + 4, "ftyp", 4)) {
@@ -143,6 +148,7 @@ bool readCover(const char* path, std::vector<uint8_t>& out) {
     }
   }
   close(fd);
+  if (!ok && !known && g_fallback) ok = g_fallback(path, out);
   return ok;
 }
 

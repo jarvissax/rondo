@@ -325,7 +325,11 @@ bool wav(int fd, uint64_t fileSize, Tags& t) {
   return true;
 }
 
+TagsReader g_fallback = nullptr;
+
 }  // namespace
+
+void setFallbackTagsReader(TagsReader reader) { g_fallback = reader; }
 
 Tags readTags(const char* path) {
   Tags t;
@@ -349,12 +353,13 @@ Tags readTags(const char* path) {
       uint8_t f[4];
       if (readAt(fd, audio, f, 4) && !memcmp(f, "fLaC", 4)) flac(fd, audio, t);
       else if (t.durationSec < 0) mp3Duration(fd, audio, uint64_t(size), t);
-    } else if (m[0] == 0xff && (m[1] & 0xe0) == 0xe0) {
+    } else if (m[0] == 0xff && (m[1] & 0xe0) == 0xe0 && (m[1] & 0x06) == 0x02) {  // Layer III; MP2 and MP1 are FFmpeg's
       mp3Duration(fd, 0, uint64_t(size), t);
       t.read = true;
     }
   }
   close(fd);
+  if (g_fallback && (!t.read || t.title.empty() || t.durationSec < 0)) g_fallback(path, t);
   return t;
 }
 

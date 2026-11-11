@@ -10,4 +10,8 @@ namespace rondo {
 // The front cover (or, without one, the first picture) as its encoded bytes (JPEG or PNG).
 bool readCover(const char* path, std::vector<uint8_t>& out);
 
+// what reads the other formats' pictures (FFmpeg's, player/probe.h): at startup, before any is asked
+using CoverReader = bool (*)(const char* path, std::vector<uint8_t>& out);
+void setFallbackCoverReader(CoverReader reader);
+
 }  // namespace rondo
