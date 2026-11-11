@@ -1,8 +1,9 @@
-// Settings › Software update (SoftwareUpdateScreen.kt in 1.0.x), ported 1:1: a newer Rondo over Wi-Fi,
-// without flashing the firmware again. The server says which release is newest and passes its bundle
-// through from GitHub (the Y1 talks only to its server); core/bundle.h checks its signature and puts it
-// in place, and Rondo restarts by itself with everything kept. A release that needs a newer firmware
-// installs only with Innioasis Updater CE.
+// Settings › Software update (SoftwareUpdateScreen.kt in 1.0.x): a newer Rondo over Wi-Fi, without
+// flashing the firmware again. Since 2.0 it comes from GitHub itself, server or not (not everyone has a
+// server): the Y1's own direct-mode server (direct/routes.cpp) reads the update page's latest.json and
+// passes the release's bundle through; core/bundle.h checks its signature and puts it in place, and
+// Rondo restarts by itself with everything kept. A release that needs a newer firmware installs only
+// with Innioasis Updater CE.
 #include <thread>
 
 #include <yyjson.h>
@@ -89,7 +90,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
   int64_t wakeAt() const override { return state_ == kDownloading || state_ == kInstalling ? now_ns() + 250 * kMs : 0; }
 
  private:
-  enum State { kChecking, kNoServer, kFailed, kUpToDate, kAvailable, kNeedsFirmware, kDownloading, kInstalling };
+  enum State { kChecking, kFailed, kUpToDate, kAvailable, kNeedsFirmware, kDownloading, kInstalling };
 
   void render() {
     std::string now = std::string("Rondo ") + kVersion;
@@ -112,12 +113,6 @@ class SoftwareUpdateScreen : public ShellListScreen {
       add("This Rondo needs a newer firmware", "Install Rondo with Innioasis Updater CE", &tiles::update, true, nullptr);
     switch (state_) {
       case kChecking: add("Checking for updates\xe2\x80\xa6", now, &tiles::update, false, nullptr); break;
-      case kNoServer:
-        add(now, "This Rondo has no server to check with", &tiles::update, true, nullptr);
-        header("Other ways to update");
-        add("From the dashboard", "Settings \xe2\x80\xba Dashboard, then the Overview page", nullptr, true, nullptr);
-        add("Over USB", "jarvissax.github.io/rondo in Chrome or Edge", nullptr, true, nullptr);
-        break;
       case kFailed:
         add("Couldn't check", why_, &tiles::update, true, nullptr);
         add("Try again", "", nullptr, true, [this] { check(); });
@@ -148,19 +143,15 @@ class SoftwareUpdateScreen : public ShellListScreen {
   }
 
   void check() {
-    if (!directMode() && g_config.server.url.empty()) {
-      state_ = kNoServer;
-      return render();
-    }
     state_ = kChecking;
     render();
     auto alive = alive_;
-    g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
+    g_core.get(std::string(Api::kLocal) + "update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
       if (!*alive) return;
       UpdateInfo info;
       if (status != 200 || !parseUpdate(body, info)) {
         state_ = kFailed;
-        why_ = g_app->status().online ? "The server didn't answer" : "No Wi-Fi connection";
+        why_ = g_app->status().online ? "GitHub didn't answer" : "No Wi-Fi connection";
       } else if (!isNewerVersion(info.version, kVersion)) {
         state_ = kUpToDate;
       } else if (info.firmware > firmwareLevel()) {
@@ -181,7 +172,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
     state_ = kDownloading;
     percent_ = 0;
     render();
-    g_core.download("/update/rondo.rondo", dataDir() + "/update.rondo");
+    g_core.download(std::string(Api::kLocal) + "update/rondo.rondo", dataDir() + "/update.rondo");
   }
 
   void startInstall() {

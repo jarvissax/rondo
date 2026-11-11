@@ -42,6 +42,9 @@ class Api {
   void configure(const std::string& baseUrl, const std::string& token);
   bool configured() const { return !base_.empty(); }
 
+  // The Y1's own direct-mode server (direct/server.h's kBase): a path starting with it is asked there,
+  // whatever the source (Software update reads GitHub's latest.json through it, server or not)
+  static constexpr const char* kLocal = "http://127.0.0.1:47811/";
   // GET base + path: the HTTP status (0: no connection) and the body. Connection refusals are retried
   // 20 times 250 ms apart (the hotspot this Y1 uses refuses most new connections; ConnectRetry.kt).
   int get(const std::string& path, std::string& body);
@@ -68,6 +71,8 @@ class Api {
  private:
   CURL* curl_;
   std::string base_, auth_;
+  // the URL for a path, and the Authorization header to send with it
+  std::string urlFor(const std::string& path, std::string& auth) const;
   int lastMs_ = 0;
   struct Entry {
     std::string path, body;

@@ -810,10 +810,10 @@ class SettingsScreen : public ShellListScreen {
   void onShow() override {
     render();
     checkServer();
-    // a newer Rondo, when the server (or, in direct mode, the update page) knows one
+    // a newer Rondo, when GitHub has one (the update page's latest.json, through the Y1's own direct server)
     {
       auto alive = alive_;
-      g_core.get("/update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
+      g_core.get(std::string(Api::kLocal) + "update?firmware=" + std::to_string(firmwareLevel()), 0, [this, alive](int status, const std::string& body) {
         if (!*alive || status != 200) return;
         std::string v = updateVersion(body);
         g_latestVersion = isNewerVersion(v, kVersion) ? v : "";

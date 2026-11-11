@@ -1,5 +1,6 @@
 #include "api.h"
 
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -88,10 +89,19 @@ std::string Api::escape(const std::string& s) {
   return r;
 }
 
+std::string Api::urlFor(const std::string& path, std::string& auth) const {
+  if (path.compare(0, strlen(kLocal), kLocal) == 0) {
+    auth = "Authorization: Bearer direct";
+    return path;
+  }
+  auth = auth_;
+  return base_ + path;
+}
+
 int Api::get(const std::string& path, std::string& body) {
-  if (!configured()) return 0;
-  curl_slist* headers = curl_slist_append(nullptr, auth_.c_str());
-  std::string url = base_ + path;
+  std::string auth, url = urlFor(path, auth);
+  if (!configured() && url == base_ + path) return 0;
+  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
   bool wide = false;  // the system's roots too, once the bundled two didn't verify the server
   long status = 0;
   int64_t t0 = now_ns();
@@ -154,12 +164,12 @@ int progressInfo(void* user, curl_off_t total, curl_off_t, curl_off_t, curl_off_
 
 int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
                   const std::atomic<bool>* cancel) {
-  if (!configured()) return 0;
+  std::string auth, url = urlFor(path, auth);
+  if (!configured() && url == base_ + path) return 0;
   std::string part = file + ".part";
   FILE* f = fopen(part.c_str(), "wb");
   if (!f) return 0;
-  curl_slist* headers = curl_slist_append(nullptr, auth_.c_str());
-  std::string url = base_ + path;
+  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
   Sink sink{f, 0, -1, &progress, 0, cancel};
   long status = 0;
   bool wide = false;
