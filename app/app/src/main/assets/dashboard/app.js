@@ -3268,11 +3268,12 @@ function layoutFlow(rebuild = false) {
   const all = S.cfList, at = S.cfAt, box = $('#cfItems');
   if (!box) return;
   const near = [];
-  for (let i = Math.max(0, at - 7); i <= Math.min(all.length - 1, at + 7); i++) near.push(i);
+  for (let i = Math.max(0, at - 8); i <= Math.min(all.length - 1, at + 8); i++) near.push(i);
   // the elements kept by index, so a move animates (they're made only for the covers near the middle)
   const have = new Map([...box.children].map((el) => [+el.dataset.i, el]));
   for (const [i, el] of have) if (!near.includes(i)) el.remove();
-  const wide = box.parentElement.clientWidth < 600 ? 0.75 : 1;
+  // the covers as large as the pane allows (240 px wide open), the spacing in step with them
+  const W = box.parentElement.clientWidth, size = W < 480 ? 150 : W < 760 ? 190 : 240, k = size / 240;
   for (const i of near) {
     let el = have.get(i);
     if (!el) {
@@ -3286,11 +3287,14 @@ function layoutFlow(rebuild = false) {
       box.append(el);
     }
     const d = i - at, ad = Math.abs(d), side = Math.sign(d);
-    const x = ad === 0 ? 0 : side * (150 + (ad - 1) * 52) * wide;
-    const turn = ad === 0 ? 0 : -side * 70, z = ad === 0 ? 60 : -40 - ad * 6;
+    // the middle one forward, its neighbors well clear of it and turned, each further one a step back
+    el.style.width = el.style.height = `${size}px`;
+    el.style.marginLeft = `${-size / 2}px`;
+    const x = ad === 0 ? 0 : side * (210 + (ad - 1) * 66) * k;
+    const turn = ad === 0 ? 0 : -side * 62, z = (ad === 0 ? 90 : -120 - ad * 10) * k;
     el.style.transform = `translateX(${x}px) translateZ(${z}px) rotateY(${turn}deg)`;
     el.style.zIndex = String(1000 - ad);
-    el.style.opacity = ad > 6 ? '0' : '1';
+    el.style.opacity = ad > 7 ? '0' : String(Math.max(0.55, 1 - ad * 0.06));
   }
   const a = all[at];
   $('#cfTitle').textContent = a.name;
@@ -3388,7 +3392,7 @@ function openLightbox(i) {
     lb.className = 'lightbox';
     lb.setAttribute('role', 'dialog');
     lb.setAttribute('aria-label', 'Photo');
-    lb.innerHTML = `<div class="lb-stage"><img alt=""><button class="lb-nav prev" type="button" data-lb="-1" aria-label="Previous photo">${icon('chevron', 'i flip')}</button>
+    lb.innerHTML = `<div class="lb-stage"><button class="lb-nav prev" type="button" data-lb="-1" aria-label="Previous photo">${icon('chevron', 'i flip')}</button>
       <button class="lb-nav next" type="button" data-lb="1" aria-label="Next photo">${icon('chevron')}</button></div>
       <div class="lb-bar"><span class="lb-name"></span><span class="lb-meta"></span>
         <button class="btn btn-sm" type="button" data-lb="show">${icon('play')}<span>Slideshow</span></button>
@@ -3400,30 +3404,75 @@ function openLightbox(i) {
       if (!b) { if (e.target === lb || e.target.classList.contains('lb-stage')) closeLightbox(); return; }
       if (b.dataset.lb === 'close') closeLightbox();
       else if (b.dataset.lb === 'show') toggleShow();
-      else if (b.dataset.lb !== 'save') lbGo(lb._i + +b.dataset.lb);
+      else if (b.dataset.lb !== 'save') lbGo(lb._i + +b.dataset.lb, +b.dataset.lb);
     });
+    // a swipe on a touch screen: the photo follows the finger, then goes on or springs back
+    let swipe = null;
+    const stage = $('.lb-stage', lb);
+    stage.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && !e.target.closest('button')) swipe = { x: e.clientX, id: e.pointerId }; });
+    stage.addEventListener('pointermove', (e) => {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      const cur = $('img.lb-cur', lb);
+      if (cur) cur.style.transform = `translateX(${e.clientX - swipe.x}px)`;
+    });
+    const end = (e) => {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x, cur = $('img.lb-cur', lb);
+      swipe = null;
+      if (Math.abs(dx) > 60) return lbGo(lb._i + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1, false, dx);
+      if (cur) cur.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.7,.2,1)' }).onfinish = () => { cur.style.transform = ''; };
+    };
+    stage.addEventListener('pointerup', end);
+    stage.addEventListener('pointercancel', end);
     document.addEventListener('keydown', (e) => {
       if (!lb || lb.hidden) return;
       if (e.key === 'Escape') closeLightbox();
-      else if (e.key === 'ArrowLeft') lbGo(lb._i - 1);
-      else if (e.key === 'ArrowRight') lbGo(lb._i + 1);
+      else if (e.key === 'ArrowLeft') lbGo(lb._i - 1, -1);
+      else if (e.key === 'ArrowRight') lbGo(lb._i + 1, 1);
       else if (e.key === ' ') { e.preventDefault(); toggleShow(); }
     });
   }
+  const opening = lb.hidden || lb._i === undefined;
   lb.hidden = false;
-  lbGo(i);
+  lb._i = undefined;
+  if (opening && !reduceMotion()) lb.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+  lbGo(i, 0);
 }
-function lbGo(i) {
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const viewUrl = (p) => `/api/files/view?path=${encodeURIComponent(p)}`;
+// One photo after another: it slides in from the side gone toward (dir 1: the next, from the right),
+// the one before slides out the other way; the slideshow crossfades; the first opens with a little zoom.
+// from: where a swipe left the photo before (px).
+function lbGo(i, dir = 0, fade = false, from = 0) {
   const all = S.photosShown || [];
   if (!all.length) return;
   i = (i + all.length) % all.length;
+  if (i === lb._i) return;
   lb._i = i;
-  const p = all[i], img = $('img', lb);
-  img.style.opacity = '0.25';
+  const p = all[i], stage = $('.lb-stage', lb), old = $('img.lb-cur', lb);
+  const img = document.createElement('img');
+  img.alt = '';
+  img.className = 'lb-cur';
+  img.decoding = 'async';
   // the original, at its size (the browser turns it as its camera says); the Rondo's 1600 px one if it can't be shown
-  img.onload = () => { img.style.opacity = '1'; };
   img.onerror = () => { if (!img.src.includes('/api/photo?')) img.src = photoUrl(p.path, 1600); };
-  img.src = `/api/files/view?path=${encodeURIComponent(p.path)}`;
+  img.src = viewUrl(p.path);
+  stage.prepend(img);
+  const still = reduceMotion();
+  const ease = 'cubic-bezier(.2,.7,.2,1)', ms = 340;
+  if (old) {
+    old.classList.remove('lb-cur');
+    if (still || (!dir && !fade)) old.remove();
+    else if (fade) old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, easing: 'ease' }).onfinish = () => old.remove();
+    else old.animate([{ transform: `translateX(${from}px)`, opacity: 1 }, { transform: `translateX(${-dir * 100}%)`, opacity: 0.35 }], { duration: ms, easing: ease }).onfinish = () => old.remove();
+  }
+  if (!still) {
+    if (fade) img.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600, easing: 'ease' });
+    else if (dir && old) img.animate([{ transform: `translateX(${dir * 100}%)` }, { transform: 'none' }], { duration: ms, easing: ease });
+    else img.animate([{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: ease });
+  }
+  // the neighbors fetched ahead: the next turn has its photo at once
+  for (const k of [i + 1, i - 1]) { const n = all[(k + all.length) % all.length]; if (n && n !== p) { const pre = new Image(); pre.decoding = 'async'; pre.src = viewUrl(n.path); } }
   $('.lb-name', lb).textContent = fileName(p.path);
   $('.lb-meta', lb).textContent = `${new Date(p.modified).toLocaleDateString(undefined, { dateStyle: 'medium' })} · ${i + 1} of ${all.length}`;
   const save = $('[data-lb="save"]', lb);
@@ -3434,7 +3483,7 @@ let showTimer = 0;
 function toggleShow() {
   const b = $('[data-lb="show"] span', lb);
   if (showTimer) { clearInterval(showTimer); showTimer = 0; b.textContent = 'Slideshow'; return; }
-  showTimer = setInterval(() => lbGo(lb._i + 1), 4000);
+  showTimer = setInterval(() => lbGo(lb._i + 1, 1, true), 4000);
   b.textContent = 'Stop';
 }
 function closeLightbox() {

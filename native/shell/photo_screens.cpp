@@ -1,7 +1,7 @@
 // Library › Photos: the pictures on the card and the internal storage (JPEG and PNG, turned the way
-// their camera says), by folder, as a grid of thumbnails, and each one full screen. In the viewer the
-// wheel (or Next and Prev) goes from one to the next, center shows its name and date, Play starts and
-// stops a slideshow (a photo every 4 s, each fading into the next).
+// their camera says), by folder, as a grid of thumbnails (the highlight glides), and each one full
+// screen. In the viewer the wheel (or Next and Prev) slides from one to the next, center shows its name
+// and date, Play starts and stops a slideshow (a photo every 4 s, each fading into the next).
 #include <dirent.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <thread>
 
 #include "../ui/image.h"
@@ -148,63 +149,77 @@ class PhotoViewerScreen : public Screen {
   ~PhotoViewerScreen() override {
     *alive_ = false;
     decoder_.reset();
-    ui::destroyTexture(cur_);
-    ui::destroyTexture(prev_);
+    for (auto& kv : textures_) ui::destroyTexture(kv.second);
   }
   std::string title() const override { return "Photos"; }
   bool statusBar() const override { return false; }
   bool keepScreenOn() const override { return slideshow_; }
 
   bool onAction(Action a, int steps) override {
-    int n = int(photos_->size());
     switch (a) {
       case Action::Up:
-      case Action::Prev: go(at_ - std::max(1, a == Action::Up ? steps : 1)); return true;
+      case Action::Prev: go(at_ - std::max(1, a == Action::Up ? steps : 1), false); return true;
       case Action::Down:
-      case Action::Next: go(at_ + std::max(1, a == Action::Down ? steps : 1)); return true;
+      case Action::Next: go(at_ + std::max(1, a == Action::Down ? steps : 1), false); return true;
       case Action::Select: info_ = !info_; return true;
       case Action::PlayPause:
         slideshow_ = !slideshow_;
         nextSlide_ = now_ns() + 4000 * kMs;
         g_app->toast(slideshow_ ? "Slideshow" : "Slideshow stopped");
         return true;
-      default: (void)n; return false;
+      default: return false;
     }
   }
   bool tick(int64_t now) override {
     if (slideshow_ && now >= nextSlide_) {
       nextSlide_ = now + 4000 * kMs;
-      go(at_ + 1 < int(photos_->size()) ? at_ + 1 : 0);
+      go(at_ + 1 < int(photos_->size()) ? at_ + 1 : 0, true);
     }
-    return fadeAt_ && now - fadeAt_ < 400 * kMs;
+    bool a = arrived_;
+    arrived_ = false;
+    return a;
+  }
+  // every frame while a photo slides or fades in
+  bool step(float) override {
+    int64_t now = now_ns();
+    return (moveAt_ && now - moveAt_ < kMoveNs + 20 * kMs) || (shownAt_ && now - shownAt_ < 400 * kMs);
   }
   int64_t wakeAt() const override { return slideshow_ ? nextSlide_ : 0; }
 
   void draw(Env& e, float w, float h) override {
     if (!decoder_) {  // the first draw knows the screen's size
       decoder_.reset(new PhotoDecoder(int(w), int(h)));
-      load();
+      want();
     }
     e.c.fill({0, 0, w, h}, rgb(0x000000));
-    float t = fadeAt_ ? std::min(1.f, float(e.now - fadeAt_) / 350e6f) : 1.f;
-    auto show = [&](const ui::Texture& tex, float alpha) {
-      if (!tex.id || alpha <= 0) return;
-      float s = std::min(w / tex.w, h / tex.h);
-      float dw = tex.w * s, dh = tex.h * s;
-      e.c.image(tex, {(w - dw) / 2, (h - dh) / 2, dw, dh}, {0, 0, 1, 1}, 0, withAlpha(white, alpha));
+    auto show = [&](int index, float dx, float alpha) {
+      auto it = textures_.find(index);
+      if (it == textures_.end() || !it->second.id || alpha <= 0) return;
+      const ui::Texture& tex = it->second;
+      float sc = std::min(w / tex.w, h / tex.h);
+      float dw = tex.w * sc, dh = tex.h * sc;
+      e.c.image(tex, {(w - dw) / 2 + dx, (h - dh) / 2, dw, dh}, {0, 0, 1, 1}, 0, withAlpha(white, alpha));
     };
+    float t = moveAt_ ? std::min(1.f, float(e.now - moveAt_) / float(kMoveNs)) : 1.f;
+    float ease = 1.f - (1.f - t) * (1.f - t) * (1.f - t);  // fast, then settling
+    // a photo decoded after the turn fades in where it is
+    float in = shownAt_ ? std::min(1.f, float(e.now - shownAt_) / 300e6f) : 1.f;
     e.c.layer(1);
-    if (t < 1) show(prev_, 1 - t);
-    e.c.layer(2);
-    show(cur_, t);
-    if (!cur_.id && loading_) {
-      Label l = label(e, "Opening\xe2\x80\xa6", 13, false, w);
-      drawLabel(e, l, (w - l.w) / 2, (h - l.h) / 2, whiteA(150));
-    } else if (!cur_.id) {
-      Label l = label(e, "Rondo can't open this picture", 13, false, w);
-      drawLabel(e, l, (w - l.w) / 2, (h - l.h) / 2, whiteA(150));
+    if (t < 1 && from_ >= 0 && from_ != at_) {
+      if (fade_) show(from_, 0, 1 - ease);
+      else show(from_, -dir_ * ease * w, 1);
     }
-    if (info_ || !cur_.id) {
+    e.c.layer(2);
+    if (t < 1 && !fade_) show(at_, dir_ * (1 - ease) * w, in);
+    else show(at_, 0, fade_ && t < 1 ? ease * in : in);
+    bool have = textures_.count(at_) && textures_[at_].id;
+    if (!have) {
+      bool failed = failed_.count(at_) != 0;
+      Label l = label(e, failed ? "Rondo can't open this picture" : "Opening\xe2\x80\xa6", 13, false, w);
+      float dx = t < 1 && !fade_ ? dir_ * (1 - ease) * w : 0;
+      drawLabel(e, l, (w - l.w) / 2 + dx, (h - l.h) / 2, whiteA(150));
+    }
+    if (info_ || !have) {
       const Photo& p = (*photos_)[size_t(at_)];
       e.c.layer(5);
       float bh = float(e.dp(44));
@@ -223,35 +238,67 @@ class PhotoViewerScreen : public Screen {
   }
 
  private:
-  void go(int i) {
+  static constexpr int64_t kMoveNs = 320 * kMs;
+  void go(int i, bool fade) {
     int n = int(photos_->size());
     i = std::max(0, std::min(n - 1, i));
-    if (i == at_ && cur_.id) return;
-    at_ = i;
-    load();
+    if (i == at_) return;
+    dir_ = i > at_ ? 1 : -1;
+    if (fade) dir_ = 1;
+    from_ = at_, at_ = i, fade_ = fade;
+    moveAt_ = now_ns();
+    shownAt_ = 0;
+    keep();
+    want();
   }
-  void load() {
-    loading_ = true;
+  // the photos kept as textures: the one shown, the one it came from (sliding out) and its neighbors
+  void keep() {
+    for (auto it = textures_.begin(); it != textures_.end();) {
+      int k = it->first;
+      if (std::abs(k - at_) <= 1 || k == from_) {
+        ++it;
+        continue;
+      }
+      ui::destroyTexture(it->second);
+      it = textures_.erase(it);
+    }
+  }
+  // the next to decode: this one, then the one after, then the one before (the newest asked wins)
+  void want() {
+    if (!decoder_) return;
+    int n = int(photos_->size());
+    for (int k : {at_, at_ + dir_, at_ - dir_}) {
+      if (k < 0 || k >= n || textures_.count(k) || failed_.count(k)) continue;
+      ask(k);
+      return;
+    }
+  }
+  void ask(int k) {
     auto alive = alive_;
-    std::string want = (*photos_)[size_t(at_)].path;
-    decoder_->ask(want, [this, alive, want](const std::string& path, std::shared_ptr<ui::Pixels> px) {
-      postToMain([this, alive, path, px, want] {  // the texture made on the UI thread
-        if (!*alive || path != (*photos_)[size_t(at_)].path) return;
-        loading_ = false;
-        ui::destroyTexture(prev_);
-        prev_ = cur_;
-        cur_ = ui::Texture();
-        if (px->w > 0) cur_ = ui::createTexture(px->w, px->h, GL_RGBA, GL_UNSIGNED_BYTE, px->rgba.data(), true);
-        fadeAt_ = now_ns();
+    std::string path = (*photos_)[size_t(k)].path;
+    decoder_->ask(path, [this, alive, k](const std::string&, std::shared_ptr<ui::Pixels> px) {
+      postToMain([this, alive, k, px] {  // the texture made on the UI thread
+        if (!*alive) return;
+        if (px->w > 0) {
+          if (textures_.count(k)) ui::destroyTexture(textures_[k]);
+          textures_[k] = ui::createTexture(px->w, px->h, GL_RGBA, GL_UNSIGNED_BYTE, px->rgba.data(), true);
+          if (k == at_) shownAt_ = now_ns();  // what was waited for: in, softly
+        } else {
+          failed_.insert(k);
+        }
+        keep();
+        want();
+        arrived_ = true;  // tick draws it
       });
     });
   }
   std::shared_ptr<std::vector<Photo>> photos_;
-  int at_;
+  int at_, from_ = -1, dir_ = 1;
   std::unique_ptr<PhotoDecoder> decoder_;
-  ui::Texture cur_, prev_;
-  int64_t fadeAt_ = 0, nextSlide_ = 0;
-  bool info_ = false, slideshow_ = false, loading_ = false;
+  std::map<int, ui::Texture> textures_;
+  std::set<int> failed_;
+  int64_t moveAt_ = 0, shownAt_ = 0, nextSlide_ = 0;
+  bool info_ = false, slideshow_ = false, fade_ = false, arrived_ = false;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
@@ -273,14 +320,20 @@ class PhotoGridScreen : public Screen {
       default: return false;
     }
   }
-  bool step(float dt) override {  // the rows glide to keep the selection in view
-    float d = want_ - scroll_;
-    if (std::fabs(d) < 0.5f) {
-      scroll_ = want_;
-      return false;
-    }
-    scroll_ += d * std::min(1.f, dt * 14.f);
-    return true;
+  bool step(float dt) override {  // the rows glide to keep the selection in view, the highlight to it
+    bool moving = false;
+    auto glide = [&](float& v, float to) {
+      float d = to - v;
+      if (std::fabs(d) < 0.5f) {
+        v = to;
+        return;
+      }
+      v += d * std::min(1.f, dt * 16.f);
+      moving = true;
+    };
+    glide(scroll_, want_);
+    if (hx_ >= 0) glide(hx_, tx_), glide(hy_, ty_);
+    return moving;
   }
   void draw(Env& e, float w, float h) override {
     e.c.fill({0, 0, w, h}, e.p.shellBg);
@@ -310,14 +363,18 @@ class PhotoGridScreen : public Screen {
         e.c.layer(2);
         e.c.image(*t, r, {0, 0, 1, 1}, e.dpf(4), withAlpha(white, a));
       }
-      if (i == sel_) {
-        e.c.layer(3);
-        float b = e.dpf(3);
-        e.c.shape({r.x - b, r.y - b, r.w + 2 * b, b}, 0, e.p.accent);
-        e.c.shape({r.x - b, r.y + r.h, r.w + 2 * b, b}, 0, e.p.accent);
-        e.c.shape({r.x - b, r.y, b, r.h}, 0, e.p.accent);
-        e.c.shape({r.x + r.w, r.y, b, r.h}, 0, e.p.accent);
-      }
+    }
+    // the highlight, where it glides (in the grid's own coordinates: it scrolls with the rows)
+    tx_ = pad + (sel_ % kCols) * (cw + gap), ty_ = pad + (sel_ / kCols) * (ch + gap);
+    if (hx_ < 0) hx_ = tx_, hy_ = ty_;
+    {
+      ui::Rect r{hx_, hy_ - scroll_, cw, ch};
+      e.c.layer(3);
+      float b = e.dpf(3);
+      e.c.shape({r.x - b, r.y - b, r.w + 2 * b, b}, 0, e.p.accent);
+      e.c.shape({r.x - b, r.y + r.h, r.w + 2 * b, b}, 0, e.p.accent);
+      e.c.shape({r.x - b, r.y, b, r.h}, 0, e.p.accent);
+      e.c.shape({r.x + r.w, r.y, b, r.h}, 0, e.p.accent);
     }
   }
 
@@ -327,6 +384,7 @@ class PhotoGridScreen : public Screen {
   std::shared_ptr<std::vector<Photo>> photos_;
   int sel_ = 0;
   float scroll_ = 0, want_ = 0;
+  float hx_ = -1, hy_ = 0, tx_ = 0, ty_ = 0;  // the highlight and where it goes
 };
 
 // ---- the folders ----

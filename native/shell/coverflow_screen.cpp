@@ -59,13 +59,20 @@ class CoverFlowScreen : public Screen {
       drawLabel(e, l, (w - l.w) / 2, (h - l.h) / 2, whiteA(180));
       return;
     }
-    float size = float(e.dp(132));        // the cover in the middle
-    float cx = w / 2, cy = float(e.dp(10)) + size / 2;
-    float gapMid = size * 0.62f, spacing = size * 0.26f;  // the middle's neighbors, then each further one
+    float size = float(e.dp(140));        // the cover in the middle, forward
+    float cx = w / 2, cy = float(e.dp(12)) + size / 2;
+    // the middle's neighbors well clear of it, then each further one a little apart: a wide stage
+    float gapMid = size * 0.8f, spacing = size * 0.33f;
+    // the stage: a soft light behind the middle cover, the floor dark under the reflections
+    e.c.layer(1);
+    for (int k = 0; k < 6; k++) {
+      float r = size * (1.25f - k * 0.16f);
+      e.c.shape({cx - r, cy - r * 0.8f, 2 * r, 1.6f * r}, r, ui::Color(uint32_t(3 + k) << 24 | 0x8090b0));
+    }
     int n = int(albums_.size()), at = int(floorf(pos_ + 0.5f));
     // back to front: the furthest first, the middle one last
     std::vector<int> order;
-    for (int i = std::max(0, at - 6); i <= std::min(n - 1, at + 6); i++) order.push_back(i);
+    for (int i = std::max(0, at - 7); i <= std::min(n - 1, at + 7); i++) order.push_back(i);
     std::sort(order.begin(), order.end(), [this](int a, int b) { return std::fabs(a - pos_) > std::fabs(b - pos_); });
     e.c.layer(2);  // one layer, back to front: a layer keeps its quads' order
     for (int i : order) drawCover(e, i, cx, cy, size, gapMid, spacing, w);
@@ -85,22 +92,23 @@ class CoverFlowScreen : public Screen {
   }
 
  private:
-  // One cover: turned toward the middle by up to 70 degrees, in perspective, as vertical strips (the
-  // canvas draws rectangles: twelve strips each its own height make the trapezoid), and its
-  // reflection below, upside down and dimmer.
+  // One cover: turned toward the middle by up to 64 degrees and set back from it, in perspective, as
+  // vertical strips (the canvas draws rectangles: strips each their own height make the trapezoid), and
+  // its reflection below, upside down and dimmer.
   void drawCover(Env& e, int i, float cx, float cy, float size, float gapMid, float spacing, float w) {
     float d = float(i) - pos_, ad = std::fabs(d), side = d < 0 ? -1.f : 1.f;
-    float turn = std::min(1.f, ad) * 1.2217f;  // 70 degrees
+    float turn = std::min(1.f, ad) * 1.117f;  // 64 degrees
+    float back = std::min(1.f, ad) * size * 0.55f;  // the sides stand behind the middle one
     float off = ad < 1 ? ad * gapMid : gapMid + (ad - 1) * spacing;
     float mx = cx + side * off;
     if (mx + size < 0 || mx - size > w) return;
     const Track* t = albums_[size_t(i)].second.empty() ? nullptr : albums_[size_t(i)].second.front();
     float alpha = 1;
     const ui::Texture* tex = t ? e.covers.get(t->path, 200, 200, 0, e.now, &alpha) : nullptr;
-    float focal = size * 2.4f, half = size / 2;
+    float focal = size * 2.0f, half = size / 2;
     const int strips = 24;  // narrow enough that the edges look straight
     // what's further away dims a little: a gray tint (the canvas premultiplies)
-    float shade = 1.f - std::min(0.45f, ad * 0.12f);
+    float shade = 1.f - std::min(0.5f, ad * 0.11f);
     auto tint = [](float gray, float a) {
       uint32_t g = uint32_t(std::max(0.f, std::min(1.f, gray)) * 255.f + 0.5f), al = uint32_t(std::max(0.f, std::min(1.f, a)) * 255.f + 0.5f);
       return ui::Color(al << 24 | g << 16 | g << 8 | g);
@@ -108,7 +116,7 @@ class CoverFlowScreen : public Screen {
     for (int s = 0; s < strips; s++) {
       float x0 = -half + size * s / strips, x1 = -half + size * (s + 1) / strips;
       // a right-hand cover's inner (left) edge turns away from you, its outer edge toward you
-      float z0 = -side * x0 * sinf(turn), z1 = -side * x1 * sinf(turn);
+      float z0 = -side * x0 * sinf(turn) + back, z1 = -side * x1 * sinf(turn) + back;
       float s0 = focal / (focal + z0), s1 = focal / (focal + z1);
       float px0 = mx + x0 * cosf(turn) * s0, px1 = mx + x1 * cosf(turn) * s1;
       float hh = half * (s0 + s1) / 2;
