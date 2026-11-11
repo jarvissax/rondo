@@ -275,6 +275,7 @@ int main(int argc, char** argv) {
     g_core.apiConfigure(apiBase(), apiToken(), apiCache);
     loader.configure(apiBase(), apiToken());
     g_player.configure(apiBase(), apiToken());
+    checkAccounts();  // the new source's account, for YouTube's and YouTube Music's tabs
   };
   Palette pal = paletteFor(g_config.theme);
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);

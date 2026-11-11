@@ -15,9 +15,7 @@ constexpr Color white = 0xffffffff;
 class MusicScreen : public TabbedListScreen {
  public:
   MusicScreen() : TabbedListScreen("YouTube Music") {
-    // Library only when the server has an account (Accounts.kt); signed out it's Home and search
-    tabs_ = {"Home"};
-    if (g_prefs.accountMusic) tabs_.push_back("Library");
+    tabs_ = wantedTabs();
     focusTabsFromTop();
     list_.onNearEnd = [this] { more(); };
     load(0);
@@ -39,6 +37,12 @@ class MusicScreen : public TabbedListScreen {
   }
 
  private:
+  // Library only when the source has an account (Accounts.kt); signed out it's Home and search
+  std::vector<std::string> wantedTabs() const override {
+    std::vector<std::string> t{"Home"};
+    if (g_prefs.accountMusic) t.push_back("Library");
+    return t;
+  }
   void openSearch() override { g_app->push(makeMusicSearch()); }
   // the header: the logo, "Music", a pill per tab, the search button, the battery
   void header(Env& e, float w, float h) {

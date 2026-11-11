@@ -191,11 +191,16 @@ class ApiWorkers {
         c.at = nowMs();
         if (c.status == 200) record(j.path, c.body);
         if (c.status == 200) {
+          // kept only if the source is still the one it came from: a switch (server or direct) while it
+          // was on its way would otherwise show the other source's feeds for the cache's two minutes
           pthread_mutex_lock(&mu_);
-          if (cache_.size() > 64) cache_.clear();  // metadata only, and little of it
-          cache_[j.path] = c;
+          bool same = generation == generation_;
+          if (same) {
+            if (cache_.size() > 64) cache_.clear();  // metadata only, and little of it
+            cache_[j.path] = c;
+          }
           pthread_mutex_unlock(&mu_);
-          if (j.ttl > 0) toDisk(j.path, c.body);
+          if (same && j.ttl > 0) toDisk(j.path, c.body, generation);
         }
       }
       reply(j.id, c.status, c.body);
@@ -290,7 +295,7 @@ class ApiWorkers {
     fclose(f);
     return ok;
   }
-  void toDisk(const std::string& path, const std::string& body) {
+  void toDisk(const std::string& path, const std::string& body, int generation) {
     std::string file = diskFile(path);
     if (file.empty() || path.size() > 1000) return;
     std::string tmp = file + ".part";
@@ -303,7 +308,11 @@ class ApiWorkers {
     fprintf(f, "%lld %s\n", (long long)wallMs(), path.c_str());
     bool ok = fwrite(body.data(), 1, body.size(), f) == body.size();
     ok = fclose(f) == 0 && ok;
-    if (!ok || rename(tmp.c_str(), file.c_str()) != 0) {
+    // in place only while the source is the same (configure empties the folder under the same lock)
+    pthread_mutex_lock(&mu_);
+    ok = ok && generation == generation_ && rename(tmp.c_str(), file.c_str()) == 0;
+    pthread_mutex_unlock(&mu_);
+    if (!ok) {
       unlink(tmp.c_str());
       return;
     }

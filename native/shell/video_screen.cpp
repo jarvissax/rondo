@@ -13,13 +13,11 @@ class VideoScreen : public TabbedListScreen {
   // no mini player here: a song playing behind it doesn't redraw the list
   bool tick(int64_t now) override {
     now_ = now;
-    return false;
+    return syncTabs();
   }
   VideoScreen() : TabbedListScreen("YouTube") {
     list_.style = RowStyle::Video;
-    // Subscriptions and History only when the server has an account (Accounts.kt)
-    tabs_ = {"Home"};
-    if (g_prefs.accountVideos) tabs_.insert(tabs_.end(), {"Subscriptions", "History"});
+    tabs_ = wantedTabs();
     focusTabsFromTop();
     list_.onNearEnd = [this] { more(); };
     load(0);
@@ -39,6 +37,12 @@ class VideoScreen : public TabbedListScreen {
   }
 
  private:
+  // Subscriptions and History only when the source has an account (Accounts.kt)
+  std::vector<std::string> wantedTabs() const override {
+    std::vector<std::string> t{"Home"};
+    if (g_prefs.accountVideos) t.insert(t.end(), {"Subscriptions", "History"});
+    return t;
+  }
   void openSearch() override { g_app->push(makeVideoSearch()); }
   void header(Env& e, float w, float h) {
     int H = e.dp(31);

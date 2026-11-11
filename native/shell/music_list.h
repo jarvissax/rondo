@@ -77,8 +77,13 @@ class TabbedListScreen : public MusicListScreen {
  public:
   using MusicListScreen::MusicListScreen;
   bool onAction(Action a, int steps) override;
+  bool tick(int64_t now) override;
 
  protected:
+  // the tabs for what the source has now (an account's tabs come and go with it: a switch between
+  // the server and direct mode, a sign-in); syncTabs() takes them when they changed, true if so
+  virtual std::vector<std::string> wantedTabs() const = 0;
+  bool syncTabs();
   virtual void load(int tab) = 0;
   virtual void openSearch() = 0;
   void focusTabsFromTop();  // the list's top hands the wheel to the pills (call once rows are set up)

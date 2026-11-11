@@ -269,13 +269,13 @@ class VideoPlayerScreen : public Screen {
 }  // namespace
 
 // The server's H.264 DASH streams (136 is 720p, 135 480p, 134 360p). A height the video doesn't have
-// falls back to Auto's 360p, as QualityTrackSelection does.
+// falls back to the next one down (direct mode's YouTube client often has no 720p: 480p, not 360p).
 std::vector<std::string> videoPictures(const Item& item, int height) {
   if (!item.id.empty() && item.id[0] == '/') return {item.id};
   std::string base = "/s/" + item.id + "/";
   std::vector<std::string> out;
   if (height == 720) out.push_back(base + "136");
-  if (height == 480) out.push_back(base + "135");
+  if (height == 720 || height == 480) out.push_back(base + "135");
   out.push_back(base + "134");
   return out;
 }

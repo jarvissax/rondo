@@ -188,6 +188,21 @@ void TabbedListScreen::focusTabsFromTop() {
   };
 }
 
+bool TabbedListScreen::tick(int64_t now) {
+  bool tabs = syncTabs();
+  return MusicListScreen::tick(now) || tabs;
+}
+
+bool TabbedListScreen::syncTabs() {
+  std::vector<std::string> want = wantedTabs();
+  if (want == tabs_) return false;
+  tabs_ = want;
+  int search = int(tabs_.size());
+  if (focused_ > search) focused_ = search;
+  if (active_ >= search) load(0);  // its tab went: Home
+  return true;
+}
+
 bool TabbedListScreen::onAction(Action a, int steps) {
   if (focused_ < 0) {
     if (list_.rows().empty() && a == Action::Select) {  // a message: center tries again

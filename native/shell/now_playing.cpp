@@ -337,11 +337,17 @@ class NowPlayingScreen : public Screen {
         }
         return false;
       case Action::Next:
-        if (!scrubbing) return false;
+        if (!scrubbing) {
+          hintDir_ = 1, hintAt_ = now_ns();  // the next song comes in from the right
+          return false;
+        }
         scrub_.jump(+1);
         return true;
       case Action::Prev:
-        if (!scrubbing) return false;
+        if (!scrubbing) {
+          hintDir_ = -1, hintAt_ = now_ns();  // the one before, from the left
+          return false;
+        }
         scrub_.jump(-1);
         return true;
       case Action::LongNext: scrub_.hold(+1); return true;
@@ -373,7 +379,7 @@ class NowPlayingScreen : public Screen {
     }
     return changed;
   }
-  bool step(float) override { return lyricsOn() && lyrics_.animating(now_); }
+  bool step(float) override { return changing(now_ns()) || (lyricsOn() && lyrics_.animating(now_)); }
   int64_t wakeAt() const override {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
@@ -395,12 +401,19 @@ class NowPlayingScreen : public Screen {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, e.p.dark);
     std::string path = s.index >= 0 ? std::string(s.path) : std::string();
+    noticeChange(path, s);
+    float t = changeT(e.now);  // 1: no change under way
     int art = e.dp(140);
-    if (!path.empty()) {
-      // the backdrop: the artwork shrunk to 6 x 6 pixels, stretched over the screen (ArtColor.blurred)
+    // the backdrop: the artwork shrunk to 6 x 6 pixels, stretched over the screen (ArtColor.blurred); the
+    // one before under it while a change fades it in
+    auto backdrop = [&](const std::string& p, float alpha) {
       float a = 0;
-      if (const Texture* t = e.covers.get(artOf(path, 400), 6, 6, -art, e.now, &a, 3 * 1000 * kMs)) e.c.image(*t, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a));
-    }
+      if (!p.empty())
+        if (const Texture* tx = e.covers.get(artOf(p, 400), 6, 6, -art, e.now, &a, 3 * 1000 * kMs))
+          e.c.image(*tx, {0, 0, w, h}, {0, 0, 1, 1}, 0, withAlpha(white, a * alpha));
+    };
+    if (t < 1) backdrop(fromPath_, 1);
+    backdrop(path, t < 1 ? t : 1);
     e.c.fill({0, 0, w, h}, dim);
     if (lyricsOn()) {
       drawLyricsPage(e, w, h, s, path);
@@ -433,11 +446,21 @@ class NowPlayingScreen : public Screen {
                  whiteA(120));
     e.c.layer(5);
     e.c.shape(ar, e.dpf(6), whiteA(70));
+    // the cover: a song change slides the new one in from its side, inside the cover's frame, the one
+    // before out to the other side
+    float slide = float(art), ease = t < 1 ? 1.f - (1.f - t) * (1.f - t) * (1.f - t) : 1.f;
+    e.c.pushClip(ar);
+    if (t < 1 && !fromPath_.empty()) {
+      float a = 0;
+      if (const Texture* tx = e.covers.get(artOf(fromPath_, 400), art, art, 0, e.now, &a, 3 * 1000 * kMs))
+        e.c.image(*tx, {ar.x - changeDir_ * ease * slide, ar.y, ar.w, ar.h}, {0, 0, 1, 1}, e.dpf(6), withAlpha(white, a * (1 - ease * 0.6f)));
+    }
     if (!path.empty()) {
       float a = 0;
       // missing artwork is asked again every 3 s, playing or not (NowPlayingScreen's artRetry)
-      if (const Texture* t = e.covers.get(artOf(path, 400), art, art, 0, e.now, &a, 3 * 1000 * kMs)) {
-        e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(6), withAlpha(white, a));
+      if (const Texture* tx = e.covers.get(artOf(path, 400), art, art, 0, e.now, &a, 3 * 1000 * kMs)) {
+        float dx = t < 1 ? changeDir_ * (1 - ease) * slide : 0;
+        e.c.image(*tx, {ar.x + dx, ar.y, ar.w, ar.h}, {0, 0, 1, 1}, e.dpf(6), withAlpha(white, a));
         artMissing_ = false;
       } else {
         artMissing_ = isStream(path);
@@ -445,21 +468,38 @@ class NowPlayingScreen : public Screen {
     } else {
       artMissing_ = false;
     }
+    e.c.popClip();
     e.c.layer(6);
     float cx = ax + art + e.dp(14), cw = w - e.dp(12) - cx;
     float cy = ay + e.dp(2), bottom = ay + art;
-    SongInfo song = path.empty() ? SongInfo{"Nothing playing", ""} : songInfo(path);
-    auto parts = firstAndRest(song.subtitle);
-    for (const Label& l : wrap(e, song.title, 17, true, cw, 2)) {
-      drawLabel(e, l, cx, cy, white);
-      cy += l.h;
+    // the title, artist and album: the new ones slide a little and fade in, the ones before out
+    auto songText = [&](const std::string& p, float dx, float alpha) {
+      SongInfo song = p.empty() ? SongInfo{"Nothing playing", ""} : songInfo(p);
+      auto parts = firstAndRest(song.subtitle);
+      float y = cy;
+      e.c.pushAlpha(alpha);
+      for (const Label& l : wrap(e, song.title, 17, true, cw, 2)) {
+        drawLabel(e, l, cx + dx, y, white);
+        y += l.h;
+      }
+      Label artist = label(e, parts.first, 13, false, cw);
+      y += e.dp(4);
+      drawLabel(e, artist, cx + dx, y, whiteA(230));
+      y += artist.h + e.dp(2);
+      Label album = label(e, parts.second, 11, false, cw);
+      drawLabel(e, album, cx + dx, y, whiteA(160));
+      e.c.popAlpha();
+    };
+    float shift = float(e.dp(24));
+    if (t < 1) {
+      e.c.pushClip({cx, cy, cw, bottom - cy});
+      // one after the other: the old words gone before the new ones show, never both at once
+      songText(fromPath_, -changeDir_ * ease * shift, std::max(0.f, 1 - ease / 0.4f));
+      songText(path, changeDir_ * (1 - ease) * shift, std::max(0.f, (ease - 0.4f) / 0.6f));
+      e.c.popClip();
+    } else {
+      songText(path, 0, 1);
     }
-    Label artist = label(e, parts.first, 13, false, cw);
-    cy += e.dp(4);
-    drawLabel(e, artist, cx, cy, whiteA(230));
-    cy += artist.h + e.dp(2);
-    Label album = label(e, parts.second, 11, false, cw);
-    drawLabel(e, album, cx, cy, whiteA(160));
     // from the bottom: the modes row, the song up next, "UP NEXT"
     int iconW = e.dp(15), iconH = e.dp(13);
     std::string source = path.empty() ? "" : isStream(path) ? std::string("Streaming \xc2\xb7 ") + (s.codec[0] ? s.codec : "AAC") : upperExt(path) + " \xc2\xb7 Library";
@@ -727,6 +767,27 @@ class NowPlayingScreen : public Screen {
   int shuffleShown_ = -1, repeatShown_ = -1;
   int64_t optionsAt_ = 0;
   Shown shown_;
+  // the song change under way: the song before, which way (1: the next, from the right), since when
+  void noticeChange(const std::string& path, const PlayerState& s) {
+    if (path == lastPath_) return;
+    if (!lastPath_.empty() && !path.empty()) {
+      fromPath_ = lastPath_;
+      int64_t now = now_ns();
+      if (hintAt_ && now - hintAt_ < 3000 * kMs) changeDir_ = hintDir_;
+      else changeDir_ = s.pos < lastPos_ && !(s.pos == 0 && lastPos_ == s.count - 1) ? -1 : 1;
+      changeAt_ = now;
+    }
+    hintAt_ = 0;
+    lastPath_ = path, lastPos_ = s.pos;
+  }
+  float changeT(int64_t now) const {
+    if (!changeAt_) return 1;
+    return std::min(1.f, float(now - changeAt_) / 320e6f);
+  }
+  bool changing(int64_t now) const { return changeAt_ && now - changeAt_ < 340 * kMs; }
+  std::string lastPath_, fromPath_;
+  int lastPos_ = -1, changeDir_ = 1, hintDir_ = 1;
+  int64_t changeAt_ = 0, hintAt_ = 0;
 };
 
 }  // namespace
