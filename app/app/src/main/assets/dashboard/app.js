@@ -1803,10 +1803,7 @@ function renderSettings() {
       <div class="row-control">${segHtml('wheelVibration', BUZZ, s.wheelVibration ?? 'normal', 'Wheel vibration')}</div></div>
     <div class="row set-row"><span class="tile t-sound">${icon('volume')}</span>
       <div class="row-main"><div class="row-title">Click sound</div><div class="row-sub">The tick on every wheel step, separate from vibration.</div></div>
-      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>
-    <div class="row set-row"><span class="tile t-sound">${icon('bars')}</span>
-      <div class="row-main"><div class="row-title">Visualizer in Now Playing</div><div class="row-sub">The music’s bands over the cover on your Rondo (hold center in Now Playing to turn it on or off there).</div></div>
-      <button class="switch" type="button" role="switch" data-key="visualizer" aria-checked="${!!s.visualizer}" aria-label="Visualizer in Now Playing"></button></div>`;
+      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>`;
   setFill($('#brightness'));
 }
 const settingsRows = $('#settingsRows');
@@ -3221,87 +3218,6 @@ window.addEventListener('pointermove', (e) => {
 });
 window.addEventListener('pointerup', () => { cfDrag = null; });
 
-// ---------- the visualizer (Now Playing on the Overview) ----------
-// The Rondo's 20 bands of what's playing, streamed by it as they change (about 22 a second) while the
-// Overview shows, drawn over the dimmed cover at the screen's rate, each bar easing toward its band.
-// On or off for this browser.
-const vizBtn = $('#npVizBtn'), vizCanvas = $('#npViz');
-let vizOn = false, vizTimer = 0, vizBands = new Array(20).fill(0), vizShown = new Array(20).fill(0), vizRaf = 0, vizSource = null, vizPlaying = false;
-try { vizOn = localStorage.getItem('rondo_viz') === '1'; } catch { /* private window */ }
-function setViz(on) {
-  vizOn = on;
-  try { localStorage.setItem('rondo_viz', on ? '1' : '0'); } catch { /* private window */ }
-  vizBtn.setAttribute('aria-pressed', String(on));
-  vizCanvas.hidden = !on;
-  if (on) vizLoop(); else { clearTimeout(vizTimer); cancelAnimationFrame(vizRaf); vizRaf = 0; vizClose(); }
-}
-vizBtn.addEventListener('click', (e) => { e.stopPropagation(); setViz(!vizOn); });
-function vizClose() {
-  if (vizSource) { vizSource.close(); vizSource = null; }
-  vizPlaying = false;
-  vizBands = vizBands.map(() => 0);
-}
-// the stream open while the Overview shows (checked twice a second); the drawing follows it
-function vizLoop() {
-  clearTimeout(vizTimer);
-  if (!vizOn) return;
-  const showing = S.booted && S.route === 'overview' && !document.hidden && S.online !== false;
-  // a stream the Rondo refused (not paired yet) or lost is closed for good: a new one
-  if (vizSource && vizSource.readyState === EventSource.CLOSED) vizClose();
-  if (showing && !vizSource) {
-    vizSource = new EventSource('/api/spectrum/stream');
-    vizSource.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        vizPlaying = !!d.p;
-        vizBands = d.b;
-        if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
-      } catch { /* a broken line */ }
-    };
-  } else if (!showing && vizSource) {
-    vizClose();
-    if (!vizRaf) vizRaf = requestAnimationFrame(vizDraw);
-  }
-  vizTimer = setTimeout(vizLoop, 500);
-}
-let vizLast = 0;
-function vizDraw(t) {
-  vizRaf = 0;
-  const dt = Math.min(0.1, vizLast ? (t - vizLast) / 1000 : 0.016);
-  vizLast = t;
-  const c = vizCanvas, dpr = devicePixelRatio || 1;
-  const w = c.clientWidth, h = c.clientHeight;
-  if (!w || !h) return;
-  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
-  const g = c.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, w, h);
-  g.fillStyle = 'rgba(0,0,0,.42)';
-  g.fillRect(0, 0, w, h);
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3b82f6';
-  const n = 20, pad = w * 0.06, gap = w * 0.012, bw = (w - pad * 2 - gap * (n - 1)) / n, hmax = h - pad * 2;
-  let moving = false;
-  // eased toward the bands: up quickly, down more slowly (as on the Rondo)
-  const up = 1 - Math.exp(-dt / 0.045), down = 1 - Math.exp(-dt / 0.18);
-  for (let i = 0; i < n; i++) {
-    const want = (vizBands[i] / 255) ** 2;
-    const b = vizShown[i];
-    const nb = b + (want - b) * (want > b ? up : down);
-    if (nb > 0.002) moving = true;
-    vizShown[i] = nb;
-    const bh = Math.max(2, nb * hmax);
-    const grad = g.createLinearGradient(0, h - pad - bh, 0, h - pad);
-    grad.addColorStop(0, '#fff');
-    grad.addColorStop(1, accent);
-    g.fillStyle = grad;
-    const x = pad + i * (bw + gap), y = h - pad - bh, r = Math.min(bw / 2, 3);
-    g.beginPath();
-    g.roundRect ? g.roundRect(x, y, bw, bh, [r, r, 0, 0]) : g.rect(x, y, bw, bh);
-    g.fill();
-  }
-  if (moving || (vizOn && vizPlaying && vizSource)) vizRaf = requestAnimationFrame(vizDraw);
-}
-setViz(vizOn);
 
 // ---------- Photos (Library › Photos on the Rondo) ----------
 // Every picture on the card by folder, thumbnails the Rondo makes (turned as the camera says), and a

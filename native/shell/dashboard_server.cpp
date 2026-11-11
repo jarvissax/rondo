@@ -1243,8 +1243,7 @@ std::string settingsJson() {
               {"lyricsOnOpen", boolean(g_config.behavior.lyricsOnOpen)},
               {"wheelAcceleration", str(g_config.behavior.wheelAcceleration)},
               {"wheelVibration", str(g_config.behavior.wheelVibration)},
-              {"clickSound", boolean(g_prefs.clickSound)},
-              {"visualizer", boolean(g_prefs.visualizer)}});
+              {"clickSound", boolean(g_prefs.clickSound)}});
 }
 
 std::string putSettings(const Body& b) {
@@ -1265,7 +1264,6 @@ std::string putSettings(const Body& b) {
   }
   bool f;
   if (b.flag("clickSound", f)) g_prefs.clickSound = f;
-  if (b.flag("visualizer", f)) g_prefs.visualizer = f;
   savePrefsNow();
   bool changed = false;
   if (b.flag("lyricsOnOpen", f)) g_config.behavior.lyricsOnOpen = f, changed = true;
@@ -1991,42 +1989,6 @@ Response Server::api(Request& r, const std::string& path) {
     res.type = x == "png" ? "image/png" : "image/jpeg";
     res.file = p, res.fileBytes = st.st_size;
     res.headers.push_back({"Cache-Control", "max-age=3600"});
-    return res;
-  }
-  if (path == "/spectrum/stream" && m == "GET") {
-    // The visualizer's bands as they change (every output buffer, 46 ms) while music plays, once a
-    // second while it doesn't: one connection instead of a request each time (polled over Wi-Fi, they
-    // came unevenly and the bars stuttered). Two minutes at a time; the browser connects again.
-    Response res;
-    res.type = "text/event-stream";
-    res.headers.push_back({"Cache-Control", "no-cache"});
-    res.stream = [this](int fd) {
-      const char retry[] = "retry: 500\n\n";
-      if (!sendAll(fd, retry, sizeof(retry) - 1)) return;
-      uint32_t sent = UINT32_MAX;
-      int64_t start = monoNs(), lastSend = 0;
-      while (!stopping_ && monoNs() - start < 120000000000LL) {
-        PlayerState s = g_player.state();
-        bool playing = s.playing && !s.fmOn;
-        int64_t now = monoNs();
-        if ((playing && s.spectrumSerial != sent) || now - lastSend > 1000000000LL) {
-          std::string line = std::string("data: {\"p\":") + (playing ? "1" : "0") + ",\"b\":[";
-          for (int i = 0; i < 20; i++) line += (i ? "," : "") + std::to_string(playing ? int(s.spectrum[i]) : 0);
-          line += "]}\n\n";
-          if (!sendAll(fd, line.data(), line.size())) return;
-          sent = s.spectrumSerial, lastSend = now;
-          last_ = now;  // a page that watches is a page in use
-        }
-        usleep(playing ? 10000 : 100000);
-      }
-    };
-    return res;
-  }
-  if (path == "/spectrum" && m == "GET") {  // the visualizer's bands of what's heard now (player.h)
-    PlayerState s = g_player.state();
-    std::vector<std::string> bands;
-    for (uint8_t v : s.spectrum) bands.push_back(std::to_string(int(v)));
-    Response res = json(obj({{"playing", boolean(s.playing && !s.fmOn)}, {"bands", arr(bands)}}));
     return res;
   }
   if (path == "/files" && m == "GET") {

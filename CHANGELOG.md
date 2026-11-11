@@ -74,8 +74,7 @@ A new firmware: install it with Innioasis Updater CE and choose **Keep Data** to
   between YouTube directly and your server. The overview shows the Wi-Fi address and the time zone.
 - **Photos** (Library) on the Y1 and the dashboard: the pictures on the card by folder, full screen,
   with a slideshow; camera photos turned the right way up.
-- **Cover Flow** (Library) on the Y1 and the dashboard, and a **visualizer** for Now Playing
-  (hold center there; on the dashboard, the bars button on the cover).
+- **Cover Flow** (Library) on the Y1 and the dashboard.
 - **Crossfade** (Settings › Sound › Playback, and on the dashboard): songs fade into each other over
   2 to 12 seconds, on the card and streamed. **Fade on pause and play**, on as it ships.
 - **Volume limit** (Settings › Sound, and on the dashboard): the loudest step the wheel can set, on

@@ -22,8 +22,7 @@ pairing for half a minute.
 
 ## Overview
 
-What's playing, with play/pause, skip and a volume slider (the bars button on the cover turns on
-the visualizer, the Y1's bands of what's playing), plus the battery, how full the card
+What's playing, with play/pause, skip and a volume slider, plus the battery, how full the card
 is, the Wi-Fi network and the Y1's Wi-Fi address, where YouTube comes from and the time zone, and
 Rondo's version, with **Restart** and **Shut down** buttons.
 

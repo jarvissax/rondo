@@ -108,8 +108,7 @@ so moving on takes about a second.
 
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
 - **Hold center** for options: scrub through the song, see what's up next, shuffle and repeat,
-  **Visualizer** (the music's bands over the cover), and for a song on the card its **rating**:
-  center gives it one star more (after five, none).
+  and for a song on the card its **rating**: center gives it one star more (after five, none).
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
   Menu cancels.
 

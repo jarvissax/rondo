@@ -59,10 +59,6 @@ struct PlayerState {
   char path[512];
   char error[160];
   char codec[8];  // what the heard track was read as: "Opus", "AAC", "FLAC" … ("" not known yet)
-  // the Now Playing visualizer: what is heard now, in 20 bands from 50 Hz to 16 kHz a third of an octave
-  // or so apart, 0 (-72 dB and below) to 255 (full scale); spectrumSerial moves on with every buffer
-  uint8_t spectrum[20];
-  uint32_t spectrumSerial;
   int32_t order[kMaxQueue];
 };
 

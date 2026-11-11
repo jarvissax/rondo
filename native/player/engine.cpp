@@ -62,56 +62,6 @@ constexpr int kBuffers = 3;
 // at once however far ahead the ring is.
 constexpr uint32_t kRingFrames = 1u << 19;
 constexpr int kFadeFrames = kRate * 3 / 10;  // a pause's and a resume's fade, 300 ms
-constexpr int kBands = 20;
-
-// The visualizer's bands of one output buffer: a 2048-point FFT of its mono mix (a Hann window), each
-// band the loudest bin in it, in dB from -72 to 0 as 0-255. About 25 000 multiplications per 46 ms.
-void spectrumOf(const int16_t* pcm, int frames, uint8_t out[kBands]) {
-  constexpr int N = 2048;
-  static float re[N], im[N], window[N];
-  static int edges[kBands + 1];
-  static bool ready = false;
-  if (!ready) {
-    for (int i = 0; i < N; i++) window[i] = 0.5f - 0.5f * cosf(6.2831853f * float(i) / float(N - 1));
-    for (int b = 0; b <= kBands; b++)  // 50 Hz to 16 kHz, logarithmic
-      edges[b] = std::max(1, int(50.0 * pow(16000.0 / 50.0, double(b) / kBands) * N / kRate + 0.5));
-    for (int b = 1; b <= kBands; b++) edges[b] = std::max(edges[b], edges[b - 1] + 1);
-    ready = true;
-  }
-  int n = std::min(frames, N);
-  for (int i = 0; i < N; i++) {
-    re[i] = i < n ? (float(pcm[i * 2]) + float(pcm[i * 2 + 1])) * (0.5f / 32768.f) * window[i] : 0.f;
-    im[i] = 0;
-  }
-  for (int i = 1, j = 0; i < N; i++) {  // bit reversal
-    int bit = N >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) std::swap(re[i], re[j]), std::swap(im[i], im[j]);
-  }
-  for (int len = 2; len <= N; len <<= 1) {
-    float a = -6.2831853f / float(len), wr = cosf(a), wi = sinf(a);
-    for (int i = 0; i < N; i += len) {
-      float cr = 1, ci = 0;
-      for (int k = 0; k < len / 2; k++) {
-        int p = i + k, q = p + len / 2;
-        float tr = re[q] * cr - im[q] * ci, ti = re[q] * ci + im[q] * cr;
-        re[q] = re[p] - tr, im[q] = im[p] - ti;
-        re[p] += tr, im[p] += ti;
-        float nr = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr, cr = nr;
-      }
-    }
-  }
-  for (int b = 0; b < kBands; b++) {
-    float peak = 0;
-    for (int k = edges[b]; k < edges[b + 1] && k < N / 2; k++) peak = std::max(peak, re[k] * re[k] + im[k] * im[k]);
-    // a full-scale sine in the Hann window comes to about N/4
-    float db = 10.f * log10f(peak + 1e-12f) - 20.f * log10f(float(N) / 4.f);
-    db += 2.5f * float(b) * (8.3f / kBands);  // +2.5 dB an octave (music has less at the top): even bars
-    out[b] = uint8_t(std::max(0.f, std::min(255.f, (db + 72.f) * (255.f / 72.f))));
-  }
-}
 constexpr uint32_t kFmRingFrames = 1u << 14;  // the radio's: 0.37 s
 
 int64_t monoNs() {
@@ -331,9 +281,6 @@ class Engine {
   float lastGainDb_ = NAN;  // the leveling gain of the song decoded last
   float fade_ = 1;
   bool pausing_ = false;
-  // the visualizer's bands of the buffers in flight: the one heard now is two buffers before the newest
-  uint8_t spectra_[kBuffers][kBands] = {};
-  uint32_t spectrumSerial_ = 0;
   // Each output's music volume, kept as Android's AudioService kept it (volume_music_speaker and the
   // rest): without Android the policy forgets it at every boot
   std::string volumesFile_;
@@ -374,9 +321,6 @@ void Engine::publish() {
   s.volume = volume_;
   s.volumeMax = volumeMax_;
   s.volumeLimit = std::min(volumeMax_, volumeLimit_);
-  // what's heard: the buffer enqueued two before the newest (kBuffers in flight)
-  memcpy(s.spectrum, spectra_[spectrumSerial_ % kBuffers], sizeof(s.spectrum));
-  s.spectrumSerial = spectrumSerial_;
   s.ended = ended_;
   int np = heardPos_ >= 0 ? nextAfter(heardPos_) : -1;
   s.nextIndex = np >= 0 && np < int(order_.size()) ? order_[np] : -1;
@@ -1374,8 +1318,6 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     dsp_.setTrackGain(g);
     dsp_.process(b, kBufferFrames);
   }
-  spectrumOf(b, kBufferFrames, spectra_[spectrumSerial_ % kBuffers]);
-  spectrumSerial_++;
   inFlight_.push_back({readAt_, readAt_ + uint64_t(n)});
   readAt_ += uint64_t(n);
   pthread_cond_broadcast(&cv_);

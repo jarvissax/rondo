@@ -373,10 +373,7 @@ class NowPlayingScreen : public Screen {
     }
     return changed;
   }
-  bool step(float dt) override {
-    bool bars = g_prefs.visualizer && !lyricsOn() && moveBars(dt);  // the visualizer: every frame
-    return bars || (lyricsOn() && lyrics_.animating(now_));
-  }
+  bool step(float) override { return lyricsOn() && lyrics_.animating(now_); }
   int64_t wakeAt() const override {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
@@ -445,7 +442,6 @@ class NowPlayingScreen : public Screen {
       } else {
         artMissing_ = isStream(path);
       }
-      if (g_prefs.visualizer && !s.video) drawBars(e, ar);
     } else {
       artMissing_ = false;
     }
@@ -657,14 +653,13 @@ class NowPlayingScreen : public Screen {
     return s.video || p.empty() || isStream(p) || !g_library.find(p) ? std::string() : p;
   }
   // a card song also has its rating (center: one star more, after five none)
-  int optionCount() const { return ratable().empty() ? 5 : 6; }
+  int optionCount() const { return ratable().empty() ? 4 : 5; }
   std::string optionLabel(int i, const PlayerState& s) const {
     switch (i) {
       case 0: return "Scrub through the song";
       case 1: return "Up next";
       case 2: return std::string("Shuffle: ") + (s.shuffle ? "On" : "Off");
       case 3: return std::string("Repeat: ") + (s.repeat == 1 ? "All" : s.repeat == 2 ? "One" : "Off");
-      case 4: return std::string("Visualizer: ") + (g_prefs.visualizer ? "On" : "Off");
       default: {
         const Track* t = g_library.find(ratable());
         int r = t ? t->rating : 0;
@@ -687,10 +682,6 @@ class NowPlayingScreen : public Screen {
         break;
       case 2: g_player.setShuffle(!s.shuffle); shuffleShown_ = !s.shuffle; break;
       case 3: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
-      case 4:
-        g_prefs.visualizer = !g_prefs.visualizer;
-        savePrefsNow();
-        break;
       default: {
         std::string p = ratable();
         if (const Track* t = g_library.find(p)) g_library.setRating(p, (t->rating + 1) % 6);
@@ -698,38 +689,6 @@ class NowPlayingScreen : public Screen {
       }
     }
     optionsAt_ = now_ns();
-  }
-  // the visualizer: 20 bands of what's heard, the artwork dimmed behind them
-  void drawBars(Env& e, Rect ar) {
-    e.c.layer(6);
-    e.c.shape(ar, e.dpf(6), 0x73000000);
-    int n = 20, pad = e.dp(8), gap = e.dp(2);
-    float bw = (ar.w - 2 * pad - gap * (n - 1)) / n, hmax = ar.h - 2 * pad;
-    Color top = e.p.accentTop, bottom = e.p.accent;
-    for (int i = 0; i < n; i++) {
-      float h = std::max(float(e.dp(2)), bars_[i] * hmax);
-      Rect r{ar.x + pad + i * (bw + gap), ar.y + ar.h - pad - h, bw, h};
-      e.c.shape(r, std::min(bw / 2, e.dpf(2)), top, bottom);
-    }
-    e.c.layer(5);
-  }
-  // Every frame (step): the bars glide toward the music's bands, which change every 46 ms (an output
-  // buffer): up quickly, down more slowly, both eased, so they move at the screen's 60 frames a second.
-  // Moved in tick() before (Nov 10), they moved only when the loop woke, about four times a second.
-  bool moveBars(float dt) {
-    PlayerState s = g_player.state();
-    dt = std::min(dt, 0.1f);
-    float up = 1.f - expf(-dt / 0.045f), down = 1.f - expf(-dt / 0.18f);
-    bool any = false;
-    for (int i = 0; i < 20; i++) {
-      float want = s.playing ? float(s.spectrum[i]) / 255.f : 0.f;
-      want = want * want;  // the top of the range is where the music is: spread it out
-      float b = bars_[i];
-      b += (want - b) * (want > b ? up : down);
-      bars_[i] = b;
-      any |= b > 0.002f;
-    }
-    return s.playing || any;  // frames while music plays, and until the bars have fallen
   }
   void drawOptions(Env& e, float w, float h, PlayerState s) {
     // the player takes a moment to publish a change: until it does, show what was chosen
@@ -765,7 +724,6 @@ class NowPlayingScreen : public Screen {
   int64_t now_ = 0;
   bool options_ = false;
   int cursor_ = 0;
-  float bars_[20] = {};
   int shuffleShown_ = -1, repeatShown_ = -1;
   int64_t optionsAt_ = 0;
   Shown shown_;
