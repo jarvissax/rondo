@@ -29,6 +29,7 @@
 
 #include "../player/protocol.h"  // readFully
 #include "core.h"
+#include "base_rom.h"
 #include "bluetooth.h"
 #include "clock.h"
 #include "protocol.h"
@@ -407,6 +408,8 @@ void runCore(int sock, CoreState* shm) {
   char drm[PROPERTY_VALUE_MAX] = "";
   property_get("init.svc.drm", drm, "");
   if (strcmp(drm, "running") != 0 && property_set("ctl.start", "drm") == 0) fprintf(stderr, "rondo-core: drmserver started (video frames need it)\n");
+  // the stock firmware's root backdoors, out of firmwares flashed before 2.1.0 too (base_rom.h)
+  removeBaseRomBackdoors();
   g_shm = shm;
   Wifi wifi(publish);
   wifi.snapshot_ = snapshot;

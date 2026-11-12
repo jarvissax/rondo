@@ -112,7 +112,7 @@ target_include_directories(rondo_shell SYSTEM PRIVATE ${TP}/include)
 target_link_libraries(rondo_shell PUBLIC ff_avformat ff_avcodec ff_avutil)
 
 # rondo-core: the system services (services/core.h), forked at startup like rondo-player
-add_library(rondo_services STATIC services/host.cpp services/core_main.cpp services/wifi.cpp services/bluetooth.cpp services/clock.cpp)
+add_library(rondo_services STATIC services/host.cpp services/core_main.cpp services/wifi.cpp services/bluetooth.cpp services/clock.cpp services/base_rom.cpp)
 y1_private(rondo_services)
 target_include_directories(rondo_services SYSTEM PRIVATE ${TP}/include)
 target_link_libraries(rondo_services PUBLIC rondo_direct rondo_net y1_hardware_legacy y1_netutils y1_cutils tp_sqlite3 y1_mtkbtextadpa2dp y1_media y1_binder y1_utils)

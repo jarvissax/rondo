@@ -3,8 +3,9 @@
 //
 //   java tools/firmware/BootImage.java in.img out.img
 //
-// In init.rc, zygote becomes disabled (no Java layer), and the "rondo" service runs /system/rondo/start;
-// the kernel sets the panel up at 60 Hz (patchKernel).
+// In init.rc, zygote becomes disabled (no Java layer), the stock firmware's two root backdoors (aggsrv,
+// spwall) go, and the "rondo" service runs /system/rondo/start; the kernel sets the panel up at 60 Hz
+// (patchKernel).
 // SurfaceFlinger still starts, to set the panel up as it always has, and the start script stops it
 // before Rondo draws to the framebuffer itself. Everything else (the kernel apart from the panel's eight
 // words, its command line, the other files of the ramdisk) stays byte for byte; the header's sizes and
@@ -51,15 +52,29 @@ public class BootImage {
     rc.data = edited.getBytes(StandardCharsets.UTF_8);
     rc.fields[6] = rc.data.length;  // c_filesize
     // the services a Y1 without Android has no use for, in the files a normal boot reads
-    int off = 0;
+    int off = 0, gone = 0;
     for (Entry e : entries) {
       if (!e.name.equals("init.rc") && !e.name.equals("init.modem.rc")) continue;
       String[] r = disableServices(new String(e.data, StandardCharsets.UTF_8));
-      e.data = r[0].getBytes(StandardCharsets.UTF_8);
+      String[] g = removeServices(r[0]);
+      e.data = g[0].getBytes(StandardCharsets.UTF_8);
       e.fields[6] = e.data.length;
       off += Integer.parseInt(r[1]);
+      gone += Integer.parseInt(g[1]);
     }
     if (off != UNUSED.size()) throw new IllegalStateException("found " + off + " of the " + UNUSED.size() + " unused services");
+    if (gone != REMOVED.size()) throw new IllegalStateException("found " + gone + " of the " + REMOVED.size() + " backdoor services");
+    // none of them, nor their programs, anywhere in the ramdisk's init files
+    for (Entry e : entries) {
+      if (!e.name.endsWith(".rc")) continue;
+      for (String l : new String(e.data, StandardCharsets.UTF_8).split("\n")) {
+        String[] w = l.trim().split("\\s+");
+        if (w.length >= 2 && w[0].equals("service") && REMOVED.contains(w[1])) throw new IllegalStateException(e.name + " still has the " + w[1] + " service");
+        if (l.trim().startsWith("#")) continue;
+        for (String p : new String[] {"/system/bin/aggdll", "/system/bin/libsp.so", "/system/bin/wifi_init", "/system/bin/net_server"})
+          if (l.contains(p)) throw new IllegalStateException(e.name + " still starts " + p);
+      }
+    }
 
     ByteArrayOutputStream z = new ByteArrayOutputStream();
     try (GZIPOutputStream out = new GZIPOutputStream(z) {{ def.setLevel(Deflater.BEST_COMPRESSION); }}) {
@@ -96,8 +111,8 @@ public class BootImage {
     if (second.length > 0) writePadded(o, second, page);
     o.write(tail);
     Files.write(Paths.get(args[1]), o.toByteArray());
-    System.out.println("init.rc: zygote and " + UNUSED.size() + " unused services disabled, the rondo service added; ramdisk " + ramdiskSize + " -> "
-        + newRamdisk.length + " bytes");
+    System.out.println("init.rc: zygote and " + UNUSED.size() + " unused services disabled, " + String.join(" and ", REMOVED)
+        + " removed, the rondo service added; ramdisk " + ramdiskSize + " -> " + newRamdisk.length + " bytes");
   }
 
   // Measured on the Y1 with the Java layer gone (Nov 9): Wi-Fi, Bluetooth, sound, FM, the card and
@@ -122,6 +137,35 @@ public class BootImage {
         out.append("    disabled  # Rondo 2.0: not needed on the Y1 without Android\n");
         found++;
       }
+    }
+    return new String[] {out.toString(), Integer.toString(found)};
+  }
+
+  // The stock firmware's root backdoors, whose programs firmware/build.sh takes out of the system image
+  // (docs/device/README.md): aggsrv runs zxly's agent (aggdll -server, which starts its downloader,
+  // wifi_init), spwall runs SPWall (libsp.so, a service that runs any command as root).
+  static final java.util.List<String> REMOVED = java.util.Arrays.asList("aggsrv", "spwall");
+
+  // Each REMOVED service's block out (its "service" line and the indented lines under it), a comment in
+  // its place; returns the text and how many were found
+  static String[] removeServices(String text) {
+    StringBuilder out = new StringBuilder();
+    String[] lines = text.split("\n", -1);
+    int found = 0;
+    boolean inBlock = false;
+    for (int i = 0; i < lines.length; i++) {
+      String l = lines[i];
+      String[] w = l.trim().split("\\s+");
+      if (w.length >= 2 && w[0].equals("service") && REMOVED.contains(w[1])) {
+        out.append("# Rondo: service ").append(w[1]).append(" removed, a root backdoor of the stock firmware (tools/firmware/BootImage.java)\n");
+        found++;
+        inBlock = true;
+        continue;
+      }
+      if (inBlock && !l.isEmpty() && (l.charAt(0) == ' ' || l.charAt(0) == '\t')) continue;  // its options
+      inBlock = false;
+      out.append(l);
+      if (i < lines.length - 1) out.append('\n');
     }
     return new String[] {out.toString(), Integer.toString(found)};
   }

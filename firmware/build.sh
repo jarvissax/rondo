@@ -12,7 +12,8 @@
 # It starts from the community's base ROM (stock Android 4.2.2 with the Y1's radios enabled) and
 # takes out everything that isn't Rondo or Android's own background services: Rockbox, the stock
 # Innioasis player, the Rockbox/stock switching scripts, Android's Settings, keyboard, browser,
-# FM app, wallpapers and the rest. Rondo goes in as the only app with a screen, so the Y1 boots
+# FM app, wallpapers and the rest, and the stock firmware's root backdoors (zxly's aggdll and
+# wifi_init, SPWall). Rondo goes in as the only app with a screen, so the Y1 boots
 # straight into it. The images are edited in place with debugfs, so no mounting or root is needed.
 #
 # Needs curl, unzip, zip, java (17+) and e2fsprogs (debugfs, e2fsck):
@@ -33,6 +34,18 @@ WORK="$HERE/work"
 BASE_URL="https://github.com/y1-community/y1-ata-rom/releases/download/0.1/rom.zip"
 BASE_SHA256="d3b79ca460a3d3ec2c41ba57893127a0f9a90278e374dd33cdb5de5bb46e367e"
 
+# What the base ROM inherits from Innioasis's firmware and runs as root, none of it needed
+# (docs/device/README.md, "No root backdoors"): zxly's agent aggdll (a hidden su, a
+# silent app installer, setuid root) and the copy of itself it keeps as net_server; wifi_init, which it
+# drops, and which fetches a file over plain HTTP and runs it as root, with wifi_check, its download
+# tool, and AndroidBoot.ttf, its state file; mp, aggdll's hidden copy of pm; SPWall (libsp.so), a
+# service that runs any command as root; and the paths the same family writes its downloads and
+# helpers to. native/services/base_rom.cpp removes the same list from firmwares already flashed.
+ROOT_DAEMONS=(
+  /bin/aggdll /bin/net_server /bin/wifi_init /bin/wifi_check /bin/libsp.so /bin/mp /fonts/AndroidBoot.ttf
+  /bin/wifi_looper /bin/wifi_pm /bin/pm_temp /bin/am_temp /bin/su_zxly
+  /lib/libsu2update.so /lib/libsu2update.so.st /lib/libkey.so
+)
 # Android's own background services, kept because the system or Rondo relies on them. Everything
 # else in /system/app goes, SystemUI included: on this firmware it opens its own touch-only "USB
 # connected" screen whenever a computer is plugged in, and Rondo does its other visible jobs (the
@@ -113,6 +126,20 @@ echo "Removed from /system/app: $(printf '%s\n' "${removed[@]}" | sed 's/\.[^.]*
 for f in /lib/librockbox.so /usr/keylayout/Rockbox.kl /etc/init.d/99Y1ButtonScript; do
   exists "$SYS" "$f" && dfs "$SYS" "rm $f" && echo "Removed $f"
 done
+# the stock firmware's root backdoors (ROOT_DAEMONS above)
+for f in "${ROOT_DAEMONS[@]}"; do
+  exists "$SYS" "$f" && dfs "$SYS" "rm $f" && echo "Removed /system$f"
+done
+# aggdll put a setuid-root program of its own in am's place and kept Android's am script as am2: the
+# script goes back. pm is Android's own, made writable by anyone: both get Android's owner and mode.
+if exists "$SYS" /bin/am2; then
+  debugfs -R "dump /bin/am2 $WORK/am" "$SYS" 2>/dev/null
+  grep -q 'exec app_process $base/bin com.android.commands.am.Am' "$WORK/am" || fail "/system/bin/am2 isn't Android's am script"
+  put "$SYS" "$WORK/am" /bin/am
+  dfs "$SYS" "rm /bin/am2"
+  echo "Removed /system/bin/am2: Android's am script is /system/bin/am again."
+fi
+for f in /bin/am /bin/pm; do dfs "$SYS" "sif $f uid 0" "sif $f gid 2000" "sif $f mode 0100755"; done
 # the stock button layout for every input device (the base ships Rockbox's as Generic.kl)
 debugfs -R "dump /usr/keylayout/Stock.kl $WORK/Stock.kl" "$SYS" 2>/dev/null
 put "$SYS" "$WORK/Stock.kl" /usr/keylayout/Generic.kl
@@ -192,6 +219,15 @@ for bad in rockbox innioasis Rockbox.kl 99Y1ButtonScript LatinIME Settings.apk F
   if names "$SYS" /app | grep -qi "^$bad" || names "$DATA" /data | grep -qi "$bad"; then fail "$bad is still in the firmware"; fi
 done
 cmp -s <(debugfs -R "cat /usr/keylayout/Generic.kl" "$SYS" 2>/dev/null) "$WORK/Stock.kl" || fail "Generic.kl isn't the stock layout"
+for f in "${ROOT_DAEMONS[@]}" /bin/am2; do
+  if exists "$SYS" "$f"; then fail "/system$f is still in the firmware"; fi
+done
+for f in /bin/am /bin/pm; do
+  st="$(debugfs -R "stat $f" "$SYS" 2>/dev/null)"
+  grep -qE "Mode: +0755 " <<<"$st" && grep -qE "User: +0 +Group: +2000( |$)" <<<"$st" || fail "/system$f doesn't have Android's owner and mode (root:shell, 0755)"
+done
+debugfs -R "cat /bin/am" "$SYS" 2>/dev/null | grep -q 'com.android.commands.am.Am' || fail "/system/bin/am isn't Android's am script"
+echo "The stock firmware's root backdoors are out (aggdll, wifi_init, SPWall and what they left)."
 if [[ $NATIVE == 1 ]]; then
   exists "$SYS" /rondo/rondo || fail "/system/rondo/rondo is missing"
   exists "$SYS" /rondo/start || fail "/system/rondo/start is missing"

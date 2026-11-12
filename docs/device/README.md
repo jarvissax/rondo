@@ -141,6 +141,24 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
   (`debug.sf.nobootanimation=1`): the boot logo stays until Rondo's first frame.
 - **60 Hz (2.0).** The boot image's kernel has the panel driver's 60 Hz values in place of the
   stock 42 Hz ones ([native.md](native.md#display)).
+- **No root backdoors (2.1.0).** Innioasis's firmware (3.0.7's build manifest and `init.rc`), and
+  so the base ROM, runs two programs as root that nothing on the Y1 needs, both found by static
+  analysis on Nov 12:
+  - `aggdll` (init's `aggsrv`, setuid root) is the agent of "zxly" (`com.zxly.assist`), an app
+    pusher. It's a hidden `su` for apps signed with zxly's key and a silent installer of APKs from
+    the card. It also writes into `/system`: a copy of itself (`net_server`), a hidden copy of `pm`
+    (`mp`), a program of its own in `am`'s place (Android's script kept as `am2`), and `wifi_init`,
+    which it starts. `wifi_init` checks in with a server, downloads a file with `wifi_check` (the
+    `axel` download tool) and runs it as root. `/system/fonts/AndroidBoot.ttf` is its state file.
+    That server doesn't answer now (Nov 12). Wi-Fi doesn't need any of it.
+  - `libsp.so` (init's `spwall`) is "SPWall", a service that runs shell commands as root for other
+    programs.
+
+  `firmware/build.sh` takes all of them out and puts Android's `am` script back, and
+  `tools/firmware/BootImage.java` drops both services from `init.rc`. A Y1 updated to 2.1.0 or
+  later over Wi-Fi keeps its old system image, so Rondo removes the same files itself at each start
+  (`native/services/base_rom.cpp`) and logs one line when it does. `BGW` (`/system/xbin`, user
+  system) stays: it's MediaTek's Wi-Fi and modem coexistence helper, with no network code.
 - **Current time zones.** The base ROM's tzdata is 2012h; the firmware has IANA's 2026 data
   (`firmware/zoneinfo`).
 - **The firmware's number.** `firmware/build.sh` adds `ro.rondo.firmware=<n>` to

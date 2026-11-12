@@ -111,11 +111,14 @@ the system and data images in place with debugfs, so nothing is mounted and no r
 - everything in `/system/app` goes: Rockbox, the Innioasis player, SystemUI, Settings, the
   keyboard and every other Android app; Rockbox's button layout and switching scripts go, and the
   data image is emptied;
+- the stock firmware's root backdoors go: zxly's `aggdll` and what it leaves (`wifi_init`,
+  `wifi_check`, `net_server`, `mp`, a setuid `am`), and SPWall (`libsp.so`); Android's own `am`
+  script is put back ([docs/device](device/README.md#the-rondo-firmware));
 - the bundle's files go in as `/system/rondo`: the binary, FFmpeg's libraries, the fonts, the
   dashboard's page and the start script;
 - `tools/firmware/BootImage.java` edits the boot image: in `init.rc`, zygote (Android's Java
-  layer) is disabled and a `rondo` service runs `/system/rondo/start`; the kernel's panel driver
-  runs the screen at 60 Hz;
+  layer) is disabled, the backdoors' `aggsrv` and `spwall` services go, and a `rondo` service runs
+  `/system/rondo/start`; the kernel's panel driver runs the screen at 60 Hz;
 - Rondo's boot logo goes in (`tools/bootscreen/`), with no boot animation: the logo shows until
   Rondo's first frame;
 - current time zone rules (`firmware/zoneinfo`, from IANA's data) replace the base ROM's from 2012;
