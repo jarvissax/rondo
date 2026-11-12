@@ -7,7 +7,8 @@ on:
   pull_request:
 
 jobs:
-  # Rondo, the server and the update page share one version (tools/set-version.sh)
+  # each component's files agree on its version: the device's (Rondo, the update page) and the
+  # server's, released apart (tools/set-version.sh)
   versions:
     runs-on: ubuntu-26.04
     steps:

@@ -1,17 +1,17 @@
-# Finishes a release once it's published (or the latest one again, by hand from the Actions tab):
+# Finishes a release of Rondo on the Y1 (tag v<version>) once it's published, or the latest one again,
+# by hand from the Actions tab. The server is released apart (tags server-v<version>:
+# server-release.yml), so this one skips server releases.
 #
-# 1. checks that its tag, the project's versions (tools/set-version.sh) and its Rondo agree:
-#    rondo-<version>.rondo (its VERSION, and its signature against the bundle key's public half in
-#    native/core/bundle.h);
+# 1. checks that its tag, the device's versions (tools/set-version.sh --check device) and its Rondo
+#    agree: rondo-<version>.rondo (its VERSION, and its signature against the bundle key's public
+#    half in native/core/bundle.h);
 # 2. builds the firmware from it with firmware/build.sh and attaches it as rom.zip, the file
 #    Innioasis Updater CE installs, with updater.png, its picture;
-# 3. builds the server's image and its updater's (infra/Dockerfile, infra/updater.Dockerfile) for
-#    x86-64 and 64-bit ARM and publishes them on GitHub's registry as <version> and latest, which
-#    the compose files run and the admin page's Update installs;
-# 4. publishes the update page (web-updater/) on GitHub Pages with the bundle as rondo.rondo and
-#    latest.json, which the Rondo (through its server), the dashboard and the update page read.
+# 3. publishes the update page (web-updater/) on GitHub Pages with the bundle as rondo.rondo and
+#    latest.json, which the Rondo (directly or through its server), the dashboard and the update page
+#    read.
 #
-# So a release reaches Rondos and servers only once its rom.zip and images are out. The bundle is
+# So a release reaches Rondos only once its rom.zip is out. The bundle is
 # built and signed on the developer's machine and attached by hand (docs/building.md): the signing
 # key never comes here.
 # Pages must be set to "GitHub Actions" (Settings > Pages > Source), and the github-pages
@@ -29,6 +29,8 @@ concurrency:
 
 jobs:
   firmware:
+    # a server release (server-v…) is server-release.yml's
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -61,7 +63,7 @@ jobs:
           FILE: ${{ steps.file.outputs.file }}
         run: |
           version="${TAG#v}"
-          tools/set-version.sh --check "$version"
+          tools/set-version.sh --check device "$version"
           inside="$(tail -c +73 "$FILE" | tar -xzOf - ./VERSION)"
           [ "$inside" = "$version" ] || { echo "::error::The bundle is Rondo $inside, not $version"; exit 1; }
           # signed with the bundle key (its public half is in native/core/bundle.h)
@@ -94,69 +96,8 @@ jobs:
           cp firmware/updater.png release/updater.png
           gh release upload "$TAG" release/rom.zip release/updater.png --repo "$GITHUB_REPOSITORY" --clobber
 
-  server-images:
-    needs: firmware
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      TAG: ${{ needs.firmware.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.firmware.outputs.tag }}
-      - name: Names and version
-        id: names
-        run: |
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - name: The server
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: infra/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ steps.names.outputs.registry }}/rondo-server:${{ steps.names.outputs.version }}
-            ${{ steps.names.outputs.registry }}/rondo-server:latest
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.names.outputs.version }}
-            org.opencontainers.image.title=Rondo server
-            org.opencontainers.image.description=Streams YouTube Music and YouTube to a Rondo on the Innioasis Y1
-            org.opencontainers.image.licenses=MIT
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,scope=server,mode=max
-      - name: The updater
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: infra/updater.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ steps.names.outputs.registry }}/rondo-updater:${{ steps.names.outputs.version }}
-            ${{ steps.names.outputs.registry }}/rondo-updater:latest
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.version=${{ steps.names.outputs.version }}
-            org.opencontainers.image.title=Rondo updater
-            org.opencontainers.image.description=Updates a Rondo server container from its admin page
-            org.opencontainers.image.licenses=MIT
-          cache-from: type=gha,scope=updater
-          cache-to: type=gha,scope=updater,mode=max
-
   pages:
-    needs: [firmware, server-images]
+    needs: firmware
     runs-on: ubuntu-26.04
     permissions:
       contents: read

@@ -127,9 +127,9 @@ hours.
   disconnect it.
 - **Resolver:** the yt-dlp version, **Update now**, and **Test playback**, which checks that a
   video can be found the way the Y1 would ask for it.
-- **Updates:** the Overview says when a newer Rondo or yt-dlp is out. The server checks every 6
-  hours: Rondo's update page for Rondo, GitHub for yt-dlp. `UPDATE_CHECK=0` in its environment
-  turns that off.
+- **Updates:** the Overview says when a newer server or yt-dlp is out. The server checks GitHub
+  every 6 hours: the server's own releases (`server-v<version>`) and yt-dlp's nightly builds.
+  `UPDATE_CHECK=0` in its environment turns that off.
 - **Activity:** the last 100 warnings and errors, newest first.
 - **Admin account:** change the password or sign out.
 
@@ -170,7 +170,7 @@ session:
 
 - **yt-dlp updates itself** every day. When YouTube changes something and playback stops, press
   **Update now** on the admin page's **Resolver** page.
-- **Updating the server:** when a newer Rondo is out, the admin page's Overview says so. Press
+- **Updating the server:** when a newer server is out, the admin page's Overview says so. Press
   **Update**: the server downloads the new version and restarts on it, in a minute or two. Your
   admin password, account and connected Y1 stay; sign in to the admin page again afterwards. This
   is the job of the `rondo-updater` container next to the server, which needs Docker's socket and
@@ -190,8 +190,10 @@ session:
   (**Settings › System › Software update**, see [Updating Rondo](install.md#updating-rondo)). The
   server still hands a Rondo 1.0 its updates, and tells it when a release needs a new firmware, as
   2.0 does: it fetches them from Rondo's update page and passes them on.
-- **The server and Rondo share a version number.** When the admin page says a newer Rondo is out,
-  update the server too (above), even if only the Y1 changed; that keeps them in step.
+- **The server and Rondo have versions of their own** (since server 3.1.0 and Rondo 3.0.2): most
+  Rondo releases change only the Y1, and the server needs updating only when there's a server release.
+  When a Rondo needs a newer server, it says **Server needs an update** in **Settings › YouTube ›
+  Connection** and in the dashboard's server test.
 - **One Y1 per server.** Connecting another Rondo disconnects the previous one.
 - **Forgot the admin password?** Remove it and restart. The server prints a new setup code, and
   your Y1 stays connected:

@@ -1,44 +1,75 @@
 #!/usr/bin/env bash
-# Sets Rondo's version everywhere it's stated: native/core/version.h (Rondo itself), and the
-# server and the update page (their package.json and package-lock.json). The whole project shares
-# one version, and a release is tagged v<version>; .github/workflows/release.yml refuses to build one
-# whose files disagree with its tag.
+# Sets a component's version everywhere it's stated. Rondo has two, released apart (since device
+# 3.0.2 and server 3.1.0):
+#   device  Rondo on the Y1: native/core/version.h (the firmware, the update bundle and the dashboard
+#           it serves) and the update page (web-updater/package.json, package-lock.json). Tags v<version>.
+#   server  the Rondo server and its updater: server/package.json, package-lock.json. Tags
+#           server-v<version>.
+# A component's files must agree, and a release's tag with them: .github/workflows/release.yml (v*)
+# and server-release.yml (server-v*) refuse one that doesn't.
 #
-#   tools/set-version.sh 1.0.2            set it
-#   tools/set-version.sh --check [1.0.2]  are they all the same (and this version)?
+#   tools/set-version.sh device 3.0.2            set it
+#   tools/set-version.sh server 3.1.0
+#   tools/set-version.sh --check device [3.0.2]  do the component's files agree (and say this version)?
+#   tools/set-version.sh --check                 both components, each on its own
 #
-# The firmware number (kFirmwareNeeded in native/core/version.h) is separate: raise it by hand only
-# when a release needs a newer firmware than the one Y1s have (it then can't install over Wi-Fi).
+# The firmware number (kFirmwareNeeded in native/core/version.h) and the device–server protocol's
+# (kServerApiNeeded there, API_VERSION in server/src/version.ts) are separate: raise them by hand,
+# only when a release needs a newer firmware, or a change needs both sides.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NATIVE="$ROOT/native/core/version.h"  # Rondo 2.0's own (About, the user agent)
-PACKAGES=(server web-updater)
+NATIVE="$ROOT/native/core/version.h"
 
-check=0
-[[ "${1:-}" == "--check" ]] && { check=1; shift; }
-want="${1:-}"
+usage() { sed -n '11,14p' "$0" | sed 's/^#   //' >&2; }
 
-if [[ $check == 1 ]]; then
-  found=("native $(sed -n 's/.*kRondoVersion = "\(.*\)".*/\1/p' "$NATIVE")")
-  for p in "${PACKAGES[@]}"; do
-    found+=("$p $(node -p "require('$ROOT/$p/package.json').version")")
-    found+=("$p-lock $(node -p "require('$ROOT/$p/package-lock.json').version")")
-  done
-  printf '%s\n' "${found[@]}"
-  first="${found[0]#* }"
-  for f in "${found[@]}"; do
-    v="${f#* }"
-    [[ "$v" == "$first" ]] || { echo "Versions disagree" >&2; exit 1; }
-    [[ -z "$want" || "$v" == "$want" ]] || { echo "Not $want" >&2; exit 1; }
-  done
-  exit 0
+# "<file> <version>" for each of a component's files
+found() {
+  case "$1" in
+    device)
+      echo "native/core/version.h $(sed -n 's/.*kRondoVersion = "\(.*\)".*/\1/p' "$NATIVE")"
+      for x in package.json package-lock.json; do echo "web-updater/$x $(node -p "require('$ROOT/web-updater/$x').version")"; done
+      ;;
+    server)
+      for x in package.json package-lock.json; do echo "server/$x $(node -p "require('$ROOT/server/$x').version")"; done
+      ;;
+    *)
+      echo "Unknown component '$1': device or server" >&2
+      return 2
+      ;;
+  esac
+}
+
+check() {
+  local lines first name v
+  lines="$(found "$1")"
+  echo "$1:"
+  sed 's/^/  /' <<< "$lines"
+  first="$(head -1 <<< "$lines" | cut -d' ' -f2)"
+  while read -r name v; do
+    [[ "$v" == "$first" ]] || { echo "$1's versions disagree" >&2; return 1; }
+    [[ -z "${2:-}" || "$v" == "$2" ]] || { echo "$1 is $v, not $2" >&2; return 1; }
+  done <<< "$lines"
+}
+
+if [[ "${1:-}" == "--check" ]]; then
+  shift
+  if [[ $# -eq 0 ]]; then
+    check device && check server
+  else
+    check "$1" "${2:-}"
+  fi
+  exit
 fi
 
-[[ "$want" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo "Usage: tools/set-version.sh <major.minor.patch>" >&2; exit 1; }
-sed -i.bak -e "s/kRondoVersion = \".*\"/kRondoVersion = \"$want\"/" "$NATIVE"
-rm -f "$NATIVE.bak"
-for p in "${PACKAGES[@]}"; do
-  node - "$ROOT/$p" "$want" <<'EOF'
+component="${1:-}" want="${2:-}"
+if [[ "$component" != device && "$component" != server ]] || ! [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  usage
+  exit 1
+fi
+
+# a package's package.json and package-lock.json
+setPackage() {
+  node - "$ROOT/$1" "$want" <<'JS'
 const fs = require("fs");
 const [dir, version] = process.argv.slice(2);
 for (const name of ["package.json", "package-lock.json"]) {
@@ -48,7 +79,18 @@ for (const name of ["package.json", "package-lock.json"]) {
   if (json.packages?.[""]) json.packages[""].version = version;
   fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
 }
-EOF
-done
-echo "Rondo $want"
-"$0" --check "$want"
+JS
+}
+
+case "$component" in
+  device)
+    sed -i.bak -e "s/kRondoVersion = \".*\"/kRondoVersion = \"$want\"/" "$NATIVE"
+    rm -f "$NATIVE.bak"
+    setPackage web-updater
+    ;;
+  server)
+    setPackage server
+    ;;
+esac
+echo "Rondo $component $want"
+"$0" --check "$component" "$want"

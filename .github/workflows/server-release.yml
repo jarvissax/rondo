@@ -1,0 +1,100 @@
+# Finishes a release of the Rondo server (tag server-v<version>) once it's published, or one named by
+# hand from the Actions tab. Rondo on the Y1 is released apart (tags v<version>: release.yml), so this
+# one skips those: a server release has no rom.zip (Innioasis Updater CE lists only releases with one)
+# and isn't marked latest on GitHub (Rondo's is).
+#
+# 1. checks that the tag and the server's version (tools/set-version.sh --check server) agree, and
+#    runs the server's tests;
+# 2. builds the server's image and its updater's (infra/Dockerfile, infra/updater.Dockerfile) for
+#    x86-64 and 64-bit ARM and publishes them on GitHub's registry as <version> and latest, which
+#    the compose files run and the admin page's Update installs (it hears of the release from
+#    GitHub's list: server/src/updates.ts).
+name: Server release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag, server-v<version>"
+        required: true
+
+concurrency:
+  group: server-release
+  cancel-in-progress: false
+
+jobs:
+  images:
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'server-v') }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - name: Version agrees
+        run: tools/set-version.sh --check server "${TAG#server-v}"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Tests
+        working-directory: server
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+      - name: Names and version
+        id: names
+        run: |
+          echo "version=${TAG#server-v}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: The server
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.registry }}/rondo-server:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.registry }}/rondo-server:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.names.outputs.version }}
+            org.opencontainers.image.title=Rondo server
+            org.opencontainers.image.description=Streams YouTube Music and YouTube to a Rondo on the Innioasis Y1
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+      - name: The updater
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/updater.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.registry }}/rondo-updater:${{ steps.names.outputs.version }}
+            ${{ steps.names.outputs.registry }}/rondo-updater:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.names.outputs.version }}
+            org.opencontainers.image.title=Rondo updater
+            org.opencontainers.image.description=Updates a Rondo server container from its admin page
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=updater
+          cache-to: type=gha,scope=updater,mode=max
