@@ -29,6 +29,7 @@
 
 #include "../core/api.h"
 #include "../core/bundle.h"
+#include "../core/version.h"
 #include "downloads.h"
 #include "subtitles.h"
 #include "../core/clock.h"
@@ -1186,6 +1187,8 @@ Response Server::testServer() {
     return json(obj({{"ok", "true"},
                      {"latencyMs", num(latency)},
                      {"ytdlp", h.ytdlp.empty() ? kNull : str(h.ytdlp)},
+                     {"version", h.version.empty() ? kNull : str(h.version)},
+                     {"apiOk", boolean(h.api >= kServerApiNeeded)},
                      {"playbackOk", h.lastResolveOk < 0 ? kNull : boolean(h.lastResolveOk == 1)},
                      {"signedIn", boolean(h.music || h.videos)}}));
   if (st > 0) return json(obj({{"ok", "false"}, {"error", str(st == 401 || st == 403 ? "unauthorized" : "HTTP " + std::to_string(st))}}));

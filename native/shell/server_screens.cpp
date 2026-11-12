@@ -13,6 +13,7 @@
 #include <sys/system_properties.h>
 
 #include "../core/api.h"
+#include "../core/version.h"
 #include "app.h"
 #include "screens.h"
 
@@ -153,9 +154,13 @@ class ServerScreen : public ShellListScreen {
       g_core.get("/time", 0, [this, alive, ms, h](int status, const std::string&) {  // needs the token
         if (!*alive) return;
         if (status != 200) return failed(status);
-        show({entry("Answered in", "", std::to_string(ms) + " ms"), entry("yt-dlp", "", h.ytdlp.empty() ? "missing" : h.ytdlp),
-              entry("Playback", "", h.lastResolveOk == 1 ? "working" : h.lastResolveOk == 0 ? "failing" : "not tried yet"),
-              entry("YouTube account", "", h.music || h.videos ? "signed in" : "signed out")});
+        std::vector<Row> rows = {entry("Answered in", "", std::to_string(ms) + " ms")};
+        if (h.api < kServerApiNeeded) rows.push_back(entry("Server needs an update", "Update it on its admin page"));
+        rows.push_back(entry("Server", "", h.version.empty() ? "older than 3.1" : h.version));
+        rows.push_back(entry("yt-dlp", "", h.ytdlp.empty() ? "missing" : h.ytdlp));
+        rows.push_back(entry("Playback", "", h.lastResolveOk == 1 ? "working" : h.lastResolveOk == 0 ? "failing" : "not tried yet"));
+        rows.push_back(entry("YouTube account", "", h.music || h.videos ? "signed in" : "signed out"));
+        show(rows);
       });
     });
   }
@@ -258,6 +263,7 @@ void serverState(std::function<void(const std::string&)> done) {
     g_core.get("/time", 0, [done, h](int status, const std::string&) {
       if (status == 401 || status == 403) return done("Token refused");
       if (status == 0) return done("Unreachable");
+      if (h.api < kServerApiNeeded) return done("Server needs an update");
       if (h.ytdlp.empty()) return done("yt-dlp missing");
       if (h.lastResolveOk == 0) return done("Playback failing");
       done(h.music || h.videos ? "OK \xc2\xb7 signed in" : "OK \xc2\xb7 signed out");

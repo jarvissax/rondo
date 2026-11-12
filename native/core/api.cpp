@@ -335,6 +335,9 @@ bool parseHealth(const std::string& json, Health& out) {
   out.ok = yyjson_get_bool(yyjson_obj_get(r, "ok"));
   out.cookiesOk = yyjson_get_bool(yyjson_obj_get(r, "cookiesOk"));
   out.ytdlp = str(r, "ytdlp");
+  out.version = str(r, "version");
+  yyjson_val* api = yyjson_obj_get(r, "api");
+  if (yyjson_is_int(api)) out.api = int(yyjson_get_int(api));
   yyjson_val* lr = yyjson_obj_get(r, "lastResolveOk");
   if (yyjson_is_bool(lr)) out.lastResolveOk = yyjson_get_bool(lr) ? 1 : 0;
   yyjson_val* a = yyjson_obj_get(r, "account");
