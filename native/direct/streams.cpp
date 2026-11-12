@@ -385,6 +385,37 @@ static std::string sized(const std::string& url, int px) {
   return pathPart.substr(0, eq + 1) + out + query;
 }
 
+// i.ytimg.com's video stills. The addresses YouTube's lists give (hq720.jpg?sqp=…) come back as WebP
+// whatever the Accept header says, and the Y1 decodes JPEG and PNG only (Nov 12: no thumbnails in
+// YouTube's search or on a download's row); the same still without its query is a JPEG. A 16:9 still
+// is mqdefault (320 x 180, 14 kB) for the small sizes and hq720 for the large, falling back to
+// mqdefault for a video with no hq720; others (a Short's oardefault) keep their name.
+static bool ytimgStill(const std::string& url, int bucket, std::string& want, std::string& fallback) {
+  size_t scheme = url.find("://");
+  if (scheme == std::string::npos) return false;
+  size_t at = url.find('/', scheme + 3);
+  if (at == std::string::npos) return false;
+  std::string host = url.substr(scheme + 3, at - scheme - 3);
+  if (host != "i.ytimg.com" && !(host.size() > 10 && host.compare(host.size() - 10, 10, ".ytimg.com") == 0)) return false;
+  std::string p = url.substr(at, url.find_first_of("?#", at) - at);
+  for (const char* pre : {"/vi/", "/vi_webp/"}) {
+    size_t l = strlen(pre);
+    if (p.compare(0, l, pre) != 0) continue;
+    size_t slash = p.find('/', l);
+    if (slash == std::string::npos) return false;
+    std::string id = p.substr(l, slash - l), name = p.substr(slash + 1);
+    if (id.empty() || name.empty() || name.find('/') != std::string::npos) return false;
+    std::string stem = name.substr(0, name.rfind('.'));
+    std::string base = "https://i.ytimg.com/vi/" + id + "/";
+    bool still = stem == "hq720" || stem == "maxresdefault" || stem == "sddefault" || stem == "hqdefault" || stem == "mqdefault" ||
+                 stem == "default";
+    fallback = base + "mqdefault.jpg";
+    want = !still ? base + stem + ".jpg" : bucket <= 480 ? fallback : base + "hq720.jpg";
+    return true;
+  }
+  return false;
+}
+
 void thumbRoute(const Request& r, Response& out) {
   auto it = r.query.find("u");
   std::string url = it == r.query.end() ? "" : it->second;
@@ -398,9 +429,11 @@ void thumbRoute(const Request& r, Response& out) {
   // twice the size asked for, rounded up to one of four sizes, so the screens' rows, Now Playing and
   // the dashboard share one picture: the Y1 (and the browser) scale it down themselves
   int want2 = std::max(w, h) * 2, bucket = want2 <= 120 ? 120 : want2 <= 240 ? 240 : want2 <= 480 ? 480 : 720;
-  std::string want = sized(url, bucket);
+  std::string want = sized(url, bucket), fallback = url;
+  std::string still, stillFallback;
+  if (ytimgStill(url, bucket, still, stillFallback)) want = still, fallback = stillFallback;
   std::string type, body;
-  if (!thumbBytes(want, url, type, body)) return out.error(502, "upstream");
+  if (!thumbBytes(want, fallback, type, body)) return out.error(502, "upstream");
   out.type = type.empty() ? "image/jpeg" : type;
   out.headers.push_back("Cache-Control: public, max-age=604800");
   out.body = std::move(body);

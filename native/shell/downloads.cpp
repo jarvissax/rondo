@@ -258,7 +258,7 @@ bool join(const std::string& video, const std::string& audio, const std::string&
 void startCaptions() {
   DownloadJob* j = current();
   g_step = Captions;
-  j->stage = "Subtitles";
+  j->stage = "Getting subtitles";
   g_changed = true;
   uint32_t gen = g_generation;
   std::string id = j->id;
@@ -301,7 +301,8 @@ void startPart(Step step) {
   DownloadJob* j = current();
   g_step = step;
   int itag = step == Picture ? g_videoItag : g_audioItag;
-  j->stage = step == Picture ? (g_audioItag ? "Picture" : "Downloading") : "Sound";
+  // the words a row shows ("Picture" read like the video's name for a picture, Nov 12)
+  j->stage = step == Picture ? (g_audioItag ? "Downloading video" : "Downloading") : "Downloading sound";
   g_changed = true;
   g_coreBusy = true;
   g_seq = g_core.state().downloadSeq;

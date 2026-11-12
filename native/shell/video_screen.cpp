@@ -50,7 +50,10 @@ class DownloadsScreen : public MusicListScreen {
       Row r;
       r.title = j.title;
       std::string q = std::to_string(j.quality) + "p";
-      r.subtitle = j.state == DownloadJob::Running ? (j.stage.empty() ? "Downloading" : j.stage) + " \xc2\xb7 " + std::to_string(j.percent) + "% \xc2\xb7 " + q
+      // the percent only while a part comes in (Getting subtitles and Saving kept the last part's 100 %)
+      bool part = j.stage.empty() || j.stage.compare(0, 11, "Downloading") == 0;
+      std::string pct = part ? std::to_string(j.percent) + "% \xc2\xb7 " : "";
+      r.subtitle = j.state == DownloadJob::Running ? (j.stage.empty() ? "Downloading" : j.stage) + " \xc2\xb7 " + pct + q
                    : j.state == DownloadJob::Waiting ? "Waiting \xc2\xb7 " + q
                                                      : "Didn't download: " + j.error;
       r.thumb = j.thumb;

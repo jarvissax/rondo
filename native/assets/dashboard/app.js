@@ -2383,7 +2383,8 @@ function renderDownloads() {
   const rows = [
     ...jobs.map((j) => {
       const going = j.state === 'running' || j.state === 'waiting';
-      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${j.percent}% · ${j.quality}p` : j.state === 'waiting' ? `Waiting · ${j.quality}p` : `Didn’t download: ${esc(j.error)}`;
+      const part = !j.stage || j.stage.startsWith('Downloading');  // the percent only while a part comes in, as on the Y1
+      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${part ? `${j.percent}% · ` : ''}${j.quality}p` : j.state === 'waiting' ? `Waiting · ${j.quality}p` : `Didn’t download: ${esc(j.error)}`;
       return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
         <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${sub}</div>
           ${j.state === 'running' ? `<div class="dl-bar"><span style="width:${j.percent}%"></span></div>` : ''}</div>
