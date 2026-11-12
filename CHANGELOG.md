@@ -4,6 +4,31 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
+## 3.0.1 (November 12, 2026)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). A Y1 still on 2.0 installs 3.0.1 with Innioasis
+Updater CE, as for 3.0.0.
+
+### Added
+
+- **Charging shows on the battery.** On a charger or a computer, a green bolt shows next to the
+  battery in the status bar and the YouTube headers, and the charge turns green.
+
+### Fixed
+
+- **YouTube and YouTube Music without internet.** With Wi-Fi off they said "Loading…" for a long time;
+  now they say "No Wi-Fi connection" at once and load by themselves when Wi-Fi is back. On a Wi-Fi
+  network without internet they give up after 30 seconds at most, and say they couldn't reach
+  YouTube instead of "HTTP 502".
+- **Sharper subtitles.** Their lines sat between two rows of pixels, which blurred every letter.
+
+### Security
+
+- **The rest of SPWall is gone too:** its packet filter, code injector and renamed iptables, which
+  nothing started, and the stock firmware's distribution tag. Rondo removes them itself on a Y1 that
+  updates, and the firmware leaves them out.
+
 ## 3.0.0 (November 12, 2026)
 
 A new firmware without the stock firmware's root backdoors. It installs only with Innioasis
