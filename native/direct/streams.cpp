@@ -222,13 +222,14 @@ void prepare(const std::string& id) {
 
 int lastResolveOk() { return g_lastOk; }
 
-// [from, end] of a format in 4 MB pieces, three fetched at once (each worker its own connection), written
-// in order, at most three pieces ahead of the writer (16 MB in memory at most). One 1 MB piece at a
+// [from, end] of a format in 4 MB pieces, four fetched at once (each worker its own connection), written
+// in order, at most four pieces ahead of the writer (20 MB in memory at most). One 1 MB piece at a
 // time spent most of its time waiting for googlevideo's first byte: a download came in at 0.4 MB/s on
-// a Wi-Fi that does 1.9 (Nov 12). False when a piece failed or the writer stopped.
+// a Wi-Fi that does 1.9 (Nov 12); three at once made 2.5. False when a piece failed or the writer
+// stopped (the download then resumes from what it has, Api::download).
 static bool parallelPieces(const std::string& id, int itag, int64_t from, int64_t end, const Write& write) {
   constexpr int64_t kBig = 4 << 20;
-  constexpr int kWorkers = 3, kAhead = 3;
+  constexpr int kWorkers = 4, kAhead = 4;
   struct Piece {
     int code = 0;
     std::string body;
@@ -238,7 +239,7 @@ static bool parallelPieces(const std::string& id, int itag, int64_t from, int64_
   std::condition_variable cv;
   std::map<int64_t, Piece> ready;
   int64_t next = 0, written = 0;
-  bool stop = false;
+  std::atomic<bool> stop{false};
   auto worker = [&] {
     for (;;) {
       int64_t k;
@@ -250,12 +251,22 @@ static bool parallelPieces(const std::string& id, int itag, int64_t from, int64_
       }
       int64_t s = from + k * kBig, e = std::min(end, s + kBig - 1);
       Piece p;
-      // googlevideo may answer a range short: the rest asked for until the piece is whole
-      while (!p.code && int64_t(p.body.size()) < e - s + 1) {
+      // googlevideo may answer a range short, and a flaky Wi-Fi drops one now and then: what is still
+      // missing is asked for again, after 1, 2, 4 and 8 s without progress, before the piece fails
+      int misses = 0;
+      while (int64_t(p.body.size()) < e - s + 1) {
         std::string more;
-        p.code = fetch(id, itag, s + int64_t(p.body.size()), e, more);
-        if (!p.code && more.empty()) p.code = 502;
-        p.body += more;
+        int code = fetch(id, itag, s + int64_t(p.body.size()), e, more);
+        if (!code && !more.empty()) {
+          p.body += more;
+          misses = 0;
+          continue;
+        }
+        if (++misses > 4 || stop) {
+          p.code = code ? code : 502;
+          break;
+        }
+        for (int w = 0; w < (4 << (misses - 1)) && !stop; w++) usleep(250000);  // 1, 2, 4, 8 s
       }
       std::lock_guard<std::mutex> l(mu);
       ready[k] = std::move(p);

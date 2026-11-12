@@ -4,6 +4,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
+
 #include <curl/curl.h>
 #include <yyjson.h>
 
@@ -143,10 +145,26 @@ struct Sink {
   const std::function<void(int64_t, int64_t)>* progress;
   int64_t reportedAt;
   const std::atomic<bool>* cancel = nullptr;
+  CURL* h = nullptr;
+  int64_t base = 0;      // where this attempt's answer starts in the file (a resume's Range)
+  bool checked = false;  // the answer's status looked at, on its first bytes
+  bool refused = false;  // an error answer: its body isn't the file's
 };
 size_t toFile(char* data, size_t size, size_t n, void* user) {
   Sink* s = static_cast<Sink*>(user);
   size_t len = size * n;
+  if (!s->checked) {
+    s->checked = true;
+    long code = 0;
+    curl_easy_getinfo(s->h, CURLINFO_RESPONSE_CODE, &code);
+    if (code != 200 && code != 206) {
+      s->refused = true;
+    } else if (code == 200 && s->base > 0) {  // the whole file again (the Range not taken): it starts over
+      if (fseek(s->f, 0, SEEK_SET) != 0 || ftruncate(fileno(s->f), 0) != 0) return 0;
+      s->base = s->done = s->reportedAt = 0;
+    }
+  }
+  if (s->refused) return len;  // read and dropped: the status says what went wrong
   if (fwrite(data, 1, len, s->f) != len) return 0;
   s->done += int64_t(len);
   if (s->done - s->reportedAt >= 64 * 1024 || s->done == s->total) {
@@ -157,11 +175,32 @@ size_t toFile(char* data, size_t size, size_t n, void* user) {
 }
 int progressInfo(void* user, curl_off_t total, curl_off_t, curl_off_t, curl_off_t) {
   Sink* s = static_cast<Sink*>(user);
-  if (total > 0) s->total = int64_t(total);
+  if (total > 0) s->total = s->base + int64_t(total);
   return s->cancel && s->cancel->load() ? 1 : 0;  // non-zero: curl stops
+}
+// a transfer worth taking up again where it stopped: the connection, the network or the server failing
+// on the way (a Wi-Fi gone for a moment, the stream's source giving up on a piece)
+bool transferRetryable(CURLcode rc) {
+  switch (rc) {
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_SEND_ERROR:
+    case CURLE_RECV_ERROR:
+    case CURLE_PARTIAL_FILE:
+    case CURLE_OPERATION_TIMEDOUT:
+    case CURLE_GOT_NOTHING:
+    case CURLE_SSL_CONNECT_ERROR:
+    case CURLE_HTTP2:
+    case CURLE_HTTP2_STREAM: return true;
+    default: return false;
+  }
 }
 }  // namespace
 
+// A transfer that breaks on the way is taken up again from the bytes already in the file (Range: a 705 MB
+// video lost near its end started over from nothing), after 2, 4, 8, then 15 s without progress (1 s
+// after some); progress starts the count again, so only 12 tries in a row with nothing new (2.5 minutes)
+// end it. A server that answers the whole file instead starts it over.
 int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
                   const std::atomic<bool>* cancel) {
   std::string auth, url = urlFor(path, auth);
@@ -169,13 +208,19 @@ int Api::download(const std::string& path, const std::string& file, const std::f
   std::string part = file + ".part";
   FILE* f = fopen(part.c_str(), "wb");
   if (!f) return 0;
-  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
   Sink sink{f, 0, -1, &progress, 0, cancel};
+  sink.h = curl_;
   long status = 0;
-  bool wide = false;
-  for (int attempt = 0; attempt < 20; attempt++) {
-    fseek(f, 0, SEEK_SET);
-    sink.done = sink.reportedAt = 0;
+  bool wide = false, complete = false;
+  int64_t known = -1;  // the file's size, once an answer said it
+  int misses = 0;
+  for (int attempt = 0; attempt < 400 && misses < 12; attempt++) {
+    int64_t have = sink.done;
+    if (fflush(f) != 0 || fseek(f, have, SEEK_SET) != 0) break;
+    sink.base = sink.reportedAt = have;
+    sink.checked = sink.refused = false;
+    curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
+    if (have > 0) headers = curl_slist_append(headers, ("Range: bytes=" + std::to_string(have) + "-").c_str());
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
@@ -192,20 +237,32 @@ int Api::download(const std::string& path, const std::string& file, const std::f
     curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION, progressInfo);
     curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, &sink);
     CURLcode rc = curl_easy_perform(curl_);
-    if (rc == CURLE_OK) {
-      curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &status);
+    curl_slist_free_all(headers);
+    status = 0;
+    curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &status);
+    if (sink.total > 0) known = sink.total;
+    if (cancel && cancel->load()) break;
+    if (rc == CURLE_OK && (status == 200 || status == 206) && (known < 0 || sink.done == known)) {
+      complete = true;
+      break;
+    }
+    if (rc == CURLE_OK && status == 416 && have > 0 && have == known) {  // it was whole already
+      complete = true;
       break;
     }
     if (rc == CURLE_PEER_FAILED_VERIFICATION && !wide) {
       wide = true;
       continue;
     }
-    if (!net::retryable(rc) || (cancel && cancel->load())) break;
-    usleep(250000);
+    bool again = rc == CURLE_OK ? status >= 500 || status == 408 || status == 429 || status == 206 : transferRetryable(rc);
+    if (!again) break;
+    misses = sink.done > have ? 0 : misses + 1;
+    int waitMs = misses == 0 ? 1000 : std::min(15000, 1000 << misses);
+    for (int w = 0; w < waitMs / 250 && !(cancel && cancel->load()); w++) usleep(250000);
   }
-  curl_slist_free_all(headers);
   curl_easy_reset(curl_);  // the next request sets what it needs again
-  if (cancel && cancel->load()) status = 0;
+  if (cancel && cancel->load()) complete = false;
+  status = complete ? 200 : status == 200 || status == 206 ? 0 : status;
   bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
   fclose(f);
   if (status != 200 || !ok || rename(part.c_str(), file.c_str()) != 0) {
