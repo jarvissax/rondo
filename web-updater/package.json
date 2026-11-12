@@ -1,6 +1,6 @@
 {
   "name": "rondo-web-updater",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "private": true,
   "description": "Updates Rondo on an Innioasis Y1 running the Rondo firmware, from the browser, over WebUSB",
   "type": "module",

@@ -2,7 +2,33 @@
 
 Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
-Innioasis Updater CE and the update for a Y1 that already runs Rondo.
+Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
+releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
+
+## 3.0.2 (November 12, 2026)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It needs no server update.
+
+### Changed
+
+- **Downloads are about three times faster.** A YouTube download now comes in four parts at once
+  instead of one piece after another: a 10-minute 720p video took 50 seconds instead of 145, and a
+  two-hour episode about 8 minutes.
+- **A download survives a dropout.** When the Wi-Fi or the internet goes away for a while, the
+  download waits and carries on where it stopped, instead of failing or starting over (Software
+  update's download too).
+- **The Y1 stays awake while a download runs,** unplugged with the screen off too.
+- **Rondo and the server have their own version numbers now.** Most releases change only the Y1, so
+  they no longer ask you to update your server. When a Rondo needs a newer one, Settings › YouTube ›
+  Connection says **Server needs an update**.
+
+### Fixed
+
+- **YouTube's pictures in search, the feeds and on a download's row.** YouTube sent them in a format
+  the Y1 can't show, so they stayed empty.
+- **A download's row says what it's doing:** Downloading video, Downloading sound, Getting subtitles
+  and Saving (it said "Picture").
 
 ## 3.0.1 (November 12, 2026)
 
