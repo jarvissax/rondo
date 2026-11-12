@@ -1,9 +1,12 @@
-# Checks the versions, tests the server and builds the update page on every push and pull request. Runners
-# are pinned to an Ubuntu release (not ubuntu-latest) so a new image arrives on purpose, not by itself.
+# Checks the versions, tests the server and builds the update page on every push to a branch and every
+# pull request (a release's tag points at a commit already checked on main: release.yml and
+# server-release.yml check it again their own way). Runners are pinned to an Ubuntu release (not
+# ubuntu-latest) so a new image arrives on purpose, not by itself.
 name: CI
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 jobs:

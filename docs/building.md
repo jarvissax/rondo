@@ -334,14 +334,18 @@ newer server says so (**Server needs an update**).
 
 1. Set its version: `tools/set-version.sh server 3.1.0` (`server/package.json` and
    `package-lock.json`).
-2. Add the release to `server/CHANGELOG.md`. Commit, tag `server-v<version>`, push both, and
-   publish a GitHub release for the tag with no assets, **not** marked latest (that stays Rondo's,
-   and Innioasis Updater CE lists only releases with a `rom.zip`).
-3. Publishing starts `.github/workflows/server-release.yml`, which checks that the tag and the
-   server's version agree, runs the server's tests, and builds the server and updater images for
-   x86-64 and 64-bit ARM as `ghcr.io/jarvissax/rondo-server` and `rondo-updater` (`<version>` and
-   `latest`). The first time the images are published, set both packages to **Public** on GitHub
-   (your profile › Packages › the package › Package settings), or servers can't download them.
+2. Add the release to `server/CHANGELOG.md` (a `## <version> (date)` section: it becomes the
+   release's notes). Commit, tag `server-v<version>`, and push both. That's all: no GitHub release
+   by hand.
+3. The tag starts `.github/workflows/server-release.yml`, which checks that the tag, the server's
+   version and the changelog's section agree, runs the server's tests, builds the server and
+   updater images for x86-64 and 64-bit ARM as `ghcr.io/jarvissax/rondo-server` and
+   `rondo-updater` (`<version>` and `latest`), and then publishes the GitHub release itself, with
+   no assets and **not** marked latest (that stays Rondo's, and Innioasis Updater CE lists only
+   releases with a `rom.zip`). A release made by the workflow starts no other workflow, so each
+   release has one run. The first time the images are published, set both packages to **Public**
+   on GitHub (your profile › Packages › the package › Package settings), or servers can't download
+   them.
 4. Update your own server with **Update** on its admin page, which hears of the release from GitHub
    within 6 hours (`server/src/updates.ts`).
 

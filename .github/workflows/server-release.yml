@@ -1,23 +1,25 @@
-# Finishes a release of the Rondo server (tag server-v<version>) once it's published, or one named by
-# hand from the Actions tab. Rondo on the Y1 is released apart (tags v<version>: release.yml), so this
-# one skips those: a server release has no rom.zip (Innioasis Updater CE lists only releases with one)
-# and isn't marked latest on GitHub (Rondo's is).
+# Releases the Rondo server when its tag is pushed (server-v<version>), or a tag named by hand from the
+# Actions tab. Rondo on the Y1 has its own releases (tags v<version>: release.yml), and each release
+# starts one workflow: this one creates the server's GitHub release itself, with the workflow's own
+# token, and GitHub starts no other workflow for a release made that way.
 #
-# 1. checks that the tag and the server's version (tools/set-version.sh --check server) agree, and
-#    runs the server's tests;
+# 1. checks that the tag and the server's version (tools/set-version.sh --check server) agree, that
+#    server/CHANGELOG.md has the version's section, and runs the server's tests;
 # 2. builds the server's image and its updater's (infra/Dockerfile, infra/updater.Dockerfile) for
 #    x86-64 and 64-bit ARM and publishes them on GitHub's registry as <version> and latest, which
-#    the compose files run and the admin page's Update installs (it hears of the release from
-#    GitHub's list: server/src/updates.ts).
+#    the compose files run and the admin page's Update installs;
+# 3. publishes the GitHub release, with that section as its notes and no assets, not marked latest
+#    (Rondo's is, and Innioasis Updater CE lists only releases with a rom.zip). The admin page hears
+#    of it from GitHub's list (server/src/updates.ts) once the images are out.
 name: Server release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["server-v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "The release's tag, server-v<version>"
+        description: "The tag, server-v<version>"
         required: true
 
 concurrency:
@@ -25,20 +27,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  images:
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'server-v') }}
+  release:
     runs-on: ubuntu-26.04
     permissions:
-      contents: read
+      contents: write
       packages: write
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ inputs.tag || github.ref_name }}
       - name: Version agrees
         run: tools/set-version.sh --check server "${TAG#server-v}"
+      - name: Notes from server/CHANGELOG.md
+        run: |
+          version="${TAG#server-v}"
+          # the version's section, without its heading
+          awk -v h="## $version " 'index($0, h) == 1 {on = 1; next} on && /^## / {exit} on' server/CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md" || { echo "::error::server/CHANGELOG.md has no '## $version' section"; exit 1; }
+          cat "$RUNNER_TEMP/notes.md"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -98,3 +106,14 @@ jobs:
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha,scope=updater
           cache-to: type=gha,scope=updater,mode=max
+      - name: The release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${TAG#server-v}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Rondo server $version is out already"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
+              --title "Rondo server $version" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
