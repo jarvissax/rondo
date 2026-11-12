@@ -9,13 +9,14 @@
 //   screen going dark by itself, a press wakes it and does what it does (it timed out while being
 //   looked at: the press was meant). A swallowed key is let go after 3 s, even if its release is lost. Power (KEY_POWER, if it comes) turns the screen off; held, it opens the Power screen.
 // - Off, the backlight goes first (a key brings it back at once); 10 s later early suspend. A wakelock
-//   is held while anything plays.
+//   is held while anything plays or downloads.
 // - The battery: shut down at 0 % unplugged and above 68 °C (BatteryService), "Battery low" at 15 %.
 #include <map>
 #include <set>
 
 #include "../platform/power.h"
 #include "app.h"
+#include "downloads.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -259,7 +260,8 @@ bool powerTick(int64_t now) {
   // the audio policy is told, as Android's WiredAccessoryManager did: sound goes to the jack
   if (jack != headset) g_player.wired(jack);
   headset = jack;
-  power::hold(s.playing || s.fmOn || s.fmStarting);
+  // and while a download runs: unplugged with the screen off, the Y1 suspended mid-download
+  power::hold(s.playing || s.fmOn || s.fmStarting || downloadsActive());
   // the timeout (Settings › Screen off after); the video player and Shorts keep the screen on
   // (development: RONDO_SCREEN_ON=1 keeps it on, for the parity scripts)
   static const bool screenOn = g_development && getenv("RONDO_SCREEN_ON") != nullptr;

@@ -222,6 +222,70 @@ void prepare(const std::string& id) {
 
 int lastResolveOk() { return g_lastOk; }
 
+// [from, end] of a format in 4 MB pieces, three fetched at once (each worker its own connection), written
+// in order, at most three pieces ahead of the writer (16 MB in memory at most). One 1 MB piece at a
+// time spent most of its time waiting for googlevideo's first byte: a download came in at 0.4 MB/s on
+// a Wi-Fi that does 1.9 (Nov 12). False when a piece failed or the writer stopped.
+static bool parallelPieces(const std::string& id, int itag, int64_t from, int64_t end, const Write& write) {
+  constexpr int64_t kBig = 4 << 20;
+  constexpr int kWorkers = 3, kAhead = 3;
+  struct Piece {
+    int code = 0;
+    std::string body;
+  };
+  const int64_t count = (end - from + kBig) / kBig;
+  std::mutex mu;
+  std::condition_variable cv;
+  std::map<int64_t, Piece> ready;
+  int64_t next = 0, written = 0;
+  bool stop = false;
+  auto worker = [&] {
+    for (;;) {
+      int64_t k;
+      {
+        std::unique_lock<std::mutex> l(mu);
+        cv.wait(l, [&] { return stop || next >= count || next < written + kAhead; });
+        if (stop || next >= count) return;
+        k = next++;
+      }
+      int64_t s = from + k * kBig, e = std::min(end, s + kBig - 1);
+      Piece p;
+      // googlevideo may answer a range short: the rest asked for until the piece is whole
+      while (!p.code && int64_t(p.body.size()) < e - s + 1) {
+        std::string more;
+        p.code = fetch(id, itag, s + int64_t(p.body.size()), e, more);
+        if (!p.code && more.empty()) p.code = 502;
+        p.body += more;
+      }
+      std::lock_guard<std::mutex> l(mu);
+      ready[k] = std::move(p);
+      cv.notify_all();
+    }
+  };
+  std::vector<std::thread> workers;
+  for (int i = 0; i < kWorkers && i < count; i++) workers.emplace_back(worker);
+  bool ok = true;
+  for (int64_t k = 0; k < count && ok; k++) {
+    Piece p;
+    {
+      std::unique_lock<std::mutex> l(mu);
+      cv.wait(l, [&] { return ready.count(k) > 0; });
+      p = std::move(ready[k]);
+      ready.erase(k);
+      written = k + 1;
+      cv.notify_all();
+    }
+    ok = !p.code && write(p.body.data(), p.body.size());
+  }
+  {
+    std::lock_guard<std::mutex> l(mu);
+    stop = true;
+    cv.notify_all();
+  }
+  for (std::thread& t : workers) t.join();
+  return ok;
+}
+
 void streamRoute(const Request& r, Response& out) {
   std::string id;
   int itag = 0;
@@ -276,6 +340,8 @@ void streamRoute(const Request& r, Response& out) {
     if (!write(first->data(), first->size())) return false;
     int64_t at = start + int64_t(first->size());
     if (int64_t(first->size()) < kStep && end < 0) return true;  // the end of a file of unknown length
+    // a known end (a download, a whole file): the rest in parallel pieces
+    if (end >= 0) return at > end || parallelPieces(id, itag, at, end, write);
     while (end < 0 || at <= end) {
       int64_t e = end >= 0 ? std::min(end, at + kStep - 1) : at + kStep - 1;
       std::string piece;

@@ -190,6 +190,16 @@ int main(int argc, char** argv) {
     printf(ok ? "installed %s in %s\n" : "not installed: %s\n", ok ? version.c_str() : why.c_str(), argv[3]);
     return ok ? 0 : 1;
   }
+  // rondo --join <video> <audio> <out>: a download's last step on its own, timed (development)
+  if (argc == 5 && !strcmp(argv[1], "--join")) {
+    int64_t t0 = now_ns();
+    bool ok = shell::joinDownloadParts(argv[2], argv[3], argv[4]);
+    struct stat st {};
+    stat(argv[4], &st);
+    double s = double(now_ns() - t0) / 1e9;
+    printf("join %s: %.1f MB in %.1f s (%.1f MB/s)\n", ok ? "ok" : "failed", st.st_size / 1e6, s, st.st_size / 1e6 / s);
+    return ok ? 0 : 1;
+  }
   const std::string assets = exeDir();
   const bool dev = assets.compare(0, 15, "/data/local/tmp") == 0;  // a development run (adb push)
   const std::string data = dev ? assets : "/data/rondo";

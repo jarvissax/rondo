@@ -29,6 +29,7 @@ struct DownloadJob {
 // Queued (false: already on the card or in the queue); a toast says which
 bool downloadVideo(const Item& item, int quality);
 const std::vector<DownloadJob>& downloadJobs();  // this session's, the newest last
+bool downloadsActive();  // one waiting or running: the CPU stays up with the screen off (power_screens.cpp)
 void cancelDownload(const std::string& id);      // a waiting or running one; its parts deleted
 // The card's file of this video ("" none)
 std::string downloadedFile(const std::string& id);
@@ -40,6 +41,8 @@ std::vector<Item> downloadedVideos();
 bool deleteDownload(const std::string& file);
 // The queue's work, from the loop: true when something a screen shows changed
 bool downloadsTick();
+// development (rondo --join): a download's two parts into one .mp4, as its last step does
+bool joinDownloadParts(const std::string& video, const std::string& audio, const std::string& out);
 // The queue and the files as JSON (the dashboard's GET /api/downloads)
 std::string downloadsJson();
 

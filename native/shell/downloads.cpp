@@ -353,6 +353,10 @@ void start(int at) {
 
 }  // namespace
 
+bool joinDownloadParts(const std::string& video, const std::string& audio, const std::string& out) {
+  return join(video, audio, out, "", "", "");
+}
+
 bool downloadVideo(const Item& item, int quality) {
   if (item.id.empty() || item.id[0] == '/') return false;
   if (!downloadedFile(item.id).empty()) {
@@ -381,6 +385,12 @@ bool downloadVideo(const Item& item, int quality) {
 }
 
 const std::vector<DownloadJob>& downloadJobs() { return g_jobs; }
+
+bool downloadsActive() {
+  for (const DownloadJob& j : g_jobs)
+    if (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running) return true;
+  return false;
+}
 
 void cancelDownload(const std::string& id) {
   for (size_t i = 0; i < g_jobs.size(); i++) {
