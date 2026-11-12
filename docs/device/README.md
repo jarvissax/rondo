@@ -155,7 +155,10 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
     programs.
 
   `firmware/build.sh` takes all of them out and puts Android's `am` script back, and
-  `tools/firmware/BootImage.java` drops both services from `init.rc`. Rondo 3.0 needs this firmware
+  `tools/firmware/BootImage.java` drops both services from `init.rc`. Since 3.0.1 SPWall's tools go
+  too, though nothing starts them: `libwp.so` (a packet filter that asks SPWall), `libld.so` (a
+  code injector) and `libip.so` (a renamed iptables; Android's own `iptables` stays), with
+  `/system/channel/qbchannel.ini`, the stock firmware's distribution tag. Rondo 3.0 needs this firmware
   (firmware number 3), so a Y1 on 2.0.x gets it only by installing 3.0 with Innioasis Updater CE.
   Rondo also removes the same files itself at each start if it finds them (a bundle put on an older
   firmware by hand), with init's two services stopped (`native/services/base_rom.cpp`), and logs one

@@ -37,12 +37,15 @@ BASE_SHA256="d3b79ca460a3d3ec2c41ba57893127a0f9a90278e374dd33cdb5de5bb46e367e"
 # silent app installer, setuid root) and the copy of itself it keeps as net_server; wifi_init, which it
 # drops, and which fetches a file over plain HTTP and runs it as root, with wifi_check, its download
 # tool, and AndroidBoot.ttf, its state file; mp, aggdll's hidden copy of pm; SPWall (libsp.so), a
-# service that runs any command as root; and the paths the same family writes its downloads and
-# helpers to. native/services/base_rom.cpp removes the same list from firmwares already flashed.
+# service that runs any command as root, with its tools (libwp.so, a packet filter; libld.so, a code
+# injector; libip.so, a renamed iptables; nothing starts them); the stock firmware's distribution
+# tag (/system/channel/qbchannel.ini); and the paths the same family writes its downloads and helpers
+# to. native/services/base_rom.cpp removes the same list from firmwares already flashed.
 ROOT_DAEMONS=(
   /bin/aggdll /bin/net_server /bin/wifi_init /bin/wifi_check /bin/libsp.so /bin/mp /fonts/AndroidBoot.ttf
   /bin/wifi_looper /bin/wifi_pm /bin/pm_temp /bin/am_temp /bin/su_zxly
   /lib/libsu2update.so /lib/libsu2update.so.st /lib/libkey.so
+  /bin/libwp.so /bin/libld.so /bin/libip.so /channel/qbchannel.ini
 )
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
@@ -98,6 +101,7 @@ done
 for f in "${ROOT_DAEMONS[@]}"; do
   exists "$SYS" "$f" && dfs "$SYS" "rm $f" && echo "Removed /system$f"
 done
+if exists "$SYS" /channel && [[ -z "$(names "$SYS" /channel)" ]]; then dfs "$SYS" "rmdir /channel" && echo "Removed /system/channel"; fi
 # aggdll put a setuid-root program of its own in am's place and kept Android's am script as am2: the
 # script goes back. pm is Android's own, made writable by anyone: both get Android's owner and mode.
 if exists "$SYS" /bin/am2; then
@@ -177,7 +181,7 @@ for bad in rockbox innioasis Rockbox.kl 99Y1ButtonScript LatinIME Settings.apk F
   if names "$SYS" /app | grep -qi "^$bad" || names "$DATA" /data | grep -qi "$bad"; then fail "$bad is still in the firmware"; fi
 done
 cmp -s <(debugfs -R "cat /usr/keylayout/Generic.kl" "$SYS" 2>/dev/null) "$WORK/Stock.kl" || fail "Generic.kl isn't the stock layout"
-for f in "${ROOT_DAEMONS[@]}" /bin/am2; do
+for f in "${ROOT_DAEMONS[@]}" /bin/am2 /channel; do
   if exists "$SYS" "$f"; then fail "/system$f is still in the firmware"; fi
 done
 for f in /bin/am /bin/pm; do

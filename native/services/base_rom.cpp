@@ -25,17 +25,20 @@ namespace {
 
 // What firmware/build.sh leaves out (its ROOT_DAEMONS, the same list): zxly's agent and the copy of
 // itself it keeps, its downloader, the downloader's download tool and state file, its hidden copy of pm,
-// SPWall, and the paths the same family writes its downloads and helpers to
+// SPWall and its tools (a packet filter, a code injector, a renamed iptables), the stock firmware's
+// distribution tag, and the paths the same family writes its downloads and helpers to
 constexpr const char* kFiles[] = {
     "/system/bin/aggdll", "/system/bin/net_server", "/system/bin/wifi_init", "/system/bin/wifi_check",
     "/system/bin/libsp.so", "/system/bin/mp", "/system/fonts/AndroidBoot.ttf",
     "/system/bin/wifi_looper", "/system/bin/wifi_pm", "/system/bin/pm_temp", "/system/bin/am_temp",
     "/system/bin/su_zxly", "/system/lib/libsu2update.so", "/system/lib/libsu2update.so.st", "/system/lib/libkey.so",
+    "/system/bin/libwp.so", "/system/bin/libld.so", "/system/bin/libip.so", "/system/channel/qbchannel.ini",
 };
 // the programs among them: a process running one is ended (by its program's path, deleted or not)
 constexpr const char* kPrograms[] = {
     "/system/bin/aggdll", "/system/bin/net_server", "/system/bin/wifi_init", "/system/bin/wifi_check",
     "/system/bin/libsp.so", "/system/bin/wifi_looper", "/system/bin/wifi_pm", "/system/bin/su_zxly",
+    "/system/bin/libwp.so", "/system/bin/libld.so", "/system/bin/libip.so",
 };
 // init's services for them, on boot images before 3.0's (tools/firmware/BootImage.java)
 constexpr const char* kServices[] = {"aggsrv", "spwall"};
@@ -201,6 +204,7 @@ void* run(void*) {
         if (unlink(f) == 0) add(deleted, f);
         else add(problem, std::string(f) + " stays (" + strerror(errno) + ")");
       }
+      if (rmdir("/system/channel") == 0) add(deleted, "/system/channel");  // only once it's empty
       if (am) {
         if (restoreAm()) add(fixed, "am is Android's script again");
         else add(problem, std::string("am couldn't be put back (") + strerror(errno) + ")");
