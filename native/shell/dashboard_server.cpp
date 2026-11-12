@@ -1188,7 +1188,8 @@ Response Server::testServer() {
                      {"latencyMs", num(latency)},
                      {"ytdlp", h.ytdlp.empty() ? kNull : str(h.ytdlp)},
                      {"version", h.version.empty() ? kNull : str(h.version)},
-                     {"apiOk", boolean(h.api >= kServerApiNeeded)},
+                     {"versionNeeded", str(kServerVersionNeeded)},
+                     {"versionOk", boolean(!serverTooOld(h.version))},
                      {"playbackOk", h.lastResolveOk < 0 ? kNull : boolean(h.lastResolveOk == 1)},
                      {"signedIn", boolean(h.music || h.videos)}}));
   if (st > 0) return json(obj({{"ok", "false"}, {"error", str(st == 401 || st == 403 ? "unauthorized" : "HTTP " + std::to_string(st))}}));

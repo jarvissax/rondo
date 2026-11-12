@@ -145,6 +145,11 @@ bool safetyTick(int64_t now);
 bool updatesAvailable();
 std::string updateVersion(const std::string& json);
 bool isNewerVersion(const std::string& latest, const std::string& current);
+// The server against this Rondo's minimum (core/version.h's kServerVersionNeeded): too old for a
+// version below it, or none ("" : before 3.1.0). serverUpdateNeeded(): the words for it when the server
+// in use was last found too old (from any GET /healthz), "" otherwise and in direct mode.
+bool serverTooOld(const std::string& version);
+std::string serverUpdateNeeded();
 std::string bluetoothState();
 void bluetoothTick();
 // From the loop: offline pauses a streamed song, online resumes it; a failed stream is tried again

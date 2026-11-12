@@ -8,7 +8,8 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 ## 3.0.2 (November 12, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
-[update page](https://jarvissax.github.io/rondo/). It needs no server update.
+[update page](https://jarvissax.github.io/rondo/). With your own server, update it once to Rondo
+server 3.1.0 (its admin page offers it); from then on, Rondo and the server update apart.
 
 ### Changed
 
@@ -20,8 +21,9 @@ An update for the 3.0 firmware: Settings › System › Software update, the das
   update's download too).
 - **The Y1 stays awake while a download runs,** unplugged with the screen off too.
 - **Rondo and the server have their own version numbers now.** Most releases change only the Y1, so
-  they no longer ask you to update your server. When a Rondo needs a newer one, Settings › YouTube ›
-  Connection says **Server needs an update**.
+  they no longer ask you to update your server. This Rondo works with Rondo server 3.1.0 or newer;
+  with an older one, Settings › YouTube › Connection, the dashboard's server test and the YouTube
+  screens say **Server needs an update**.
 
 ### Fixed
 

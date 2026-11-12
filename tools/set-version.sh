@@ -13,9 +13,9 @@
 #   tools/set-version.sh --check device [3.0.2]  do the component's files agree (and say this version)?
 #   tools/set-version.sh --check                 both components, each on its own
 #
-# The firmware number (kFirmwareNeeded in native/core/version.h) and the device–server protocol's
-# (kServerApiNeeded there, API_VERSION in server/src/version.ts) are separate: raise them by hand,
-# only when a release needs a newer firmware, or a change needs both sides.
+# Two numbers in native/core/version.h are raised by hand: kFirmwareNeeded, when a Rondo release needs
+# a newer firmware, and kServerVersionNeeded, the oldest server a Rondo works with, when it needs
+# something only a newer server release has (released first).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NATIVE="$ROOT/native/core/version.h"

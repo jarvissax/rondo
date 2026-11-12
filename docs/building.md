@@ -294,10 +294,12 @@ firmware, so it points its owner to Innioasis Updater CE.
 Rondo on the Y1 and the server are released apart, each with its own version and tags:
 `v<version>` for Rondo (the firmware, the update bundle, the dashboard it serves and the update
 page) and `server-v<version>` for the server and its updater. Most changes are the Y1's, and a
-Rondo release no longer means a server update. When a change needs both sides, raise the
-device–server protocol's number in both, `API_VERSION` in `server/src/version.ts` and
-`kServerApiNeeded` in `native/core/version.h`, and release the server first: a Rondo that needs a
-newer server says so (**Server needs an update**).
+Rondo release no longer means a server update. The server says its version (`GET /healthz`), and
+Rondo names the oldest server it works with: `kServerVersionNeeded` in `native/core/version.h`.
+When Rondo needs something only a newer server has, release the server first, then raise
+`kServerVersionNeeded` to that version in the Rondo release; a Rondo with an older server says so
+(**Server needs an update**). A server release keeps working with the Rondos already out there: it
+adds, and doesn't change or take away what they use.
 
 ### Rondo (the Y1)
 

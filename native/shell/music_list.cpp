@@ -95,6 +95,7 @@ std::string httpProblem(int status, const std::string& path) {
 std::string offlineOr(const std::string& problem) {
   if (!directMode() && g_config.server.url.empty()) return "No music server yet.\nConnect one in Settings \xe2\x80\xba Server.";
   if (!g_app->status().online) return "No Wi-Fi connection.\nConnect in Settings \xe2\x80\xba Wi-Fi, then press center.";
+  if (std::string old = serverUpdateNeeded(); !old.empty()) return old;  // a server too old for this Rondo
   return problem + "\nPress center to try again";
 }
 

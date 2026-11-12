@@ -2778,7 +2778,7 @@ async function testServer() {
   if (r.ok) {
     res.innerHTML = `
       <div class="row"><svg class="i ok-ico" aria-hidden="true"><use href="#i-check"/></svg><div class="row-main"><div class="row-title">Connected</div></div><div class="row-value strong">${r.latencyMs} ms</div></div>
-      ${r.apiOk === false ? testRow(false, 'Server needs an update', 'This Rondo needs a newer Rondo server. Update it on the server’s admin page.', r.version || '') : ''}
+      ${r.versionOk === false ? testRow(false, 'Server needs an update', `This Rondo needs Rondo server ${r.versionNeeded} or newer. Update it on the server’s admin page.`, r.version || 'Older than 3.1.0') : testRow(true, 'Server', '', r.version ? `Rondo server ${r.version}` : '')}
       ${testRow(r.playbackOk !== false, 'Playback', r.playbackOk === false ? 'The server’s last playback check failed. Update yt-dlp on the server’s admin page.' : '', r.playbackOk === false ? 'Failing' : r.playbackOk ? 'Working' : 'Not checked yet', r.ytdlp ? `yt-dlp ${r.ytdlp}` : '')}
       ${testRow(true, 'YouTube account', r.signedIn ? '' : 'Search and playback work without one. Sign in on the server’s admin page for your home, subscriptions and playlists.', r.signedIn ? 'Signed in' : 'Signed out', '', !r.signedIn)}`;
   } else {

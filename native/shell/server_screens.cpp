@@ -32,7 +32,12 @@ std::string hostOf(std::string url) {
 // Api.health(): the accounts the server has feed YouTube Music's Library and YouTube's Subscriptions and
 // History; remembered so the tabs don't jump before the next check (servers older than this send
 // nothing and keep every tab)
+// what the last GET /healthz said of the server's version (serverUpdateNeeded)
+std::string g_serverVersion;
+bool g_serverChecked = false;
+
 void takeAccounts(const Health& h) {
+  g_serverVersion = h.version, g_serverChecked = true;
   if (h.music == g_prefs.accountMusic && h.videos == g_prefs.accountVideos) return;
   g_prefs.accountMusic = h.music, g_prefs.accountVideos = h.videos;
   savePrefsNow();
@@ -155,8 +160,9 @@ class ServerScreen : public ShellListScreen {
         if (!*alive) return;
         if (status != 200) return failed(status);
         std::vector<Row> rows = {entry("Answered in", "", std::to_string(ms) + " ms")};
-        if (h.api < kServerApiNeeded) rows.push_back(entry("Server needs an update", "Update it on its admin page"));
-        rows.push_back(entry("Server", "", h.version.empty() ? "older than 3.1" : h.version));
+        if (serverTooOld(h.version))
+          rows.push_back(entry("Server needs an update", std::string("This Rondo needs ") + kServerVersionNeeded + " or newer: update it on its admin page"));
+        rows.push_back(entry("Server", "", h.version.empty() ? "older than 3.1.0" : h.version));
         rows.push_back(entry("yt-dlp", "", h.ytdlp.empty() ? "missing" : h.ytdlp));
         rows.push_back(entry("Playback", "", h.lastResolveOk == 1 ? "working" : h.lastResolveOk == 0 ? "failing" : "not tried yet"));
         rows.push_back(entry("YouTube account", "", h.music || h.videos ? "signed in" : "signed out"));
@@ -263,7 +269,7 @@ void serverState(std::function<void(const std::string&)> done) {
     g_core.get("/time", 0, [done, h](int status, const std::string&) {
       if (status == 401 || status == 403) return done("Token refused");
       if (status == 0) return done("Unreachable");
-      if (h.api < kServerApiNeeded) return done("Server needs an update");
+      if (serverTooOld(h.version)) return done("Server needs an update");
       if (h.ytdlp.empty()) return done("yt-dlp missing");
       if (h.lastResolveOk == 0) return done("Playback failing");
       done(h.music || h.videos ? "OK \xc2\xb7 signed in" : "OK \xc2\xb7 signed out");
@@ -306,6 +312,14 @@ std::string updateVersion(const std::string& json) {
 
 // "1.0.10" is newer than "1.0.9" (server/src/updates.ts compares the same way); a part that isn't a
 // number makes any different version newer
+bool serverTooOld(const std::string& version) { return version.empty() || isNewerVersion(kServerVersionNeeded, version); }
+
+std::string serverUpdateNeeded() {
+  if (directMode() || g_config.server.url.empty() || !g_serverChecked || !serverTooOld(g_serverVersion)) return "";
+  return std::string("Your Rondo server is too old for this Rondo: it needs ") + kServerVersionNeeded + " or newer" +
+         (g_serverVersion.empty() ? "" : ", yours is " + g_serverVersion) + ".\nUpdate it on the server's admin page.";
+}
+
 bool isNewerVersion(const std::string& latest, const std::string& current) {
   if (latest.empty() || current.empty()) return false;
   auto parts = [](const std::string& s) {

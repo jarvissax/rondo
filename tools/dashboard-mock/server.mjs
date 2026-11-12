@@ -608,7 +608,7 @@ async function api(req, res, url) {
     await sleep(500 + Math.random() * 900);
     if (/bad|invalid|localhost/.test(server.url)) return send(res, 200, { ok: false, error: 'unreachable' });
     if (!server.token) return send(res, 200, { ok: false, error: 'unauthorized' });
-    return send(res, 200, { ok: true, latencyMs: 120 + Math.floor(Math.random() * 140), ytdlp: '2026.10.29.233517', version: '3.1.0', apiOk: true, cookies: true });
+    return send(res, 200, { ok: true, latencyMs: 120 + Math.floor(Math.random() * 140), ytdlp: '2026.10.29.233517', version: '3.1.0', versionNeeded: '3.1.0', versionOk: true, cookies: true });
   }
 
   return err(res, 404, 'not found');

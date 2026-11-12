@@ -1,6 +1,6 @@
 // Builds the Fastify instance; main.ts listens, tests inject.
 
-import { API_VERSION, VERSION } from "./version.js";
+import { VERSION } from "./version.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Admin, LogRing, registerAdminRoutes } from "./admin.js";
 import { registerAuth, redactUrl } from "./auth.js";
@@ -82,7 +82,7 @@ export async function buildApp(
     serverUpdate: opts.serverUpdate,
   });
   // account: which account feeds exist (the Rondo hides the others and runs signed out)
-  app.get("/healthz", async () => ({ ...health.state(), version: VERSION, api: API_VERSION, account: admin.accountFeatures() }));
+  app.get("/healthz", async () => ({ ...health.state(), version: VERSION, account: admin.accountFeatures() }));
   registerAdminRoutes(app, admin);
 
   registerCors(app); // before auth, so preflights and 401s carry the CORS headers

@@ -38,10 +38,11 @@ the same paths either way.
   home mixes the TV app's topic pages (music, gaming, news, sports), since its own home is empty and
   Trending is gone.
 - **Versions:** the server has its own, released apart from Rondo on the Y1 (tags `server-v<version>`
-  and `v<version>`). `GET /healthz` says it, with the device–server protocol's number:
-  `"version": "3.1.0", "api": 1` (`server/src/version.ts`). `api` goes up only when a change needs
-  both sides; a Rondo that needs a higher one (`kServerApiNeeded` in `native/core/version.h`) asks
-  for a server update. A server before 3.1.0 says neither, which counts as 1.
+  and `v<version>`). `GET /healthz` says it: `"version": "3.1.0"` (`server/src/version.ts`). A Rondo
+  checks it against the oldest server it works with (`kServerVersionNeeded` in
+  `native/core/version.h`) and asks for an update of an older one, or of one that says no version
+  (before 3.1.0). So a server release keeps working with the Rondos already out there: it adds, and
+  doesn't change or take away what they use.
 - **Forgotten admin password:** remove `adminHash` from `/data/config.json` and restart; the log
   shows a new setup code (`docs/server.md` has the command). The device stays connected.
 - **http and https:** the server speaks plain HTTP on port 3000. On a VPS, Caddy in front adds
