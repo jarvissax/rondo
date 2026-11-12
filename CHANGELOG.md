@@ -4,6 +4,38 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
+## 3.0.0 (November 12, 2026)
+
+A new firmware without the stock firmware's root backdoors. It installs only with Innioasis
+Updater CE (Y1, Type A, Rondo 3.0.0); turn on **Keep my settings** so your settings, Wi-Fi networks,
+server connection and paired headphones stay. Software update on 2.0 shows 3.0.0 but can't install it
+([Moving from Rondo 2.0](docs/install.md#moving-from-rondo-20)).
+
+### Security
+
+- **The stock firmware's root backdoors are gone.** Innioasis's firmware, and so every Rondo
+  firmware before this one, ran three programs as root that nothing on the Y1 needs:
+  - `aggdll`, the agent of an app pusher ("zxly"): a hidden `su` and a silent app installer, which
+    also put a program of its own in place of Android's `am`;
+  - `wifi_init`, the downloader it starts: it checks in with a server and runs what it downloads
+    as root. That server doesn't answer today;
+  - SPWall (`libsp.so`), a service that runs commands as root for other programs.
+
+  The firmware leaves all three out, with what they left behind, and puts Android's own `am` back.
+  Rondo also removes them itself if it ever finds them.
+
+### Fixed
+
+- **A Y1 installed again keeps the firmware's Rondo.** With Keep my settings, a Y1 that took an update over
+  Wi-Fi before would start that older update instead of the Rondo the firmware brought; an update
+  no newer than the firmware's own Rondo is now set aside.
+
+### Changed
+
+- **Rondo 1.0's Android app is out of the repository.** Its source stays at the
+  [v1.0.2](https://github.com/jarvissax/rondo/tree/v1.0.2) tag; the dashboard's page, the font and
+  the root certificates it shared with Rondo 2.0 moved to `native/assets/`.
+
 ## 2.0.1 (November 12, 2026)
 
 A fix for Wi-Fi on a Y1 that installed 2.0.0 without keeping its data. Such a Y1 can't update over

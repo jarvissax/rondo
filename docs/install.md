@@ -41,11 +41,19 @@ The same thing, with the file downloaded by hand:
 
 The Updater deletes the `rom.zip` once it has unpacked it, so download it again if you need it later.
 
+### Moving from Rondo 2.0
+
+Rondo 3.0 comes with a new firmware, without the root backdoors Innioasis's own firmware (and so
+Rondo 2.0's) ran, so it installs with Innioasis Updater CE like the first time: choose **Rondo**,
+version 3.0.0. If the Updater offers **Keep my settings**, choose it, and your settings, Wi-Fi networks,
+server connection and paired headphones stay. Software update on 2.0 shows 3.0.0 but can't install
+it, because the firmware has to change too. Your music and playlists on the card are never touched.
+
 ### Moving from Rondo 1.0
 
 Rondo 2.0 is a new firmware, so it installs with Innioasis Updater CE like the first time (an
 update over Wi-Fi can't do it; Rondo 1.0's dashboard says so, and its Software update with a
-server). If the Updater offers **Keep Data**, choose it: on its first start Rondo 2.0 takes over
+server). If the Updater offers **Keep my settings**, choose it: on its first start Rondo 2.0 takes over
 1.0's settings, server connection, theme and radio stations, and your Wi-Fi networks and paired
 Bluetooth headphones stay. Without it they start fresh. Your music and playlists on the card are
 never touched.
@@ -99,7 +107,7 @@ Now and then a release also changes the firmware around Rondo (the system it run
 screen, for example). The Y1, the dashboard and the update page recognize such a
 release: instead of **Install**, they say it needs a new firmware. Install it with Innioasis
 Updater CE, [the same way as the first time](#install-with-innioasis-updater-ce). If the Updater
-offers **Keep Data**, choose it and your settings, Wi-Fi and server connection stay too; without
+offers **Keep my settings**, choose it and your settings, Wi-Fi and server connection stay too; without
 it they're reset (your music on the card is never touched).
 
 Still on Rondo 1.0? Its updates are `rondo-<version>.apk` files, and its Software update asks your
