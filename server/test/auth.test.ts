@@ -25,6 +25,10 @@ describe("auth", () => {
     const res = await app.inject({ url: "/healthz" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ytdlp: null, lastResolveOk: null });
+    // the server's own version and the device–server protocol's number (src/version.ts)
+    const { version, api } = res.json();
+    expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(api).toBe(1);
   });
 
   it("rejects a request without a token", async () => {

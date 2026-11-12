@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
-import { isNewer, registerUpdateRoutes, RONDO_LATEST, Updates, YTDLP_RELEASES } from "../src/updates.js";
+import { isNewer, registerUpdateRoutes, RONDO_LATEST, SERVER_RELEASES, Updates, YTDLP_RELEASES } from "../src/updates.js";
 
 describe("isNewer", () => {
   it("compares versions part by part", () => {
@@ -33,15 +33,17 @@ const latest = (version: string, more: Record<string, unknown> = {}) => ({
 describe("Updates", () => {
   const release = (tag: string) => ({ tag_name: tag, html_url: `https://github.com/x/releases/tag/${tag}`, published_at: "2026-11-02T10:00:00Z" });
 
-  it("asks the update page for Rondo and GitHub for yt-dlp, and keeps the answers", async () => {
+  it("asks the update page for Rondo and GitHub for the server and yt-dlp, and keeps the answers", async () => {
     const asked: string[] = [];
     const u = new Updates(async (url) => {
       asked.push(url);
+      if (url === SERVER_RELEASES) return [release("v1.0.2"), release("server-v1.1.0")];
       return url === RONDO_LATEST ? latest("1.0.1") : release("2026.11.01.233542");
     });
     await u.check();
-    expect(asked.sort()).toEqual([RONDO_LATEST, YTDLP_RELEASES].sort());
+    expect(asked.sort()).toEqual([RONDO_LATEST, SERVER_RELEASES, YTDLP_RELEASES].sort());
     expect(u.get()).toMatchObject({
+      server: { version: "1.1.0", url: "https://github.com/x/releases/tag/server-v1.1.0" },
       rondo: { version: "1.0.1", firmware: 1, publishedAt: Date.parse("2026-11-02T10:00:00Z"), apk: { url: "https://jarvissax.github.io/rondo/rondo.apk", size: 6413645 } },
       ytdlp: { version: "2026.11.01.233542" },
     });
@@ -65,10 +67,30 @@ describe("Updates", () => {
     expect(u.get().rondo?.version).toBe("1.0.1");
   });
 
+  it("takes the newest server release, not Rondo's own, a draft or a prerelease", async () => {
+    const list = [
+      release("v3.0.2"),
+      { ...release("server-v3.2.0"), draft: true },
+      { ...release("server-v3.1.1"), prerelease: true },
+      release("server-v3.0.10"),
+      release("server-v3.1.0"),
+      release("v9.0.0"),
+    ];
+    const u = new Updates(async (url) => (url === SERVER_RELEASES ? list : null));
+    await u.check();
+    expect(u.get().server?.version).toBe("3.1.0");
+  });
+
+  it("has no server release before the first one", async () => {
+    const u = new Updates(async (url) => (url === SERVER_RELEASES ? [release("v3.0.1"), release("v3.0.0")] : null));
+    await u.check();
+    expect(u.get().server).toBeNull();
+  });
+
   it("never asks when turned off", async () => {
     const u = new Updates(null);
     await u.check();
-    expect(u.get()).toEqual({ rondo: null, ytdlp: null, checkedAt: null });
+    expect(u.get()).toEqual({ server: null, rondo: null, ytdlp: null, checkedAt: null });
   });
 });
 

@@ -2,6 +2,7 @@
 // sign-in, the YouTube account (cookies.txt), the one Rondo device and its token, yt-dlp, recent
 // warnings. The page itself is static files in server/admin/, served at /admin/.
 
+import { VERSION } from "./version.js";
 import { execFile } from "node:child_process";
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -26,7 +27,6 @@ const MIN_PASSWORD = 10;
 const GLOBAL_FAILURES = 30;
 const GLOBAL_WINDOW_MS = 60 * 60 * 1000;
 // the server's version, from package.json (one folder up from both src/ and dist/)
-const VERSION: string = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 export interface Account {
   name: string;
@@ -295,7 +295,7 @@ export class Admin {
   private updates(ytdlp: string | null | undefined) {
     const u = this.deps.updates?.get();
     return {
-      server: u?.rondo && isNewer(u.rondo.version, VERSION) ? u.rondo : null,
+      server: u?.server && isNewer(u.server.version, VERSION) ? u.server : null,
       ytdlp: u?.ytdlp && isNewer(u.ytdlp.version, ytdlp) ? u.ytdlp : null,
       checkedAt: u?.checkedAt ?? null,
     };

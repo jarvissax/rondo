@@ -519,7 +519,7 @@ function renderOverview() {
   const news = st0().updates || {};
   if (news.ytdlp) todo.push(['info', `yt-dlp ${news.ytdlp.version} is out. Updating keeps playback working when YouTube changes.`, '#resolver', 'Update']);
   if (news.server) {
-    const text = `Rondo ${news.server.version} is out. This server runs ${a.s.version}.`;
+    const text = `Rondo server ${news.server.version} is out. This server runs ${a.s.version}.`;
     todo.push(S.serverUpdate?.available ? ['info', text, '#server-update', 'Update'] : ['info', text, UPDATE_HELP, 'How to update']);
   }
   const problems = todo.filter((t) => t[0] !== 'info').length;

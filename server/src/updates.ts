@@ -1,7 +1,8 @@
-// What is newer than what this server runs: the latest Rondo release (the server and the device
-// firmware share a version) and yt-dlp's latest nightly build, the channel the container's yt-dlp
-// follows (infra/entrypoint.sh). Asked at most every 6 hours, in the background (GitHub allows 60
-// unauthenticated requests an hour); the admin page shows the last answer. Rondo's comes from the
+// What is newer: the latest server release (tags server-v<version>, released apart from Rondo on the
+// Y1 since 3.1.0: .github/workflows/server-release.yml), the latest Rondo release for the Y1 (GET
+// /update passes it on to the device) and yt-dlp's latest nightly build, the channel the container's
+// yt-dlp follows (infra/entrypoint.sh). Asked at most every 6 hours, in the background (GitHub allows
+// 60 unauthenticated requests an hour); the admin page shows the last answer. Rondo's comes from the
 // update page's latest.json, the same answer the dashboard and the update page get, which appears
 // only once a release's rom.zip is out (.github/workflows/release.yml).
 
@@ -19,13 +20,16 @@ export interface Release {
 }
 
 export interface UpdateState {
-  rondo: Release | null;
+  server: Release | null; // this server's newest release
+  rondo: Release | null; // Rondo's for the Y1
   ytdlp: Release | null;
   checkedAt: number | null;
 }
 
 export const RONDO_LATEST = "https://jarvissax.github.io/rondo/latest.json";
 export const YTDLP_RELEASES = "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest";
+export const SERVER_RELEASES = "https://api.github.com/repos/jarvissax/rondo/releases?per_page=40";
+const SERVER_TAG = "server-v";
 const EVERY_MS = 6 * 60 * 60 * 1000;
 
 export type FetchJson = (url: string) => Promise<unknown>;
@@ -84,6 +88,19 @@ function toRondo(j: unknown): Release | null {
   return release;
 }
 
+// the newest server release in GitHub's list: tagged server-v<version>, neither a draft nor a
+// prerelease (the list holds Rondo's v<version> releases too)
+function toServer(j: unknown): Release | null {
+  if (!Array.isArray(j)) return null;
+  let best: Release | null = null;
+  for (const r of j as Array<{ tag_name?: unknown; html_url?: unknown; published_at?: unknown; draft?: unknown; prerelease?: unknown }>) {
+    if (typeof r?.tag_name !== "string" || !r.tag_name.startsWith(SERVER_TAG) || r.draft || r.prerelease || typeof r.html_url !== "string") continue;
+    const version = r.tag_name.slice(SERVER_TAG.length);
+    if (!best || isNewer(version, best.version)) best = { version, url: r.html_url, publishedAt: Date.parse(String(r.published_at)) || null };
+  }
+  return best;
+}
+
 // "1.0.10" is newer than "1.0.9", part by part; yt-dlp's "2026.11.01.233542" compares the same way
 export function isNewer(latest: string | null | undefined, current: string | null | undefined): boolean {
   if (!latest || !current) return false;
@@ -99,7 +116,7 @@ export function isNewer(latest: string | null | undefined, current: string | nul
 }
 
 export class Updates {
-  private state: UpdateState = { rondo: null, ytdlp: null, checkedAt: null };
+  private state: UpdateState = { server: null, rondo: null, ytdlp: null, checkedAt: null };
   private running: Promise<void> | null = null;
 
   // null: never ask (tests, and servers started with UPDATE_CHECK=0)
@@ -122,12 +139,18 @@ export class Updates {
   async check(): Promise<void> {
     const fetchJson = this.fetchJson;
     if (!fetchJson) return;
-    const [rondo, ytdlp] = await Promise.all([
+    const [server, rondo, ytdlp] = await Promise.all([
+      fetchJson(SERVER_RELEASES).then(toServer, () => null),
       fetchJson(RONDO_LATEST).then(toRondo, () => null),
       fetchJson(YTDLP_RELEASES).then(toRelease, () => null),
     ]);
     // a failed check keeps what the last one found
-    this.state = { rondo: rondo ?? this.state.rondo, ytdlp: ytdlp ?? this.state.ytdlp, checkedAt: Date.now() };
+    this.state = {
+      server: server ?? this.state.server,
+      rondo: rondo ?? this.state.rondo,
+      ytdlp: ytdlp ?? this.state.ytdlp,
+      checkedAt: Date.now(),
+    };
   }
 }
 
