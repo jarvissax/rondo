@@ -4,6 +4,18 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
+## 2.0.1 (not released yet)
+
+### Fixed
+
+- **Wi-Fi after a fresh install.** On a Y1 installed without keeping its data, Wi-Fi never came on
+  ("Wi-Fi didn't start"): Rondo powered the Wi-Fi chip on while its driver was still loading, the
+  driver started twice, and the second one left the chip stuck until the next restart. Rondo now waits
+  for the driver first ([#3](https://github.com/jarvissax/rondo/issues/3)).
+- **Next and Previous in Now Playing slide smoothly.** The cover slid in a quarter of a second late and
+  most of the way already done, and the new cover appeared only at the end: the slide now starts on the
+  press, and the covers of the songs before and after are ready before you press.
+
 ## 2.0.0 (November 11, 2026)
 
 A new firmware, with Rondo rebuilt as a program of its own, and YouTube that no longer needs a

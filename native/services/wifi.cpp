@@ -147,6 +147,36 @@ void Wifi::post(std::function<void()> job) {
 // eMMC's CID, so the same Y1 has the same address after any reflash: locally administered (02:...),
 // as an address not bought from the IEEE must be. The driver reads the record when it starts, so this
 // runs before every load. A record that isn't laid out like this is left alone.
+// The combo chip's Wi-Fi driver is a module that init's wlanLoader inserts at boot (about 9 s into a
+// cold start). Wi-Fi powered on before it is in races the module's own probe: inserted while the chip
+// is coming on, the module probes the chip itself, and WMT's power-on probes it again. The second
+// probe can't have IRQ 155 ("request irq 155 fail"), WMT powers the chip down, the first probe's
+// firmware download then fails ("Firmware scatter download failed"), and IRQ 155 stays taken until
+// the next boot, so Wi-Fi never starts (GitHub issue #3, every clean install of 2.0.0; a Y1 with
+// 1.0's data happened to boot in the other order). So the first power-on waits until wlanLoader has
+// finished and the module is listed: true once it is, false after 40 s (a firmware without the
+// service or the module goes on as before).
+static bool wlanDriverIn() {
+  char st[PROPERTY_VALUE_MAX];
+  property_get("init.svc.wlanLoader", st, "");
+  if (!strcmp(st, "running") || !strcmp(st, "restarting")) return false;
+  bool in = false;
+  if (FILE* m = fopen("/proc/modules", "r")) {
+    char line[256];
+    while (!in && fgets(line, sizeof(line), m)) in = !strncmp(line, "wlan", 4);
+    fclose(m);
+  }
+  return in;
+}
+static bool waitForWlanDriver() {
+  for (int i = 0; i < 200; i++) {
+    if (wlanDriverIn()) return true;
+    usleep(200000);
+  }
+  fprintf(stderr, "rondo-core: Wi-Fi's driver module wasn't in after 40 s: powering on anyway\n");
+  return false;
+}
+
 static uint8_t nvramCheck(const uint8_t* d, size_t n) {
   uint8_t c = 0;
   for (size_t i = 0; i < n; i++) c = i % 2 ? uint8_t(c ^ d[i]) : uint8_t(c + d[i]);
@@ -294,11 +324,11 @@ void Wifi::workLoop() {
 // the driver loaded, the supplicant started and reached
 void Wifi::turnOn() {
   update([](CoreState& s) { s.wifiEnabled = 1; });
-  // the driver: at a cold boot the combo chip is ready for Wi-Fi only about 9 s after the start (its
-  // firmware through 6620_launcher; Nov 9's first boot: hald's Set "/dev/wmtWifi" [1] failed at 8 s,
-  // wlanLoader had the chip's version a second later), so a refusal is asked again every second for up
-  // to 30 s, unless the UI asks for something else meanwhile
+  // the driver: at a cold boot it is in only about 9 s after the start (wlanLoader); powering on
+  // before that breaks Wi-Fi until the next boot (wlanDriverIn), so this waits for it first. A refusal
+  // after that is asked again every second for up to 30 s, unless the UI asks for something else
   fixMac();
+  waitForWlanDriver();
   bool ok = false;
   for (int i = 0; i < 30 && !ok; i++) {
     if (i) {

@@ -368,6 +368,12 @@ class NowPlayingScreen : public Screen {
     bool changed = scrub_.tick(now);
     if (artMissing_ && now - artTried_ >= 3000 * kMs) artTried_ = now, changed = true;  // draw: ask again
     PlayerState s = g_player.state();
+    // A song change starts its slide here, before the loop asks step() whether anything moves, and a
+    // slide under way counts as a change: noticed only in draw() (the player names the new song a moment
+    // after the press's frame asked), the slide's first frame was its last until the loop's next look
+    // 250 ms later, and most of the 320 ms slide was gone by then: the cover jumped instead of sliding.
+    noticeChange(s.index >= 0 ? std::string(s.path) : std::string(), s);
+    if (changing(now)) changed = true;
     Shown v = shownOf(s);
     if (!(v == shown_)) changed = true;
     if (lyricsOn()) {
@@ -390,6 +396,12 @@ class NowPlayingScreen : public Screen {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
     if (artMissing_) sooner(artTried_ + 3000 * kMs);
+    // Next or Previous just sent: looked at every frame until the player names the new song (it does
+    // within milliseconds); then the slide's frames, without a pause. Noticed while a frame was drawn
+    // (after the loop had asked whether anything moves), the slide waited for the loop's next look,
+    // 250 ms later: most of its 320 ms were gone, and the cover jumped instead of sliding.
+    if (hintAt_ && now_ns() - hintAt_ < 1000 * kMs) sooner(now_ns() + 4 * kMs);
+    if (changing(now_ns())) sooner(now_ns());
     if (lyricsOn()) {
       if (loadPending_) sooner(now_ns() + 20 * kMs);  // the loader's answer
       if (lyrics_.layingOut()) sooner(now_ns());  // the next slice of the layout
@@ -477,6 +489,7 @@ class NowPlayingScreen : public Screen {
     e.c.popClip();
     e.c.layer(6);
     float cx = ax + art + e.dp(14), cw = w - e.dp(12) - cx;
+    if (t >= 1) warmNeighbors(e, s, art, cw);
     float cy = ay + e.dp(2), bottom = ay + art;
     // the title, artist and album: the new ones slide a little and fade in, the ones before out
     auto songText = [&](const std::string& p, float dx, float alpha) {
@@ -796,6 +809,55 @@ class NowPlayingScreen : public Screen {
     return std::min(1.f, float(now - changeAt_) / 320e6f);
   }
   bool changing(int64_t now) const { return changeAt_ && now - changeAt_ < 340 * kMs; }
+  // The songs before and after this one have their covers (and backdrops) loaded while it plays, so
+  // Next or Previous slides in a cover that is already there. Asked for only at the change, the cover
+  // came about 100 ms into the 320 ms slide, two thirds of its way: an empty frame slid in, and the
+  // cover faded in at the end, which looked like a lag.
+  void warmNeighbors(Env& e, const PlayerState& s, int art, float cw) {
+    if (s.index < 0) return;
+    // which songs they are: worked out again when the song, the order or the modes change
+    uint64_t key = uint64_t(uint32_t(s.index)) << 32 ^ uint64_t(uint32_t(s.count)) << 4 ^ uint64_t(s.shuffle ? 8 : 0) ^ uint64_t(s.repeat & 7);
+    if (key != neighborsKey_) {
+      neighborsKey_ = key;
+      neighbors_[0].clear(), neighbors_[1].clear();
+      // where Next and Previous go (engine.cpp kNext, kPrevious), not the song up next: with Repeat One
+      // that is this one again
+      const std::vector<std::string>& q = g_player.queue();
+      PlayerState full = g_player.state(true);
+      int n = std::min(full.count, kMaxQueue);
+      int after = full.pos + 1 < n ? full.pos + 1 : full.repeat == 1 && n > 0 ? 0 : -1, before = full.pos - 1;
+      for (int k = 0; k < 2; k++) {
+        int at = k ? after : before;
+        if (at < 0 || at >= n) continue;
+        int i = full.order[at];
+        if (i >= 0 && i < int(q.size())) neighbors_[k] = q[size_t(i)];
+      }
+    }
+    // their words shaped too, once (wrapping a title shapes it many times: about 17 ms on the Y1, which
+    // the slide's first frame paid, a refresh missed), in a still moment: a while after the last slide,
+    // in one of the progress bar's frames, where a long frame shows nothing
+    if (shapedKey_ != neighborsKey_ && (!changeAt_ || e.now - changeAt_ > 900 * kMs)) {
+      shapedKey_ = neighborsKey_;
+      for (const std::string& p : neighbors_) {
+        if (p.empty()) continue;
+        SongInfo song = songInfo(p);
+        auto parts = firstAndRest(song.subtitle);
+        wrap(e, song.title, 17, true, cw, 2);
+        label(e, parts.first, 13, false, cw);
+        label(e, parts.second, 11, false, cw);
+      }
+    }
+    for (const std::string& p : neighbors_) {
+      if (p.empty()) continue;
+      std::string a = artOf(p, 400);
+      if (a.empty()) continue;
+      float alpha = 0;
+      e.covers.get(a, art, art, 0, e.now, &alpha, 3 * 1000 * kMs);
+      e.covers.get(a, 6, 6, -art, e.now, &alpha, 3 * 1000 * kMs);
+    }
+  }
+  uint64_t neighborsKey_ = ~0ull, shapedKey_ = ~0ull;
+  std::string neighbors_[2];
   std::string lastPath_, fromPath_;
   int lastPos_ = -1, changeDir_ = 1, hintDir_ = 1;
   int64_t changeAt_ = 0, hintAt_ = 0;
