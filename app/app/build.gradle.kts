@@ -29,8 +29,8 @@ android {
         applicationId = "com.jarvissax.rondo"
         minSdk = 17
         targetSdk = 22
-        versionCode = 20000
-        versionName = "2.0.0"
+        versionCode = 20001
+        versionName = "2.0.1"
         multiDexEnabled = true
         buildConfigField("int", "FIRMWARE", "$firmwareLevel")
         manifestPlaceholders["firmware"] = "$firmwareLevel"

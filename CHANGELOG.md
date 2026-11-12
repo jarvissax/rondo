@@ -4,7 +4,12 @@ Rondo's releases, newest first. Each one is on the
 [releases page](https://github.com/jarvissax/rondo/releases), with the firmware (`rom.zip`) for
 Innioasis Updater CE and the update for a Y1 that already runs Rondo.
 
-## 2.0.1 (not released yet)
+## 2.0.1 (November 12, 2026)
+
+A fix for Wi-Fi on a Y1 that installed 2.0.0 without keeping its data. Such a Y1 can't update over
+Wi-Fi, so install 2.0.1 with Innioasis Updater CE (Rondo, 2.0.1) or over USB from the
+[update page](https://jarvissax.github.io/rondo/) in Chrome or Edge. Any other 2.0.0 gets it through
+Settings › System › Software update.
 
 ### Fixed
 
