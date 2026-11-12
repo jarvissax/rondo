@@ -17,22 +17,12 @@ own license.
 | [libjpeg-turbo](https://libjpeg-turbo.org) | IJG and BSD-3-Clause |
 | [SQLite](https://sqlite.org) | public domain |
 | [yyjson](https://github.com/ibireme/yyjson) | MIT |
-| [Roboto](https://github.com/googlefonts/roboto-3-classic) font | SIL Open Font License 1.1 |
+| [Roboto](https://github.com/googlefonts/roboto-3-classic) font | SIL Open Font License 1.1 (see `native/assets/fonts/NOTICE.txt`) |
 | [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) font | SIL Open Font License 1.1 |
 | ISRG Root X1 and ISRG Root YR certificates ([Let's Encrypt](https://letsencrypt.org/certificates/)) | public certificates |
 
-## In the Rondo 1.0 Android app (and its APK)
-
-| Project | License |
-| --- | --- |
-| [ExoPlayer](https://github.com/google/ExoPlayer) 2.19.1 | Apache-2.0 |
-| [OkHttp](https://github.com/square/okhttp) 3.12 and Okio | Apache-2.0 |
-| [AndroidX](https://developer.android.com/jetpack/androidx) (appcompat, core, recyclerview, media, multidex, lifecycle) | Apache-2.0 |
-| [Kotlin](https://kotlinlang.org) standard library, kotlinx.coroutines, kotlinx.serialization | Apache-2.0 |
-| [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) | BSD-3-Clause |
-| [ZXing](https://github.com/zxing/zxing) (QR codes) | Apache-2.0 |
-| [Roboto](https://github.com/googlefonts/roboto-3-classic) font | SIL Open Font License 1.1 (see `app/app/src/main/assets/fonts/NOTICE.txt`) |
-| ISRG Root X1 and ISRG Root YR certificates ([Let's Encrypt](https://letsencrypt.org/certificates/)) | public certificates |
+The Rondo 1.0 Android app (its source is at the [v1.0.2](https://github.com/jarvissax/rondo/tree/v1.0.2) tag) lists its
+own in that version of this file.
 
 ## In the server
 

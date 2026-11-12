@@ -6,9 +6,9 @@
 # What it holds, as /system/rondo and /data/rondo/<version> lay it out:
 #   rondo              the binary, stripped
 #   lib/               FFmpeg's shared libraries (LGPL: native/third_party/y1/lib)
-#   fonts/             Roboto (as 1.0.x bundles it) and Noto Color Emoji
+#   fonts/             Roboto and Noto Color Emoji (native/assets/fonts, native/third_party)
 #   advances.bin       Android's glyph advances, kerning.bin its kerning (native/assets)
-#   dashboard/         the dashboard's page (the same files 1.0.x serves)
+#   dashboard/         the dashboard's page (native/assets/dashboard)
 #   start              how init starts it (firmware/rondo/start), kept with the version
 #   VERSION            the version (native/core/version.h)
 # The signature is Ed25519 over the SHA-256 of the .tar.gz, by Node (no other tool needed); the key's
@@ -25,9 +25,9 @@ STAGE=$OUT/rondo-$VERSION
 rm -rf "$STAGE" && mkdir -p "$STAGE/lib" "$STAGE/fonts" "$STAGE/dashboard"
 "$STRIP" -o "$STAGE/rondo" "$ROOT/native/build/y1/rondo"
 cp "$ROOT"/native/third_party/y1/lib/libav{codec,format,util}.so "$ROOT/native/third_party/y1/lib/libswresample.so" "$STAGE/lib/"
-cp "$ROOT/app/app/src/main/assets/fonts/Roboto-Regular.ttf" "$ROOT/native/third_party/y1/fonts/NotoColorEmoji.ttf" "$STAGE/fonts/"
+cp "$ROOT/native/assets/fonts/Roboto-Regular.ttf" "$ROOT/native/third_party/y1/fonts/NotoColorEmoji.ttf" "$STAGE/fonts/"
 cp "$ROOT/native/assets/advances.bin" "$ROOT/native/assets/kerning.bin" "$STAGE/"
-cp "$ROOT"/app/app/src/main/assets/dashboard/{index.html,app.js,app.css} "$STAGE/dashboard/"
+cp "$ROOT"/native/assets/dashboard/{index.html,app.js,app.css} "$STAGE/dashboard/"
 cp "$ROOT/firmware/rondo/start" "$STAGE/start"
 echo "$VERSION" > "$STAGE/VERSION"
 chmod 755 "$STAGE/rondo" "$STAGE/start"

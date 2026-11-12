@@ -11,7 +11,7 @@
 #include "version.h"
 
 namespace rondo {
-extern const char kRootCerts[];  // generated from app/app/src/main/res/raw/*.pem (native/CMakeLists.txt)
+extern const char kRootCerts[];  // generated from native/assets/certs/*.pem (native/CMakeLists.txt)
 
 namespace net {
 

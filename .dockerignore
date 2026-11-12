@@ -1,10 +1,10 @@
 # build context is the repo root (the compose files use context ..); only server/, infra/entrypoint.sh
-# and the admin page's font from app/ are used
+# and the admin page's font from native/assets/fonts are used
 .git
 **/node_modules
 server/dist
-app
-!app/app/src/main/assets/fonts/Roboto-Regular.ttf
+native
+!native/assets/fonts/Roboto-Regular.ttf
 docs
 cookies*.txt
 *.env

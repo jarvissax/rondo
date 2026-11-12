@@ -1,4 +1,4 @@
-# Builds the app and the update page, and tests the server, on every push and pull request. Runners
+# Checks the versions, tests the server and builds the update page on every push and pull request. Runners
 # are pinned to an Ubuntu release (not ubuntu-latest) so a new image arrives on purpose, not by itself.
 name: CI
 
@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  # the app, the server and the update page share one version (tools/set-version.sh)
+  # Rondo, the server and the update page share one version (tools/set-version.sh)
   versions:
     runs-on: ubuntu-26.04
     steps:
@@ -29,26 +29,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-
-  app:
-    runs-on: ubuntu-26.04
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v7
-      # Gradle's own downloads cached by setup-java (gradle/actions v6+ made its caching closed source)
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-      # the runner comes with the Android SDK (ANDROID_HOME); Gradle fetches the platform it needs
-      - run: ./gradlew :app:assembleDebug
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rondo-debug-apk
-          path: app/app/build/outputs/apk/debug/app-debug.apk
 
   web-updater:
     runs-on: ubuntu-26.04

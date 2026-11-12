@@ -75,7 +75,7 @@ The ground rules:
 - **Test app changes on a real Y1.** There's no emulator for the wheel. For the server, run
   `npm test` and `npm run typecheck` in `server/`. For the update page, `npm run build` in
   `web-updater/`.
-- **Match the code around you.** Kotlin with classic Views in the app, TypeScript on the server.
+- **Match the code around you.** C++ in Rondo (`native/`), TypeScript on the server.
   Comments say why, not what. Text the user sees is short, plain and in American English.
 - **Never commit secrets:** `cookies.txt`, tokens, `.env` files or signing keys.
 

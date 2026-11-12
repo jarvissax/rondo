@@ -15,7 +15,7 @@ export interface Release {
   publishedAt: number | null;
   apk?: { url: string; size: number }; // a Rondo 1.0.x release's APK: the update the Y1 installs
   bundle?: { url: string; size: number }; // a Rondo 2.0 release's signed bundle (rondo-<version>.rondo)
-  firmware?: number; // Rondo: the firmware the release needs (firmwareLevel in app/app/build.gradle.kts)
+  firmware?: number; // Rondo: the firmware the release needs (kFirmwareNeeded in native/core/version.h)
 }
 
 export interface UpdateState {

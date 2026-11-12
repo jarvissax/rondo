@@ -28,7 +28,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // the server's version, as the real admin page shows it (tools/set-version.sh)
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'server/package.json'), 'utf8')).version;
 const WEB = path.join(ROOT, 'server/admin');
-const FONT = path.join(ROOT, 'app/app/src/main/assets/fonts/Roboto-Regular.ttf');
+const FONT = path.join(ROOT, 'native/assets/fonts/Roboto-Regular.ttf');
 const PORT = Number(process.env.PORT) || 8095;
 const CODE_MS = (Number(process.env.CODE_SECONDS) || 600) * 1000;
 const argv = new Set(process.argv.slice(2));

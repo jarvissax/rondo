@@ -12,10 +12,9 @@ scripting the Y1.
   pairing code**. The screen stays on while it is open (CPU and Wi-Fi must stay awake to answer);
   leaving the screen stops the server, and so do 15 minutes without a request. Nothing listens
   otherwise.
-- The web files are in `app/app/src/main/assets/dashboard/` (served at `/`; `index.html` stamps
-  `app.js` and `app.css` with the build so a browser fetches new ones), and the bundled font at
-  `/fonts/Roboto-Regular.ttf`. `tools/native/bundle.sh` puts them in Rondo's bundle, so 1.0.x's
-  page and 2.0's are the same files.
+- The web files are in `native/assets/dashboard/` (served at `/`; `index.html` stamps `app.js` and
+  `app.css` with the build so a browser fetches new ones), and the bundled font at
+  `/fonts/Roboto-Regular.ttf`. `tools/native/bundle.sh` puts them in Rondo's bundle.
 - Changes apply on the device immediately (theme changes redraw the screens).
 
 ## Auth

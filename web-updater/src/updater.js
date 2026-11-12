@@ -35,8 +35,8 @@ async function shell(adb, command) {
 const getProp = async (adb, key) => (await shell(adb, `getprop ${key}`)).trim();
 
 // a Y1 whose firmware is Rondo's (its build name is "Rondo <version>"), and that firmware's number:
-// an update for a newer firmware installs only with Innioasis Updater CE (firmwareLevel in
-// app/app/build.gradle.kts; the first Rondo firmware, 1.0.0, had no number)
+// an update for a newer firmware installs only with Innioasis Updater CE (kFirmwareNeeded in
+// native/core/version.h; the first Rondo firmware, 1.0.0, had no number)
 export async function checkDevice(adb) {
   const model = await getProp(adb, "ro.product.model");
   if (model !== "Y1") throw new UpdateError("not-y1", `This device is a "${model || "unknown"}", not an Innioasis Y1.`);

@@ -1,5 +1,5 @@
 // Mock of the Rondo dashboard API (docs/dev/dashboard-api.md) for working on the web UI without a Y1.
-// Serves app/app/src/main/assets/dashboard/ at / and assets/fonts/ at /fonts/, keeps everything
+// Serves native/assets/dashboard/ at / and native/assets/fonts/ at /fonts/, keeps everything
 // in memory, and prints the pairing code. Node 22, no dependencies.
 //
 //   node tools/dashboard-mock/server.mjs            port 8090, ~800 songs, something playing
@@ -13,10 +13,10 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-// the app's version, as the real dashboard reports it (tools/set-version.sh)
-const VERSION = fs.readFileSync(path.join(ROOT, 'app/app/build.gradle.kts'), 'utf8').match(/versionName = "([^"]+)"/)[1];
-const WEB = path.join(ROOT, 'app/app/src/main/assets/dashboard');
-const FONTS = path.join(ROOT, 'app/app/src/main/assets/fonts');
+// Rondo's version, as the real dashboard reports it (tools/set-version.sh)
+const VERSION = fs.readFileSync(path.join(ROOT, 'native/core/version.h'), 'utf8').match(/kRondoVersion = "([^"]+)"/)[1];
+const WEB = path.join(ROOT, 'native/assets/dashboard');
+const FONTS = path.join(ROOT, 'native/assets/fonts');
 const PORT = Number(process.env.PORT) || 8090;
 const argv = new Set(process.argv.slice(2));
 const EMPTY = argv.has('--empty');

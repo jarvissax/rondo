@@ -19,9 +19,8 @@ native/             Rondo itself: the program the firmware runs (C++17, NDK r23c
   platform/y1/      the Y1's hardware: display, input, power, vibration, USB drive, video surfaces
   tests/            the first hardware tests (s1-display … s7-power), and host/ for the Mac
   tools/            vsync measurement, input injection
-app/                Rondo 1.0, the Android app 2.0 replaced (Kotlin, classic Views), kept as the
-                    reference for every screen; the dashboard's page is still here
-  app/src/main/assets/dashboard/   the dashboard (index.html, app.js, app.css), which 2.0 serves
+  assets/           the fonts, the root certificates, the glyph tables, and dashboard/ (the
+                    dashboard's page: index.html, app.js, app.css)
 firmware/           build.sh, which makes the firmware (rom.zip) from the community's base ROM;
                     rondo/start, Rondo's start script; zoneinfo/, the time zone data
 server/             the optional Rondo server (Node 22, TypeScript, Fastify)
@@ -93,8 +92,7 @@ The tests in `native/tests/host/` run on the Mac too; each has its build line at
   all; `build.sh` and `deps.sh` set it.
 - **Screen copy is literal English** in the code, in American spelling.
 
-GitHub Actions runs the server tests and builds the update page (and Rondo 1.0's app) on every
-push (`.github/workflows/ci.yml`); Rondo itself is built on a Mac, because it links against
+GitHub Actions runs the server tests and builds the update page on every push (`.github/workflows/ci.yml`); Rondo itself is built on a Mac, because it links against
 libraries pulled from a Y1.
 
 ## The firmware
@@ -228,7 +226,7 @@ node tools/admin-mock/server.mjs         # http://localhost:8095/admin, prints t
 ```
 
 Each mock lists its options (empty card, slow device, first run, signed out and so on) at the top
-of its file. The dashboard's files are in `app/app/src/main/assets/dashboard/`; Rondo serves them
+of its file. The dashboard's files are in `native/assets/dashboard/`; Rondo serves them
 from its bundle (`bundle.sh` copies them in), so on a real Y1 a change needs a new bundle. The
 admin page is in `server/admin/`. The dashboard's API is in
 [docs/dev/dashboard-api.md](dev/dashboard-api.md).
@@ -285,18 +283,20 @@ is told to install that release with Innioasis Updater CE instead (with Keep Dat
 Updater offers it, to keep its settings): Software update and the dashboard show no
 Install button, and the update page won't start.
 
-Rondo 1.0.x is the same story with an APK: it installs updates with Android's `pm install -r`
-(`SoftwareUpdate.kt`), asks its server for them (`GET /update?firmware=1`), and its firmware number
-is `firmwareLevel` in `app/app/build.gradle.kts` (1). The server tells a 1.0.x Rondo of a 2.0
-release as one that needs a new firmware, so it points its owner to Innioasis Updater CE.
+Rondo 1.0.x (the Android app 2.0 replaced; its source is at the
+[v1.0.2](https://github.com/jarvissax/rondo/tree/v1.0.2) tag) installs updates as APKs with
+Android's `pm install -r`, asks its server for them (`GET /update?firmware=1`), and runs on
+firmware number 1. The server tells a 1.0.x Rondo of a 2.0 release as one that needs a new
+firmware, so it points its owner to Innioasis Updater CE.
 
 ## Making a release
 
-1. Set the version everywhere at once: `tools/set-version.sh 2.0.1` (`native/core/version.h`,
-   the app's `versionName` and `versionCode`, the server's and the update page's `package.json`
-   and `package-lock.json`). If the release changes the firmware around Rondo (`firmware/build.sh`,
-   the boot image, anything outside `/system/rondo`), raise `kFirmwareNeeded` in
-   `native/core/version.h` too.
+1. Set the version everywhere at once: `tools/set-version.sh 2.1.0` (`native/core/version.h`,
+   the server's and the update page's `package.json` and `package-lock.json`). If the release's
+   Rondo needs a change to the firmware around it (`firmware/build.sh`, the boot image, anything
+   outside `/system/rondo`) to work, raise `kFirmwareNeeded` in `native/core/version.h` too. A
+   firmware change that Rondo can also make on an older firmware itself doesn't need it, so the
+   release still installs over Wi-Fi.
 2. Build and sign the bundle with the bundle key, kept outside the repo:
 
    ```bash
@@ -328,10 +328,8 @@ Innioasis Updater CE lists every release of this repository that has a `rom.zip`
 shows up there by itself (the Updater keeps its list for up to a day). Every bundle has to be
 signed with the same key, or no Rondo will install it. Keep the key backed up somewhere safe.
 
-**Rondo 1.0.x releases** carried `rondo-<version>.apk` instead, built with Gradle
-(`cd app && RONDO_SIGNING=/path/to/keystore.properties ./gradlew :app:assembleRelease`, JDK 17)
-and signed with the APK key. The workflow still takes an APK when a release has no bundle, and
-builds a 1.0.x firmware from it.
+**Rondo 1.0.x releases** carried `rondo-<version>.apk` instead, built from the Android app at the
+[v1.0.2](https://github.com/jarvissax/rondo/tree/v1.0.2) tag; the workflow now takes only bundles.
 
 ## Extras
 
@@ -348,10 +346,9 @@ java tools/bootscreen/BootScreen.java out/ [original-logo.bin]
 The firmware build puts the logo in; the 2.0 firmware shows it until Rondo's first frame. Only
 the 1.0.x firmware uses the boot animation.
 
-### Rondo 1.0 (app/)
+### Rondo 1.0
 
-The Android app is kept as the reference for how every screen looks and behaves. It builds with
-Gradle 8.9 and JDK 17 (`cd app && ./gradlew :app:assembleDebug`; newer JDKs can't run Gradle 8.9),
-with the Android SDK in `app/local.properties` (`sdk.dir=/path/to/Android/sdk`). It only runs on
-a 1.0.x firmware. [docs/device/README.md](device/README.md) has what 1.0 found out about Android
+Rondo 1.0, the Android app (Kotlin, classic Views, ExoPlayer 2) that 2.0 replaced screen for
+screen, is at the [v1.0.2](https://github.com/jarvissax/rondo/tree/v1.0.2) tag. It only runs on a
+1.0.x firmware. [docs/device/README.md](device/README.md) has what 1.0 found out about Android
 4.2 on the Y1.

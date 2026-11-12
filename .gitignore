@@ -11,10 +11,7 @@ local.properties
 node_modules/
 server/dist/
 
-# android
-app/build/
-app/.gradle/
-.gradle/
+# build output
 build/
 .idea/
 *.iml

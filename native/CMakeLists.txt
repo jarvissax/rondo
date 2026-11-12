@@ -61,10 +61,10 @@ target_link_libraries(uitest PRIVATE rondo_ui rondo_platform_y1)
 target_link_options(uitest PRIVATE -Wl,-rpath-link,${Y1_LIB})
 add_executable(churn tools/churn.cpp)
 
-# The server client (N2): libcurl over OpenSSL and nghttp2, trusting the roots 1.0.x bundles
+# The server client (N2): libcurl over OpenSSL and nghttp2, trusting Let's Encrypt's roots (assets/certs)
 if(EXISTS ${TP}/lib/libcurl.a)
-  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../app/app/src/main/res/raw/isrg_root_x1.pem ROOT_X1)
-  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/../app/app/src/main/res/raw/isrg_root_yr.pem ROOT_YR)
+  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/assets/certs/isrg-root-x1.pem ROOT_X1)
+  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/assets/certs/isrg-root-yr.pem ROOT_YR)
   # Google Trust Services' roots (pki.goog), for direct mode's YouTube and googlevideo: Android 4.2 only
   # knows them through GlobalSign's cross-signs, which end in January 2028
   set(GTS "")

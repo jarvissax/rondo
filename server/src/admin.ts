@@ -426,7 +426,7 @@ const TYPES: Record<string, string> = {
 
 // server/admin/ next to dist/ or src/; the font comes from the app's assets in a checkout
 const ADMIN_DIR = fileURLToPath(new URL("../admin/", import.meta.url));
-const FONT_PATHS = [join(ADMIN_DIR, "fonts/Roboto-Regular.ttf"), fileURLToPath(new URL("../../app/app/src/main/assets/fonts/Roboto-Regular.ttf", import.meta.url))];
+const FONT_PATHS = [join(ADMIN_DIR, "fonts/Roboto-Regular.ttf"), fileURLToPath(new URL("../../native/assets/fonts/Roboto-Regular.ttf", import.meta.url))];
 
 async function sendFile(reply: FastifyReply, path: string) {
   try {

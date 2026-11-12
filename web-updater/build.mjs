@@ -1,7 +1,7 @@
 // Builds the update page into dist/: the bundled script, the page, its style and font.
 //   node build.mjs            build
-//   node build.mjs --serve    build, add the locally built release APK, and serve on
-//                             http://localhost:8000 (WebUSB works on localhost)
+//   node build.mjs --serve    build, add the locally built bundle (tools/native/bundle.sh), and
+//                             serve on http://localhost:8000 (WebUSB works on localhost)
 import * as esbuild from "esbuild";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
@@ -20,15 +20,19 @@ const options = {
 };
 copyFileSync("index.html", out + "index.html");
 copyFileSync("style.css", out + "style.css");
-copyFileSync(root + "app/app/src/main/assets/fonts/Roboto-Regular.ttf", out + "fonts/Roboto-Regular.ttf");
+copyFileSync(root + "native/assets/fonts/Roboto-Regular.ttf", out + "fonts/Roboto-Regular.ttf");
 
 if (process.argv.includes("--serve")) {
-  const apk = root + "app/app/build/outputs/apk/release/app-release.apk";
-  if (existsSync(apk)) {
-    const version = readFileSync(root + "app/app/build.gradle.kts", "utf8").match(/versionName = "([^"]+)"/)?.[1] ?? "dev";
-    copyFileSync(apk, out + "rondo.apk");
-    writeFileSync(out + "latest.json", JSON.stringify({ version, file: "rondo.apk", size: statSync(apk).size }));
-    console.log(`using the local release APK (Rondo ${version})`);
+  const versionH = readFileSync(root + "native/core/version.h", "utf8");
+  const version = versionH.match(/kRondoVersion = "([^"]+)"/)?.[1] ?? "dev";
+  const firmware = Number(versionH.match(/kFirmwareNeeded = (\d+)/)?.[1] ?? 2);
+  const bundle = root + `native/build/bundle/rondo-${version}.rondo`;
+  if (existsSync(bundle)) {
+    const size = statSync(bundle).size;
+    copyFileSync(bundle, out + "rondo.rondo");
+    // the release's latest.json (.github/workflows/release.yml)
+    writeFileSync(out + "latest.json", JSON.stringify({ version, file: "rondo.rondo", size, bundle: "rondo.rondo", bundleSize: size, firmware }));
+    console.log(`using the local bundle (Rondo ${version})`);
   }
   const ctx = await esbuild.context(options);
   await ctx.watch();

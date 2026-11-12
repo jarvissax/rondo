@@ -198,8 +198,7 @@ it can play.
 
 | Folder | What's in it |
 | --- | --- |
-| `native/` | Rondo itself: the program the firmware runs (C++ with the NDK, its own GLES2 UI, FFmpeg), with its YouTube client in `native/direct/` |
-| `app/` | Rondo 1.0, the Android app 2.0 replaced (Kotlin, classic Views, ExoPlayer 2), kept as the reference for every screen; the dashboard's page (`app/app/src/main/assets/dashboard/`) still lives here |
+| `native/` | Rondo itself: the program the firmware runs (C++ with the NDK, its own GLES2 UI, FFmpeg), with its YouTube client in `native/direct/` and the dashboard's page in `native/assets/dashboard/` |
 | `firmware/` | The script that builds the firmware (`rom.zip`) from the community's base ROM, and Rondo's start script |
 | `server/` | The optional Rondo server (Node 22, TypeScript, Fastify) |
 | `infra/` | Docker and Caddy files for running the server |
