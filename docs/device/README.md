@@ -141,7 +141,7 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
   (`debug.sf.nobootanimation=1`): the boot logo stays until Rondo's first frame.
 - **60 Hz (2.0).** The boot image's kernel has the panel driver's 60 Hz values in place of the
   stock 42 Hz ones ([native.md](native.md#display)).
-- **No root backdoors (2.1.0).** Innioasis's firmware (3.0.7's build manifest and `init.rc`), and
+- **No root backdoors (3.0).** Innioasis's firmware (3.0.7's build manifest and `init.rc`), and
   so the base ROM, runs two programs as root that nothing on the Y1 needs, both found by static
   analysis on Nov 12:
   - `aggdll` (init's `aggsrv`, setuid root) is the agent of "zxly" (`com.zxly.assist`), an app
@@ -155,16 +155,18 @@ default). Android reports 36.43 fps, but the panel's hardware vsync comes every 
     programs.
 
   `firmware/build.sh` takes all of them out and puts Android's `am` script back, and
-  `tools/firmware/BootImage.java` drops both services from `init.rc`. A Y1 updated to 2.1.0 or
-  later over Wi-Fi keeps its old system image, so Rondo removes the same files itself at each start
-  (`native/services/base_rom.cpp`) and logs one line when it does. `BGW` (`/system/xbin`, user
+  `tools/firmware/BootImage.java` drops both services from `init.rc`. Rondo 3.0 needs this firmware
+  (firmware number 3), so a Y1 on 2.0.x gets it only by installing 3.0 with Innioasis Updater CE.
+  Rondo also removes the same files itself at each start if it finds them (a bundle put on an older
+  firmware by hand), with init's two services stopped (`native/services/base_rom.cpp`), and logs one
+  line when it does. `BGW` (`/system/xbin`, user
   system) stays: it's MediaTek's Wi-Fi and modem coexistence helper, with no network code.
 - **Current time zones.** The base ROM's tzdata is 2012h; the firmware has IANA's 2026 data
   (`firmware/zoneinfo`).
 - **The firmware's number.** `firmware/build.sh` adds `ro.rondo.firmware=<n>` to
-  `/system/build.prop`: 2 for the 2.0 firmware (`kFirmwareNeeded` in `native/core/version.h`), 1
-  for 1.0.x's (`firmwareLevel` in `app/app/build.gradle.kts`; the first, 1.0.0, has no property
-  and counts as 1). Updates over Wi-Fi, the dashboard and the update page install only when the
+  `/system/build.prop`: `kFirmwareNeeded` in `native/core/version.h`, 3 for the 3.0 firmware (no
+  root backdoors), 2 for 2.0's (the first without Android), 1 for 1.0.x's (the first, 1.0.0, has no
+  property and counts as 1). Updates over Wi-Fi, the dashboard and the update page install only when the
   firmware is at least as new as the release needs.
 - **Updates without a flash (2.0).** A signed bundle unpacks into `/data/rondo/<version>`, named
   by `/data/rondo/current`; the start script runs it instead of `/system/rondo`, and after three

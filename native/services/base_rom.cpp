@@ -37,7 +37,7 @@ constexpr const char* kPrograms[] = {
     "/system/bin/aggdll", "/system/bin/net_server", "/system/bin/wifi_init", "/system/bin/wifi_check",
     "/system/bin/libsp.so", "/system/bin/wifi_looper", "/system/bin/wifi_pm", "/system/bin/su_zxly",
 };
-// init's services for them, on boot images before 2.1.0's (tools/firmware/BootImage.java)
+// init's services for them, on boot images before 3.0's (tools/firmware/BootImage.java)
 constexpr const char* kServices[] = {"aggsrv", "spwall"};
 
 // aggdll puts a setuid-root program of its own in am's place and keeps Android's am script as am2;

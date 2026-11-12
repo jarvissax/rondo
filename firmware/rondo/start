@@ -6,7 +6,9 @@
 # Which Rondo: the update named in /data/rondo/current (native/core/bundle.h unpacks it into
 # /data/rondo/<version>), else the firmware's own copy in /system/rondo. Rondo clears
 # /data/rondo/crashes once it has run 30 s; three quick ends in a row set the update aside
-# (current.failed) and the firmware's copy runs.
+# (current.failed) and the firmware's copy runs. So does an update no newer than the firmware's own
+# Rondo (current.old): a Y1 installed again with Innioasis Updater CE and Keep Data still has the
+# update it took over Wi-Fi before.
 D=/data/rondo
 mkdir -p $D
 chmod 0700 $D
@@ -52,6 +54,20 @@ while [ $i -lt 50 ] && ! service check media.audio_flinger | grep -q found; do s
   done
 ) &
 
+# is version $1 newer than $2 (major.minor.patch)?
+newer() {
+  a=$1 b=$2
+  for i in 1 2 3; do
+    x=${a%%.*} y=${b%%.*}
+    case "$x$y" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$x" -gt "$y" ] && return 0
+    [ "$x" -lt "$y" ] && return 1
+    a=${a#*.} b=${b#*.}
+  done
+  return 1
+}
+own=$(cat /system/rondo/VERSION 2>/dev/null)
+
 while true; do
   dir=/system/rondo
   n=0
@@ -63,6 +79,9 @@ while true; do
       mv $D/current $D/current.failed
       echo "rondo-start: $v ended three times in a row: the firmware's own Rondo runs" >> $D/start.log
       n=0
+    elif [ -n "$own" ] && ! newer "$v" "$own"; then
+      mv $D/current $D/current.old
+      echo "rondo-start: $v is no newer than the firmware's own Rondo $own, which runs" >> $D/start.log
     elif [ -n "$v" ] && [ -x "$D/$v/rondo" ]; then
       dir=$D/$v
     fi

@@ -138,9 +138,6 @@ update named in `/data/rondo/current`, else the firmware's own copy. It runs it 
 ends (an update put in place, or a crash: back in about a second), and three quick ends in a row
 set an update aside. Rondo's log is `/data/rondo/rondo.log`.
 
-Given an APK instead (`firmware/build.sh rondo-<version>.apk`), the script still builds a 1.0.x
-firmware, with Android's Java layer and the APK as `/system/app/Rondo.apk`.
-
 ## The update bundle
 
 A Rondo update is one file, `rondo-<version>.rondo`: `RONDOB1\n`, a 64-byte Ed25519 signature
@@ -294,12 +291,12 @@ firmware, so it points its owner to Innioasis Updater CE.
 
 ## Making a release
 
-1. Set the version everywhere at once: `tools/set-version.sh 2.1.0` (`native/core/version.h`,
-   the server's and the update page's `package.json` and `package-lock.json`). If the release's
-   Rondo needs a change to the firmware around it (`firmware/build.sh`, the boot image, anything
-   outside `/system/rondo`) to work, raise `kFirmwareNeeded` in `native/core/version.h` too. A
-   firmware change that Rondo can also make on an older firmware itself doesn't need it, so the
-   release still installs over Wi-Fi.
+1. Set the version everywhere at once: `tools/set-version.sh 3.0.1` (`native/core/version.h`,
+   the server's and the update page's `package.json` and `package-lock.json`). If every Y1 has to
+   get a change to the firmware around Rondo (`firmware/build.sh`, the boot image, anything outside
+   `/system/rondo`), raise `kFirmwareNeeded` in `native/core/version.h` too, and the major
+   version with it: that release installs only with Innioasis Updater CE (3.0.0 did, for the
+   firmware without the stock firmware's root backdoors).
 2. Build and sign the bundle with the bundle key, kept outside the repo:
 
    ```bash
@@ -346,8 +343,8 @@ a spinning click wheel, as Android's `bootanimation.zip`:
 java tools/bootscreen/BootScreen.java out/ [original-logo.bin]
 ```
 
-The firmware build puts the logo in; the 2.0 firmware shows it until Rondo's first frame. Only
-the 1.0.x firmware uses the boot animation.
+The firmware build puts the logo in, and the firmware shows it until Rondo's first frame. The boot
+animation was the 1.0.x firmware's; no firmware uses it now.
 
 ### Rondo 1.0
 
