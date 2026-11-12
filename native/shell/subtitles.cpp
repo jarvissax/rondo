@@ -64,7 +64,9 @@ void drawLines(Env& e, const std::vector<std::string>& texts, float w, float bot
   uint32_t edgeRgb = fg.rgb == 0 ? 0xffffff : 0;
   Color edge = withAlpha(edgeRgb, std::min(100, g_prefs.subOpacity + 10)), light = withAlpha(edgeRgb ^ 0xffffff, g_prefs.subOpacity / 2);
   float o = std::max(1.f, floorf(e.dpf(1) + 0.5f));
-  float y = bottom;
+  // on whole pixels: the glyph atlas is sampled linearly, so a line between two rows (the bottom is
+  // h - 12 units, 340.2 px at the Y1's scale) came out smeared over both, blurred
+  float y = floorf(bottom + 0.5f);
   for (size_t k = lines.size(); k-- > 0;) {
     const Label& l = lines[k];
     y -= float(l.h);
@@ -76,7 +78,7 @@ void drawLines(Env& e, const std::vector<std::string>& texts, float w, float bot
     e.c.layer(4);
     float tx = x + padX;
     switch (g_prefs.subEdge) {
-      case 1: drawLabel(e, l, tx + o * 1.5f, y + o * 1.5f, edge); break;   // drop shadow
+      case 1: drawLabel(e, l, tx + floorf(o * 1.5f + 0.5f), y + floorf(o * 1.5f + 0.5f), edge); break;  // drop shadow
       case 2:                                                              // raised: lit above, shade below
         drawLabel(e, l, tx - o, y - o, light);
         drawLabel(e, l, tx + o, y + o, edge);
