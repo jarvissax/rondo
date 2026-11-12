@@ -1,8 +1,8 @@
 // The stock firmware's root backdoors (docs/device/README.md): Innioasis's firmware, and so the base ROM
 // every Rondo firmware is made from, runs zxly's agent (aggdll, init's aggsrv: a hidden su and a silent
-// app installer), the downloader it drops (wifi_init: a file fetched over plain HTTP and run as root)
-// and SPWall (libsp.so, init's spwall: any command run as root). firmware/build.sh leaves them out of
-// the firmware since 3.0, and Rondo 3.0 needs that firmware (kFirmwareNeeded 3); should a Rondo run on
+// app installer), the downloader it drops (wifi_init: a file downloaded and run as root) and SPWall
+// (libsp.so, init's spwall: commands run as root for other programs). firmware/build.sh leaves them
+// out of the firmware since 3.0, and Rondo 3.0 needs that firmware (kFirmwareNeeded 3); should a Rondo run on
 // an older one anyway (a bundle put on by hand), it takes them out itself.
 #pragma once
 

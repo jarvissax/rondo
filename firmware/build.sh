@@ -34,13 +34,14 @@ BASE_SHA256="d3b79ca460a3d3ec2c41ba57893127a0f9a90278e374dd33cdb5de5bb46e367e"
 
 # What the base ROM inherits from Innioasis's firmware and runs as root, none of it needed
 # (docs/device/README.md, "No root backdoors"): zxly's agent aggdll (a hidden su, a
-# silent app installer, setuid root) and the copy of itself it keeps as net_server; wifi_init, which it
-# drops, and which fetches a file over plain HTTP and runs it as root, with wifi_check, its download
-# tool, and AndroidBoot.ttf, its state file; mp, aggdll's hidden copy of pm; SPWall (libsp.so), a
-# service that runs any command as root, with its tools (libwp.so, a packet filter; libld.so, a code
-# injector; libip.so, a renamed iptables; nothing starts them); the stock firmware's distribution
-# tag (/system/channel/qbchannel.ini); and the paths the same family writes its downloads and helpers
-# to. native/services/base_rom.cpp removes the same list from firmwares already flashed.
+# silent app installer, setuid root) and the copy of itself it keeps as net_server; wifi_init, which
+# it drops, and which downloads a file and runs it as root, with wifi_check, its download tool, and
+# AndroidBoot.ttf, its state file; mp, aggdll's hidden copy of pm; SPWall (libsp.so), a service that
+# runs commands as root for other programs, with its tools (libwp.so, a packet filter; libld.so, a
+# code injector; libip.so, a renamed iptables; nothing starts them); the stock firmware's
+# distribution tag (/system/channel/qbchannel.ini); and the paths the same family writes its
+# downloads and helpers to. native/services/base_rom.cpp removes the same list from firmwares
+# already flashed.
 ROOT_DAEMONS=(
   /bin/aggdll /bin/net_server /bin/wifi_init /bin/wifi_check /bin/libsp.so /bin/mp /fonts/AndroidBoot.ttf
   /bin/wifi_looper /bin/wifi_pm /bin/pm_temp /bin/am_temp /bin/su_zxly

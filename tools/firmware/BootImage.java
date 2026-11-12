@@ -143,7 +143,7 @@ public class BootImage {
 
   // The stock firmware's root backdoors, whose programs firmware/build.sh takes out of the system image
   // (docs/device/README.md): aggsrv runs zxly's agent (aggdll -server, which starts its downloader,
-  // wifi_init), spwall runs SPWall (libsp.so, a service that runs any command as root).
+  // wifi_init), spwall runs SPWall (libsp.so, a service that runs commands as root for other programs).
   static final java.util.List<String> REMOVED = java.util.Arrays.asList("aggsrv", "spwall");
 
   // Each REMOVED service's block out (its "service" line and the indented lines under it), a comment in
