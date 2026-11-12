@@ -337,6 +337,8 @@ int main(int argc, char** argv) {
   };
   g_onSleep = [&] { dispatch.cancel(); };
   Status status{false, readOnline(), readBattery(), "", ""};
+  status.charging = power::battery().plugged;
+  g_core.setOnline(status.online);  // no network: the server's requests answer at once (core.h)
   readClock(status, g_prefs.clock24);
   g_core.clockConfigure(g_prefs.autoTime, g_prefs.autoZone);  // Settings › Date & time, for rondo-core
   printf("rondo: %zu files in the library (%.0f ms), ready at %.0f ms\n", g_library.tracks().size(), (tLib - t0) / 1e6,
@@ -450,6 +452,7 @@ int main(int argc, char** argv) {
     bluetoothTick();
     fmTick();
     if (downloadsTick()) changed = true;  // YouTube › Download's queue
+    if (g_core.expire()) changed = true;  // requests given up on (no network, or no answer in 30 s)
     streamsNetwork(status.online);  // read with the status, every 500 ms
     soundTick();
     playStatsTick();
@@ -489,8 +492,11 @@ int main(int argc, char** argv) {
     if (now_ns() - lastStatus >= 500 * kMs) {  // 1.0.x refreshes on its 500 ms tick
       lastStatus = now_ns();
       Status s{false, readOnline(), readBattery(), "", ""};
+      s.charging = power::battery().plugged;
       readClock(s, g_prefs.clock24);  // the minute turning redraws the status bar
-      if (s.online != status.online || fabsf(s.battery - status.battery) > 0.001f || s.time != status.time || s.date != status.date)
+      g_core.setOnline(s.online);
+      if (s.online != status.online || s.charging != status.charging || fabsf(s.battery - status.battery) > 0.001f || s.time != status.time ||
+          s.date != status.date)
         status = s, changed = true;
     }
     if (now_ns() - lastLog > 2 * kSec) {  // development: what the services say, every 2 s
@@ -554,6 +560,7 @@ int main(int argc, char** argv) {
       if (int64_t wake = app.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = powerWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = mainQueueWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
+      if (int64_t wake = g_core.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       int r = poll(p, 6, timeout);
       if (runMainQueue()) moving = true;  // the dashboard's requests, on this thread
       if (r > 0 && (p[4].revents & POLLIN)) {  // drawing may start again after a suspend

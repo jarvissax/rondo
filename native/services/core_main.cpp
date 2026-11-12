@@ -58,6 +58,22 @@ CoreState snapshot() {
   return s;
 }
 
+// A default route (the UI's "online", main.cpp's readOnline): without one a request can only fail, so
+// one still queued when the network went is answered at once instead of after curl's timeouts
+static bool hasDefaultRoute() {
+  FILE* f = fopen("/proc/net/route", "r");
+  if (!f) return true;  // can't tell: try
+  char line[256];
+  bool any = false;
+  while (!any && fgets(line, sizeof(line), f)) {
+    char iface[32];
+    unsigned dest = 1;
+    any = sscanf(line, "%31s %x", iface, &dest) == 2 && dest == 0;
+  }
+  fclose(f);
+  return any;
+}
+
 // Two threads fetch the server's API, each with its own libcurl handle (its connection kept open);
 // their replies go back on the socket, one whole message at a time.
 class ApiWorkers {
@@ -173,7 +189,7 @@ class ApiWorkers {
       if (j.post) {
         pthread_mutex_unlock(&mu_);
         std::string body;
-        int status = api.post(j.path, j.body, body);
+        int status = hasDefaultRoute() ? api.post(j.path, j.body, body) : 0;
         reply(j.id, status, body);
         continue;
       }
@@ -189,7 +205,9 @@ class ApiWorkers {
         c.status = 200;
         fresh = true;
       }
-      if (!fresh) {
+      if (!fresh && !hasDefaultRoute() && !getenv("RONDO_API_REPLAY")) {
+        c.status = 0;  // no network (an answer kept in memory or on disk was still given above)
+      } else if (!fresh) {
         c.status = api.get(j.path, c.body);
         c.at = nowMs();
         if (c.status == 200) record(j.path, c.body);

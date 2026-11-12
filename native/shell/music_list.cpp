@@ -85,7 +85,11 @@ bool isContainer(const std::string& kind) { return kind == "playlist" || kind ==
 }  // namespace
 
 std::string httpProblem(int status, const std::string& path) {
-  return status == 0 ? (directMode() ? "couldn't reach YouTube" : "couldn't reach the server") : "HTTP " + std::to_string(status) + " for " + path;
+  if (status == 0) return directMode() ? "couldn't reach YouTube" : "couldn't reach the server";
+  // 502 and 504: YouTube didn't answer the source (direct mode's own routes answer 502 when it can't
+  // connect: "HTTP 502 for /music/home" told nobody anything)
+  if (status == 502 || status == 504) return directMode() ? "couldn't reach YouTube" : "the server couldn't reach YouTube (HTTP " + std::to_string(status) + ")";
+  return "HTTP " + std::to_string(status) + " for " + path;
 }
 
 std::string offlineOr(const std::string& problem) {
@@ -203,7 +207,11 @@ void TabbedListScreen::focusTabsFromTop() {
 
 bool TabbedListScreen::tick(int64_t now) {
   bool tabs = syncTabs();
-  return MusicListScreen::tick(now) || tabs;
+  // Wi-Fi back while the list shows why it couldn't load (or is still loading): load it again
+  bool online = g_app->status().online, again = online && !wasOnline_ && list_.rows().empty();
+  wasOnline_ = online;
+  if (again) load(active_);
+  return MusicListScreen::tick(now) || tabs || again;
 }
 
 bool TabbedListScreen::syncTabs() {

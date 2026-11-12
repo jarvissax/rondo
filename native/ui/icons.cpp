@@ -567,7 +567,29 @@ void Icons::draw(Canvas& c, Icon icon, Rect r, Color color, int level) {
   if (t.ok) c.glyph(text_->atlas(), {r.x, r.y, float(w), float(h)}, {t.u0, t.v0, t.u1 - t.u0, t.v1 - t.v0}, color);
 }
 
-void Icons::battery(Canvas& c, Rect r, Color color, float level) {
+namespace {
+// Where the charging bolt goes for a battery in r: Bolt's shape is 14 x 20 of its 24 units (x 5..19,
+// y 2..22), drawn 72 % of the battery's height tall, its right edge a gap left of the frame, both
+// centered on the same line
+struct BoltBox {
+  float x, y, box;
+};
+BoltBox boltBox(Rect r) {
+  int w = int(lroundf(r.w)), h = int(lroundf(r.h));
+  float s = float(std::min(w, h)) / 24, ox = r.x + (w - 24 * s) / 2;
+  float tall = floorf(h * 0.72f + 0.5f), k = tall / 20;
+  float gap = std::max(1.f, floorf(1.5f * s + 0.5f));
+  float right = ox + 0.7f * s - gap;
+  return {floorf(right - 19 * k + 0.5f), floorf(r.y + (h - tall) / 2 - 2 * k + 0.5f), floorf(24 * k + 0.5f)};
+}
+}  // namespace
+
+int Icons::chargeRoom(float w, float h) {
+  BoltBox b = boltBox({0, 0, w, h});
+  return std::max(0, int(ceilf(-(b.x + 5 * b.box / 24))));
+}
+
+void Icons::battery(Canvas& c, Rect r, Color color, float level, bool charging) {
   draw(c, Icon::BatteryFrame, r, color);
   // The charge is a plain rectangle (2.3..18.9 x 8..16 of the 24-unit box): drawn as a shape, so a new
   // level never adds a mask to the glyph atlas (an atlas upload while the last frame uses it costs the
@@ -575,7 +597,11 @@ void Icons::battery(Canvas& c, Rect r, Color color, float level) {
   int w = int(lroundf(r.w)), h = int(lroundf(r.h));
   float s = float(std::min(w, h)) / 24, ox = r.x + (w - 24 * s) / 2, oy = r.y + (h - 24 * s) / 2;
   float l = std::clamp(level, 0.f, 1.f);
-  if (l > 0) c.shape({ox + 2.3f * s, oy + 8 * s, 16.6f * l * s, 8 * s}, 0, batteryColor(level));
+  if (l > 0) c.shape({ox + 2.3f * s, oy + 8 * s, 16.6f * l * s, 8 * s}, 0, charging ? batteryColor(1) : batteryColor(level));
+  if (charging) {
+    BoltBox b = boltBox(r);
+    draw(c, Icon::Bolt, {b.x, b.y, b.box, b.box}, batteryColor(1));  // the charge's green: one sign
+  }
 }
 
 void Icons::musicLogo(Canvas& c, Rect r) {

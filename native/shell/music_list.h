@@ -93,6 +93,7 @@ class TabbedListScreen : public MusicListScreen {
   float drawPills(Env& e, float x, int H, float screenH);
   std::vector<std::string> tabs_;
   int active_ = 0, focused_ = -1;  // the pills, then the search button at tabs_.size()
+  bool wasOnline_ = true;          // a list that couldn't load loads again once the network is back
 };
 
 }  // namespace rondo::shell

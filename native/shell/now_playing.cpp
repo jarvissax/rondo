@@ -166,7 +166,8 @@ float statusIconsWidth(Env& e, bool showWifi, bool hidePercent, bool hideDate) {
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(g_app->status().battery * 100 + 0.5f)));
   int pw = hidePercent ? -e.dp(3) : label(e, pct, 10, true).w;
-  return float(clockWidth(e, hideDate) + (showWifi ? e.dp(11) + e.dp(5) : 0) + pw + e.dp(3) + e.dp(18));
+  int bolt = g_app->status().charging ? Icons::chargeRoom(float(e.dp(18)), float(e.dp(11))) : 0;
+  return float(clockWidth(e, hideDate) + (showWifi ? e.dp(11) + e.dp(5) : 0) + pw + e.dp(3) + bolt + e.dp(18));
 }
 
 float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool showWifi) {
@@ -177,8 +178,9 @@ float statusIconsFit(Env& e, float left, float right, int rowH, Color c, bool sh
 
 float batteryIcon(Env& e, float right, int rowH, Color c) {
   int bw = e.dp(18), bh = e.dp(11);
-  e.icons.battery(e.c, {right - bw, float((rowH - bh) / 2), float(bw), float(bh)}, c, g_app->status().battery);
-  return right - bw;
+  bool charging = g_app->status().charging;
+  e.icons.battery(e.c, {right - bw, float((rowH - bh) / 2), float(bw), float(bh)}, c, g_app->status().battery, charging);
+  return right - bw - (charging ? Icons::chargeRoom(float(bw), float(bh)) : 0);
 }
 
 float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hidePercent, bool hideDate) {
@@ -188,7 +190,8 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hi
   Label pl = label(e, hidePercent ? "" : pct, 10, true);
   if (hidePercent) pl.w = -e.dp(3);  // the percentage and its margin gone
   int wifi = showWifi ? e.dp(11) + e.dp(5) : 0, bw = e.dp(18), bh = e.dp(11);
-  int gw = wifi + pl.w + e.dp(3) + bw, gh = std::max({showWifi ? e.dp(11) : 0, pl.h, bh});
+  int bolt = st.charging ? Icons::chargeRoom(float(bw), float(bh)) : 0;
+  int gw = wifi + pl.w + e.dp(3) + bolt + bw, gh = std::max({showWifi ? e.dp(11) : 0, pl.h, bh});
   float gx = right - gw, gy = float((rowH - gh) / 2);
   float left = gx;  // the whole group's left edge, the clock's when it shows
   // the clock before them: the date, then the time
@@ -209,7 +212,7 @@ float statusIcons(Env& e, float right, int rowH, Color c, bool showWifi, bool hi
     e.c.popAlpha();
   }
   if (!hidePercent) drawLabel(e, pl, gx + wifi, gy + float((gh - pl.h) / 2), c);
-  e.icons.battery(e.c, {gx + wifi + pl.w + e.dp(3), gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery);
+  e.icons.battery(e.c, {gx + wifi + pl.w + e.dp(3) + bolt, gy + float((gh - bh) / 2), float(bw), float(bh)}, c, st.battery, st.charging);
   return left;
 }
 

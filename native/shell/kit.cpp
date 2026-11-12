@@ -206,8 +206,8 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   char pct[8];
   snprintf(pct, sizeof(pct), "%d%%", int(floorf(s.battery * 100 + 0.5f)));
   Label pl = label(e, pct, 11, true);
-  int wifi = e.dp(14), bw = e.dp(24), bh = e.dp(14);
-  int gw = wifi + e.dp(6) + pl.w + e.dp(3) + bw, gh = std::max({wifi, pl.h, bh});
+  int wifi = e.dp(14), bw = e.dp(24), bh = e.dp(14), bolt = s.charging ? Icons::chargeRoom(float(bw), float(bh)) : 0;
+  int gw = wifi + e.dp(6) + pl.w + e.dp(3) + bolt + bw, gh = std::max({wifi, pl.h, bh});
   float gx = w - e.dp(10) - gw, gy = float((int(H) - gh) / 2);
   // The title stays centered and keeps 10 units clear of the icons on the right and of the clock on the
   // left, the same distance on both sides; a longer one (a Wi-Fi network's name) ends in an ellipsis
@@ -228,7 +228,7 @@ void statusBar(Env& e, float w, const Status& s, const std::string& title, const
   e.icons.draw(e.c, Icon::Wifi, {gx, gy + (gh - wifi) / 2, float(wifi), float(wifi)}, p.icon);
   e.c.popAlpha();
   drawLabel(e, pl, gx + wifi + e.dp(6), gy + (gh - pl.h) / 2, p.icon);
-  e.icons.battery(e.c, {gx + wifi + e.dp(6) + pl.w + e.dp(3), gy + (gh - bh) / 2, float(bw), float(bh)}, p.icon, s.battery);
+  e.icons.battery(e.c, {gx + wifi + e.dp(6) + pl.w + e.dp(3) + bolt, gy + (gh - bh) / 2, float(bw), float(bh)}, p.icon, s.battery, s.charging);
   e.c.layer(layer);
 }
 

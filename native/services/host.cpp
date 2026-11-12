@@ -1,11 +1,13 @@
 // CoreHost: the UI's side of rondo-core (core.h).
 #include <sys/wait.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "../core/clock.h"
 #include "../player/protocol.h"  // readFully, writeFully
 #include "core.h"
 #include "protocol.h"
@@ -118,9 +120,22 @@ void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token
   send(kApiConfigure, b.data(), uint32_t(b.size()));
 }
 
+namespace {
+// development: the parity captures answer from recorded files, network or not (RONDO_API_REPLAY)
+bool replaying() {
+  static const bool r = getenv("RONDO_API_REPLAY") != nullptr;
+  return r;
+}
+}  // namespace
+
 uint32_t CoreHost::get(const std::string& path, int cacheMs, Reply done) {
   uint32_t id = nextId_++;
   pending_[id] = std::move(done);
+  if (!online_ && !replaying()) {
+    failed_.push_back(id);
+    return id;
+  }
+  deadline_[id] = now_ns() + kDeadlineMs * kMs;
   std::string b(8, '\0');
   uint32_t ttl = uint32_t(cacheMs);
   memcpy(&b[0], &id, 4);
@@ -133,6 +148,11 @@ uint32_t CoreHost::get(const std::string& path, int cacheMs, Reply done) {
 uint32_t CoreHost::post(const std::string& url, const std::string& json, Reply done) {
   uint32_t id = nextId_++;
   pending_[id] = std::move(done);
+  if (!online_ && !replaying()) {
+    failed_.push_back(id);
+    return id;
+  }
+  deadline_[id] = now_ns() + kDeadlineMs * kMs;
   std::string b(4, '\0');
   memcpy(&b[0], &id, 4);
   b += url;
@@ -142,7 +162,51 @@ uint32_t CoreHost::post(const std::string& url, const std::string& json, Reply d
   return id;
 }
 
-void CoreHost::cancel(uint32_t id) { pending_.erase(id); }
+void CoreHost::cancel(uint32_t id) {
+  pending_.erase(id);
+  deadline_.erase(id);
+}
+
+void CoreHost::setOnline(bool online) {
+  if (online_ && !online && !replaying()) {
+    // the network went: nothing sent is coming back soon
+    for (const auto& d : deadline_) failed_.push_back(d.first);
+    deadline_.clear();
+  }
+  online_ = online;
+}
+
+int64_t CoreHost::wakeAt() const {
+  if (!failed_.empty()) return 1;  // now
+  int64_t first = 0;
+  for (const auto& d : deadline_)
+    if (!first || d.second < first) first = d.second;
+  return first;
+}
+
+bool CoreHost::expire() {
+  int64_t now = now_ns();
+  std::vector<uint32_t> gone;
+  gone.swap(failed_);
+  for (auto it = deadline_.begin(); it != deadline_.end();) {
+    if (it->second <= now) {
+      gone.push_back(it->first);
+      it = deadline_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  bool handed = false;
+  for (uint32_t id : gone) {
+    auto it = pending_.find(id);
+    if (it == pending_.end()) continue;  // cancelled meanwhile
+    Reply done = std::move(it->second);
+    pending_.erase(it);
+    done(0, "");
+    handed = true;
+  }
+  return handed;
+}
 
 bool CoreHost::pump() {
   if (sock_ < 0) return false;
@@ -163,6 +227,7 @@ bool CoreHost::pump() {
       int32_t status;
       memcpy(&id, in_.data() + 8, 4);
       memcpy(&status, in_.data() + 12, 4);
+      deadline_.erase(id);
       auto it = pending_.find(id);
       if (it != pending_.end()) {
         Reply done = std::move(it->second);

@@ -39,7 +39,10 @@ class Icons {
   // Draws an icon into rect r (pixel-aligned) in one color.
   void draw(Canvas& c, Icon icon, Rect r, Color color, int level = 0);
   // The battery as 1.0.x draws it: the frame in `color`, the charge green, amber or red by level.
-  void battery(Canvas& c, Rect r, Color color, float level);
+  // charging: the charge green, and a green bolt just left of the frame, reaching chargeRoom()
+  // pixels left of r (callers keep that much room before it while charging)
+  void battery(Canvas& c, Rect r, Color color, float level, bool charging = false);
+  static int chargeRoom(float w, float h);  // for a battery drawn w x h
   // The YouTube Music and YouTube logos (MusicLogo, VideoLogo).
   void musicLogo(Canvas& c, Rect r);
   void videoLogo(Canvas& c, Rect r);

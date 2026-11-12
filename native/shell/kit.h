@@ -89,6 +89,7 @@ struct Status {
   bool playing = false, online = false;
   float battery = 1;
   std::string date, time;  // the status bar's clock: "Nov 10", "09:43" (or "9:43 AM"), in the device's time zone
+  bool charging = false;   // on a charger or a computer (power::battery().plugged, the dashboard's too): a bolt
 };
 // the clock's two parts now (readClock), and the longer forms Settings › Date & time shows
 void readClock(Status& s, bool clock24);

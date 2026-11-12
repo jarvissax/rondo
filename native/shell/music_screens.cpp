@@ -53,7 +53,7 @@ class SongMenuScreen : public MusicListScreen {
     list_.setMessage("Starting radio\xe2\x80\xa6");
     std::string path = "/music/next/" + Api::escape(song_.id);
     requests_.get(path, 0, [this, path](int status, const std::string& body) {
-      if (status != 200) return list_.setMessage("Couldn't start radio: " + httpProblem(status, path));
+      if (status != 200) return list_.setMessage(offlineOr("Couldn't start radio: " + httpProblem(status, path)));
       ItemsPage page;
       parseItems(body, page);
       std::vector<Item> q{song_};
@@ -81,7 +81,7 @@ class CollectionScreen : public MusicListScreen {
     list_.setMessage("Loading\xe2\x80\xa6");
     std::string p = path();
     requests_.get(p, 120000, [this, p](int status, const std::string& body) {
-      if (status != 200) return list_.setMessage("Couldn't load: " + httpProblem(status, p));
+      if (status != 200) return list_.setMessage(offlineOr("Couldn't load: " + httpProblem(status, p)));
       ItemsPage page;  // CollectionPage: title, subtitle, thumb, items, next
       parseItems(body, page);
       songs_ = page.items;
@@ -133,7 +133,7 @@ class ArtistScreen : public MusicListScreen {
     list_.setMessage("Loading\xe2\x80\xa6");
     std::string p = "/music/artist/" + Api::escape(id_);
     requests_.get(p, 120000, [this, p](int status, const std::string& body) {
-      if (status != 200) return list_.setMessage("Couldn't load: " + httpProblem(status, p));
+      if (status != 200) return list_.setMessage(offlineOr("Couldn't load: " + httpProblem(status, p)));
       SectionsPage page;
       parseSections(body, page);
       std::vector<Row> rows;
@@ -247,7 +247,7 @@ class MusicSearchScreen : public Screen {
     results_.setMessage("Searching \xe2\x80\x9c" + q + "\xe2\x80\x9d\xe2\x80\xa6");
     std::string path = (video_ ? "/video/search?q=" : "/music/search?type=song&q=") + Api::escape(q);
     requests_.get(path, 0, [this, q, path](int status, const std::string& body) {
-      if (status != 200) return results_.setMessage("Search failed: " + httpProblem(status, path));
+      if (status != 200) return results_.setMessage(offlineOr("Search failed: " + httpProblem(status, path)));
       ItemsPage page;
       parseItems(body, page);
       found_ = page.items;

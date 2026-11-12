@@ -102,6 +102,15 @@ class CoreHost {
   uint32_t get(const std::string& path, int cacheMs, Reply done);
   uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
   void cancel(uint32_t id);
+  // No network, no waiting: with no default route a request is answered at once with status 0 (as
+  // one that couldn't connect), and so is every unanswered one when the network goes; an answer that
+  // takes longer than kDeadlineMs is given up on the same way, its late reply dropped. The main loop
+  // tells it the network's state, wakes at wakeAt() (a now_ns() time, 0: nothing waits) and calls
+  // expire(), which hands those answers out (true when it did).
+  static constexpr int kDeadlineMs = 30000;
+  void setOnline(bool online);
+  int64_t wakeAt() const;
+  bool expire();
   // Requests sent from now on have ids from this; true while one of those is unanswered (a screen
   // that just opened waits a moment for its first answer, main.cpp)
   uint32_t nextRequestId() const { return nextId_; }
@@ -120,6 +129,9 @@ class CoreHost {
   CoreState* shm_ = nullptr;
   uint32_t nextId_ = 1;
   std::map<uint32_t, Reply> pending_;
+  std::map<uint32_t, int64_t> deadline_;  // each request sent: when it is given up on
+  std::vector<uint32_t> failed_;          // answered 0 at the next expire(): sent with no network
+  bool online_ = true;
   std::string in_;  // bytes read and not yet a whole reply
 };
 
