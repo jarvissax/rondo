@@ -112,7 +112,7 @@ cable gives the card back to the Y1 as well. The dashboard can also upload music
 Both work as soon as the Y1 is on Wi-Fi: Rondo talks to YouTube itself, with nothing to set up.
 (If you'd rather it went through a [server](server.md) of your own, choose **My server** in
 **Settings › YouTube › Connection**.) They open on a home page, with tabs across the top: turn the
-wheel on the tab row and press center to switch. YouTube Music’s home is shelves, as in the app:
+wheel on the tab row and press center to switch. YouTube Music's home is shelves, as in the app:
 each section a row of covers that slides along as you turn the wheel, then on into the next. **Search** uses an on-screen keyboard you type on
 with the wheel.
 

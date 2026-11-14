@@ -5,11 +5,12 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## 3.0.3 (not released yet)
+## 3.0.3 (November 14, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
 [update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
-3.0.2 does.
+3.0.2 does; with your own server, update it to Rondo server 3.2.0 (its admin page offers it) so
+YouTube Music downloads get their year and track number.
 
 ### New
 
@@ -33,11 +34,11 @@ An update for the 3.0 firmware: Settings › System › Software update, the das
 
 ### Changed
 
-- **YouTube Music’s Home looks like the app’s:** each section is a titled shelf of covers (square for
+- **YouTube Music's Home looks like the app's:** each section is a titled shelf of covers (square for
   songs, albums and playlists, wide for videos, round for artists), Downloads above them. Turn the
   wheel to move along a shelf, which slides as you go, and on into the next one; the background
-  takes the chosen cover’s color. Library stays a list.
-- **A song’s menu has an icon for each action** (Play now, Play next, Add to queue, Start radio,
+  takes the chosen cover's color. Library stays a list.
+- **A song's menu has an icon for each action** (Play now, Play next, Add to queue, Start radio,
   Download).
 - **Shows and movies go inside Videos,** the way Jellyfin expects them:
   `Videos/Shows/Silo (2023-)/Season 01/`, `Videos/Shows/The Walking Dead (2010-2022)/Season 01/`
