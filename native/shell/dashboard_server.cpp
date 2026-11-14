@@ -2002,9 +2002,33 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/downloads" && m == "POST") {
     std::string video, id;
     int64_t q = 480;
-    b->text("video", video), b->integer("quality", q);
+    bool song = false;
+    b->text("video", video), b->integer("quality", q), b->flag("song", song);
     id = videoIdIn(video);
     if (id.empty()) return error(400, "That isn't a YouTube link or video id");
+    if (song) {  // a YouTube Music song: its details for the list (the download asks again for its tags)
+      Item item;
+      item.kind = "song", item.id = id;
+      std::string body;
+      if (coreCall(false, "/music/song/" + rondo::Api::escape(id), "", body, 30000) == 200)
+        if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+          yyjson_val* r = yyjson_doc_get_root(d);
+          auto s = [&](const char* k) {
+            yyjson_val* v = yyjson_obj_get(r, k);
+            return yyjson_is_str(v) ? std::string(yyjson_get_str(v)) : std::string();
+          };
+          item.title = s("title"), item.thumb = s("cover");
+          item.subtitle = s("artist") + (s("album").empty() ? "" : " \xc2\xb7 " + s("album"));
+          yyjson_doc_free(d);
+        }
+      return onUi([item] {
+        if (!downloadedSong(item.id).empty()) return error(409, "It's on the card already");
+        for (const DownloadJob& j : downloadJobs())
+          if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, "It's downloading already");
+        downloadSong(item);
+        return json(downloadsJson());
+      });
+    }
     int quality = q >= 720 ? 720 : q >= 480 ? 480 : 360;
     // its title and channel for the list (the Y1 shows them; the file is named by them)
     Item item;
@@ -2034,7 +2058,7 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/downloads" && m == "DELETE") {
     std::string file = r.param("file");
     return onUi([file] {
-      if (!deleteDownload(file)) return error(404, "not found");
+      if (!deleteDownload(file) && !deleteSong(file)) return error(404, "not found");
       return json(downloadsJson());
     });
   }

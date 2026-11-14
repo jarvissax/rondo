@@ -48,7 +48,7 @@ struct VideoTitle {
   std::string years;  // a series': "2016", "2016-", "2016-2025"; a movie's: "2014"; "" when unknown
   std::vector<std::string> files;  // a series': its episodes
 };
-// card: the root the folders go into ("/storage/sdcard0"); YouTube › Download's videos left out
+// card: the root the folders go into ("/storage/sdcard0"); YouTube's and YouTube Music's downloads left out
 std::vector<VideoTitle> videoTitles(const std::vector<OrganizeItem>& items, const std::string& card);
 
 // Names found for VideoTitle keys (the dashboard's lookup): the name and years to file them under

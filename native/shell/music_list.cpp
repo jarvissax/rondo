@@ -131,6 +131,20 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
   return rows;
 }
 
+std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::vector<Item>()> queue) {
+  std::vector<Card> cards;
+  for (const Item& it : items) {
+    Card c;
+    c.shape = it.kind == "video" ? Card::Shape::Wide : it.kind == "artist" ? Card::Shape::Round : Card::Shape::Square;
+    c.title = it.title, c.subtitle = it.subtitle, c.thumb = it.thumb;
+    Item item = it;
+    c.onSelect = [item, queue] { openMusicItem(item, queue()); };
+    if (!isContainer(it.kind)) c.onLongSelect = [item] { openSongMenu(item); };
+    cards.push_back(std::move(c));
+  }
+  return cards;
+}
+
 std::vector<Row> videoRows(const std::vector<Item>& items) {
   std::vector<Row> rows;
   for (const Item& it : items) {

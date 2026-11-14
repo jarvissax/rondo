@@ -21,18 +21,24 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
+#include "../core/lyrics.h"
+#include "../core/organize.h"
+#include "../core/tag_write.h"
 #include "app.h"
 #include "file_ops.h"
+#include "fill_in.h"
+#include "screens.h"
 
 namespace rondo::shell {
 
 std::string downloadDir() { return std::string(files::kRoots[0]) + "/Videos/YouTube"; }
+std::string musicDownloadDir() { return std::string(files::kRoots[0]) + "/Music/YouTube Music"; }
 
 namespace {
 
 std::vector<DownloadJob> g_jobs;
 int g_at = -1;  // the job being done
-enum Step { Idle, Resolving, Picture, Sound, Captions, Joining } g_step = Idle;
+enum Step { Idle, Resolving, Picture, Sound, Captions, Cover, Words, Joining } g_step = Idle;
 bool g_coreBusy = false;  // the core's one download is this job's (or a cancelled one, still ending)
 int32_t g_seq = 0;        // the core's downloadSeq before this part began: its state counts once past it
 int g_videoItag = 0, g_audioItag = 0;
@@ -57,6 +63,22 @@ struct Meta {
 };
 std::map<std::string, Meta> g_meta;
 bool g_metaRead = false;
+
+// the downloaded songs: id -> where it went (music-downloads.json beside prefs.json)
+struct SongMeta {
+  std::string file, title, artist, album;
+  int64_t at = 0;
+};
+std::map<std::string, SongMeta> g_songs;
+bool g_songsRead = false;
+std::string songsPath() { return g_prefsPath.substr(0, g_prefsPath.rfind('/')) + "/music-downloads.json"; }
+// the song being downloaded: what /music/song said, else what its row did
+struct SongInfo {
+  std::string title, artist, albumArtist, album, cover;
+  int year = 0, track = 0, tracks = 0, seconds = -1;
+};
+SongInfo g_song;
+std::string g_words;  // its lyrics: LRC when timed
 
 std::string jstr(const std::string& v) {
   std::string o = "\"";
@@ -133,8 +155,49 @@ std::string fileTitle(const std::string& title) {
 }
 
 std::string partsBase(const std::string& id) { return downloadDir() + "/." + id; }  // hidden: the scan skips them
+std::string songParts(const std::string& id) { return musicDownloadDir() + "/." + id; }
 void removeParts(const std::string& id) {
   for (const char* x : {".video", ".video.part", ".audio", ".audio.part", ".mp4.part"}) unlink((partsBase(id) + x).c_str());
+  for (const char* x : {".audio", ".audio.part", ".cover", ".cover.part", ".saving.m4a"}) unlink((songParts(id) + x).c_str());
+}
+
+void readSongs() {
+  if (g_songsRead) return;
+  g_songsRead = true;
+  yyjson_doc* d = yyjson_read_file(songsPath().c_str(), 0, nullptr, nullptr);
+  if (!d) return;
+  size_t i, n;
+  yyjson_val *k, *v;
+  yyjson_obj_foreach(yyjson_doc_get_root(d), i, n, k, v) {
+    auto s = [&](const char* f) {
+      yyjson_val* x = yyjson_obj_get(v, f);
+      return yyjson_is_str(x) ? std::string(yyjson_get_str(x)) : std::string();
+    };
+    SongMeta m;
+    m.file = s("file"), m.title = s("title"), m.artist = s("artist"), m.album = s("album");
+    m.at = yyjson_get_sint(yyjson_obj_get(v, "at"));
+    if (!m.file.empty()) g_songs[yyjson_get_str(k)] = m;
+  }
+  yyjson_doc_free(d);
+}
+void writeSongs() {
+  std::string j = "{";
+  int n = 0;
+  for (auto& [id, m] : g_songs)
+    j += std::string(n++ ? "," : "") + jstr(id) + ":{\"file\":" + jstr(m.file) + ",\"title\":" + jstr(m.title) + ",\"artist\":" + jstr(m.artist) +
+         ",\"album\":" + jstr(m.album) + ",\"at\":" + std::to_string(m.at) + "}";
+  j += "}\n";
+  std::string tmp = songsPath() + ".part";
+  if (FILE* f = fopen(tmp.c_str(), "wb")) {
+    bool ok = fwrite(j.data(), 1, j.size(), f) == j.size();
+    ok = fclose(f) == 0 && ok;
+    if (ok) rename(tmp.c_str(), songsPath().c_str());
+    else unlink(tmp.c_str());
+  }
+}
+bool fileThere(const std::string& p) {
+  struct stat st;
+  return stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
 void refreshFiles(bool force = false) {
@@ -174,7 +237,7 @@ void finish(DownloadJob::State state, const std::string& error = "") {
 // title and channel, so the library doesn't guess them from the file's name ("Title - Part" read as
 // an artist and a title).
 bool join(const std::string& video, const std::string& audio, const std::string& out, const std::string& title,
-          const std::string& channel, const std::string& id) {
+          const std::string& channel, const std::string& id, bool song = false) {
   AVFormatContext* in[2] = {nullptr, nullptr};
   AVFormatContext* o = nullptr;
   bool ok = false;
@@ -206,12 +269,16 @@ bool join(const std::string& video, const std::string& audio, const std::string&
       }
     }
     if (bad || o->nb_streams == 0) break;
-    av_dict_set(&o->metadata, "title", title.c_str(), 0);
-    if (!channel.empty()) av_dict_set(&o->metadata, "artist", channel.c_str(), 0);
-    av_dict_set(&o->metadata, "comment", ("https://www.youtube.com/watch?v=" + id).c_str(), 0);
+    if (!song) {  // a song's tags are writeTags' (its cover too), once it's whole
+      av_dict_set(&o->metadata, "title", title.c_str(), 0);
+      if (!channel.empty()) av_dict_set(&o->metadata, "artist", channel.c_str(), 0);
+      av_dict_set(&o->metadata, "comment", ("https://www.youtube.com/watch?v=" + id).c_str(), 0);
+    }
     if (avio_open(&o->pb, out.c_str(), AVIO_FLAG_WRITE) < 0) break;
     AVDictionary* opts = nullptr;
-    av_dict_set(&opts, "movflags", "+faststart", 0);
+    // a video: its index at the front, so it starts at once; a song's stays at the end, where its tags
+    // then grow without the file being written again
+    if (!song) av_dict_set(&opts, "movflags", "+faststart", 0);
     int hr = avformat_write_header(o, &opts);
     av_dict_free(&opts);
     if (hr < 0) break;
@@ -302,11 +369,169 @@ void startPart(Step step) {
   g_step = step;
   int itag = step == Picture ? g_videoItag : g_audioItag;
   // the words a row shows ("Picture" read like the video's name for a picture, Nov 12)
-  j->stage = step == Picture ? (g_audioItag ? "Downloading video" : "Downloading") : "Downloading sound";
+  j->stage = j->song ? "Downloading" : step == Picture ? (g_audioItag ? "Downloading video" : "Downloading") : "Downloading sound";
   g_changed = true;
   g_coreBusy = true;
   g_seq = g_core.state().downloadSeq;
-  g_core.download("/s/" + Api::escape(j->id) + "/" + std::to_string(itag), partsBase(j->id) + (step == Picture ? ".video" : ".audio"));
+  std::string base = j->song ? songParts(j->id) : partsBase(j->id);
+  g_core.download("/s/" + Api::escape(j->id) + "/" + std::to_string(itag), base + (step == Picture ? ".video" : ".audio"));
+}
+
+// ---- a song (YouTube Music) ----
+
+// its file: <Album artist>/<Album> (<Year>)/<NN> - <Title>.m4a, as Organize names music
+std::string songFile(const SongInfo& s) {
+  std::string artist = cardName(!s.albumArtist.empty() ? s.albumArtist : !s.artist.empty() ? s.artist : "Unknown Artist");
+  std::string album = cardName(!s.album.empty() ? s.album : s.title);
+  if (artist.empty()) artist = "Unknown Artist";
+  if (album.empty()) album = "Unknown Album";
+  std::string title = cardName(s.title);
+  if (title.empty()) title = "Song";
+  char nn[16] = "";
+  if (s.track > 0) snprintf(nn, sizeof(nn), "%02d - ", s.track);
+  std::string dir = musicDownloadDir() + "/" + artist + "/" + album + (s.year ? " (" + std::to_string(s.year) + ")" : "");
+  std::string file = dir + "/" + nn + title + ".m4a";
+  for (int k = 2; fileThere(file); k++) file = dir + "/" + nn + title + " (" + std::to_string(k) + ").m4a";
+  return file;
+}
+
+void startSaving() {
+  DownloadJob* j = current();
+  g_step = Joining;
+  j->stage = "Saving";
+  g_changed = true;
+  g_joined = 0;
+  std::string base = songParts(j->id), id = j->id;
+  SongInfo s = g_song;
+  std::string words = g_words;
+  if (g_joiner.joinable()) g_joiner.join();
+  g_joiner = std::thread([base, id, s, words] {
+    std::string out = base + ".saving.m4a";  // an .m4a: writeTags knows a file by its extension
+    bool ok = join(base + ".audio", "", out, "", "", id, true);
+    std::string lyrics = words;
+    if (ok && lyrics.compare(0, 1, "[") != 0) {  // not timed (YouTube Music's own often aren't): LRCLIB's if it has them
+      bool timed = false;
+      std::string other = lrclibLyrics(s.artist, s.title, s.album, s.seconds, timed);
+      if (timed || lyrics.empty()) lyrics = other.empty() ? lyrics : other;
+    }
+    if (ok) {
+      TagChanges t;
+      t.title = s.title, t.artist = s.artist, t.albumArtist = !s.albumArtist.empty() ? s.albumArtist : s.artist, t.album = s.album;
+      if (t.album.empty()) t.album = s.title;  // a single: the album Jellyfin files it under
+      t.year = s.year, t.track = s.track, t.trackTotal = s.tracks, t.lyrics = lyrics;
+      t.comment = "https://music.youtube.com/watch?v=" + id;
+      if (FILE* f = fopen((base + ".cover").c_str(), "rb")) {
+        char b[8192];
+        size_t n;
+        while ((n = fread(b, 1, sizeof(b), f)) > 0 && t.cover.size() < (4u << 20)) t.cover.append(b, n);
+        fclose(f);
+      }
+      bool picture = t.cover.size() > 3 && ((uint8_t(t.cover[0]) == 0xff && uint8_t(t.cover[1]) == 0xd8) || !t.cover.compare(1, 3, "PNG"));
+      if (!picture) t.cover.clear();  // an error page, not a picture
+      std::string why = writeTags(out, t);
+      if (!why.empty()) fprintf(stderr, "rondo: download %s: its tags weren't saved: %s\n", id.c_str(), why.c_str());
+      ok = why.empty();
+    } else {
+      fprintf(stderr, "rondo: download %s: its sound couldn't be put in an .m4a\n", id.c_str());
+    }
+    g_joined = ok ? 1 : 2;
+  });
+}
+
+void startWords() {
+  DownloadJob* j = current();
+  g_step = Words;
+  j->stage = "Getting lyrics";
+  g_changed = true;
+  uint32_t gen = g_generation;
+  std::string q = "/lyrics?title=" + Api::escape(g_song.title) + "&artist=" + Api::escape(g_song.artist);
+  if (!g_song.album.empty()) q += "&album=" + Api::escape(g_song.album);
+  if (g_song.seconds > 0) q += "&duration=" + std::to_string(g_song.seconds);
+  q += "&id=" + Api::escape(j->id);
+  g_core.get(q, 0, [gen](int status, const std::string& body) {
+    if (gen != g_generation) return;
+    Lyrics l;
+    g_words.clear();
+    if (status == 200 && parseLyrics(body, l)) {
+      if (!l.synced.empty()) {  // LRC: "[mm:ss.xx]line"
+        for (const LyricLine& line : l.synced) {
+          char t[16];
+          snprintf(t, sizeof(t), "[%02d:%02d.%02d]", int(line.t / 60000), int(line.t / 1000 % 60), int(line.t % 1000 / 10));
+          g_words += t + line.text + "\n";
+        }
+      } else {
+        g_words = l.plain;
+      }
+    }
+    startSaving();
+  });
+}
+
+void startCover() {
+  DownloadJob* j = current();
+  if (g_song.cover.empty()) return startWords();
+  g_step = Cover;
+  j->stage = "Getting the cover";
+  g_changed = true;
+  g_coreBusy = true;
+  g_seq = g_core.state().downloadSeq;
+  // the largest /thumb gives (720 px a side; without w and h, a row's 240)
+  std::string cover = g_song.cover + (g_song.cover.find('?') == std::string::npos ? "?" : "&") + "w=720&h=720";
+  g_core.download(cover, songParts(j->id) + ".cover");
+}
+
+void startSong() {
+  DownloadJob* j = current();
+  uint32_t gen = g_generation;
+  std::string id = j->id;
+  // its details first: /music/song (a server before it has none: the row's own "Artist · Album")
+  g_core.get("/music/song/" + Api::escape(id), 0, [gen, id](int status, const std::string& body) {
+    if (gen != g_generation) return;
+    DownloadJob* j = current();
+    if (!j) return;
+    SongInfo s;
+    s.title = j->title;
+    size_t dot = j->channel.find(" \xc2\xb7 ");
+    s.artist = j->channel.substr(0, dot);
+    if (dot != std::string::npos) s.album = j->channel.substr(dot + 4);
+    s.cover = j->thumb;
+    if (status == 200)
+      if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+        yyjson_val* r = yyjson_doc_get_root(d);
+        auto str = [&](const char* k) {
+          yyjson_val* v = yyjson_obj_get(r, k);
+          return yyjson_is_str(v) ? std::string(yyjson_get_str(v)) : std::string();
+        };
+        auto num = [&](const char* k) { return int(yyjson_get_num(yyjson_obj_get(r, k))); };
+        if (!str("title").empty()) s.title = str("title");
+        if (!str("artist").empty()) s.artist = str("artist");
+        s.albumArtist = str("albumArtist");
+        if (!str("album").empty()) s.album = str("album");
+        s.year = atoi(str("year").c_str());
+        s.track = num("track"), s.tracks = num("tracks");
+        if (!str("cover").empty()) s.cover = str("cover");
+        if (num("durationSec") > 0) s.seconds = num("durationSec");
+        yyjson_doc_free(d);
+      }
+    g_song = s;
+    j->title = s.title;
+    g_core.get("/resolve/" + Api::escape(id), 0, [gen](int status, const std::string& body) {
+      if (gen != g_generation) return;
+      DownloadJob* j = current();
+      if (!j) return;
+      if (status != 200) return finish(DownloadJob::Failed, status == 0 ? "No connection" : "YouTube didn't give this song");
+      int64_t bytes = -1;
+      if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+        yyjson_val* f = yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(d), "formats"), "140");
+        if (f) bytes = int64_t(yyjson_get_num(yyjson_obj_get(f, "contentLength")));
+        if (!g_song.seconds || g_song.seconds < 0) g_song.seconds = int(yyjson_get_num(yyjson_obj_get(yyjson_doc_get_root(d), "duration")));
+        yyjson_doc_free(d);
+      }
+      if (bytes < 0) return finish(DownloadJob::Failed, "No sound the Y1 plays");
+      g_videoItag = 0, g_audioItag = 140, g_videoBytes = 0, g_audioBytes = bytes;
+      startPart(Sound);
+    });
+  });
 }
 
 void start(int at) {
@@ -315,6 +540,12 @@ void start(int at) {
   j->state = DownloadJob::Running, j->percent = 0, j->stage = "Starting";
   g_step = Resolving;
   g_changed = true;
+  if (j->song) {
+    mkdirs(musicDownloadDir());
+    g_words.clear();
+    ++g_generation;
+    return startSong();
+  }
   mkdirs(downloadDir());
   uint32_t gen = ++g_generation;
   g_core.get("/resolve/" + Api::escape(j->id), 0, [gen](int status, const std::string& body) {
@@ -503,11 +734,35 @@ bool downloadsTick() {
     if (pct != j->percent) j->percent = pct, g_changed = true;
     if (c.downloadState == 2) {
       g_coreBusy = false;
-      if (g_step == Picture && g_audioItag) startPart(Sound);
+      if (j->song) startCover();
+      else if (g_step == Picture && g_audioItag) startPart(Sound);
       else startCaptions();
     } else if (c.downloadState == 3) {
       g_coreBusy = false;
       finish(DownloadJob::Failed, c.downloadStatus == 0 ? "The connection was lost" : "The stream was refused (" + std::to_string(c.downloadStatus) + ")");
+    }
+  } else if (g_step == Cover) {  // a song's cover: without one it's saved all the same
+    CoreState c = g_core.state();
+    if (c.downloadSeq != g_seq && (c.downloadState == 2 || c.downloadState == 3)) {
+      g_coreBusy = false;
+      startWords();
+    }
+  } else if (g_step == Joining && g_joined != 0 && j->song) {
+    if (g_joiner.joinable()) g_joiner.join();
+    std::string part = songParts(j->id) + ".saving.m4a", file = songFile(g_song);
+    mkdirs(file.substr(0, file.rfind('/')));
+    if (g_joined == 1 && rename(part.c_str(), file.c_str()) == 0) {
+      removeParts(j->id);
+      readSongs();
+      g_songs[j->id] = {file, g_song.title, g_song.artist, g_song.album, int64_t(time(nullptr))};
+      writeSongs();
+      j->file = file, j->percent = 100;
+      std::string title = j->title;
+      finish(DownloadJob::Done);
+      g_library.scanAsync();
+      g_app->toast("Downloaded: " + title);
+    } else {
+      finish(DownloadJob::Failed, "Couldn't save it to the card");
     }
   } else if (g_step == Joining && g_joined != 0) {
     if (g_joiner.joinable()) g_joiner.join();
@@ -539,6 +794,82 @@ bool downloadsTick() {
   return c;
 }
 
+// ---- songs ----
+
+bool downloadSong(const Item& item, bool quiet) {
+  if (item.id.empty() || item.id[0] == '/') return false;
+  if (!downloadedSong(item.id).empty()) {
+    if (!quiet) g_app->toast("Already on the card");
+    return false;
+  }
+  for (const DownloadJob& j : g_jobs)
+    if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) {
+      if (!quiet) g_app->toast("Already downloading");
+      return false;
+    }
+  g_jobs.erase(std::remove_if(g_jobs.begin(), g_jobs.end(), [&](const DownloadJob& j) { return j.id == item.id; }), g_jobs.end());
+  if (g_at >= int(g_jobs.size())) g_at = -1;
+  for (size_t i = 0; i < g_jobs.size(); i++)
+    if (g_jobs[i].state == DownloadJob::Running) g_at = int(i);
+  DownloadJob j;
+  j.id = item.id, j.title = item.title.empty() ? item.id : item.title, j.thumb = item.thumb, j.song = true;
+  j.channel = item.subtitle;  // "Artist · Album": the song's details when /music/song can't say
+  g_jobs.push_back(j);
+  g_changed = true;
+  if (!quiet) g_app->toast(g_at >= 0 ? "Download waiting: " + j.title : "Downloading: " + j.title);
+  return true;
+}
+
+int downloadSongs(const std::vector<Item>& songs) {
+  int n = 0;
+  for (const Item& s : songs)
+    if ((s.kind == "song" || s.kind == "video") && downloadSong(s, true)) n++;
+  g_app->toast(n ? "Downloading " + std::to_string(n) + (n == 1 ? " song" : " songs") : "They're on the card already");
+  return n;
+}
+
+std::string downloadedSong(const std::string& id) {
+  readSongs();
+  auto it = g_songs.find(id);
+  return it != g_songs.end() && fileThere(it->second.file) ? it->second.file : "";
+}
+
+std::vector<Item> downloadedSongs() {
+  readSongs();
+  std::vector<std::pair<int64_t, Item>> rows;
+  for (auto& [id, m] : g_songs) {
+    if (!fileThere(m.file)) continue;  // deleted or moved on the card since
+    Item it;
+    it.kind = "song", it.id = m.file, it.title = m.title;
+    it.subtitle = m.artist + (m.album.empty() ? "" : " \xc2\xb7 " + m.album);
+    it.thumb = m.file;
+    if (const Track* t = g_library.find(m.file)) it.durationSec = t->durationSec;
+    rows.push_back({m.at, it});
+  }
+  std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+  std::vector<Item> out;
+  for (auto& r : rows) out.push_back(std::move(r.second));
+  return out;
+}
+
+bool deleteSong(const std::string& file) {
+  std::string dir = musicDownloadDir();
+  if (file.compare(0, dir.size() + 1, dir + "/") != 0 || file.find("/..") != std::string::npos) return false;
+  readSongs();
+  bool known = false;
+  for (auto it = g_songs.begin(); it != g_songs.end();)
+    if (it->second.file == file) it = g_songs.erase(it), known = true;
+    else ++it;
+  if (!known) return false;
+  writeSongs();
+  if (!g_library.deleteFile(file) && unlink(file.c_str()) != 0 && errno != ENOENT) return false;
+  // its album's and artist's folders when that was their last song
+  std::string d = file.substr(0, file.rfind('/'));
+  for (int k = 0; k < 2 && d.size() > dir.size() && rmdir(d.c_str()) == 0; k++) d = d.substr(0, d.rfind('/'));
+  g_changed = true;
+  return true;
+}
+
 std::string downloadsJson() {
   std::string s = "{\"dir\":" + jstr(downloadDir()) + ",\"jobs\":[";
   int n = 0;
@@ -546,7 +877,7 @@ std::string downloadsJson() {
     const char* st = j.state == DownloadJob::Waiting ? "waiting" : j.state == DownloadJob::Running ? "running"
                      : j.state == DownloadJob::Done  ? "done"
                                                      : "failed";
-    s += std::string(n++ ? "," : "") + "{\"id\":" + jstr(j.id) + ",\"title\":" + jstr(j.title) + ",\"channel\":" + jstr(j.channel) +
+    s += std::string(n++ ? "," : "") + "{\"id\":" + jstr(j.id) + ",\"kind\":\"" + (j.song ? "song" : "video") + "\",\"title\":" + jstr(j.title) + ",\"channel\":" + jstr(j.channel) +
          ",\"quality\":" + std::to_string(j.quality) + ",\"state\":\"" + st + "\",\"percent\":" + std::to_string(j.percent) +
          ",\"stage\":" + jstr(j.stage) + ",\"error\":" + jstr(j.error) + ",\"file\":" + jstr(j.file) + "}";
   }
@@ -555,6 +886,16 @@ std::string downloadsJson() {
   for (const Item& it : downloadedVideos())
     s += std::string(n++ ? "," : "") + "{\"file\":" + jstr(it.id) + ",\"id\":" + jstr(downloadIdOf(it.id)) + ",\"title\":" + jstr(it.title) +
          ",\"subtitle\":" + jstr(it.subtitle) + "}";
+  s += "],\"songs\":[";
+  n = 0;
+  readSongs();
+  for (const Item& it : downloadedSongs()) {
+    std::string id;
+    for (auto& [k, m] : g_songs)
+      if (m.file == it.id) id = k;
+    s += std::string(n++ ? "," : "") + "{\"file\":" + jstr(it.id) + ",\"id\":" + jstr(id) + ",\"title\":" + jstr(it.title) +
+         ",\"subtitle\":" + jstr(it.subtitle) + "}";
+  }
   return s + "]}";
 }
 

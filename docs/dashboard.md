@@ -171,9 +171,11 @@ connected to. The Y1's own **Settings › YouTube** does the same on the Y1.
   ready and whether an account is connected.
 
 **Downloads:** paste a YouTube link (or a video id), pick 720p, 480p or 360p and press
-**Download**: your Rondo saves it to `Videos/YouTube` on its card with its subtitles. The list
-shows each one on its way (**Cancel**), then the videos on the card (**Save** to your computer, or
-the bin to delete one with its subtitles). The Y1 has the same list in YouTube › Home › Downloads.
+**Download**: your Rondo saves it to `Videos/YouTube` on its card with its subtitles. Choose **Song**
+(a YouTube Music link picks it by itself) to save a song instead, to `Music/YouTube Music` with its
+details, cover and lyrics. The list shows each one on its way (**Cancel**), then the videos and songs
+on the card (**Save** to your computer, or the bin to delete one). The Y1 has the same lists in
+YouTube › Home › Downloads and YouTube Music › Home › Downloads.
 
 ## For developers
 

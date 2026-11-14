@@ -75,6 +75,8 @@ extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, q
     connections, display, controls, system, account, output, textSize, menuOrder, repeat, musicSection, photos, files,
     folders, organize, usb, albumArtists, genres, coverFlow, played, mostPlayed, topRated, smart, newFolder, copyTo, moveTo,
     renameTo, openFile, subtitles, downloads,
+    // YouTube Music's song menu
+    playNow, playNext, addToQueue, startRadio, onCard,
     // Settings › Sound
     eqPreset, eqEdit, match, boost, leveling, amplifier, limit;
 }

@@ -38,7 +38,8 @@ class DownloadsScreen : public MusicListScreen {
  private:
   static std::string key() {
     std::string k;
-    for (const DownloadJob& j : downloadJobs()) k += j.id + char('0' + j.state) + std::to_string(j.percent) + j.stage + "|";
+    for (const DownloadJob& j : downloadJobs())
+      if (!j.song) k += j.id + char('0' + j.state) + std::to_string(j.percent) + j.stage + "|";
     for (const Item& it : downloadedVideos()) k += it.id + "|";
     return k;
   }
@@ -46,7 +47,7 @@ class DownloadsScreen : public MusicListScreen {
     key_ = key();
     std::vector<Row> rows;
     for (const DownloadJob& j : downloadJobs()) {
-      if (j.state == DownloadJob::Done) continue;
+      if (j.song || j.state == DownloadJob::Done) continue;  // a song's are YouTube Music's
       Row r;
       r.title = j.title;
       std::string q = std::to_string(j.quality) + "p";
@@ -103,7 +104,7 @@ Row downloadsRow() {
   Row d;
   d.title = "Downloads";
   int on = int(downloadedVideos().size()), going = 0;
-  for (const DownloadJob& j : downloadJobs()) going += j.state == DownloadJob::Waiting || j.state == DownloadJob::Running;
+  for (const DownloadJob& j : downloadJobs()) going += !j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
   d.subtitle = going ? std::to_string(going) + " downloading" + (on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "")
                : on  ? std::to_string(on) + (on == 1 ? " video" : " videos") + " on the card, to watch offline"
                      : "Videos saved to watch offline";

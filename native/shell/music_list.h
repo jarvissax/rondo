@@ -5,6 +5,7 @@
 #include "../core/api.h"
 #include "app.h"
 #include "screens.h"
+#include "shelves.h"
 
 namespace rondo::shell {
 
@@ -36,6 +37,8 @@ class Ambient {
 // artists) open their own screen. `queue` is what plays around a chosen song (everything a paged list
 // has loaded so far).
 std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::vector<Item>()> queue);
+// The same as cards on a shelf (shelves.h): a video's 16:9, an artist's round, the rest square
+std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::vector<Item>()> queue);
 void openMusicItem(const Item& item, const std::vector<Item>& siblings);
 // videoRows(): YouTube's rows; center plays the video
 std::vector<Row> videoRows(const std::vector<Item>& items);

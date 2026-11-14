@@ -134,6 +134,15 @@ Jellyfin, Plex and Kodi expect (`native/core/organize.h`).
 - `POST /api/organize` `{"names": {…}}` → the status; `409 {"error": "<why>"}` when it can't start.
 - `GET /api/organize/status` → `{"running", "finished", "done", "total", "moved", "errors": ["…"]}`.
 
+### Downloads
+- `GET /api/downloads` → `{"dir", "jobs": [{"id", "kind": "video" | "song", "title", "channel",
+  "quality", "state", "percent", "stage", "error", "file"}], "files": [video…], "songs": [{"file", "id",
+  "title", "subtitle"}]}`.
+- `POST /api/downloads` `{"video": "<link or id>", "quality": 480, "song": false}` → the same; with
+  `"song": true` a YouTube Music song, saved to `Music/YouTube Music/Artist/Album (Year)/NN - Title.m4a`.
+- `POST /api/downloads/cancel` `{"id"}`; `DELETE /api/downloads?file=<path>` (a video with its
+  subtitles, or a song).
+
 ### Fill in
 The dashboard's Fill in (`native/shell/fill_in.h`): missing song details and lyrics looked up
 online and saved into the files. One job at a time; it runs on the Y1.

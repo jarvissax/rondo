@@ -196,6 +196,7 @@ std::string flac(const std::string& path, int fd, const TagChanges& c) {
   set({"GENRE"}, c.genre);
   set({"DATE", "YEAR"}, c.year ? std::to_string(c.year) : "");
   set({"TRACKNUMBER"}, c.track ? std::to_string(c.track) : "");
+  set({"TRACKTOTAL", "TOTALTRACKS"}, c.track && c.trackTotal ? std::to_string(c.trackTotal) : "");
   set({"DISCNUMBER"}, c.disc ? std::to_string(c.disc) : "");
   set({"LYRICS", "UNSYNCEDLYRICS"}, c.lyrics);
   Bytes vc;
@@ -324,7 +325,7 @@ std::string id3(const std::string& path, int fd, const TagChanges& c) {
   text("TALB", {}, c.album);
   text("TCON", {}, c.genre);
   if (c.year) text(version == 4 ? "TDRC" : "TYER", {"TDRC", "TYER"}, std::to_string(c.year));
-  text("TRCK", {}, c.track ? std::to_string(c.track) : "");
+  text("TRCK", {}, c.track ? std::to_string(c.track) + (c.trackTotal ? "/" + std::to_string(c.trackTotal) : "") : "");
   text("TPOS", {}, c.disc ? std::to_string(c.disc) : "");
   if (!c.lyrics.empty()) {  // USLT: encoding, language, an empty description, the text
     drop({"USLT"});
@@ -427,7 +428,13 @@ Bytes ilst(const Bytes& old, const TagChanges& c) {
   textItem("\xa9gen", {"gnre"}, c.genre);
   textItem("\xa9" "day", {}, c.year ? std::to_string(c.year) : "");
   textItem("\xa9lyr", {}, c.lyrics);
-  if (c.track) set("trkn", {}, dataBox(0, {0, 0, uint8_t(c.track >> 8), uint8_t(c.track), 0, 0, 0, 0}));
+  textItem("\xa9" "cmt", {}, c.comment);
+  if (!c.cover.empty()) {  // 13: JPEG, 14: PNG
+    bool png = c.cover.size() > 4 && !memcmp(c.cover.data(), "\x89PNG", 4);
+    set("covr", {}, dataBox(png ? 14 : 13, Bytes(c.cover.begin(), c.cover.end())));
+  }
+  if (c.track)
+    set("trkn", {}, dataBox(0, {0, 0, uint8_t(c.track >> 8), uint8_t(c.track), uint8_t(c.trackTotal >> 8), uint8_t(c.trackTotal), 0, 0}));
   if (c.disc) set("disk", {}, dataBox(0, {0, 0, uint8_t(c.disc >> 8), uint8_t(c.disc), 0, 0}));
   Bytes body;
   for (Item& it : items) append(body, it.whole);

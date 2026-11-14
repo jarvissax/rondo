@@ -69,6 +69,9 @@ bool resumeWaitingForCard();  // the restore waits for the card (resumeRestore a
 // music_screens.cpp: a playlist, album or artist row's screen; a song's menu
 void openMusicContainer(const Item& item);
 void openSongMenu(const Item& song);
+// YouTube Music › Downloads (music_screens.cpp), and Home's row for it
+std::unique_ptr<Screen> makeMusicDownloads();
+Row musicDownloadsRow();
 std::string largeThumb(const std::string& thumb, int size);
 std::string artOf(const std::string& path, int size);
 // Wi-Fi (wifi_screens.cpp): its screen, and what Settings says about it (1.0.x's wifiName())

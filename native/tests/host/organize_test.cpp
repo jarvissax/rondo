@@ -47,6 +47,7 @@ int main() {
   touch(card + "/Videos/Shows/Silo (2023-)/Season 03/Silo S03E08.mp4");  // in place already
   touch(card + "/Shows/The Walking Dead/Season 01/The Walking Dead S01E01.mkv");  // years from a lookup
   touch(card + "/Movies/Arrival (2016)/movie.mkv");  // named by its folder
+  touch(card + "/Music/YouTube Music/Camel/Moonmadness (1976)/06 - Air Born.m4a");  // YouTube Music › Download's: stays
   std::vector<OrganizeItem> items = {
       {card + "/Music/Pink Floyd - Comfortably Numb.flac", "Comfortably Numb", "Pink Floyd", "Pink Floyd", "The Wall", 6, 2, 1979, false},
       {card + "/Music/Pink Floyd - Hey You.flac", "Hey You", "Pink Floyd", "Pink Floyd", "The Wall", 1, 2, 1979, false},
@@ -63,6 +64,7 @@ int main() {
       {card + "/Videos/Shows/Silo (2023-)/Season 03/Silo S03E08.mp4", "", "", "", "", 0, 0, 0, true},
       {card + "/Shows/The Walking Dead/Season 01/The Walking Dead S01E01.mkv", "", "", "", "", 0, 0, 0, true},
       {card + "/Movies/Arrival (2016)/movie.mkv", "", "", "", "", 0, 0, 0, true},
+      {card + "/Music/YouTube Music/Camel/Moonmadness (1976)/06 - Air Born.m4a", "Air Born", "Camel", "", "Moonmadness", 6, 0, 1976, false},
   };
   std::vector<VideoTitle> titles = videoTitles(items, card);
   for (const VideoTitle& t : titles) printf("  %s %s (%s) key %s, %zu files\n", t.series ? "series" : "movie", t.name.c_str(), t.years.c_str(), t.key.c_str(), t.files.size());
@@ -112,6 +114,7 @@ int main() {
   check(again.moves.empty() && again.alreadyThere == 1, "organized once, it stays (no lookup needed again)");
   check(there(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].mp4") && there(card + "/Videos/YouTube/Me at the zoo [jNQXAC9IVRw].en.vtt"),
         "YouTube downloads stay where they are");
+  check(there(card + "/Music/YouTube Music/Camel/Moonmadness (1976)/06 - Air Born.m4a"), "YouTube Music downloads too");
   std::string cmd = "rm -r '" + card + "'";
   if (card.compare(0, 20, "/tmp/rondo-organize-") == 0) (void)!system(cmd.c_str());
   printf(failures ? "%d failed\n" : "all passed\n", failures);

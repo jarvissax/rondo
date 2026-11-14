@@ -50,6 +50,12 @@ const Tile output{Icon::Headphones, rgb(0xff7a93), rgb(0xd6304f)};
 const Tile theme{Icon::Theme, rgb(0xc58cff), rgb(0x7b3fe0)};
 const Tile subtitles{Icon::Captions, rgb(0x5fe0b5), rgb(0x10a37a)};  // Display › Subtitles
 const Tile downloads{Icon::Download, rgb(0x7be07b), rgb(0x26a83b)};  // Library › Videos › YouTube downloads
+// YouTube Music's song menu: Play now, Play next, Add to queue, Start radio, Download, On the card
+const Tile playNow{Icon::Play, rgb(0xff5e7e), rgb(0xe0144c)};
+const Tile playNext{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};
+const Tile addToQueue{Icon::Plus, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile startRadio{Icon::Broadcast, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile onCard{Icon::Check, rgb(0x3fd0c9), rgb(0x0f8f96)};
 const Tile brightness{Icon::Sun, rgb(0xffd24d), rgb(0xf0a012)};
 const Tile timer{Icon::Timer, rgb(0x8fa3b8), rgb(0x52657a)};
 const Tile lyrics{Icon::Mic, rgb(0xff8fc8), rgb(0xd6338a)};

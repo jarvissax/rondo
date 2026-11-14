@@ -112,7 +112,8 @@ cable gives the card back to the Y1 as well. The dashboard can also upload music
 Both work as soon as the Y1 is on Wi-Fi: Rondo talks to YouTube itself, with nothing to set up.
 (If you'd rather it went through a [server](server.md) of your own, choose **My server** in
 **Settings › YouTube › Connection**.) They open on a home page, with tabs across the top: turn the
-wheel on the tab row and press center to switch. **Search** uses an on-screen keyboard you type on
+wheel on the tab row and press center to switch. YouTube Music’s home is shelves, as in the app:
+each section a row of covers that slides along as you turn the wheel, then on into the next. **Search** uses an on-screen keyboard you type on
 with the wheel.
 
 - **Signed in**, you also get **Library** (your playlists and Liked Music) in YouTube Music, and
@@ -120,8 +121,14 @@ with the wheel.
   code in **Settings › YouTube › YouTube account** (see [Settings](#settings)); with a server, the
   server's own account counts. YouTube Music's own home and history also need a cookies.txt (on
   the dashboard's YouTube page, or the server's admin page).
-- **Hold center on a song** to play it now or next, add it to the queue, or **Start radio**
-  (songs like this one).
+- **Hold center on a song** to play it now or next, add it to the queue, **Start radio** (songs
+  like this one) or **Download** it. An album or a playlist has **Download all** at its top.
+- **Downloaded songs** are saved to the card the way the library keeps music, in
+  `Music/YouTube Music/Artist/Album (Year)/01 - Title.m4a`: YouTube's own AAC (nothing re-encoded),
+  with the song's artist, album, year, track number, cover and lyrics (timed where LRCLIB has them)
+  in its tags. **YouTube Music › Home › Downloads** lists them, also with no connection: center
+  plays them from the card, hold center deletes one, and one on its way can be canceled there.
+  Library › Music has them too, and Organize leaves the folder as it is.
 - Songs stream as YouTube's Opus, or its AAC where a song has no Opus; Now Playing says which
   ("Streaming · Opus").
 - Videos play at the quality set in **Settings › YouTube › Video quality** (Auto picks up to

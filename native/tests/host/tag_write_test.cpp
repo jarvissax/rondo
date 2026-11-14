@@ -77,6 +77,32 @@ int main() {
     check(decodes(p), c.name + ": still plays");
     printf("     -> %ld bytes\n", sizeOf(p));
   }
+  // a YouTube Music download's: an .m4a from ffmpeg (its index at the end), its cover, link and track of total
+  {
+    std::string p = dir + "/song.m4a", jpg = dir + "/cover.jpg";
+    if (run(tone + "-c:a aac '" + p + "'") && run("ffmpeg -y -f lavfi -i color=c=red:s=64x64 -frames:v 1 '" + jpg + "'")) {
+      std::string cover;
+      if (FILE* f = fopen(jpg.c_str(), "rb")) {
+        char b[4096];
+        size_t n;
+        while ((n = fread(b, 1, sizeof(b), f)) > 0) cover.append(b, n);
+        fclose(f);
+      }
+      TagChanges ch;
+      ch.title = "Air Born", ch.artist = "Camel", ch.albumArtist = "Camel", ch.album = "Moonmadness", ch.year = 1976, ch.track = 6, ch.trackTotal = 7;
+      ch.comment = "https://music.youtube.com/watch?v=KNJGkyCqtTU", ch.cover = cover, ch.lyrics = lyrics;
+      std::string why = writeTags(p, ch);
+      check(why.empty() && !cover.empty(), "a download's tags and cover saved" + (why.empty() ? "" : " (" + why + ")"));
+      Tags t = readTags(p.c_str());
+      check(t.title == "Air Born" && t.track == 6 && t.year == 1976 && t.albumArtist == "Camel", "they read back");
+      check(run("ffprobe -v error -select_streams v -show_entries stream=codec_name:stream_disposition=attached_pic -of csv=p=0 '" + p + "' | grep -q 'mjpeg,1'"),
+            "ffprobe sees the cover as its picture");
+      check(run("ffprobe -v error -show_entries format_tags=comment,track -of csv=p=0 '" + p + "' | grep -q '6/7'"), "track 6 of 7");
+      check(decodes(p), "still plays");
+    } else {
+      check(false, "song.m4a made by ffmpeg");
+    }
+  }
   check(!writeTags(dir + "/none.ogg", TagChanges()).empty(), "an Ogg file: refused, not broken");
   std::string cmd = "rm -r '" + dir + "'";
   if (getenv("KEEP")) printf("kept in %s\n", dir.c_str());

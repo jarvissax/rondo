@@ -627,6 +627,95 @@ std::string next(const std::string& videoId) {
   return "{\"items\":" + json(items) + "}";
 }
 
+std::string song(const std::string& videoId) {
+  // the song as the queue shows it: its artists, its album (and the album's id) and often a year
+  Doc d;
+  if (call("next", "\"videoId\":" + quote(videoId) + ",\"isAudioOnly\":true", d) != 200) return "";
+  J pr = find(root(d), "playlistPanelRenderer");
+  J n = nullptr;
+  each(key(pr, "contents"), [&](J e) {
+    J p = panelRenderer(e);
+    if (!n && p) {
+      std::string id = str(key(p, "videoId"));
+      if (id.empty()) id = endpoint(key(p, "navigationEndpoint")).videoId;
+      if (id == videoId) n = p;
+    }
+  });
+  std::string title, album, albumId, year, cover;
+  std::vector<std::string> artists;
+  int seconds = 0;
+  if (n) {
+    title = text(key(n, "title"));
+    for (const Run& x : runs(key(n, "longBylineText"))) {
+      if (starts(x.at.browseId, "UC")) artists.push_back(x.text);
+      else if (album.empty() && starts(x.at.browseId, "MPR")) album = x.text, albumId = x.at.browseId;
+      else if (x.text.size() == 4 && numeric(x.text)) year = x.text;
+    }
+    if (artists.empty()) artists.push_back(text(key(n, "shortBylineText")));
+    seconds = clockSeconds(text(key(n, "lengthText")));
+    cover = widest(key(n, "thumbnail"));
+  }
+  if (title.empty()) return "";
+  // its album: the year, the album's artist, its cover, and where the song is in it (the rows' order)
+  std::string albumArtist;
+  int number = 0, tracks = 0;
+  Doc ad;
+  if (!albumId.empty() && call("browse", "\"browseId\":" + quote(albumId), ad) == 200) {
+    J r = root(ad);
+    J tabs = path(r, "contents", "twoColumnBrowseResultsRenderer");
+    J head = tabs ? path(tabs, "tabs", 0, "tabRenderer", "content", "sectionListRenderer", "contents", 0) : key(r, "header");
+    J shelfR = tabs ? path(tabs, "secondaryContents", "sectionListRenderer", "contents", 0, "musicShelfRenderer")
+                    : find(key(r, "contents"), "musicShelfRenderer");
+    Header h = header(head);
+    albumArtist = h.by;
+    if (!h.title.empty()) album = h.title;
+    for (const std::string& part : std::vector<std::string>{h.subtitle}) {  // "Album • 2019" in its subtitle
+      size_t i = 0;
+      while ((i = part.find_first_of("0123456789", i)) != std::string::npos) {
+        size_t j = i;
+        while (j < part.size() && isdigit((unsigned char)part[j])) j++;
+        if (j - i == 4 && (i == 0 || !isalnum((unsigned char)part[i - 1]))) year = part.substr(i, 4);
+        i = j;
+      }
+    }
+    // the song by its id, else by its title (a song found as its video has another id than its album's
+    // track), else the album's only one
+    auto plain = [](const std::string& t) {
+      std::string o;
+      int depth = 0;
+      for (char c : t) {
+        c = char(tolower((unsigned char)c));
+        if (c == '(' || c == '[') depth++;
+        else if ((c == ')' || c == ']') && depth) depth--;
+        else if (!depth && isalnum((unsigned char)c)) o += c;
+        else if (!depth && (unsigned char)c >= 0x80) o += c;
+      }
+      return o;
+    };
+    int k = 0, byTitle = 0;
+    each(key(shelfR, "contents"), [&](J e) {
+      Item t = track(e);
+      if (!t.ok()) return;
+      k++;
+      if (t.id == videoId && !number) number = k;
+      if (!byTitle && plain(t.title) == plain(title)) byTitle = k;
+    });
+    tracks = k;
+    if (!number) number = byTitle ? byTitle : tracks == 1 ? 1 : 0;
+    // the album's cover: square and the largest there is (a song's own can be a video's frame)
+    std::string big = widest(path(r, "background", "musicThumbnailRenderer", "thumbnail"));
+    if (big.empty() && head) {
+      for (const char* kk : {"musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer"})
+        if (J hr = key(head, kk)) big = widest(path(hr, "thumbnail", "musicThumbnailRenderer", "thumbnail"));
+    }
+    if (!big.empty()) cover = big;
+  }
+  return "{\"id\":" + quote(videoId) + ",\"title\":" + quote(title) + ",\"artist\":" + quote(joinNames(artists)) +
+         ",\"albumArtist\":" + quote(albumArtist) + ",\"album\":" + quote(album) + ",\"albumId\":" + quote(albumId) +
+         ",\"year\":" + quote(year) + ",\"track\":" + std::to_string(number) + ",\"tracks\":" + std::to_string(tracks) +
+         ",\"cover\":" + quote(cover.empty() ? "" : thumbLink(cover)) + ",\"durationSec\":" + std::to_string(seconds) + "}";
+}
+
 bool lyrics(const std::string& videoId, Lyrics& out) {
   Doc d;
   if (call("next", "\"videoId\":" + quote(videoId), d) != 200) return false;

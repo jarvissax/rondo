@@ -19,7 +19,8 @@ std::string downloadDir();  // the card's Videos/YouTube
 
 struct DownloadJob {
   std::string id, title, channel, thumb;
-  int quality = 480;  // the height asked for
+  bool song = false;  // a YouTube Music song (an .m4a in Music/YouTube Music), else a video
+  int quality = 480;  // the height asked for (a video)
   enum State { Waiting, Running, Done, Failed } state = Waiting;
   int percent = 0;
   std::string stage;  // "Picture", "Sound", "Subtitles", "Saving"
@@ -45,5 +46,20 @@ bool downloadsTick();
 bool joinDownloadParts(const std::string& video, const std::string& audio, const std::string& out);
 // The queue and the files as JSON (the dashboard's GET /api/downloads)
 std::string downloadsJson();
+
+// YouTube Music › Download, in the same queue: a song saved the way the library keeps music (the layout
+// Jellyfin reads), its AAC as YouTube has it (itag 140, nothing re-encoded) in an .m4a tagged with its
+// details (the server's or direct mode's /music/song: artist, album, year, track), cover, lyrics and
+// link:
+//   Music/YouTube Music/<Album artist>/<Album> (<Year>)/<NN> - <Title>.m4a
+// Organize leaves the folder be. YouTube Music › Downloads lists them; they play from the card.
+std::string musicDownloadDir();  // the card's Music/YouTube Music
+// Queued (false: on the card or queued already; a toast says which unless quiet)
+bool downloadSong(const Item& song, bool quiet = false);
+int downloadSongs(const std::vector<Item>& songs);  // an album's or playlist's: how many were queued
+std::string downloadedSong(const std::string& id);  // the card's file of this song ("" none)
+// The downloaded songs on the card, the newest first (id: the file; subtitle: artist · album)
+std::vector<Item> downloadedSongs();
+bool deleteSong(const std::string& file);  // and its entry
 
 }  // namespace rondo::shell

@@ -53,6 +53,10 @@ bool fillInActive();  // a job running: the CPU stays up (power_screens.cpp)
 // saving into the songs (details or lyrics): Organize waits (a file it moved mid-save would come back)
 bool fillInWriting();
 
+// A song's lyrics from LRCLIB, asked here (blocking: a thread's): LRC when timed, else plain lines;
+// "" none. YouTube Music › Download asks it when the lyrics it has aren't timed.
+std::string lrclibLyrics(const std::string& artist, const std::string& title, const std::string& album, int seconds, bool& timed);
+
 // Organize's lookup: the card's series and movies whose years the names don't say (a series still
 // running is asked again: it may have ended)
 std::vector<VideoTitle> titlesToLookUp();  // UI thread

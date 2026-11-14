@@ -202,11 +202,13 @@ Parsed parseVideo(const OrganizeItem& v) {
 }
 std::string keyOf(const OrganizeItem& v, const Parsed& p) { return p.series ? fold(p.name) : v.path; }
 
-// the videos Organize files: the card's, but YouTube › Download's (Videos/YouTube, named by title and
-// id, where YouTube › Downloads finds them)
+// what Organize files: the card's, but YouTube › Download's videos (Videos/YouTube, named by title and
+// id) and YouTube Music › Download's songs (Music/YouTube Music, filed already), where their Downloads
+// screens find them
 bool organizable(const OrganizeItem& it, const std::string& card) {
   if (it.path.compare(0, card.size() + 1, card + "/") != 0) return false;
-  return !(it.video && it.path.compare(0, card.size() + 16, card + "/Videos/YouTube/") == 0);
+  if (it.video && it.path.compare(0, card.size() + 16, card + "/Videos/YouTube/") == 0) return false;
+  return !(!it.video && it.path.compare(0, card.size() + 21, card + "/Music/YouTube Music/") == 0);
 }
 
 }  // namespace

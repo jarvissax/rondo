@@ -1832,7 +1832,9 @@ async function loadSettings() {
   }
 }
 function segHtml(key, options, cur, label) {
-  return `<div class="seg seg-wide" role="radiogroup" aria-label="${esc(label)}" data-key="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${JSON.stringify(v)}">${l}</button>`).join('')}</div>`;
+  // the value as JSON, escaped: a string's quotes ("off") had ended the attribute, so the Wheel's
+  // choices read as nothing
+  return `<div class="seg seg-wide" role="radiogroup" aria-label="${esc(label)}" data-key="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${esc(JSON.stringify(v))}">${l}</button>`).join('')}</div>`;
 }
 function renderSettings() {
   const s = S.settings;
@@ -2356,10 +2358,12 @@ async function forgetNet(id) {
 }
 
 // ---------- YouTube › Download ----------
-// The form (a link or an id, the height), then what's on its way (progress, cancel), then the videos on
-// the card (delete). Asked again every 2 s while one is on its way and the page is open.
+// The form (a link or an id; a video at the height chosen, or a YouTube Music song, saved to
+// Music/YouTube Music with its details and cover), then what's on its way (progress, cancel), then the
+// videos and songs on the card (save, delete). Asked again every 2 s while one is on its way.
 let dlTimer = 0;
 const DL_QUALITY = [[720, '720p'], [480, '480p'], [360, '360p']];
+const DL_KIND = [['video', 'Video'], ['song', 'Song']];
 async function loadDownloads() {
   clearTimeout(dlTimer);
   try {
@@ -2375,23 +2379,30 @@ function renderDownloads() {
   if (!el || !d) return;
   if (!$('#dlForm')) {
     el.innerHTML = `<div class="group"><form class="dl-form" id="dlForm">
-        <input type="text" id="dlVideo" placeholder="A YouTube link or video id" aria-label="YouTube link or video id" autocomplete="off" spellcheck="false">
+        <input type="text" id="dlVideo" placeholder="A YouTube or YouTube Music link, or an id" aria-label="YouTube or YouTube Music link, or an id" autocomplete="off" spellcheck="false">
+        ${segHtml('dlKind', DL_KIND, S.dlKind || 'video', 'Download as').replace('seg seg-wide', 'seg')}
         ${segHtml('dlQuality', DL_QUALITY, S.dlQuality || 480, 'Quality').replace('seg seg-wide', 'seg')}
         <button class="btn btn-primary" type="submit">${icon('download')}<span>Download</span></button></form></div>
       <div class="group" id="dlRows"></div>`;
+    syncDlKind();
   }
   const jobs = d.jobs.filter((j) => j.state !== 'done').reverse();
   const rows = [
     ...jobs.map((j) => {
       const going = j.state === 'running' || j.state === 'waiting';
       const part = !j.stage || j.stage.startsWith('Downloading');  // the percent only while a part comes in, as on the Y1
-      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${part ? `${j.percent}% · ` : ''}${j.quality}p` : j.state === 'waiting' ? `Waiting · ${j.quality}p` : `Didn’t download: ${esc(j.error)}`;
+      const what = j.kind === 'song' ? 'Song' : `${j.quality}p`;
+      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${part ? `${j.percent}% · ` : ''}${what}` : j.state === 'waiting' ? `Waiting · ${what}` : `Didn’t download: ${esc(j.error)}`;
       return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
         <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${sub}</div>
           ${j.state === 'running' ? `<div class="dl-bar"><span style="width:${j.percent}%"></span></div>` : ''}</div>
         ${going ? `<button class="btn btn-sm" type="button" data-dl-cancel="${esc(j.id)}">Cancel</button>`
-          : `<button class="btn btn-sm" type="button" data-dl-again="${esc(j.id)}" data-q="${j.quality}">Try again</button>`}</div>`;
+          : `<button class="btn btn-sm" type="button" data-dl-again="${esc(j.id)}" data-q="${j.quality}" data-song="${j.kind === 'song' ? 1 : ''}">Try again</button>`}</div>`;
     }),
+    ...(d.songs || []).map((x) => `<div class="row dl-row"><span class="tile t-music">${icon('note')}</span>
+        <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
+        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
+        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" data-song="1" aria-label="Delete ${esc(x.title)}">${icon('trash')}</button></div>`),
     ...d.files.map((x) => `<div class="row dl-row"><span class="tile t-videos">${icon('film')}</span>
         <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
         <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
@@ -2399,20 +2410,32 @@ function renderDownloads() {
   ];
   $('#dlRows').innerHTML = rows.length ? rows.join('') : '<div class="row-empty">Nothing downloaded yet.</div>';
 }
+// a song has no height to pick
+function syncDlKind() {
+  const q = $('.seg[data-key="dlQuality"]');
+  if (q) q.hidden = (S.dlKind || 'video') === 'song';
+}
+$('#dlBody').addEventListener('input', (e) => {
+  if (e.target.id !== 'dlVideo' || !/music\.youtube\.com/i.test(e.target.value)) return;
+  S.dlKind = 'song';  // a YouTube Music link: a song
+  $$('button', $('.seg[data-key="dlKind"]')).forEach((x) => x.setAttribute('aria-checked', String(JSON.parse(x.dataset.v) === 'song')));
+  syncDlKind();
+});
 $('#dlBody').addEventListener('click', async (e) => {
-  const seg = e.target.closest('.seg[data-key="dlQuality"]'), b = e.target.closest('[data-v]');
+  const seg = e.target.closest('.seg[data-key="dlQuality"], .seg[data-key="dlKind"]'), b = e.target.closest('[data-v]');
   if (seg && b) {
     $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
-    S.dlQuality = JSON.parse(b.dataset.v);
+    if (seg.dataset.key === 'dlKind') S.dlKind = JSON.parse(b.dataset.v), syncDlKind();
+    else S.dlQuality = JSON.parse(b.dataset.v);
     return;
   }
   const cancel = e.target.closest('[data-dl-cancel]'), again = e.target.closest('[data-dl-again]'), del = e.target.closest('[data-dl-delete]');
   try {
     if (cancel) S.downloads = await api('POST', '/api/downloads/cancel', { id: cancel.dataset.dlCancel });
-    else if (again) S.downloads = await api('POST', '/api/downloads', { video: again.dataset.dlAgain, quality: +again.dataset.q }, { timeout: 40000 });
+    else if (again) S.downloads = await api('POST', '/api/downloads', { video: again.dataset.dlAgain, quality: +again.dataset.q, song: !!again.dataset.song }, { timeout: 40000 });
     else if (del) {
       const name = del.closest('.row').querySelector('.row-title').textContent;
-      if (!await confirmSheet({ title: `Delete “${name}”?`, text: 'It goes from the card with its subtitles.', action: 'Delete' })) return;
+      if (!await confirmSheet({ title: `Delete “${name}”?`, text: del.dataset.song ? 'It goes from the card.' : 'It goes from the card with its subtitles.', action: 'Delete' })) return;
       S.downloads = await api('DELETE', `/api/downloads?file=${encodeURIComponent(del.dataset.dlDelete)}`);
       toast('Deleted from the card');
     } else return;
@@ -2425,7 +2448,7 @@ $('#dlBody').addEventListener('submit', async (e) => {
   const input = $('#dlVideo'), video = input.value.trim();
   if (!video) return input.focus();
   try {
-    S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480 }, { timeout: 40000 });
+    S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480, song: (S.dlKind || 'video') === 'song' }, { timeout: 40000 });
     input.value = '';
     toast('Downloading on your Rondo');
     renderDownloads();

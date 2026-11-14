@@ -23,9 +23,22 @@ An update for the 3.0 firmware: Settings › System › Software update, the das
 - **Organize looks up a show's or a movie's years** on the dashboard when the names don't say them
   (TVmaze for shows, Wikidata for movies): you pick the right one for each, and the folders keep
   the years from then on.
+- **YouTube Music downloads.** Hold center on a song and choose **Download**, or **Download all** on
+  an album or playlist: the song goes to `Music/YouTube Music/Artist/Album (Year)/01 - Title.m4a`,
+  YouTube's own AAC with its artist, album, year, track number, cover and lyrics (timed where LRCLIB
+  has them) in its tags, as Jellyfin reads them. **YouTube Music › Home › Downloads** plays them from
+  the card, also with no connection; Library › Music has them too. The dashboard's Downloads saves
+  songs as well. With your own server, update it to Rondo server 3.2.0 for the year and the track
+  number (an older one names a song from its row).
 
 ### Changed
 
+- **YouTube Music’s Home looks like the app’s:** each section is a titled shelf of covers (square for
+  songs, albums and playlists, wide for videos, round for artists), Downloads above them. Turn the
+  wheel to move along a shelf, which slides as you go, and on into the next one; the background
+  takes the chosen cover’s color. Library stays a list.
+- **A song’s menu has an icon for each action** (Play now, Play next, Add to queue, Start radio,
+  Download).
 - **Shows and movies go inside Videos,** the way Jellyfin expects them:
   `Videos/Shows/Silo (2023-)/Season 01/`, `Videos/Shows/The Walking Dead (2010-2022)/Season 01/`
   and `Videos/Movies/Arrival (2016)/`. A show still running is `(2023-)`, one that has ended
@@ -39,6 +52,13 @@ An update for the 3.0 firmware: Settings › System › Software update, the das
   video; it takes the original track now. To get the original sound on a video downloaded before,
   download it again.
 - **The dashboard's notes keep their distance** from what's above and below them.
+- **Changing Repeat or Shuffle no longer stops the song for a moment** (Now Playing's options, hold
+  center). Rondo decodes again only when the next song is already lined up; Play next from a song's
+  menu is the same.
+- **Library › Files slides in** like every other screen: the first time after a start, counting a
+  big card's free space held it up until its slide was over.
+- **The dashboard's Wheel acceleration and Wheel vibration** can be changed again (a choice's value
+  read as nothing).
 
 ## 3.0.2 (November 12, 2026)
 

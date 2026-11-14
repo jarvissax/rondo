@@ -425,6 +425,15 @@ std::string fillInLyrics() {
   return "";
 }
 
+std::string lrclibLyrics(const std::string& artist, const std::string& title, const std::string& album, int seconds, bool& timed) {
+  CURL* c = curl_easy_init();
+  lookup::Lyrics l;
+  lookup::Result r = lookup::findLyrics(fetcher(c), artist, title, album, seconds, l);
+  curl_easy_cleanup(c);
+  timed = r == lookup::Result::Found && l.synced;
+  return r == lookup::Result::Found ? l.text : "";
+}
+
 // ---------- Organize's lookup ----------
 
 namespace {

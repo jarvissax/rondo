@@ -274,6 +274,11 @@ void route(const Request& r, Response& out) {
     if (!starts(id, "UC") || id.size() != 24) return out.error(400, "id");
     return list(r, out, "music/artist/" + id, [id] { return music::artist(id); });
   }
+  if (starts(p, "/music/song/")) {
+    std::string id = uriDecode(p.substr(12));
+    if (!isVideoId(id)) return out.error(400, "id");
+    return list(r, out, "music/song/" + id, [id] { return music::song(id); });
+  }
   if (starts(p, "/music/next/")) {
     std::string id = uriDecode(p.substr(12));
     if (!isVideoId(id)) return out.error(400, "id");
