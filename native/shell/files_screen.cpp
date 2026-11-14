@@ -9,7 +9,11 @@
 #include <time.h>
 
 #include <algorithm>
+#include <atomic>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 #include "../core/fold.h"
 #include "../ui/image.h"
@@ -284,6 +288,37 @@ class FileMenuScreen : public ShellListScreen {
   std::string path_;
 };
 
+// The storages' free and total space, measured on a thread of its own: a FAT card's first count after
+// a mount reads its whole table (hundreds of milliseconds on a big card), which held up Files' opening
+// so its slide was over before its first frame. A measure is kept for 20 s; generation() grows with each.
+struct Space {
+  int64_t free = -1, total = -1, at = 0;
+};
+std::mutex g_spaceMu;
+std::map<std::string, Space> g_space;
+std::atomic<uint32_t> g_spaceGen{0};
+bool g_measuring = false;
+// what's known of a root's space now ({-1, -1} before the first measure), a new measure asked when old
+Space spaceOf(const std::string& root) {
+  std::lock_guard<std::mutex> l(g_spaceMu);
+  Space s = g_space[root];
+  if ((!s.at || now_ns() - s.at > 20 * kSec) && !g_measuring) {
+    g_measuring = true;
+    std::thread([] {
+      for (const char* r : files::kRoots) {
+        Space m;
+        m.free = files::freeBytes(r), m.total = files::totalBytes(r), m.at = now_ns();
+        std::lock_guard<std::mutex> l(g_spaceMu);
+        g_space[r] = m;
+      }
+      std::lock_guard<std::mutex> l(g_spaceMu);
+      g_measuring = false;
+      g_spaceGen++;
+    }).detach();
+  }
+  return s;
+}
+
 // A folder, or (no path) the two storages
 class FilesScreen : public ShellListScreen {
  public:
@@ -291,14 +326,18 @@ class FilesScreen : public ShellListScreen {
       : ShellListScreen(dir.empty() ? "Files" : files::isRoot(dir) ? files::rootName(dir) : nameOf(dir)), dir_(std::move(dir)) {
     render();
   }
-  void onShow() override { render(); }  // back from a rename, a delete, a copy
+  void onShow() override {  // back from a rename, a delete, a copy (opening, it's drawn already)
+    if (shown_) render();
+    shown_ = true;
+  }
   bool tick(int64_t) override {
     std::string s = files::transferStatus();
-    if (s == status_) return false;
-    render();  // the progress, and when it ends what came
+    bool space = dir_.empty() && g_spaceGen.load() != spaceGen_;
+    if (s == status_ && !space) return false;
+    render();  // the progress, and when it ends what came; the storages' space once measured
     return true;
   }
-  int64_t wakeAt() const override { return status_.empty() ? 0 : now_ns() + 500 * kMs; }
+  int64_t wakeAt() const override { return status_.empty() && !(dir_.empty() && spaceGen_ == g_spaceGen.load() && measuring()) ? 0 : now_ns() + 100 * kMs; }
 
  private:
   void render() {
@@ -311,12 +350,13 @@ class FilesScreen : public ShellListScreen {
       rows.push_back(busy);
     }
     if (dir_.empty()) {
+      spaceGen_ = g_spaceGen.load();
       for (const char* r : files::kRoots) {
         if (!files::isDir(r)) continue;
         Row row;
         row.title = files::rootName(r);
-        int64_t free = files::freeBytes(r), total = files::totalBytes(r);
-        row.subtitle = sizeText(free) + " free of " + sizeText(total);
+        Space sp = spaceOf(r);
+        row.subtitle = sp.at ? sizeText(sp.free) + " free of " + sizeText(sp.total) : std::string(" ");
         row.tile = std::string(r) == files::kRoots[0] ? &tiles::files : &tiles::system;
         row.chevron = true;
         std::string p = r;
@@ -364,7 +404,13 @@ class FilesScreen : public ShellListScreen {
     }
     list_.setRows(std::move(rows), true);
   }
+  static bool measuring() {
+    std::lock_guard<std::mutex> l(g_spaceMu);
+    return g_measuring;
+  }
   std::string dir_, status_;
+  bool shown_ = false;
+  uint32_t spaceGen_ = 0;
 };
 
 }  // namespace

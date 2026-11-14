@@ -85,7 +85,7 @@ class App {
       int64_t t0 = now_ns();
       stack_.back()->onShow();
       if (g_traceSlow && now_ns() - t0 > 2 * kMs) slowTrace("slow: %s's onShow took %.1f ms\n", stack_.back()->title().c_str(), (now_ns() - t0) / 1e6);
-      transition_.begin(0, 1, now_, 250 * kMs);
+      transition_.begin(0, 1, slideStart(), 250 * kMs);
       began("opens");
       popping_ = false;
     }
@@ -97,7 +97,7 @@ class App {
     leaving_ = std::move(stack_.back());
     stack_.pop_back();
     stack_.back()->onShow();
-    transition_.begin(0, 1, now_, 250 * kMs);
+    transition_.begin(0, 1, slideStart(), 250 * kMs);
     began("back to");
     popping_ = true;
   }
@@ -113,7 +113,7 @@ class App {
     leaving_ = std::move(stack_.back());
     stack_.resize(size_t(at) + 1);
     stack_.back()->onShow();
-    transition_.begin(0, 1, now_, 250 * kMs);
+    transition_.begin(0, 1, slideStart(), 250 * kMs);
     began("back to");
     popping_ = true;
   }
@@ -245,6 +245,9 @@ class App {
     transition_.duration = 0;
     leaving_.reset();
   }
+  // a slide starts once the screen it shows is ready: one that took long to open (a card's first
+  // free-space count, a big folder) would otherwise have slid by unseen before its first frame
+  int64_t slideStart() const { return std::max(now_, now_ns()); }
   std::vector<std::unique_ptr<Screen>> stack_;
   std::unique_ptr<Screen> leaving_;
   Tween transition_;
