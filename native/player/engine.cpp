@@ -86,6 +86,7 @@ struct Marker {  // where in the stream a track begins (pos -1: the queue's end)
   bool failed = false;  // a stream stopped here (the network, the server): playback stops at startMs of pos
   float gainDb = NAN;   // the track's ReplayGain (Settings › Sound › Volume leveling)
   char codec[8] = {0};  // what it was read as (PlayerState.codec)
+  uint32_t seq = 0;     // the track's number in the stream (Engine::trackSeq_)
 };
 
 // The streams a queued song can be read from, best first. The queue names a streamed song by its
@@ -235,6 +236,15 @@ class Engine {
   bool failed_ = false;
   bool streamFailed_ = false;  // decodeTrack's answer
   uint64_t trackAt_ = 0;       // where in the stream the track decodeTrack opened begins
+  // How far the decoder is from what's heard (under mu_): each track it opens is numbered (trackSeq_);
+  // heardSeq_ is the heard one's, finishedSeq_ the last it decoded to the end. Past the heard track's
+  // end, what follows is in the stream already, by the old Shuffle and Repeat: a change of either then
+  // decodes again from where it's heard (restart); before it, it only changes what comes next, and the
+  // song plays on without a gap. decodingPos_: the place in the order the decoder is at (a shuffle
+  // moves it).
+  uint32_t trackSeq_ = 0, heardSeq_ = 1, finishedSeq_ = 0;
+  int decodingPos_ = -1;
+  bool pastHeard() const { return finishedSeq_ >= heardSeq_; }
   std::string error_;
 
   // the ring: stream frames [readAt_, writeAt_) are decoded and not yet sent to OpenSL
@@ -359,6 +369,7 @@ void Engine::restart(int pos, int64_t atMs, bool play) {
   memset(buffers_, 0, sizeof(buffers_));
   for (auto& f : inFlight_) f = {0, 0};
   heardPos_ = pos;
+  heardSeq_ = trackSeq_ + 1;  // the next track opened (finishedSeq_ stays behind it)
   heardFrom_ = 0;
   heardStartMs_ = atMs;
   heardDuration_ = 0;
@@ -695,24 +706,31 @@ void Engine::command(const std::vector<uint8_t>& m) {
       // prepareNext()).
       // (Add to queue changes what follows only when the queue's end was next.)
       bool endNext = std::any_of(markers_.begin(), markers_.end(), [](const Marker& m) { return m.pos < 0; });
-      if (heardPos_ >= 0 && (type == kInsertNext ? !markers_.empty() : endNext)) restart(heardPos_, heard, playing_);
+      if (heardPos_ >= 0 && (type == kInsertNext ? pastHeard() : endNext)) restart(heardPos_, heard, playing_);
       break;
     }
-    case kShuffle:
+    case kShuffle: {
       shuffle_ = len && p[0];
       pos_ = heardPos_;
       rebuildOrder();
+      // the decoder still in the heard song (nothing after it decoded, no mark of it unheard): it
+      // carries on in the new order, without a gap; else what's decoded ahead may be the wrong song,
+      // and it decodes again from where it is heard
+      bool inHeard = markers_.empty() && !pastHeard() && decodingPos_ == heardPos_;
       heardPos_ = pos_;
-      // what is decoded ahead may now be the wrong song: decode again from where it is heard
-      if (heardPos_ >= 0) restart(heardPos_, heard, playing_);
+      if (inHeard) decodingPos_ = heardPos_;
+      else if (heardPos_ >= 0) restart(heardPos_, heard, playing_);
       break;
+    }
     case kRepeat: {
       repeat_ = len ? p[0] : 0;
       // A video (one item, decoded once) only needs decoding again when its end is already queued;
       // Shorts turn Repeat on as they start.
       bool endQueued = std::any_of(markers_.begin(), markers_.end(), [](const Marker& m) { return m.pos < 0; });
       if (videoOn_) video_.setLooping(repeat_ != 0);
-      if (heardPos_ >= 0 && (!videoOn_ || endQueued)) restart(heardPos_, heard, playing_);
+      // a song: decoded again only when what follows it is in the stream already (Repeat changes
+      // what comes next, not the song playing: no gap)
+      if (heardPos_ >= 0 && (videoOn_ ? endQueued : pastHeard())) restart(heardPos_, heard, playing_);
       break;
     }
     case kVolume: {
@@ -928,6 +946,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     if (getenv("RONDO_PLAYER_LOG")) printf("player: track %d, ReplayGain %s%.2f dB\n", pos, std::isnan(rg) ? "none " : "", std::isnan(rg) ? 0.f : rg);
     uint64_t at = writeAt_;
     markers_.push_back({at, pos, duration, seekMs, false, rg});
+    markers_.back().seq = ++trackSeq_;
     snprintf(markers_.back().codec, sizeof(markers_.back().codec), "%s", codecName);
     trackAt_ = writeAt_;
     if (heardPos_ == pos && readAt_ == markers_.back().at) {
@@ -1115,8 +1134,11 @@ void Engine::decodeLoop() {
       uint64_t before = writeAt_;
       bool opened = false;
       trackAt_ = UINT64_MAX;
+      decodingPos_ = pos;
       bool done = decodeTrack(pos, seekMs, gen);
       if (gen != gen_) break;
+      pos = decodingPos_;  // a shuffle meanwhile moved the track in the order
+      finishedSeq_ = trackSeq_;
       if (streamFailed_) {  // stop where it failed (heard once what was read before plays out)
         streamFailed_ = false;
         opened = trackAt_ != UINT64_MAX;
@@ -1198,6 +1220,7 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
       break;
     }
     heardPos_ = m.pos;
+    heardSeq_ = m.seq;
     heardFrom_ = m.at;
     heardStartMs_ = m.startMs;
     heardDuration_ = m.durationMs;
