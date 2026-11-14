@@ -23,6 +23,7 @@ import {
   findShorts,
   sequenceChunk,
   shortItem,
+  songInfo,
   shelfSection,
   thumbLink,
   trackItem,
@@ -190,6 +191,36 @@ describe("YouTube Music reducers", () => {
     expect(headerInfo(playlist).subtitle).toBe("Playlist · 2026 · 30 tracks");
     expect(headerInfo({ type: "MusicEditablePlaylistDetailHeader", header: album }).title).toBe("Random Access Memories");
     expect(headerInfo(undefined)).toEqual({ title: "", subtitle: "", thumb: undefined });
+  });
+
+  it("names a song for a download from its queue row and its album's page", () => {
+    const row = {
+      type: "PlaylistPanelVideo",
+      video_id: "FM7ALFsOH4g",
+      title: { text: "All I Need" },
+      artists: [{ name: "Radiohead" }],
+      album: { id: "MPREb_R6C9lU4QEg2", name: "In Rainbows", year: "2007" },
+      duration: { text: "3:49", seconds: 229 },
+      thumbnail: thumbs([60, 120, 226]),
+    };
+    const header = {
+      type: "MusicResponsiveHeader",
+      title: { text: "In Rainbows" },
+      strapline_text_one: { text: "Radiohead" },
+      subtitle: { text: "Album • 2007" },
+      thumbnail: { contents: thumbs([544, 226]) },
+    };
+    // the album's track has another id than the song found as its video: matched by title
+    const tracks = ["15 Step", "Bodysnatchers", "Nude", "Weird Fishes/Arpeggi", "All I Need (Remastered)"].map((t, i) => ({
+      type: "MusicResponsiveListItem", item_type: "song", id: `track${i}xxxxxx`.slice(0, 11), title: t, duration: { seconds: 200 },
+    }));
+    expect(songInfo("FM7ALFsOH4g", row, { header, contents: tracks })).toEqual({
+      id: "FM7ALFsOH4g", title: "All I Need", artist: "Radiohead", albumArtist: "Radiohead", album: "In Rainbows", albumId: "MPREb_R6C9lU4QEg2",
+      year: "2007", track: 5, tracks: 5, cover: thumbLink("https://i.ytimg.com/vi/x/544.jpg"), durationSec: 229,
+    });
+    // no album page: the row's own details
+    expect(songInfo("FM7ALFsOH4g", { type: "PlaylistPanelVideoWrapper", primary: row })).toMatchObject({ album: "In Rainbows", year: "2007", track: 0, tracks: 0, albumArtist: "" });
+    expect(songInfo("x", undefined)).toBeUndefined();
   });
 });
 

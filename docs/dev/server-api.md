@@ -177,3 +177,11 @@ route: it answers `503 {"error": "needs_server"}`.
   them from a server with 429).
 - `GET /captions/:id/:track` → `text/vtt`: that track as WebVTT, fetched from YouTube when asked.
   Direct mode on the Y1 answers the same two routes itself (`native/direct/streams.cpp`).
+
+## A song's details for the Rondo (device token)
+
+- `GET /music/song/:id` (server 3.2.0) → `{"id", "title", "artist", "albumArtist", "album", "albumId",
+  "year", "track", "tracks", "cover", "durationSec"}`: what YouTube Music › Download names and tags a
+  song by, from the song's queue row and its album's page (`year` "" and `track` 0 when YouTube doesn't
+  say). A Rondo whose server has no such route names a download from the song's row ("Artist · Album").
+  Direct mode on the Y1 answers it itself (`native/direct/music.cpp`).

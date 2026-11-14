@@ -252,6 +252,60 @@ export function headerInfo(h: Node | undefined): { title: string; subtitle: stri
   };
 }
 
+// What a download names and tags a song by (GET /music/song/:id; direct mode's music::song() too):
+// its queue row (PlaylistPanelVideo: artists, album and its id, often a year) and its album's page
+// (the album's artist, its year and cover, and where the song is in it: by id, else by title, as a
+// song found as its video has another id than its album's track).
+export type SongInfo = {
+  id: string;
+  title: string;
+  artist: string;
+  albumArtist: string;
+  album: string;
+  albumId: string;
+  year: string;
+  track: number;
+  tracks: number;
+  cover: string;
+  durationSec: number;
+};
+const plainTitle = (t: string) => t.toLowerCase().replace(/[([][^)\]]*[)\]]/g, "").replace(/[^\p{L}\p{N}]/gu, "");
+export function songInfo(videoId: string, row: Node | undefined, album?: Node): SongInfo | undefined {
+  const n: Node | undefined = row?.type === "PlaylistPanelVideoWrapper" ? row.primary : row;
+  const title = text(n?.title);
+  if (!n || !title) return undefined;
+  const artists = (n.artists ?? []).map((a: Node) => a.name).filter(Boolean);
+  let year = /^\d{4}$/.test(n.album?.year ?? "") ? n.album.year : "";
+  let albumName: string = n.album?.name ?? "";
+  let albumArtist = "", cover = thumbLink(pickThumb(n.thumbnail)) ?? "", track = 0, tracks = 0;
+  if (album) {
+    const info = headerInfo(album.header);
+    albumArtist = headerBy(album.header);
+    if (info.title) albumName = info.title;
+    const y = /(?:^|\D)(\d{4})(?:\D|$)/.exec(bullets(text((album.header?.type === "MusicEditablePlaylistDetailHeader" ? album.header.header : album.header)?.subtitle)));
+    if (y) year = y[1];
+    if (info.thumb) cover = info.thumb;
+    const rows = (album.contents ?? []).map((r: Node) => trackItem(r)).filter((i: Item | undefined): i is Item => !!i);
+    tracks = rows.length;
+    const byId = rows.findIndex((i: Item) => i.id === videoId);
+    const byTitle = rows.findIndex((i: Item) => plainTitle(i.title) === plainTitle(title));
+    track = byId >= 0 ? byId + 1 : byTitle >= 0 ? byTitle + 1 : tracks === 1 ? 1 : 0;
+  }
+  return {
+    id: videoId,
+    title,
+    artist: artists.length ? artists.join(", ") : text(n.author) || text(n.short_byline_text),
+    albumArtist,
+    album: albumName,
+    albumId: n.album?.id ?? "",
+    year,
+    track,
+    tracks,
+    cover,
+    durationSec: n.duration?.seconds ?? 0,
+  };
+}
+
 // An album's rows leave the artist out (it's the album's) and the album too, so its songs had no
 // subtitle on Now Playing and in Up next; they get "Artist · Album" like songs anywhere else. Rows
 // that name their own artists (features) keep them.
@@ -722,6 +776,17 @@ export class Browse {
     return { title: info.title, ...(info.thumb ? { thumb: info.thumb } : {}), sections };
   }
 
+  async musicSong(videoId: string): Promise<SongInfo> {
+    const yt = await this.yt();
+    const panel: any = await yt.music.getUpNext(videoId, false);
+    const row = (panel.contents ?? []).find((c: Node) => (c?.type === "PlaylistPanelVideoWrapper" ? c.primary : c)?.video_id === videoId);
+    const albumId: string | undefined = (row?.type === "PlaylistPanelVideoWrapper" ? row.primary : row)?.album?.id;
+    const album: any = albumId ? await yt.music.getAlbum(albumId).catch(() => undefined) : undefined;
+    const info = songInfo(videoId, row, album);
+    if (!info) throw new Error(`no song ${videoId}`);
+    return info;
+  }
+
   async musicNext(videoId: string): Promise<{ items: Item[] }> {
     const panel: any = await (await this.yt()).music.getUpNext(videoId, true);
     const items = uniqueById((panel.contents ?? []).map((n: Node) => trackItem(n)));
@@ -943,6 +1008,12 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
     const id = req.params.id;
     if (!ARTIST_ID.test(id)) return reply.code(400).send({ error: "id" });
     return run(reply, () => browse.cached(`music/artist/${id}`, () => browse.musicArtist(id)));
+  });
+
+  app.get<{ Params: { id: string } }>("/music/song/:id", async (req, reply) => {
+    const id = req.params.id;
+    if (!isVideoId(id)) return reply.code(400).send({ error: "id" });
+    return run(reply, () => browse.cached(`music/song/${id}`, () => browse.musicSong(id)));
   });
 
   app.get<{ Params: { id: string } }>("/music/next/:id", async (req, reply) => {
