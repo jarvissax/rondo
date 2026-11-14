@@ -31,6 +31,7 @@
 #include "../core/bundle.h"
 #include "../core/version.h"
 #include "downloads.h"
+#include "fill_in.h"
 #include "subtitles.h"
 #include "../core/clock.h"
 #include "../core/cover.h"
@@ -1595,20 +1596,80 @@ std::string organizeStatusJson() {
   return obj({{"running", boolean(s.running)}, {"finished", boolean(s.finished)}, {"done", num(int64_t(s.done))},
               {"total", num(int64_t(s.total))}, {"moved", num(int64_t(s.moved))}, {"errors", arr(errors)}});
 }
-std::string organizePlanJson() {
+// the shows and movies whose years a lookup can find (fill_in.h), and what it found
+std::string videoTitleJson(const VideoTitle& t) {
+  return obj({{"key", str(t.key)}, {"series", boolean(t.series)}, {"name", str(t.name)}, {"years", str(t.years)},
+              {"files", num(int64_t(t.files.size()))}});
+}
+std::string titlesStatusJson() {
+  TitlesStatus s = titlesStatus();
+  std::vector<std::string> matches;
+  for (const TitleMatch& m : s.matches) {
+    std::vector<std::string> found;
+    for (const lookup::Title& t : m.found)
+      found.push_back(obj({{"name", str(t.name)}, {"years", str(t.years)}, {"detail", str(t.detail)}}));
+    matches.push_back(obj({{"title", videoTitleJson(m.title)}, {"found", arr(found)}, {"pick", num(int64_t(m.pick))}, {"failed", boolean(m.failed)}}));
+  }
+  return obj({{"running", boolean(s.running)}, {"finished", boolean(s.finished)}, {"done", num(int64_t(s.done))},
+              {"total", num(int64_t(s.total))}, {"matches", arr(matches)}});
+}
+// {"names": {"<key>": {"name": "Silo", "years": "2023-"}}}: what the user took from the lookup
+OrganizeNames namesFrom(const Body& b) {
+  OrganizeNames names;
+  yyjson_val* o = b.get("names");
+  if (!yyjson_is_obj(o)) return names;
+  size_t i, n;
+  yyjson_val *k, *v;
+  yyjson_obj_foreach(o, i, n, k, v) {
+    yyjson_val* name = yyjson_obj_get(v, "name");
+    yyjson_val* years = yyjson_obj_get(v, "years");
+    if (!yyjson_is_str(name) || !yyjson_is_str(years)) continue;
+    names.titles[std::string(yyjson_get_str(k), yyjson_get_len(k))] = {yyjson_get_str(name), yyjson_get_str(years)};
+  }
+  return names;
+}
+
+std::string organizePlanJson(const OrganizeNames& names = {}) {
   static const char* const kinds[] = {"song", "video", "lyrics", "subtitles", "cover"};
   int songs = 0, videos = 0, sidecars = 0, covers = 0, there = 0;
   std::vector<std::string> moves;
-  for (auto& p : organizePlans()) {
+  for (auto& p : organizePlans(names)) {
     const OrganizePlan& plan = p.second;
     songs += plan.songs, videos += plan.videos, sidecars += plan.sidecars, covers += plan.covers, there += plan.alreadyThere;
     size_t n = p.first.size() + 1;
     for (const OrganizeMove& m : plan.moves)
       moves.push_back(obj({{"kind", str(kinds[m.kind])}, {"from", str(m.from.substr(n))}, {"to", str(m.to.substr(n))}}));
   }
+  std::vector<std::string> titles;
+  for (const VideoTitle& t : titlesToLookUp()) titles.push_back(videoTitleJson(t));
   return obj({{"songs", num(int64_t(songs))}, {"videos", num(int64_t(videos))}, {"sidecars", num(int64_t(sidecars))},
               {"covers", num(int64_t(covers))}, {"alreadyThere", num(int64_t(there))}, {"moves", arr(moves)},
-              {"status", organizeStatusJson()}});
+              {"status", organizeStatusJson()}, {"titles", arr(titles)}, {"lookup", titlesStatusJson()}});
+}
+
+// Library › Fill in (fill_in.h): what the songs lack, and the job's state (its proposals when asked)
+std::string fillSummaryJson() {
+  FillSummary s = fillInSummary();
+  return obj({{"songs", num(int64_t(s.songs))}, {"noGenre", num(int64_t(s.noGenre))}, {"noYear", num(int64_t(s.noYear))},
+              {"noAlbum", num(int64_t(s.noAlbum))}, {"noTrack", num(int64_t(s.noTrack))}, {"albums", num(int64_t(s.groups))},
+              {"unsupported", num(int64_t(s.unsupported))}});
+}
+std::string fillStatusJson(bool proposals) {
+  FillStatus s = fillInStatus();
+  std::vector<std::string> props, errors;
+  if (proposals)
+    for (const FillProposal& p : s.proposals)
+      props.push_back(obj({{"id", num(int64_t(p.id))}, {"artist", str(p.artist)}, {"album", str(p.album)},
+                           {"foundArtist", str(p.foundArtist)}, {"foundAlbum", str(p.foundAlbum)}, {"source", str(p.source)},
+                           {"genre", str(p.genre)}, {"year", num(int64_t(p.year))}, {"newAlbum", str(p.newAlbum)},
+                           {"songs", num(int64_t(p.songs))}, {"tracks", num(int64_t(p.tracks))}}));
+  for (const std::string& e : s.errors) errors.push_back(str(e));
+  return obj({{"kind", str(s.kind)}, {"running", boolean(s.running)}, {"finished", boolean(s.finished)}, {"canceled", boolean(s.canceled)},
+              {"done", num(int64_t(s.done))}, {"total", num(int64_t(s.total))}, {"stopped", str(s.stopped)},
+              {"proposals", proposals ? arr(props) : kNull}, {"proposed", num(int64_t(s.proposals.size()))},
+              {"notFound", num(int64_t(s.notFound))}, {"failed", num(int64_t(s.failed))}, {"saved", num(int64_t(s.saved))},
+              {"found", num(int64_t(s.found))}, {"synced", num(int64_t(s.synced))}, {"had", num(int64_t(s.had))},
+              {"instrumental", num(int64_t(s.instrumental))}, {"beside", num(int64_t(s.beside))}, {"errors", arr(errors)}});
 }
 
 std::string playlistsJson() {
@@ -2237,11 +2298,53 @@ Response Server::api(Request& r, const std::string& path) {
     });
   if (path == "/organize/status" && m == "GET") return ui([] { return organizeStatusJson(); });
   if (path == "/organize" && m == "POST")
-    return onUi([] {
-      std::string why = organizeStart();
+    return onUi([b] {
+      std::string why = organizeStart(namesFrom(*b));
       if (!why.empty()) return error(409, why);
       return json(organizeStatusJson());
     });
+  if (path == "/organize/plan" && m == "POST") return ui([b] { return organizePlanJson(namesFrom(*b)); });
+  if (path == "/organize/lookup" && m == "GET") return json(titlesStatusJson());
+  if (path == "/organize/lookup" && m == "POST")
+    return onUi([] {
+      std::string why = titlesLookupStart();
+      if (!why.empty()) return error(409, why);
+      return json(titlesStatusJson());
+    });
+  if (path == "/fill" && m == "GET") return ui([] { return obj({{"summary", fillSummaryJson()}, {"status", fillStatusJson(false)}}); });
+  if (path == "/fill/status" && m == "GET") return json(fillStatusJson(r.param("proposals") == "1"));
+  if (path == "/fill/details" && m == "POST")
+    return onUi([b] {
+      bool has;
+      std::vector<std::string> countries;
+      for (std::string c : b->strings("countries", has))  // two-letter store codes only
+        if (c.size() == 2 && isalpha((unsigned char)c[0]) && isalpha((unsigned char)c[1]))
+          countries.push_back({char(tolower((unsigned char)c[0])), char(tolower((unsigned char)c[1]))});
+      std::string why = fillInDetails(countries);
+      if (!why.empty()) return error(409, why);
+      return json(fillStatusJson(false));
+    });
+  if (path == "/fill/lyrics" && m == "POST")
+    return onUi([] {
+      std::string why = fillInLyrics();
+      if (!why.empty()) return error(409, why);
+      return json(fillStatusJson(false));
+    });
+  if (path == "/fill/save" && m == "POST")
+    return onUi([b] {
+      std::set<int> skip;
+      yyjson_val* a = b->get("skip");
+      size_t i, n;
+      yyjson_val* e;
+      if (yyjson_is_arr(a)) yyjson_arr_foreach(a, i, n, e) if (yyjson_is_int(e)) skip.insert(int(yyjson_get_sint(e)));
+      std::string why = fillInSave(skip);
+      if (!why.empty()) return error(409, why);
+      return json(fillStatusJson(false));
+    });
+  if (path == "/fill/cancel" && m == "POST") {
+    fillInCancel();
+    return json(fillStatusJson(false));
+  }
   if (path == "/smart/songs" && m == "GET") {  // one smart playlist's songs now, every path
     std::string name = r.param("name");
     return onUi([name] {

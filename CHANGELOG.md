@@ -5,6 +5,41 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.0.3 (not released yet)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.0.2 does.
+
+### New
+
+- **The dashboard fills in what your songs' tags leave out** (Library › Fill in). A missing genre,
+  year, album or track number is looked up album by album in the iTunes Store, then MusicBrainz;
+  you see what was found for each album and untick any that look wrong, then it's saved into the
+  songs themselves (FLAC, MP3, M4A), where Rondo, Jellyfin and any other player find it. Only
+  what's missing is filled in.
+- **Lyrics for every song that has none,** from LRCLIB and timed where it has them, saved into the
+  song (or an `.lrc` beside it for a kind that can't hold them). Songs with lyrics keep theirs.
+- **Organize looks up a show's or a movie's years** on the dashboard when the names don't say them
+  (TVmaze for shows, Wikidata for movies): you pick the right one for each, and the folders keep
+  the years from then on.
+
+### Changed
+
+- **Shows and movies go inside Videos,** the way Jellyfin expects them:
+  `Videos/Shows/Silo (2023-)/Season 01/`, `Videos/Shows/The Walking Dead (2010-2022)/Season 01/`
+  and `Videos/Movies/Arrival (2016)/`. A show still running is `(2023-)`, one that has ended
+  `(2010-2022)`. Organize moves what's in the old top-level `Shows` and `Movies` folders and
+  removes those folders once they're empty. Videos uploaded on the dashboard go to Videos.
+
+### Fixed
+
+- **A YouTube video downloads and plays in its original language.** On a video YouTube has dubbed,
+  Rondo (connected directly to YouTube) could take a dub, such as the English one of a Turkish
+  video; it takes the original track now. To get the original sound on a video downloaded before,
+  download it again.
+- **The dashboard's notes keep their distance** from what's above and below them.
+
 ## 3.0.2 (November 12, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

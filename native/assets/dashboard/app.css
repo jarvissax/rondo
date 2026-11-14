@@ -379,6 +379,12 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   background: rgb(255 176 77 / .1); color: #ffd39b; font-size: 13.5px; line-height: 1.45;
 }
 .note .i { width: 18px; height: 18px; color: var(--amber); margin-top: 1px; }
+/* apart from what's above and below it, wherever it is (no specificity: a margin set for the place,
+   a grid's gap or the sheet's buttons' own, wins) */
+:where(* + .note) { margin-top: 16px; }
+:where(.note + *) { margin-top: 16px; }
+.join > .note, .join > .note + * { margin-top: 0; }  /* the join form's grid spaces them */
+.sheet .note + p { margin-top: 14px; }
 .note.err { background: rgb(255 59 79 / .1); color: #ffb3bb; }
 .note.err .i { color: var(--red); }
 /* a tip, not a warning (as on the server's admin page) */
@@ -984,6 +990,25 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .org-to { font-size: 13.5px; overflow-wrap: anywhere; }
 .org-from { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; margin-top: 2px; }
 .org-sub { color: var(--text-2); font-size: 12.5px; }
+/* Organize: the shows and movies looked up, one name picked for each */
+.org-h { font-size: 15px; font-weight: 600; margin: 20px 0 6px; }
+.org-h + .row-sub { margin-bottom: 12px; }
+.org-src { margin-top: 8px; color: var(--text-3); }
+.org-pick { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.org-pick .select, .org-pick .select select { width: 100%; }
+.org-pick .select select { height: 36px; font-size: 13.5px; text-overflow: ellipsis; }
+
+/* Fill in */
+.fill-sec { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fill-sec h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.fill-sec h3 .i { width: 17px; height: 17px; color: var(--text-2); }
+.fill-sec .facts { margin-top: 10px; }
+.fill-sec .row-sub { margin: 10px 0 12px; }
+.fill-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.fill-row { cursor: pointer; }
+.fill-row input { width: 16px; height: 16px; flex: none; margin-top: 2px; accent-color: var(--accent); }
+.fill-row b { font-weight: 600; color: var(--text); }
+.fill-list { max-height: 50vh; }
 
 /* Files */
 .files-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }

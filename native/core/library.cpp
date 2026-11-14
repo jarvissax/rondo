@@ -663,6 +663,18 @@ bool Library::moved(const std::string& from, const std::string& to) {
   return false;
 }
 
+bool Library::retagged(const std::string& path, const Tags& tags, int64_t size, int64_t modified) {
+  for (Track& t : tracks_)
+    if (!t.gone && t.path == path) {
+      applyTags(t, tags);
+      t.size = size, t.modified = modified;
+      indexed_ = false;
+      generation_++;
+      return true;
+    }
+  return false;
+}
+
 std::vector<const Track*> Library::songs() const {
   index();
   return songs_;

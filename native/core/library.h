@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "tags.h"
+
 struct sqlite3;
 
 namespace rondo {
@@ -104,6 +106,10 @@ class Library {
   // A file that moved on the card (organized, renamed, moved by the dashboard): its entry, plays and
   // rating follow it. false: no track at `from`.
   bool moved(const std::string& from, const std::string& to);
+  // A file whose tags were saved again (the dashboard's Fill in): its entry takes them, with the
+  // file's size and time now (ms since 1970; a scan then leaves it be). false: no track at `path`.
+  // saveAsync() writes it down.
+  bool retagged(const std::string& path, const Tags& tags, int64_t size, int64_t modified);
   // how many of each, without copying them (the Library screen's counts)
   size_t songCount() const { index(); return songs_.size(); }
   size_t videoCount() const { index(); return videos_.size(); }

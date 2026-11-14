@@ -17,6 +17,7 @@
 #include "../platform/power.h"
 #include "app.h"
 #include "downloads.h"
+#include "fill_in.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -260,8 +261,9 @@ bool powerTick(int64_t now) {
   // the audio policy is told, as Android's WiredAccessoryManager did: sound goes to the jack
   if (jack != headset) g_player.wired(jack);
   headset = jack;
-  // and while a download runs: unplugged with the screen off, the Y1 suspended mid-download
-  power::hold(s.playing || s.fmOn || s.fmStarting || downloadsActive());
+  // and while a download or the dashboard's Fill in runs: unplugged with the screen off, the Y1
+  // suspended mid-download
+  power::hold(s.playing || s.fmOn || s.fmStarting || downloadsActive() || fillInActive());
   // the timeout (Settings › Screen off after); the video player and Shorts keep the screen on
   // (development: RONDO_SCREEN_ON=1 keeps it on, for the parity scripts)
   static const bool screenOn = g_development && getenv("RONDO_SCREEN_ON") != nullptr;

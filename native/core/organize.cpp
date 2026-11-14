@@ -107,7 +107,133 @@ std::string withoutRelease(const std::string& s) {
 
 const char* const kCovers[] = {"cover.jpg", "folder.jpg", "front.jpg", "albumart.jpg", "cover.png", "folder.png", "front.png"};
 
+// A name's years in parentheses at its end: "(2016)", "(2023-)", "(2010-2022)" (an en dash or spaces
+// too) as "2016", "2023-", "2010-2022"; "" for none. at: where the "(" is.
+std::string yearsIn(const std::string& s, size_t* at = nullptr) {
+  size_t open = s.rfind('(');
+  if (open == std::string::npos) return "";
+  size_t close = s.find(')', open);
+  if (close == std::string::npos) return "";
+  std::string in = s.substr(open + 1, close - open - 1);
+  for (size_t p; (p = in.find("\xe2\x80\x93")) != std::string::npos;) in.replace(p, 3, "-");  // –
+  std::string t;
+  for (char c : in)
+    if (c != ' ') t += c;
+  auto year = [&](size_t i) {
+    if (i + 4 > t.size()) return 0;
+    for (size_t k = i; k < i + 4; k++)
+      if (!isdigit((unsigned char)t[k])) return 0;
+    int y = atoi(t.substr(i, 4).c_str());
+    return y >= 1900 && y <= 2099 ? y : 0;
+  };
+  int from = year(0);
+  if (!from) return "";
+  std::string out = std::to_string(from);
+  if (t.size() == 4) {
+  } else if (t.size() == 5 && t[4] == '-') {
+    out += "-";
+  } else if (t.size() == 9 && t[4] == '-' && year(5) >= from) {
+    out += "-" + t.substr(5);
+  } else {
+    return "";
+  }
+  if (at) *at = open;
+  return out;
+}
+// a name without its years at the end ("Silo (2023-)" -> "Silo")
+std::string withoutYears(const std::string& s) {
+  size_t at;
+  std::string n = yearsIn(s, &at).empty() ? s : s.substr(0, at);
+  while (!n.empty() && (n.back() == ' ' || n.back() == '-')) n.pop_back();
+  return n;
+}
+bool seasonFolder(const std::string& name) {  // "Season 01", "Season 1", "Specials"
+  if (!strcasecmp(name.c_str(), "Specials")) return true;
+  if (strncasecmp(name.c_str(), "Season", 6) != 0) return false;
+  size_t i = 6;
+  while (i < name.size() && name[i] == ' ') i++;
+  if (i == name.size()) return false;
+  for (; i < name.size(); i++)
+    if (!isdigit((unsigned char)name[i])) return false;
+  return true;
+}
+
+// a video as Organize files it: a series' episode (name, years, season, number) or a movie (name, year)
+struct Parsed {
+  bool series = false;
+  std::string name, years;
+  int season = 0, number = 0;
+};
+Parsed parseVideo(const OrganizeItem& v) {
+  Parsed p;
+  std::string stem = stemOf(v.path);
+  size_t at;
+  if (episodeIn(stem, at, p.season, p.number)) {
+    p.series = true;
+    p.name = cardName(spaced(stem.substr(0, at)));
+    // the series' folder: the file's own, or the one above its "Season 01"
+    std::string dir = dirOf(v.path), folder = baseOf(dir);
+    if (seasonFolder(folder)) folder = baseOf(dirOf(dir));
+    std::string years = yearsIn(folder);
+    if (p.name.empty()) {  // "S01E02.mp4" in a series' folder: the folder names it
+      if (!strcasecmp(folder.c_str(), "Shows") || !strcasecmp(folder.c_str(), "Videos")) folder.clear();
+      p.name = cardName(spaced(withoutYears(folder)));
+      p.years = years;
+    } else if (!years.empty() && fold(folder).find(fold(p.name)) != std::string::npos) {
+      p.years = years;  // "Stranger Things (2016-2025)/Stranger.Things.S01E01.mp4"
+    }
+    if (p.name.empty()) p.name = "Unknown Series";
+    return p;
+  }
+  size_t y = std::string::npos;
+  int year = yearIn(stem, &y);
+  std::string name = year && y > 0 ? stem.substr(0, y) : withoutRelease(stem);
+  name = cardName(spaced(name));
+  while (!name.empty() && (name.back() == '(' || name.back() == '[' || name.back() == ' ')) name.pop_back();
+  if (!year) {  // "Interstellar (2014)/movie.mkv": the folder names it
+    std::string folder = baseOf(dirOf(v.path)), fy = yearsIn(folder, &at);
+    if (fy.size() == 4 && at > 0) name = cardName(spaced(withoutYears(folder))), year = atoi(fy.c_str());
+  }
+  if (name.empty()) name = cardName(v.title.empty() ? stem : v.title);
+  if (!year) year = v.year;
+  p.name = name;
+  if (year) p.years = std::to_string(year);
+  return p;
+}
+std::string keyOf(const OrganizeItem& v, const Parsed& p) { return p.series ? fold(p.name) : v.path; }
+
+// the videos Organize files: the card's, but YouTube › Download's (Videos/YouTube, named by title and
+// id, where YouTube › Downloads finds them)
+bool organizable(const OrganizeItem& it, const std::string& card) {
+  if (it.path.compare(0, card.size() + 1, card + "/") != 0) return false;
+  return !(it.video && it.path.compare(0, card.size() + 16, card + "/Videos/YouTube/") == 0);
+}
+
 }  // namespace
+
+std::vector<VideoTitle> videoTitles(const std::vector<OrganizeItem>& items, const std::string& card) {
+  std::vector<VideoTitle> out;
+  std::map<std::string, size_t> seriesAt;
+  for (const OrganizeItem& it : items) {
+    if (!it.video || !organizable(it, card)) continue;
+    Parsed p = parseVideo(it);
+    std::string key = keyOf(it, p);
+    if (p.series) {
+      auto f = seriesAt.find(key);
+      if (f != seriesAt.end()) {
+        VideoTitle& t = out[f->second];
+        t.files.push_back(it.path);
+        if (t.years.empty()) t.years = p.years;
+        continue;
+      }
+      seriesAt[key] = out.size();
+    }
+    VideoTitle t;
+    t.series = p.series, t.key = key, t.name = p.name, t.years = p.years, t.files = {it.path};
+    out.push_back(std::move(t));
+  }
+  return out;
+}
 
 std::string cardName(const std::string& in) {
   std::string s;
@@ -136,15 +262,11 @@ std::string cardName(const std::string& in) {
   return t;
 }
 
-OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::string& card) {
+OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::string& card, const OrganizeNames& names) {
   OrganizePlan plan;
   std::vector<const OrganizeItem*> songs, videos;
-  for (const OrganizeItem& it : items) {
-    if (it.path.compare(0, card.size() + 1, card + "/") != 0) continue;
-    // YouTube › Download's videos stay where it put them (Videos/YouTube, named by title and id)
-    if (it.video && it.path.compare(0, card.size() + 16, card + "/Videos/YouTube/") == 0) continue;
-    (it.video ? videos : songs).push_back(&it);
-  }
+  for (const OrganizeItem& it : items)
+    if (organizable(it, card)) (it.video ? videos : songs).push_back(&it);
   std::vector<std::pair<std::string, std::string>> files;  // from, to (kind by the lists above)
   std::vector<OrganizeMove::Kind> kinds;
 
@@ -191,37 +313,32 @@ OrganizePlan planOrganize(const std::vector<OrganizeItem>& items, const std::str
     }
   }
 
-  // videos: episodes into Shows, the rest into Movies
+  // videos, in the card's Videos folder: episodes into Shows, the rest into Movies; a series' years
+  // the ones any of its folders gives (one episode in "Silo (2023-)", another still in "Silo")
+  std::vector<Parsed> parsed;
+  std::map<std::string, std::string> seriesYears;
   for (const OrganizeItem* v : videos) {
-    std::string stem = stemOf(v->path);
-    size_t at;
-    int season, episode;
-    if (episodeIn(stem, at, season, episode)) {
-      std::string series = cardName(spaced(stem.substr(0, at)));
-      std::string parent = baseOf(dirOf(v->path));
-      int year = 0;  // the series' year from its folder ("Stranger Things (2016-2025)")
-      if (series.empty()) {  // "S01E02.mp4" in a series' folder: the folder names it
-        size_t y;
-        series = cardName(spaced(parent));
-        if (yearIn(series, &y) && y > 0) series = cardName(series.substr(0, y)), year = yearIn(parent);
-        while (!series.empty() && (series.back() == '(' || series.back() == ' ')) series.pop_back();
-      } else if (fold(parent).find(fold(series)) != std::string::npos) {
-        year = yearIn(parent);
-      }
-      if (series.empty()) series = "Unknown Series";
-      std::string dir = card + "/Shows/" + series + (year ? " (" + std::to_string(year) + ")" : "") + "/Season " + two(season);
-      files.push_back({v->path, dir + "/" + series + " S" + two(season) + "E" + two(episode) + extOf(v->path)});
-    } else {
-      size_t y = std::string::npos;
-      int year = yearIn(stem, &y);
-      std::string name = year && y > 0 ? stem.substr(0, y) : withoutRelease(stem);
-      name = cardName(spaced(name));
-      while (!name.empty() && (name.back() == '(' || name.back() == '[' || name.back() == ' ')) name.pop_back();
-      if (name.empty()) name = cardName(v->title.empty() ? stem : v->title);
-      if (!year) year = v->year;
-      std::string full = name + (year ? " (" + std::to_string(year) + ")" : "");
-      files.push_back({v->path, card + "/Movies/" + full + "/" + full + extOf(v->path)});
+    parsed.push_back(parseVideo(*v));
+    const Parsed& p = parsed.back();
+    if (p.series && !p.years.empty()) seriesYears.insert({keyOf(*v, p), p.years});
+  }
+  for (size_t i = 0; i < videos.size(); i++) {
+    const OrganizeItem* v = videos[i];
+    Parsed p = parsed[i];
+    std::string key = keyOf(*v, p);
+    if (p.series && p.years.empty() && seriesYears.count(key)) p.years = seriesYears[key];
+    auto found = names.titles.find(key);
+    if (found != names.titles.end()) {  // what the dashboard's lookup found
+      std::string n = cardName(found->second.name);
+      if (!n.empty()) p.name = n;
+      p.years = found->second.years;
     }
+    std::string full = p.name + (p.years.empty() ? "" : " (" + p.years + ")");
+    if (p.series)
+      files.push_back({v->path, card + "/Videos/Shows/" + full + "/Season " + two(p.season) + "/" + p.name + " S" + two(p.season) + "E" +
+                                    two(p.number) + extOf(v->path)});
+    else
+      files.push_back({v->path, card + "/Videos/Movies/" + full + "/" + full + extOf(v->path)});
     kinds.push_back(OrganizeMove::Video);
   }
 
@@ -328,9 +445,12 @@ OrganizeResult applyOrganize(const OrganizePlan& plan, const std::string& card, 
     }
     if (progress) progress(n, total);
   }
-  // the folders the moves emptied, up to the card's top folders (Music, Videos…), which stay
-  for (std::string d : left)
+  // the folders the moves emptied, up to the card's top folders (Music, Videos…), which stay; but
+  // Shows and Movies, where shows and movies went until 3.0.3 (Videos holds them now), go once empty
+  for (std::string d : left) {
     while (d.size() > card.size() + 1 && dirOf(d) != card && rmdir(d.c_str()) == 0) d = dirOf(d);
+    if (dirOf(d) == card && (!strcasecmp(baseOf(d).c_str(), "Shows") || !strcasecmp(baseOf(d).c_str(), "Movies"))) rmdir(d.c_str());
+  }
   sync();
   return r;
 }

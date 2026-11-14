@@ -34,8 +34,9 @@ genre, using the files' tags. You get covers, Cover Flow, lyrics that scroll alo
 search as you type, ratings, and playlists you make on the Y1 or in your browser, including smart
 playlists that pick their songs by rules. Library also has the videos and photos on the card, and
 a file manager. **Organize the card** puts everything in the folders Jellyfin, Plex and Kodi
-expect, after showing you every move. Plugging the Y1 into a computer turns the card into a USB
-drive.
+expect, after showing you every move, and the dashboard looks up a show's or a movie's years and
+fills in a song's missing genre, year and lyrics. Plugging the Y1 into a computer turns the card
+into a USB drive.
 
 <table>
   <tr>

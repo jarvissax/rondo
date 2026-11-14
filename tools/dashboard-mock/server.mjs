@@ -330,6 +330,66 @@ async function upload(req, res, url) {
   send(res, 200, { path: p });
 }
 
+// ---------- Organize and Fill in, simulated ----------
+const org = { lookupAt: 0, movingAt: 0 };
+const ORG_TITLES = [
+  { key: 'silo', series: true, name: 'Silo', years: '', files: 2 },
+  { key: 'the walking dead', series: true, name: 'The Walking Dead', years: '', files: 3 },
+  { key: '/storage/sdcard0/Videos/Arrival.mkv', series: false, name: 'Arrival', years: '', files: 1 },
+];
+const ORG_FOUND = {
+  silo: [{ name: 'Silo', years: '2023-', detail: 'Apple TV · English · running' }, { name: 'Silo', years: '2017', detail: 'meWATCH · English · ended' }],
+  'the walking dead': [{ name: 'The Walking Dead', years: '2010-2022', detail: 'AMC+ · English · ended' }, { name: 'Fear the Walking Dead', years: '2015-2023', detail: 'AMC+ · English · ended' }],
+  '/storage/sdcard0/Videos/Arrival.mkv': [{ name: 'Arrival', years: '2016', detail: '2016 science fiction film by Denis Villeneuve' }, { name: 'The Arrival', years: '1996', detail: '1996 film directed by David Twohy' }],
+};
+function lookupState() {
+  if (!org.lookupAt) return { running: false, finished: false, done: 0, total: 0, matches: [] };
+  const done = Math.min(ORG_TITLES.length, Math.floor((Date.now() - org.lookupAt) / 900));
+  return { running: done < ORG_TITLES.length, finished: done >= ORG_TITLES.length, done, total: ORG_TITLES.length,
+    matches: ORG_TITLES.slice(0, done).map((t) => ({ title: t, found: ORG_FOUND[t.key], pick: 0, failed: false })) };
+}
+function orgPlan(names) {
+  const dir = (t) => { const n = names[t.key]; return n ? `${n.name}${n.years ? ` (${n.years})` : ''}` : t.name; };
+  const moves = [
+    { kind: 'video', from: 'Shows/Silo/Season 03/Silo S03E07.mp4', to: `Videos/Shows/${dir(ORG_TITLES[0])}/Season 03/Silo S03E07.mp4` },
+    { kind: 'video', from: 'Shows/Silo/Season 03/Silo S03E08.mp4', to: `Videos/Shows/${dir(ORG_TITLES[0])}/Season 03/Silo S03E08.mp4` },
+    ...[1, 2, 3].map((e) => ({ kind: 'video', from: `Videos/The.Walking.Dead.S01E0${e}.720p.mkv`, to: `Videos/Shows/${dir(ORG_TITLES[1])}/Season 01/The Walking Dead S01E0${e}.mkv` })),
+    { kind: 'video', from: 'Videos/Arrival.mkv', to: `Videos/Movies/${dir(ORG_TITLES[2])}/${dir(ORG_TITLES[2])}.mkv` },
+    { kind: 'song', from: 'Music/Pink Floyd - Hey You.flac', to: 'Music/Pink Floyd/The Wall (1979)/Disc 2/01 - Hey You.flac' },
+  ];
+  return { songs: 1, videos: 6, sidecars: 0, covers: 0, alreadyThere: 120, moves, status: orgStatus(), titles: ORG_TITLES, lookup: lookupState() };
+}
+function orgStatus() {
+  if (!org.movingAt) return { running: false, finished: false, done: 0, total: 0, moved: 0, errors: [] };
+  const done = Math.min(7, Math.floor((Date.now() - org.movingAt) / 400));
+  if (done >= 7) org.movingAt = 0;
+  return { running: done < 7, finished: done >= 7, done, total: 7, moved: done, errors: [] };
+}
+const fill = { kind: '', at: 0, canceled: false, saveSongs: 0 };
+const GENRES = ['Rock', 'Turkish Pop', 'Alternative', 'Indie Rock', 'Pop', 'Electronic', 'Worldwide', 'Hard Rock'];
+function fillProposals() {
+  return songs.slice(0, 34).map((x, i) => ({ id: i + 1, artist: x.artist || 'Unknown', album: x.album || '', foundArtist: x.artist || 'Unknown',
+    foundAlbum: x.album || x.title, source: i % 7 === 3 ? 'MusicBrainz' : 'iTunes', genre: GENRES[i % GENRES.length], year: x.album ? 0 : 2019,
+    newAlbum: x.album ? '' : x.title, songs: 1 + (i % 3), tracks: x.album ? 0 : 1 }));
+}
+function fillState(withProposals) {
+  const totals = { details: 40, lyrics: songs.length, save: fill.saveSongs || 1 };
+  const speed = { details: 220, lyrics: 120, save: 60 };
+  if (!fill.kind) return { kind: '', running: false, finished: false, canceled: false, done: 0, total: 0, stopped: '', proposals: null, proposed: 0, notFound: 0, failed: 0, saved: 0, found: 0, synced: 0, had: 0, instrumental: 0, beside: 0, errors: [] };
+  const total = totals[fill.kind];
+  let done = Math.min(total, Math.floor((Date.now() - fill.at) / speed[fill.kind]));
+  if (fill.canceled && !fill.stoppedAt) fill.stoppedAt = done;
+  if (fill.canceled) done = fill.stoppedAt;
+  const running = done < total && !fill.canceled;
+  const props = fill.kind === 'details' ? fillProposals().slice(0, Math.round((done / total) * 34)) : [];
+  const saved = fill.kind === 'lyrics' ? Math.round(done * 0.7) : fill.kind === 'save' ? done : 0;
+  if (!running) fill.stoppedAt = fill.stoppedAt || done;
+  return { kind: fill.kind, running, finished: !running, canceled: fill.canceled, done, total, stopped: '', proposals: withProposals ? props : null, proposed: props.length,
+    notFound: fill.kind === 'details' ? Math.round(done * 0.12) : fill.kind === 'lyrics' ? Math.round(done * 0.2) : 0, failed: 0, saved,
+    found: saved, synced: Math.round(saved * 0.8), had: fill.kind === 'lyrics' ? Math.round(done * 0.05) : 0, instrumental: fill.kind === 'lyrics' ? Math.round(done * 0.05) : 0,
+    beside: 0, errors: fill.kind === 'save' && !running ? ['Gölge.ogg: Rondo can’t save tags into .ogg files yet'] : [] };
+}
+
 async function api(req, res, url) {
   const { pathname } = url;
   const method = req.method;
@@ -609,6 +669,25 @@ async function api(req, res, url) {
     if (/bad|invalid|localhost/.test(server.url)) return send(res, 200, { ok: false, error: 'unreachable' });
     if (!server.token) return send(res, 200, { ok: false, error: 'unauthorized' });
     return send(res, 200, { ok: true, latencyMs: 120 + Math.floor(Math.random() * 140), ytdlp: '2026.10.29.233517', version: '3.1.0', versionNeeded: '3.1.0', versionOk: true, cookies: true });
+  }
+
+  // Organize, with the shows and movies looked up (fill_in.h on the Rondo)
+  if (pathname === '/api/organize' && method === 'GET') return send(res, 200, orgPlan({}));
+  if (pathname === '/api/organize/plan' && method === 'POST') return send(res, 200, orgPlan((await readJson(req))?.names || {}));
+  if (pathname === '/api/organize/lookup' && method === 'GET') return send(res, 200, lookupState());
+  if (pathname === '/api/organize/lookup' && method === 'POST') { org.lookupAt = Date.now(); return send(res, 200, lookupState()); }
+  if (pathname === '/api/organize/status' && method === 'GET') return send(res, 200, orgStatus());
+  if (pathname === '/api/organize' && method === 'POST') { await readJson(req); org.movingAt = Date.now(); return send(res, 200, orgStatus()); }
+  // Fill in
+  if (pathname === '/api/fill' && method === 'GET') return send(res, 200, { summary: { songs: songs.length, noGenre: 784, noYear: 7, noAlbum: 7, noTrack: 7, albums: 40, unsupported: 2 }, status: fillState(false) });
+  if (pathname === '/api/fill/status' && method === 'GET') return send(res, 200, fillState(url.searchParams.get('proposals') === '1'));
+  if (pathname.startsWith('/api/fill/') && method === 'POST') {
+    const what = pathname.slice(10), b = await readJson(req);
+    if (what === 'cancel') { fill.canceled = true; return send(res, 200, fillState(false)); }
+    if (fillState(false).running) return err(res, 409, 'Rondo is busy with the last one: wait for it, or cancel it');
+    if (what === 'save') fill.saveSongs = fillProposals().filter((p) => !(b?.skip || []).includes(p.id)).reduce((n, p) => n + p.songs, 0);
+    Object.assign(fill, { kind: what, at: Date.now(), canceled: false, stoppedAt: 0 });
+    return send(res, 200, fillState(false));
   }
 
   return err(res, 404, 'not found');

@@ -119,13 +119,39 @@ The card and the internal storage as they are, for the file manager.
   they hold).
 
 ### Organize
-Library › Organize the card: songs into `Music/Artist/Album (Year)/`, episodes into `Shows/`,
-other videos into `Movies/`, as Jellyfin, Plex and Kodi expect (`native/core/organize.h`).
+Library › Organize the card: songs into `Music/Artist/Album (Year)/`, episodes into
+`Videos/Shows/Series (Years)/Season 01/`, other videos into `Videos/Movies/Title (Year)/`, as
+Jellyfin, Plex and Kodi expect (`native/core/organize.h`).
 - `GET /api/organize` → `{"songs", "videos", "sidecars", "covers", "alreadyThere",
-  "moves": [{"kind": "song" | "video" | "lyrics" | "subtitles" | "cover", "from", "to"}], "status": {…}}`
-  (paths relative to their storage). Nothing moves yet.
-- `POST /api/organize` → the status; `409 {"error": "<why>"}` when it can't start.
+  "moves": [{"kind": "song" | "video" | "lyrics" | "subtitles" | "cover", "from", "to"}], "status": {…},
+  "titles": [title…], "lookup": {…}}` (paths relative to their storage). Nothing moves yet. `titles`:
+  the series and movies whose years a lookup can find, `{"key", "series", "name", "years", "files"}`
+  (`years` "" unknown, "2016", "2023-" or "2010-2022"; a series still running is asked again).
+- `POST /api/organize/lookup` → starts looking the titles up (TVmaze for series, then Wikidata;
+  Wikidata for movies); `GET /api/organize/lookup` → `{"running", "finished", "done", "total",
+  "matches": [{"title": title, "found": [{"name", "years", "detail"}], "pick": i | -1, "failed"}]}`.
+- `POST /api/organize/plan` `{"names": {"<key>": {"name", "years"}}}` → the plan with those names.
+- `POST /api/organize` `{"names": {…}}` → the status; `409 {"error": "<why>"}` when it can't start.
 - `GET /api/organize/status` → `{"running", "finished", "done", "total", "moved", "errors": ["…"]}`.
+
+### Fill in
+The dashboard's Fill in (`native/shell/fill_in.h`): missing song details and lyrics looked up
+online and saved into the files. One job at a time; it runs on the Y1.
+- `GET /api/fill` → `{"summary": {"songs", "noGenre", "noYear", "noAlbum", "noTrack", "albums",
+  "unsupported"}, "status": status}`.
+- `POST /api/fill/details` `{"countries": ["gb"]}` → status: the iTunes Stores to ask besides the
+  songs' own and the US one, then MusicBrainz, album by album. Nothing is saved yet.
+- `POST /api/fill/save` `{"skip": [id…]}` → status: the details found, saved into the songs (but
+  the proposals skipped).
+- `POST /api/fill/lyrics` → status: LRCLIB's lyrics for every song without any, saved at once.
+- `POST /api/fill/cancel` → status.
+- `GET /api/fill/status[?proposals=1]` → `{"kind": "details" | "save" | "lyrics", "running",
+  "finished", "canceled", "done", "total", "stopped", "proposed", "notFound", "failed", "saved",
+  "found", "synced", "had", "instrumental", "beside", "errors": ["<file>: <why>"], "proposals"}`;
+  with `proposals=1`, `[{"id", "artist", "album", "foundArtist", "foundAlbum", "source", "genre",
+  "year", "newAlbum", "songs", "tracks"}]` (what each saves: `genre`, `year`, `newAlbum` set when
+  they change; `tracks` songs given a number), else `null`. 409 `{"error": "<why>"}` when a job
+  can't start.
 
 ### Playlists
 Songs on the card in a chosen order, kept as `.m3u8` files in the card's `Playlists` folder

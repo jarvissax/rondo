@@ -13,6 +13,7 @@
 
 #include "../core/organize.h"
 #include "app.h"
+#include "fill_in.h"
 #include "main_queue.h"
 #include "screens.h"
 
@@ -30,7 +31,9 @@ struct Job {
 };
 Job g_job;
 
-std::vector<OrganizeItem> itemsOf(const std::string& root) {
+}  // namespace
+
+std::vector<OrganizeItem> organizeItems(const std::string& root) {
   std::vector<OrganizeItem> items;
   for (const Track& t : g_library.tracks()) {
     if (t.gone || t.path.compare(0, root.size() + 1, root + "/") != 0) continue;
@@ -42,7 +45,14 @@ std::vector<OrganizeItem> itemsOf(const std::string& root) {
   return items;
 }
 
-}  // namespace
+std::vector<std::string> organizeRoots() {
+  std::vector<std::string> roots;
+  for (const char* root : kRoots) {
+    struct stat st;
+    if (stat(root, &st) == 0 && S_ISDIR(st.st_mode)) roots.push_back(root);
+  }
+  return roots;
+}
 
 // Files or folders that moved on the card (organized, renamed or moved on the dashboard): the library's
 // entries (their plays and ratings), the playlists and the queue follow them. A folder takes everything
@@ -87,21 +97,20 @@ void follow(const std::vector<OrganizeMove>& done) {
 }
 }  // namespace
 
-std::vector<std::pair<std::string, OrganizePlan>> organizePlans() {
+std::vector<std::pair<std::string, OrganizePlan>> organizePlans(const OrganizeNames& names) {
   std::vector<std::pair<std::string, OrganizePlan>> plans;
-  for (const char* root : kRoots) {
-    struct stat st;
-    if (stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
-    std::vector<OrganizeItem> items = itemsOf(root);
-    if (!items.empty()) plans.push_back({root, planOrganize(items, root)});
+  for (const std::string& root : organizeRoots()) {
+    std::vector<OrganizeItem> items = organizeItems(root);
+    if (!items.empty()) plans.push_back({root, planOrganize(items, root, names)});
   }
   return plans;
 }
 
 // "" when started, else why not
-std::string organizeStart() {
+std::string organizeStart(const OrganizeNames& names) {
   if (g_library.scanning()) return "The card is being read: try again in a moment";
-  std::vector<std::pair<std::string, OrganizePlan>> plans = organizePlans();
+  if (fillInWriting()) return "The dashboard's Fill in is saving into the songs: try again when it's done";
+  std::vector<std::pair<std::string, OrganizePlan>> plans = organizePlans(names);
   int total = 0;
   for (auto& p : plans) total += int(p.second.moves.size());
   {
@@ -272,7 +281,7 @@ class OrganizeScreen : public ShellListScreen {
     h.title = moves.empty() ? "Everything is where it belongs" : "Folders as Jellyfin expects them";
     rows.push_back(h);
     info("Songs", "Music/Artist/Album (Year)/01 - Title", std::to_string(songs));
-    info("Videos", "Shows/Series/Season 01, or Movies/Title (Year)", std::to_string(videos));
+    info("Videos", "Videos/Shows/Series (Years)/Season 01 or Videos/Movies", std::to_string(videos));
     if (sidecars) info("Lyrics and subtitles", "With their songs and videos", std::to_string(sidecars));
     if (covers) info("Folder pictures", "With their albums", std::to_string(covers));
     if (there) info("Already in place", "", std::to_string(there));

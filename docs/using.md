@@ -85,8 +85,10 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
   playlists when they move.
 - **Rescan the card** after copying files to it another way than the USB drive.
 - **Organize the card** puts every song in `Music/Artist/Album (Year)/01 - Title` (a `Disc 1`
-  folder for each disc of a multi-disc album), episodes in `Shows/Series (Year)/Season 01/` and
-  other videos in `Movies/Title (Year)/`, the way Jellyfin, Plex and Kodi expect, from the tags. It
+  folder for each disc of a multi-disc album), episodes in `Videos/Shows/Series (Years)/Season 01/`
+  and other videos in `Videos/Movies/Title (Year)/`, the way Jellyfin, Plex and Kodi expect, from
+  the tags. A series' years come from its folder's name (`Silo (2023-)`); the dashboard's
+  Organize looks up the ones the names don't say. It
   shows how many files would move and where (**See the moves**) and moves nothing until you choose
   **Organize**. Lyrics (`.lrc`), subtitles and a one-album folder's cover picture go along, and so
   do your playlists, plays, ratings and the queue.
