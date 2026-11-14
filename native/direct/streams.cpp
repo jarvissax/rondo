@@ -1,9 +1,11 @@
 // streams.h.
 #include "streams.h"
 
+#include <ctype.h>
 #include <string.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -65,10 +67,32 @@ std::shared_ptr<const Resolved> ask(const std::string& id) {
   }
   auto out = std::make_shared<Resolved>();
   J sd = key(r, "streamingData");
+  std::map<int, int> ranks;  // the kept format's rank, by itag
   auto take = [&](J f) {
     int itag = int(num(key(f, "itag")));
     std::string url = str(key(f, "url"));
-    if (!kItags.count(itag) || url.empty() || out->formats.count(itag)) return;  // a cipher needs the player JavaScript
+    if (!kItags.count(itag) || url.empty()) return;  // a cipher needs the player JavaScript
+    // A video YouTube has dubbed lists one audio stream per language under the same itag, in no set
+    // order (an auto-dub can come first), and another with its loudness compressed ("drc"): the
+    // original language's wins (xtags acont=original, an audioTrack id ending ".4", or "original"
+    // in its name; YouTube's own default can be a dub), then a stream of a video with one language,
+    // then the default; the compressed copy only when nothing else is there (resolver.ts in the server).
+    J at = key(f, "audioTrack");
+    std::string tags = url.substr(std::min(url.size(), url.find("xtags=")));
+    tags = tags.substr(0, tags.find('&'));
+    std::string tid = str(key(at, "id")), name = str(key(at, "displayName"));
+    for (char& c : name) c = char(tolower((unsigned char)c));
+    int rank = !at ? 3 : 0;
+    if (tags.find("acont%3Doriginal") != std::string::npos || (tid.size() > 2 && tid.compare(tid.size() - 2, 2, ".4") == 0) ||
+        name.find("original") != std::string::npos)
+      rank = 4;
+    else if (at && yyjson_is_true(key(at, "audioIsDefault")) && !yyjson_is_true(key(at, "isAutoDubbed")))
+      rank = 2;
+    else if (at && (tags.find("acont%3Ddescriptive") != std::string::npos || name.find("descriptive") != std::string::npos))
+      rank = -1;
+    rank = rank * 2 - (tags.find("drc%3D1") != std::string::npos ? 1 : 0);
+    if (out->formats.count(itag) && ranks[itag] >= rank) return;
+    ranks[itag] = rank;
     Format x;
     x.url = url;
     std::string mt = str(key(f, "mimeType"));
