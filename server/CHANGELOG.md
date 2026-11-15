@@ -4,7 +4,7 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## 3.3.0 (not released yet)
+## 3.3.0 (November 15, 2026)
 
 - **WhatsApp** (Rondo 3.0.4). The server becomes one of your WhatsApp's linked devices, like
   WhatsApp Web, and keeps your chats, contacts and the photos, videos and voice messages they hold
