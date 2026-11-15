@@ -19,6 +19,8 @@ export interface Config {
   updaterUrl: string;
   updaterTokenFile: string;
   ytdlpBin: string;
+  // WhatsApp (whatsapp.ts): its link, chats and media on the data volume
+  whatsappDir: string;
   port: number;
   logLevel: string;
   healthVideo: string;
@@ -43,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     updaterUrl: env.UPDATER_URL ?? "http://rondo-updater:8080",
     updaterTokenFile: env.UPDATER_TOKEN_FILE ?? "/run/updater/token",
     ytdlpBin: env.YTDLP_BIN ?? "yt-dlp",
+    whatsappDir: env.WHATSAPP_DIR ?? "/data/whatsapp",
     port: Number(env.PORT ?? 3000),
     logLevel: env.LOG_LEVEL ?? "info",
     healthVideo: env.HEALTH_VIDEO ?? "dQw4w9WgXcQ",

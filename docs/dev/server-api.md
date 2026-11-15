@@ -86,6 +86,9 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
    "device": {"paired": true, "source": "paired" | "env" | null, "name": "Rondo" | null, "pairedAt": 1793440000000 | null,
               "lastSeenAt": 1793449100000 | null, "lastIp": "203.0.113.…" | null, "userAgent": "Rondo/1.0.0 …" | null},
    "pairing": {"code": "123456", "expiresAt": 1793449600000} | null,
+   "whatsapp": {"state": "unlinked" | "linking" | "connecting" | "open" | "closed",
+                "me": {"jid", "name", "number"} | null, "code": {"code": "K7Q2MX4R", "expiresAt": …} | null,
+                "error": "", "syncing": bool, "chats": 87} | null,
    "updates": {"server": {"version": "1.0.1", "url": "https://github.com/…", "publishedAt": …} | null,
                "ytdlp": {"version": "2026.11.01.233542", "url": "…", "publishedAt": …} | null, "checkedAt": … | null}}
   ```
@@ -120,6 +123,14 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
 - `DELETE /admin/api/tv` → `{"ok": true}` (sign out: tokens deleted and revoked at Google).
 - `GET /admin/api/logs` → `{"lines": [{"time": 1793449000000, "level": "warn" | "error", "msg": "…"}]}`
   (the last 100 warnings and errors, newest first, no secrets).
+- `POST /admin/api/whatsapp/link` `{"phone": "+1 555 010 0000"}` (server 3.3.0) → `{"code": "K7Q2MX4R",
+  "expiresAt": …}`: a pairing code to type on the phone (Linked devices › Link with phone number),
+  good for about 160 s; the link arrives in `status.whatsapp` (`state` `linking` → `open`, then
+  `syncing` while the recent chats come). `400 {"error": "number"}` (8 to 15 digits with the country
+  code), `409 {"error": "linked"}`, `502 {"error": "whatsapp"}` when WhatsApp gave no code. The number
+  is never logged.
+- `POST /admin/api/whatsapp/unlink` → the status: the server leaves the linked devices and deletes
+  the chats and media it kept (also a waiting code's cancel).
 
 ## Device pairing (called by the Rondo, not the admin page)
 
@@ -185,3 +196,54 @@ route: it answers `503 {"error": "needs_server"}`.
   song by, from the song's queue row and its album's page (`year` "" and `track` 0 when YouTube doesn't
   say). A Rondo whose server has no such route names a download from the song's row ("Artist · Album").
   Direct mode on the Y1 answers it itself (`native/direct/music.cpp`).
+
+## WhatsApp for the Rondo (device token)
+
+Server 3.3.0 (`server/src/whatsapp.ts`, `whatsappRoutes.ts`): the server is one of the owner's
+WhatsApp linked devices ([Baileys](https://github.com/WhiskeySockets/Baileys), browser "Chrome (Mac
+OS)", never marked online), linked on the admin page above. What it hears is kept in SQLite
+(`/data/whatsapp/whatsapp.db`: chats, messages with their raw protos, contacts, LID ↔ number
+mappings) and its media under `/data/whatsapp/media`, both on the data volume. A Rondo uses these
+routes whatever its YouTube source (`/wa/` always goes to the connected server). JIDs in paths are
+URL-escaped (`15550100001%40s.whatsapp.net`, `…@g.us`); a person is keyed by their phone-number JID
+when WhatsApp gives it, else their LID.
+
+Every change gets a number (`seq`); the lists carry the latest, and `/wa/updates` answers what
+changed after one.
+
+- `GET /wa/status` → `{"state", "me", "code", "error", "syncing", "chats"}` as in the admin status (a
+  server before 3.3.0 answers 404).
+- `GET /wa/chats` (`?archived=1` for the archived ones) → `{"seq", "chats": [chat]}`, pinned first,
+  then the newest. A chat:
+  `{"jid", "name", "group", "at": ms, "unread", "pinned", "archived", "preview": {"text", "fromMe",
+  "sender" (a group's), "status": 0-5, "kind", "caption", "seconds"} | null}`.
+- `GET /wa/chats/:jid/messages?before=<ms>&limit=<1-200, 40>` → `{"seq", "chat", "messages": [message]}`,
+  oldest first, the `limit` before `before` (0: the newest). A message:
+  `{"id", "fromMe", "sender", "name" (a group's sender: saved name, else "~pushName"), "at",
+  "kind": "text" | "image" | "video" | "voice" | "audio" | "document" | "sticker" | "location" |
+  "contact" | "poll" | "deleted" | "unsupported", "text" (or a caption), "media": {"mime", "seconds",
+  "width", "height", "size", "fileName", "gif"}?, "preview": true? (a small picture at
+  `/wa/media/…?preview=1`), "quoted": {"id", "sender", "name", "kind", "text"}?, "status": 0 theirs, 1
+  waiting, 2 sent, 3 delivered, 4 read, 5 played, "edited", "reactions": [{"emoji", "count"}], "seq"}`.
+- `POST /wa/chats/:jid/read` → `{"ok": true}`: the chat's unread messages read (receipts sent).
+- `POST /wa/chats/:jid/text` `{"text", "quoted": "<id>"?}` → the message sent (status 2).
+- `POST /wa/chats/:jid/voice` with a WAV body (`audio/wav`, 16-bit mono, as the Y1 records) → the
+  message sent: converted to Ogg Opus (48 kHz, 24 kb/s) with its waveform, sent as a voice message.
+- `POST /wa/chats/:jid/media?kind=image|video&caption=` with the file as the body (`image/jpeg`,
+  `image/png`, `video/mp4` or `application/octet-stream`; at most 64 MB) → the message sent (photos
+  larger than 1600 px are scaled down first).
+- Sending answers `503` when WhatsApp isn't connected and `502` when it didn't take the message.
+- `GET /wa/media/:jid/:id?w=<px>` → a photo or a sticker as a picture at most `w` wide (480 by
+  default; JPEG, a sticker PNG), a video as an MP4 the Y1 plays (H.264 up to 1280 × 720, converted
+  once when needed), a voice message or another file as it is; `?preview=1` → the small picture
+  WhatsApp sent with a photo or a video. Downloaded from WhatsApp the first time and kept; `410` when
+  WhatsApp no longer has it.
+- `GET /wa/avatar/:jid?s=<px>` (or `w`) → a person's or a group's picture (JPEG, 96 px by default),
+  kept a week; `404` when they have none.
+- `GET /wa/contacts` → `{"contacts": [{"jid", "name", "saved", "pushName", "number", "group"}]}`: the
+  saved ones first, names starting with a letter before the rest.
+- `GET /wa/contacts/:jid` → the same for one, with `"about"` (a group's `""`).
+- `GET /wa/updates?since=<seq>&wait=<s, at most 25>` → `{"seq", "status": state, "chats": [chat],
+  "messages": [message with "chat"]}`: what changed after `since`, waiting up to `wait` seconds for
+  something to. A message's new status, an edit, a deletion or a reaction moves its chat along too.
+  `/wa/avatar`, `/wa/media` and `/wa/updates` aren't rate-limited (a list asks for many pictures).

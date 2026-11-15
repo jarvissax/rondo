@@ -31,7 +31,12 @@ export async function registerAuth(app: FastifyInstance, token: string | TokenCh
   const check: TokenCheck = typeof token === "string" ? fixed(token) : token;
 
   // a list screen loads ~20 thumbnails at once; /thumb only reaches Google's image hosts
-  await app.register(rateLimit, { max: 10, timeWindow: 1000, allowList: (req) => req.url.startsWith("/thumb?") });
+  // so do WhatsApp's avatars and media, and its feed of changes that waits
+  await app.register(rateLimit, {
+    max: 10,
+    timeWindow: 1000,
+    allowList: (req) => /^\/(thumb\?|wa\/(avatar|media|updates)\b)/.test(req.url),
+  });
 
   app.addHook("onRequest", async (req, reply) => {
     const path = req.url.split("?", 1)[0] ?? "";

@@ -163,7 +163,7 @@ code { font-family: var(--mono); font-size: .9em; padding: 1px 6px; border-radiu
 
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
   padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
   background: #0d0d0f; border-top: 1px solid var(--line);
 }
@@ -177,6 +177,7 @@ code { font-family: var(--mono); font-size: .9em; padding: 1px 6px; border-radiu
 .tab[aria-current="page"] { color: var(--text); }
 .tab[aria-current="page"] .tile { background: linear-gradient(var(--t1), var(--t2)); color: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / .22); }
 .tab:not([aria-current]) .t-rondo svg { filter: grayscale(1); opacity: .7; }
+.tab:not([aria-current]) .brand-glyph .cut { fill: #0d0d0f; }  /* gray like the rest: the mark cut out of the bar */
 .tab-wrap { position: relative; }
 .dot-badge {
   position: absolute; top: -2px; right: -3px; width: 9px; height: 9px;
@@ -209,8 +210,13 @@ code { font-family: var(--mono); font-size: .9em; padding: 1px 6px; border-radiu
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .22);
 }
 .tile .i { width: 20px; height: 20px; }
-.t-youtube { --t1: #ff6b5a; --t2: #e01e1e; }
+.t-youtube { --t1: #ff6a5c; --t2: #d7001a; }
 .t-device { --t1: #5fb7ff; --t2: #1f73e0; }
+.t-whatsapp { --t1: #63f08e; --t2: #17a74c; }
+/* YouTube's and WhatsApp's logos on their tiles (YouTube's play mark cut out in the tile's red) */
+.tile .brand-glyph { width: 66%; height: auto; }
+.tile .brand-glyph.yt { width: 72%; }
+.brand-glyph .cut { fill: var(--cut, #e5121f); }
 .t-ok { --t1: #7be07b; --t2: #26a83b; }
 .t-settings { --t1: #b8bcc4; --t2: #6f747d; }
 .t-resolver { --t1: #ffb04d; --t2: #f07a12; }
@@ -299,7 +305,7 @@ a.row:focus-visible { outline-offset: -2px; border-radius: var(--r-lg); }
 .ib-sm { width: 34px; height: 34px; }
 .ib-sm .i { width: 18px; height: 18px; }
 
-input[type="text"], input[type="password"] {
+input[type="text"], input[type="password"], input[type="tel"] {
   width: 100%; height: 44px; padding: 0 14px;
   background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-md);
   color: var(--text); font-size: 16px;
@@ -307,7 +313,7 @@ input[type="text"], input[type="password"] {
 }
 .gate input[type="text"], .gate input[type="password"] { background: #131315; }
 input::placeholder { color: var(--text-3); }
-input[type="text"]:focus-visible, input[type="password"]:focus-visible {
+input[type="text"]:focus-visible, input[type="password"]:focus-visible, input[type="tel"]:focus-visible {
   outline: none; border-color: rgb(255 255 255 / .55); box-shadow: 0 0 0 3px rgb(255 255 255 / .1);
 }
 input.is-invalid { border-color: var(--red); }
@@ -405,8 +411,6 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
 .node .tile { width: 52px; height: 52px; border-radius: 14px; }
 .node .tile .i { width: 30px; height: 30px; }
 .node .t-rondo .i { width: 36px; height: 36px; }
-.tile.t-brand { background: #fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .11); }
-.tile.t-brand .brand-logo { width: 70%; height: auto; }
 .node-name { margin-top: 9px; font-size: 13.5px; font-weight: 600; line-height: 1.25; }
 .node-state { margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--text-2); }
 .node-state.ok { color: var(--green); }
@@ -521,6 +525,8 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
 .addr span { flex: 1; min-width: 0; font-size: 15px; color: var(--text); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .addr .ib { color: var(--text); }
 .pairing .note { margin-top: 12px; }
+.wa-pairing::before { background: radial-gradient(90% 110% at 0% 0%, rgb(37 211 102 / .14), transparent 60%); }
+
 
 .pairing.is-done { justify-items: center; gap: 0; text-align: center; padding: 34px 20px 28px; }
 .pairing.is-done::before { background: radial-gradient(70% 90% at 50% 0%, rgb(98 212 126 / .2), transparent 70%); }

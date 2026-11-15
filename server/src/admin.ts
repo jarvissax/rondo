@@ -15,6 +15,7 @@ import type { Config } from "./config.js";
 import type { Health } from "./health.js";
 import type { Resolver } from "./resolver.js";
 import type { TvAccount } from "./tv.js";
+import type { WhatsApp } from "./whatsapp.js";
 import { hashPassword, sha256, type Store, verifyPassword } from "./store.js";
 import type { ServerUpdate } from "./serverUpdate.js";
 import { isNewer, type Updates } from "./updates.js";
@@ -63,6 +64,8 @@ export interface AdminDeps {
   updates?: Updates;
   // updating this server from the admin page (serverUpdate.ts); none when left out
   serverUpdate?: ServerUpdate;
+  // WhatsApp, linked from the admin page (whatsapp.ts); none when left out
+  whatsapp?: WhatsApp;
 }
 
 const randomCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -90,6 +93,10 @@ export class Admin {
 
   get tv(): TvAccount | undefined {
     return this.deps.tv;
+  }
+
+  get whatsapp(): WhatsApp | undefined {
+    return this.deps.whatsapp;
   }
 
   get serverUpdate(): ServerUpdate | undefined {
@@ -319,6 +326,7 @@ export class Admin {
       },
       pairing: this.pairing && this.pairing.expiresAt > Date.now() ? { code: this.pairing.code, expiresAt: this.pairing.expiresAt } : null,
       tv: this.deps.tv?.state() ?? null,
+      whatsapp: this.deps.whatsapp?.status() ?? null,
       updates: this.updates(h.ytdlp),
     };
   }
@@ -532,6 +540,29 @@ export function registerAdminRoutes(app: FastifyInstance, admin: Admin): void {
     scope.delete("/admin/api/tv", async () => {
       await admin.tv?.signOut();
       return { ok: true };
+    });
+    // WhatsApp: this server as one of the owner's linked devices, with a pairing code typed on the phone
+    scope.post<{ Body: { phone?: unknown } }>("/admin/api/whatsapp/link", async (req, reply) => {
+      const wa = admin.whatsapp;
+      if (!wa) return reply.code(404).send({ error: "not_found" });
+      try {
+        const code = await wa.link(str(req.body?.phone));
+        admin.note("WhatsApp: a pairing code made on the admin page");
+        return code;
+      } catch (err) {
+        const why = (err as Error).message;
+        if (why === "number") return reply.code(400).send({ error: "number" });
+        if (why === "linked") return reply.code(409).send({ error: "linked" });
+        admin.warn("WhatsApp gave no pairing code", err);
+        return reply.code(502).send({ error: "whatsapp" });
+      }
+    });
+    scope.post("/admin/api/whatsapp/unlink", async (_req, reply) => {
+      const wa = admin.whatsapp;
+      if (!wa) return reply.code(404).send({ error: "not_found" });
+      await wa.unlink();
+      admin.note("WhatsApp unlinked from the admin page");
+      return wa.status();
     });
   });
 

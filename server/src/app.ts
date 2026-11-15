@@ -17,6 +17,8 @@ import { registerTimezoneRoutes, TimezoneService } from "./timezone.js";
 import { registerUpdateRoutes, type Updates } from "./updates.js";
 import { registerStreamRoutes, type UpstreamTiming } from "./stream.js";
 import { Store } from "./store.js";
+import type { WhatsApp } from "./whatsapp.js";
+import { registerWhatsAppRoutes } from "./whatsappRoutes.js";
 
 export interface App {
   app: FastifyInstance;
@@ -24,6 +26,7 @@ export interface App {
   resolver: Resolver;
   admin: Admin;
   tv: TvAccount;
+  whatsapp?: WhatsApp;
 }
 
 export async function buildApp(
@@ -38,6 +41,8 @@ export async function buildApp(
     serverUpdate?: ServerUpdate;
     eq?: EqService;
     timezone?: TimezoneService;
+    // WhatsApp (the running server's; tests build the app without it)
+    whatsapp?: (log: FastifyInstance["log"]) => WhatsApp;
   } = {},
 ): Promise<App> {
   const logs = new LogRing();
@@ -68,6 +73,7 @@ export async function buildApp(
   // the browse routes come after the auth hook (below); the admin page asks them about the account
   let browse: Browse | undefined;
   const tv = opts.tv ?? new TvAccount(config.tvTokensFile, app.log);
+  const whatsapp = opts.whatsapp?.(app.log); // Rondo 3.0.4: WhatsApp, linked on the admin page
   const admin = new Admin({
     config,
     store: new Store(config.configFile),
@@ -80,6 +86,7 @@ export async function buildApp(
     tv,
     updates: opts.updates,
     serverUpdate: opts.serverUpdate,
+    whatsapp,
   });
   // account: which account feeds exist (the Rondo hides the others and runs signed out)
   app.get("/healthz", async () => ({ ...health.state(), version: VERSION, account: admin.accountFeatures() }));
@@ -103,6 +110,7 @@ export async function buildApp(
   });
   registerLyricsRoutes(app, { lyrics });
   registerEqRoutes(app, opts.eq ?? new EqService()); // Rondo 2.0: Settings › Sound › Headphone match
+  if (whatsapp) registerWhatsAppRoutes(app, whatsapp); // the Rondo's: chats, messages, sending
 
-  return { app, health, resolver, admin, tv };
+  return { app, health, resolver, admin, tv, whatsapp };
 }

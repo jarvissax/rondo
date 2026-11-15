@@ -327,15 +327,20 @@ signinForm.addEventListener('submit', async (e) => {
 // ---------- navigation ----------
 const NAV = [
   { id: 'overview', label: 'Overview', short: 'Overview', tile: 'rondo' },
-  { id: 'youtube', label: 'YouTube account', short: 'YouTube', tile: 'youtube', glyph: 'account' },
+  { id: 'youtube', label: 'YouTube', short: 'YouTube', tile: 'youtube' },
+  { id: 'whatsapp', label: 'WhatsApp', short: 'WhatsApp', tile: 'whatsapp' },
   { id: 'device', label: 'Device', short: 'Device', tile: 'device', glyph: 'player' },
   { id: 'resolver', label: 'Resolver', short: 'Resolver', tile: 'resolver', glyph: 'bolt' },
   { id: 'activity', label: 'Activity', short: 'Activity', tile: 'activity', glyph: 'pulse' },
   { id: 'admin', label: 'Admin account', short: 'Admin', tile: 'settings', glyph: 'lock' },
 ];
-const tileHtml = (tile, glyph, extra = '') => `<span class="tile t-${tile}${extra}">${glyph ? icon(glyph) : markTile}</span>`;
-// the official YouTube logo (28.57 × 20 grid) on a white app-icon tile, as on the Rondo
-const ytTile = () => '<span class="tile t-brand"><svg class="brand-logo" viewBox="0 0 28.57 20" aria-hidden="true"><path d="M27.9727 3.12324C27.6435 1.89323 26.6768 .926623 25.4468 .597366C23.2197 0 14.285 0 14.285 0C14.285 0 5.35042 0 3.12323 .597366C1.89323 .926623 .926623 1.89323 .597366 3.12324C0 5.35042 0 10 0 10C0 10 0 14.6496 .597366 16.8768C.926623 18.1068 1.89323 19.0734 3.12323 19.4026C5.35042 20 14.285 20 14.285 20C14.285 20 23.2197 20 25.4468 19.4026C26.6768 19.0734 27.6435 18.1068 27.9727 16.8768C28.5701 14.6496 28.5701 10 28.5701 10C28.5701 10 28.5677 5.35042 27.9727 3.12324Z" fill="#f00"/><path d="M11.4253 14.2854L18.8477 10.0004L11.4253 5.71533Z" fill="#fff"/></svg></span>';
+// YouTube and WhatsApp show their own logos on white tiles, as on the Rondo
+const tileHtml = (tile, glyph, extra = '') => tile === 'youtube' ? ytTile(extra) : tile === 'whatsapp' ? waTile(extra)
+  : `<span class="tile t-${tile}${extra}">${glyph ? icon(glyph) : markTile}</span>`;
+const waTile = (extra = '') => `<span class="tile t-whatsapp${extra}"><svg class="brand-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></span>`;
+// YouTube's and WhatsApp's logos in white on their own colors, like the page's other tiles (YouTube's
+// play mark cut out in its tile's red)
+const ytTile = (extra = '') => `<span class="tile t-youtube${extra}"><svg class="brand-glyph yt" viewBox="0 0 28.57 20" aria-hidden="true"><path fill="currentColor" d="M27.9727 3.12324C27.6435 1.89323 26.6768 .926623 25.4468 .597366C23.2197 0 14.285 0 14.285 0C14.285 0 5.35042 0 3.12323 .597366C1.89323 .926623 .926623 1.89323 .597366 3.12324C0 5.35042 0 10 0 10C0 10 0 14.6496 .597366 16.8768C.926623 18.1068 1.89323 19.0734 3.12323 19.4026C5.35042 20 14.285 20 14.285 20C14.285 20 23.2197 20 25.4468 19.4026C26.6768 19.0734 27.6435 18.1068 27.9727 16.8768C28.5701 14.6496 28.5701 10 28.5701 10C28.5701 10 28.5677 5.35042 27.9727 3.12324Z"/><path class="cut" d="M11.4253 14.2854L18.8477 10.0004L11.4253 5.71533Z"/></svg></span>`;
 function buildNav() {
   $('#nav').innerHTML = NAV.map((n) => `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
   $('#tabs').innerHTML = NAV.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short}</span></a>`).join('');
@@ -361,6 +366,7 @@ function renderView(id = S.route) {
   if (!S.status) return;
   if (id === 'overview') renderOverview();
   if (id === 'youtube') renderYouTube();
+  if (id === 'whatsapp') renderWhatsApp();
   if (id === 'device') renderDevice();
   if (id === 'resolver') renderResolver();
 }
@@ -373,7 +379,8 @@ function setHtml(el, html) {
 
 // ---------- polling ----------
 let pollTimer = 0, tickTimer = 0, polling = false;
-const pollEvery = () => (!S.online ? 5000 : (S.pair && !S.pair.expired) || S.status?.tv?.pending ? 3000 : 10000);
+const waBusy = () => { const w = S.status?.whatsapp; return !!w && (w.state === 'linking' || w.state === 'connecting' || w.syncing); };
+const pollEvery = () => (!S.online ? 5000 : (S.pair && !S.pair.expired) || S.status?.tv?.pending || waBusy() ? 3000 : 10000);
 function startPolling() {
   schedulePoll();
   clearInterval(tickTimer);
@@ -401,6 +408,7 @@ document.addEventListener('visibilitychange', () => {
 function applyStatus(st, render = true) {
   if (st.updates?.server && Date.now() - (S.serverUpdateAt || 0) > 60000) loadServerUpdate();
   if (S.status?.tv?.pending && st.tv?.signedIn && !S.status.tv.signedIn) toast('Signed in to YouTube');
+  if (S.status?.whatsapp && S.status.whatsapp.state !== 'open' && st.whatsapp?.state === 'open') toast('WhatsApp is linked');
   S.status = st;
   S.statusAt = Date.now();
   const d = st.device || {};
@@ -435,6 +443,7 @@ function tick() {
     if (drain) drain.style.setProperty('--p', S.pair.expired ? 0 : Math.min(1, (left * 1000) / Math.max(S.pair.total || CODE_MS, left * 1000)).toFixed(4));
   }
   tickTv();
+  tickWa();
   const el = $('[data-elapsed]');
   if (el && S.rz.updating) el.textContent = clock(Math.floor((Date.now() - S.rz.updateStart) / 1000));
 }
@@ -570,8 +579,9 @@ function renderOverview() {
     row({ tile: 'rondo', title: 'Server', sub: `Rondo server ${a.s.version || ''} · up ${uptime(up)}${st0().updates?.server ? ` · ${st0().updates.server.version} is out` : ''}`, level: st0().updates?.server ? 'info' : 'ok', pillText: st0().updates?.server ? 'Update' : 'Running' }),
     row({ tile: a.https ? 'ok' : 'warn', glyph: a.https ? 'lock' : 'unlock', title: 'Connection', sub: a.conn.sub, level: a.conn.level, pillText: a.conn.pill }),
     row({ href: '#resolver', tile: 'resolver', glyph: 'bolt', title: 'Resolver', sub: `yt-dlp ${a.y.version || '(version unknown)'}. ${a.rz.sub}`, level: a.rz.level, pillText: a.rz.pill }),
-    row({ href: '#youtube', tile: 'youtube', glyph: 'account', title: 'YouTube account', sub: a.yt.detail, level: a.yt.level, pillText: a.yt.pill }),
+    row({ href: '#youtube', tile: 'youtube', title: 'YouTube', sub: a.yt.detail, level: a.yt.level, pillText: a.yt.pill }),
     row({ href: '#device', tile: 'device', glyph: 'player', title: 'Device', sub: a.dev.detail, level: a.dev.level, pillText: a.dev.pill }),
+    st0().whatsapp ? row({ href: '#whatsapp', tile: 'whatsapp', title: 'WhatsApp', ...waRow(st0().whatsapp) }) : '',
   ].join(''));
 }
 
@@ -816,6 +826,124 @@ window.addEventListener('drop', (e) => {
   uploadCookies(files[0]);
 });
 dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#cookieFile').click(); } });
+
+// ---------- WhatsApp ----------
+// the overview's row: what the link is now
+function waRow(w) {
+  if (w.state === 'open') return { sub: `Linked${w.me?.name ? ` as ${w.me.name}` : ''}${w.syncing ? ' · bringing over your recent chats' : ` · ${w.chats} ${w.chats === 1 ? 'chat' : 'chats'}`}`, level: 'ok', pillText: 'Linked' };
+  if (w.state === 'linking') return { sub: 'A code waits to be typed on your phone', level: 'warn', pillText: 'Linking' };
+  if (w.state === 'connecting' || w.state === 'closed') return { sub: 'Connecting to WhatsApp', level: 'warn', pillText: 'Connecting' };
+  return { sub: 'Not linked', level: 'off', pillText: 'Off' };
+}
+const WA_ERRORS = { number: 'Type the number with its country code, like +1 555 010 0000.', linked: 'WhatsApp is linked already. Unlink it first.', whatsapp: 'WhatsApp gave no code. Try again in a minute.' };
+function renderWhatsApp() {
+  if (S.waBusy) return;
+  const w = st0().whatsapp, body = $('#waBody');
+  if (!w) { setHtml(body, `<div class="note">${icon('alert')}<span>This server runs without WhatsApp.</span></div>`); return; }
+  const err = w.error && w.state !== 'open' ? `<div class="note err">${icon('alert')}<span>${esc(w.error)}</span></div>` : '';
+  if (w.state === 'linking' && w.code) {
+    const c = String(w.code.code), groups = c.length === 8 ? [c.slice(0, 4), c.slice(4)] : [c];
+    setHtml(body, `<section class="pairing wa-pairing" aria-labelledby="waLabel">
+      <div class="pc-code">
+        <p class="pc-label" id="waLabel">Pairing code</p>
+        <div class="big-code is-letters" aria-label="${esc(c.split('').join(' '))}">${groups.map((g) => `<span>${esc(g)}</span>`).join('')}</div>
+        <p class="expiry" data-wa-countdown role="timer" aria-live="off"></p>
+        <div class="pc-actions">
+          <button class="btn btn-sm" type="button" data-act="waCopy">${icon('copy')}<span>Copy code</span></button>
+          <button class="btn btn-sm btn-quiet" type="button" data-act="waCancel">Cancel</button>
+        </div>
+      </div>
+      <div class="pc-steps">
+        <ol class="steps">
+          <li>On your phone, open WhatsApp › <b class="nowrap">Settings › Linked devices</b>.</li>
+          <li>Tap <b>Link a device</b>, then <b>Link with phone number instead</b>.</li>
+          <li>Type this code. This page updates by itself.</li>
+        </ol>
+        <p class="waiting">${spinner()}<span>Waiting for your phone…</span></p>
+      </div>
+    </section>${err}`);
+    tickWa();
+    return;
+  }
+  if (w.state === 'open' || w.state === 'connecting' || w.state === 'closed' || w.state === 'linking') {
+    const open = w.state === 'open';
+    const facts = [
+      w.me?.number ? ['Number', esc(w.me.number)] : null,
+      open ? ['Chats', w.syncing ? 'Bringing over your recent chats…' : String(w.chats)] : null,
+    ].filter(Boolean);
+    setHtml(body, `${err}<div class="group">
+      <div class="row dev-head">${waTile()}
+        <div class="row-main"><div class="row-title">${open ? `Linked${w.me?.name ? ` as ${esc(w.me.name)}` : ''}` : 'Connecting to WhatsApp…'}</div>
+          <div class="row-sub">${open ? 'Your Rondo’s WhatsApp shows your chats from here.' : 'The server is reaching WhatsApp.'}</div></div>
+        ${pill(open ? 'ok' : 'warn', open ? 'Linked' : 'Connecting')}
+      </div>
+      ${facts.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('')}
+      <div class="row-actions"><button class="btn btn-red-text push" type="button" data-act="waUnlink">${icon('close')}<span>Unlink</span></button></div>
+    </div>`);
+    return;
+  }
+  setHtml(body, `${err}<form class="group form-card" id="waForm" novalidate>
+      <div class="field">
+        <label class="field-label" for="waPhone">Your WhatsApp number, with its country code</label>
+        <input type="tel" id="waPhone" autocomplete="tel" inputmode="tel" placeholder="+1 555 010 0000" spellcheck="false">
+        <p class="field-help">The server asks WhatsApp for a code to type on your phone. Nothing is sent to anyone.</p>
+      </div>
+      <p class="form-err" id="waErr" role="alert"></p>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" id="waBtn">${icon('chat')}<span>Get a code</span></button></div>
+    </form>`);
+}
+function tickWa() {
+  const cd = $('[data-wa-countdown]'), c = st0().whatsapp?.code;
+  if (!cd || !c) return;
+  const left = Math.max(0, Math.ceil((c.expiresAt - now()) / 1000));
+  cd.textContent = left ? `Good for ${clock(left)}` : 'This code expired. Cancel and get a new one.';
+  cd.classList.toggle('is-low', left <= 30);
+}
+$('#waBody').addEventListener('input', clearInvalid);
+$('#waBody').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'waForm') return;
+  e.preventDefault();
+  const input = $('#waPhone'), err = $('#waErr');
+  const digits = input.value.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) {
+    input.classList.add('is-invalid');
+    err.textContent = WA_ERRORS.number;
+    return input.focus();
+  }
+  const btn = $('#waBtn'), was = btn.innerHTML;
+  S.waBusy = true;
+  btn.disabled = true;
+  input.readOnly = true;
+  btn.innerHTML = `${spinner()}<span>Getting a code…</span>`;
+  err.textContent = '';
+  try {
+    await api('POST', '/whatsapp/link', { phone: digits }, { timeout: 45000 });
+    S.waBusy = false;
+    await poll();
+  } catch (x) {
+    S.waBusy = false;
+    if (x.status === 401) return;
+    btn.disabled = false;
+    input.readOnly = false;
+    btn.innerHTML = was;
+    err.textContent = WA_ERRORS[x.code] || `Couldn’t get a code. ${reason(x)}`;
+  }
+});
+async function waUnlink(_b, _e, cancel = false) {
+  if (!cancel) {
+    const ok = await confirmSheet({
+      title: 'Unlink WhatsApp?',
+      text: 'The server leaves your linked devices, and the chats and media it kept are deleted from it. Your phone keeps everything; your Rondo shows nothing new until you link again.',
+      action: 'Unlink',
+    });
+    if (!ok) return;
+  }
+  try {
+    await api('POST', '/whatsapp/unlink', {}, { timeout: 30000 });
+    if (!cancel) toast('WhatsApp unlinked');
+    await poll();
+  } catch (x) { if (x.status !== 401) toast(`Not unlinked. ${reason(x)}`, 'err'); }
+}
 
 // ---------- device ----------
 function renderDevice() {
@@ -1135,6 +1263,9 @@ const ACTIONS = {
   tvCancel,
   tvSignOut,
   tvCopy: (b) => copyWith(b, st0().tv?.pending?.code || '', 'Code'),
+  waCopy: (b) => copyWith(b, st0().whatsapp?.code?.code || '', 'Code'),
+  waCancel: (b, e) => waUnlink(b, e, true),
+  waUnlink,
 };
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');

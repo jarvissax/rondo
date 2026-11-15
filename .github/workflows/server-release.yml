@@ -84,8 +84,9 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.names.outputs.version }}
             org.opencontainers.image.title=Rondo server
-            org.opencontainers.image.description=Streams YouTube Music and YouTube to a Rondo on the Innioasis Y1
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.description=Streams YouTube Music and YouTube, and links WhatsApp, for a Rondo on the Innioasis Y1
+            # Rondo is MIT; the image also carries libsignal-node (GPL-3.0, Baileys for WhatsApp), with its source
+            org.opencontainers.image.licenses=MIT AND GPL-3.0-only
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
       - name: The updater

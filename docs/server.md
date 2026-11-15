@@ -1,16 +1,22 @@
 # Setting up a Rondo server
 
-**You don't need a server.** Rondo talks to YouTube Music and YouTube itself, straight from the
-Y1 (**Directly to YouTube**, what a Rondo without a server uses), and the card, the radio, the
-dashboard and updates never needed one. A Rondo server is optional: a small service you run
-yourself, at home or on a VPS, that does the YouTube part for the Y1 instead. With it:
+**You don't need a server for YouTube.** Rondo talks to YouTube Music and YouTube itself, straight
+from the Y1 (**Directly to YouTube**, what a Rondo without a server uses), and the card, the radio,
+the dashboard and updates never needed one. A Rondo server is a small service you run yourself, at
+home or on a VPS. With it:
 
-- **The Y1 never talks to YouTube or Google.** The server browses YouTube for it and passes the
-  audio and video through, so YouTube sees the server, not the Y1.
-- **yt-dlp finds the streams.** It keeps up with YouTube's changes and the server updates it every
-  day.
-- **The server has its own YouTube account**, signed in on its admin page.
+- **WhatsApp** on the Y1 (server 3.3.0 or newer). The server is one of your WhatsApp's linked
+  devices, like WhatsApp Web, and keeps your chats, photos, videos and voice messages for the Y1.
+  You link it on its admin page; see [WhatsApp](#whatsapp).
+- **YouTube without the Y1 talking to Google**, if you choose **Through my server** in **Settings ›
+  YouTube › Connect to**. The server browses YouTube for it and passes the audio and video through,
+  so YouTube sees the server, not the Y1. yt-dlp finds the streams, keeping up with YouTube's
+  changes (the server updates it every day), and the server has its own YouTube account, signed in
+  on its admin page.
 - **Headphone match** (Settings › Sound) looks up your headphone model's correction through it.
+
+The server is set up apart from YouTube: **Settings › Server** on the Y1 (and the dashboard's
+**Server** page) connects it, and YouTube uses it only when you choose it there.
 
 Rondo 1.0 needed a server for YouTube; Rondo 2.0 doesn't. Nothing goes through anyone else's
 computer either way.
@@ -103,15 +109,15 @@ Your server's address is `https://music.example.com`.
    the log and choose an admin password.
 2. **Connect the Y1:** on the admin page, go to **Device** and press **Connect a Rondo**. It shows
    a 6-digit code, good for 10 minutes.
-3. On the Y1, open **Settings › YouTube › Connection › Connect to a server**. Type your server's
-   address and, on the next screen, the code from step 2. (Typing is quicker in the dashboard:
-   open **Settings › Dashboard** on the Y1, the address it shows on your phone or computer, then
-   its **YouTube** page.)
+3. On the Y1, open **Settings › Server › Connect to a server**. Type your server's address and, on
+   the next screen, the code from step 2. (Typing is quicker in the dashboard: open **Settings ›
+   Dashboard** on the Y1, the address it shows on your phone or computer, then its **Server**
+   page.)
 
-**Settings › YouTube › Connection** on the Y1 now has **My server** chosen and says it's
-connected; **Connection test** checks it. YouTube Music and YouTube now go through your server.
-To go back to YouTube directly at any time, choose **Directly to YouTube** there; the server stays
-connected for when you switch back.
+**Settings › Server** on the Y1 now shows your server's address; **Connection test** checks it.
+YouTube Music and YouTube go through your server when **Settings › YouTube › Connect to** says
+**Through my server** (a Y1 that never chose goes through it); **Directly to YouTube** there goes
+back to YouTube itself, and the server stays connected, for WhatsApp and for when you switch back.
 
 ## The admin page
 
@@ -122,7 +128,9 @@ hours.
 
 - **Overview:** whether everything works, from the Y1 through the server to YouTube, and what
   to do when something doesn't.
-- **YouTube account:** sign in with a code, add or replace cookies.txt, or sign out.
+- **YouTube:** the server's YouTube account: sign in with a code, add or replace cookies.txt, or
+  sign out.
+- **WhatsApp:** link your WhatsApp, see whose it is and how many chats came over, or unlink it.
 - **Device:** the connected Y1, when it was last seen, and buttons to connect a different one or
   disconnect it.
 - **Resolver:** the yt-dlp version, **Update now**, and **Test playback**, which checks that a
@@ -133,9 +141,35 @@ hours.
 - **Activity:** the last 100 warnings and errors, newest first.
 - **Admin account:** change the password or sign out.
 
+## WhatsApp
+
+<p align="center"><img src="images/admin-whatsapp.png" width="720" alt="The admin page's WhatsApp section, showing a pairing code and the steps to type it on the phone"></p>
+
+The server becomes one of your WhatsApp's linked devices, as WhatsApp Web is, and the Y1 reads and
+sends through it ([using it on the Y1](using.md#whatsapp)). To link it:
+
+1. On the admin page, open **WhatsApp**, type your WhatsApp number with its country code and press
+   **Get a code**. An 8-character code shows, good for about two and a half minutes.
+2. On your phone, open WhatsApp › **Settings › Linked devices**, tap **Link a device**, then **Link
+   with phone number instead**, and type the code.
+
+The page then says **Linked** with your name, and your recent chats come over in a minute or two
+(WhatsApp gives a new linked device the recent ones, not your whole history). Your phone lists the
+server under Linked devices as Chrome (Mac OS). **Unlink** on the admin page, or removing it on your
+phone, ends it; unlinking deletes the chats and media the server kept.
+
+- **What the server keeps:** your chats, contacts and messages in a small database, and the photos,
+  videos and voice messages as they arrive (so the Y1 can show them even when WhatsApp no longer
+  would), all on its Docker volume. Videos the Y1 can't play as they are are converted once for it.
+- **It never shows you as online** and sends no notifications, so your phone keeps its own. A chat
+  opened on the Y1 is marked read.
+- **WhatsApp's terms don't allow unofficial apps** like this one (it uses
+  [Baileys](https://github.com/WhiskeySockets/Baileys)), and WhatsApp may close accounts that use
+  them.
+
 ## Your YouTube account (optional)
 
-This is the server's own account, which a Y1 on **My server** uses. (Directly to YouTube, the Y1
+This is the server's own account, which a Y1 going **Through my server** uses. (Directly to YouTube, the Y1
 signs in by itself: Settings › YouTube › YouTube account, or the dashboard's YouTube page.)
 
 Without an account you can still search and play anything, open artists, albums and public
@@ -192,8 +226,9 @@ session:
   2.0 does: it fetches them from Rondo's update page and passes them on.
 - **The server and Rondo have versions of their own** (since server 3.1.0 and Rondo 3.0.2): most
   Rondo releases change only the Y1, and the server needs updating only when there's a server release.
-  When a Rondo needs a newer server, it says **Server needs an update** in **Settings › YouTube ›
-  Connection** and in the dashboard's server test.
+  When a Rondo needs a newer server, it says **Server needs an update** in **Settings › Server**
+  and in the dashboard's server test. WhatsApp needs server 3.3.0 or newer; the Y1's WhatsApp says
+  so with an older one.
 - **One Y1 per server.** Connecting another Rondo disconnects the previous one.
 - **Forgot the admin password?** Remove it and restart. The server prints a new setup code, and
   your Y1 stays connected:
@@ -206,11 +241,13 @@ session:
 
 ## Privacy
 
-The server doesn't store audio or video; it passes streams through as they play. (A video you
-download is saved on the Y1's card, not on the server.) Your cookies and the code sign-in stay on
-the server's Docker volume, readable only by the server, and are never shown or written to the
-logs. With **My server** chosen, the Y1 reaches YouTube only through your server, never Google
-directly. It still checks GitHub for Rondo's own updates.
+The server doesn't store YouTube's audio or video; it passes streams through as they play. (A
+video you download is saved on the Y1's card, not on the server.) WhatsApp is different: the server
+keeps your chats and the photos, videos and voice messages they hold, so the Y1 can show them;
+unlinking deletes them. Your cookies, the code sign-in and WhatsApp's link stay on the server's
+Docker volume, readable only by the server, and are never shown or written to the logs (neither is
+your WhatsApp number). Going **Through my server**, the Y1 reaches YouTube only through your server,
+never Google directly. It still checks GitHub for Rondo's own updates.
 
 With a server, Rondo sets its time zone from it: once each time the Y1 joins Wi-Fi, the server asks
 [ipwho.is](https://ipwho.is) (or, if that fails, [ipapi.co](https://ipapi.co)) which time zone the

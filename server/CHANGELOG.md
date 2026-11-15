@@ -4,6 +4,22 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## 3.3.0 (not released yet)
+
+- **WhatsApp** (Rondo 3.0.4). The server becomes one of your WhatsApp's linked devices, like
+  WhatsApp Web, and keeps your chats, contacts and the photos, videos and voice messages they hold
+  for the Y1, in `/data/whatsapp` on its volume. Link it on the admin page's new **WhatsApp**
+  section: your number, then the code it shows typed on your phone (Linked devices › Link with
+  phone number instead); it says whose WhatsApp it is and how many chats came over, and **Unlink**
+  ends it and deletes what it kept. The server never shows you online and sends no notifications.
+  Rondo reads and sends through new `/wa/` routes (chats, messages, contacts with their about,
+  pictures, media, sending text, voice messages and photos or videos, and a feed of changes); see
+  [docs/dev/server-api.md](../docs/dev/server-api.md). Your WhatsApp number never goes to the logs.
+  WhatsApp's terms don't allow unofficial apps like this one, and WhatsApp may close accounts that
+  use them.
+- **The admin page:** **YouTube account** is now **YouTube**, and YouTube and WhatsApp show their own
+  logos on their tiles; the Overview has a WhatsApp row; the seven sections fit the phone's tab bar.
+
 ## 3.2.0 (November 14, 2026)
 
 - **YouTube Music downloads get their full details** (Rondo 3.0.3): `GET /music/song/:id` gives a

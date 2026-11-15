@@ -11,10 +11,13 @@
 //   node tools/admin-mock/server.mjs --no-autopair  codes wait for a real POST /device/pair
 //   node tools/admin-mock/server.mjs --slow       answers take 0.4-1.2 s
 //   node tools/admin-mock/server.mjs --tv         signed in with a code (otherwise "Get a code" approves itself after 8 s)
+//   node tools/admin-mock/server.mjs --whatsapp   WhatsApp linked (otherwise its "Get a code" links itself 10 s after
+//                                                 the code, then brings over the recent chats for 8 s)
 //   node tools/admin-mock/server.mjs --updates    a newer Rondo and yt-dlp are out (updates.ts); Update on the
 //                                                 Overview runs a pretend server update (download, restart)
 //   node tools/admin-mock/server.mjs --no-updater no updater container: "How to update" instead of Update
 //   PORT=9000 CODE_SECONDS=40 node tools/admin-mock/server.mjs
+//   SIGNED_IN=1 node tools/admin-mock/server.mjs  every visit signed in (screenshots with headless Chrome)
 //
 // Cookies upload: any file with a line containing youtube.com is accepted; put "signedout" in it to
 // get a signed-out answer. Without --fresh the admin password is printed at start.
@@ -26,7 +29,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // the server's version, as the real admin page shows it (tools/set-version.sh)
-const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'server/package.json'), 'utf8')).version;
+// (VERSION=3.3.0: another, for screenshots of a release still being made)
+const VERSION = process.env.VERSION || JSON.parse(fs.readFileSync(path.join(ROOT, 'server/package.json'), 'utf8')).version;
 const WEB = path.join(ROOT, 'server/admin');
 const FONT = path.join(ROOT, 'native/assets/fonts/Roboto-Regular.ttf');
 const PORT = Number(process.env.PORT) || 8095;
@@ -55,6 +59,7 @@ const shown = (c) => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 // ---------- state ----------
 const S = {
+  wa: process.argv.includes('--whatsapp') ? { state: 'open', linkedAt: NOW - 3600_000, codeAt: 0 } : { state: 'unlinked', linkedAt: 0, codeAt: 0 },
   tv: process.argv.includes('--tv') ? { signedIn: true, account: { name: 'Alex', handle: '@alex' }, pending: null, error: null } : { signedIn: false, account: null, pending: null, error: null },
   password: FRESH ? null : PASSWORD,
   setupCode: FRESH ? code6() : null,
@@ -110,6 +115,7 @@ function serveFile(res, file) {
 }
 const sessionOf = (req) => /(?:^|;\s*)rondo_admin=([^;]+)/.exec(req.headers.cookie || '')?.[1];
 function signedIn(req) {
+  if (process.env.SIGNED_IN) return true;  // SIGNED_IN=1: every visit signed in (screenshots with headless Chrome)
   const t = sessionOf(req);
   const exp = t && S.sessions.get(t);
   if (!exp) return false;
@@ -127,6 +133,15 @@ function waitSec() {
   return S.failures.length >= 5 ? Math.ceil((S.failures[0] + 60000 - t) / 1000) : 0;
 }
 const source = () => (S.device ? 'paired' : S.apiToken ? 'env' : null);
+// WhatsApp as whatsapp.ts's status() says it (a made-up owner; the code is linked by itself after 10 s)
+function waStatus() {
+  const w = S.wa, t = Date.now();
+  if (w.state === 'linking' && t - w.codeAt > 10_000) Object.assign(w, { state: 'open', linkedAt: t });
+  const me = { jid: '15550100000@s.whatsapp.net', name: 'Sam Rivera', number: '+15550100000' };
+  if (w.state === 'open') { const syncing = t - w.linkedAt < 8000; return { state: 'open', me, code: null, error: '', syncing, chats: syncing ? 14 : 87 }; }
+  if (w.state === 'linking') return { state: 'linking', me: null, code: { code: 'K7Q2MX4R', expiresAt: w.codeAt + 160_000 }, error: '', syncing: false, chats: 0 };
+  return { state: 'unlinked', me: null, code: null, error: '', syncing: false, chats: 0 };
+}
 function status() {
   const p = S.pairing && S.pairing.expiresAt > Date.now() ? S.pairing : null;
   if (!p) S.pairing = null;
@@ -140,6 +155,7 @@ function status() {
     },
     pairing: p ? { code: p.code, expiresAt: p.expiresAt } : null,
     tv: { ...S.tv, pending: S.tv.pending && S.tv.pending.expiresAt > Date.now() ? S.tv.pending : null },
+    whatsapp: waStatus(),
     updates: UPDATES
       ? { server: version === NEXT ? null : { version: NEXT, url: `https://github.com/jarvissax/rondo/releases/tag/v${NEXT}`, publishedAt: NOW - 86400000 }, ytdlp: S.ytdlp.version < '2026.11.01' ? { version: '2026.11.01.233542', url: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases', publishedAt: NOW - 3600000 } : null, checkedAt: NOW }
       : { server: null, ytdlp: null, checkedAt: NOW },
@@ -296,6 +312,15 @@ async function api(req, res, url) {
     S.tvTimer = setTimeout(() => { if (S.tv.pending === pending) S.tv = { signedIn: true, account: { name: 'Alex', handle: '@alex' }, pending: null, error: null }; }, 8000);
     return send(res, 200, pending);
   }
+  if (pathname === '/admin/api/whatsapp/link' && method === 'POST') {
+    const b = await readJson(req);
+    const digits = String(b?.phone ?? '').replace(/\D/g, '');
+    if (digits.length < 8 || digits.length > 15) return err(res, 400, 'number');
+    if (S.wa.state === 'open') return err(res, 409, 'linked');
+    Object.assign(S.wa, { state: 'linking', codeAt: Date.now() });
+    return send(res, 200, waStatus().code);
+  }
+  if (pathname === '/admin/api/whatsapp/unlink' && method === 'POST') { S.wa = { state: 'unlinked', linkedAt: 0, codeAt: 0 }; return send(res, 200, waStatus()); }
   if (pathname === '/admin/api/tv/code' && method === 'DELETE') { clearTimeout(S.tvTimer); S.tv.pending = null; return send(res, 200, { ok: true }); }
   if (pathname === '/admin/api/tv' && method === 'DELETE') { clearTimeout(S.tvTimer); S.tv = { signedIn: false, account: null, pending: null, error: null }; return send(res, 200, { ok: true }); }
 

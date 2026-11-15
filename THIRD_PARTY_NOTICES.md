@@ -32,6 +32,15 @@ own in that version of this file.
 | [Fastify](https://github.com/fastify/fastify) and @fastify/rate-limit | MIT |
 | [undici](https://github.com/nodejs/undici) | MIT |
 | [sharp](https://github.com/lovell/sharp) (with libvips) | Apache-2.0 (libvips: LGPL-3.0) |
+| [Baileys](https://github.com/WhiskeySockets/Baileys) (WhatsApp, server 3.3.0) | MIT |
+| [libsignal-node](https://github.com/WhiskeySockets/libsignal-node) (Baileys' Signal protocol) | GPL-3.0 |
+| [whatsapp-rust-bridge](https://github.com/jlucaso1/whatsapp-rust-bridge) (Baileys' WebAssembly helper) | MIT |
+| [protobuf.js](https://github.com/protobufjs/protobuf.js) | BSD-3-Clause |
+
+The server's Docker image (`ghcr.io/jarvissax/rondo-server`, since 3.3.0) carries libsignal-node, which is
+GPL-3.0: its source is in the image as it is (JavaScript, in `node_modules/libsignal`) and at
+[its repository](https://github.com/WhiskeySockets/libsignal-node). Rondo's own code stays MIT; passing the
+image on means passing libsignal-node on under the GPL-3.0's terms.
 
 ## In the firmware (`rom.zip`)
 
