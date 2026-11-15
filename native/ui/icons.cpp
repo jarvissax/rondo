@@ -1,6 +1,8 @@
 #include "icons.h"
 
+#include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <algorithm>
@@ -482,6 +484,20 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.poly({6.5f, 12.5f, 11.5f, 12.5f}, false), p.poly({14, 12.5f, 17.5f, 12.5f}, false),
                 p.poly({6.5f, 16, 9.5f, 16}, false), p.poly({12, 16, 17.5f, 16}, false)}, 2);
       break;
+    case Icon::Chat: {  // WhatsApp: a speech bubble with its tail at the lower left
+      p.fill({p.roundRect(2.5f, 3, 21.5f, 17.5f, 7)});
+      p.fill({p.poly({5.5f, 14, 11, 16.5f, 3.5f, 21.5f}, true)});
+      break;
+    }
+    case Icon::Send:  // a paper plane, pointing right
+      p.fill({p.poly({3, 3.5f, 21.5f, 12, 3, 20.5f, 3, 14, 14.5f, 12, 3, 10}, true)});
+      break;
+    case Icon::Ticks:  // read, delivered: two ticks side by side
+      p.stroke({p.poly({1.5f, 12.5f, 6, 17, 14, 7.5f}, false), p.poly({10.5f, 16, 11.5f, 17, 19.5f, 7.5f}, false)}, 2);
+      break;
+    case Icon::Tick:  // sent: one tick, as one of the two
+      p.stroke({p.poly({5.5f, 12.5f, 10, 17, 18, 7.5f}, false)}, 2);
+      break;
     case Icon::Mic:  // lyrics: what's sung
       p.fill({p.roundRect(9, 2.5f, 15, 14, 3)});
       p.stroke({p.arc(5.5f, 4.5f, 18.5f, 17.5f, 0, 180)}, 2);
@@ -489,6 +505,120 @@ void drawIcon(Pen& p, Icon kind, float level) {
       break;
     default: break;
   }
+}
+
+// An elliptical arc from (x0, y0) to (x, y) as SVG draws it (its endpoint form turned into a center and
+// angles, SVG 1.1 F.6.5), in straight steps
+void arcTo(Pen& p, Contour& c, float x0, float y0, float rx, float ry, float rotDeg, bool large, bool sweep, float x, float y) {
+  if (rx == 0 || ry == 0) return p.lineTo(c, x, y);
+  rx = fabsf(rx), ry = fabsf(ry);
+  float phi = rotDeg * float(M_PI) / 180, cs = cosf(phi), sn = sinf(phi);
+  float dx = (x0 - x) / 2, dy = (y0 - y) / 2;
+  float x1 = cs * dx + sn * dy, y1 = -sn * dx + cs * dy;
+  float lam = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry);
+  if (lam > 1) rx *= sqrtf(lam), ry *= sqrtf(lam);
+  float num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1, den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+  float k = den > 0 ? sqrtf(std::max(0.f, num / den)) : 0;
+  if (large == sweep) k = -k;
+  float cxp = k * rx * y1 / ry, cyp = -k * ry * x1 / rx;
+  float ccx = cs * cxp - sn * cyp + (x0 + x) / 2, ccy = sn * cxp + cs * cyp + (y0 + y) / 2;
+  auto angle = [](float ux, float uy, float vx, float vy) { return atan2f(ux * vy - uy * vx, ux * vx + uy * vy); };
+  float ux = (x1 - cxp) / rx, uy = (y1 - cyp) / ry, vx = (-x1 - cxp) / rx, vy = (-y1 - cyp) / ry;
+  float t1 = angle(1, 0, ux, uy), dt = angle(ux, uy, vx, vy);
+  if (!sweep && dt > 0) dt -= 2 * float(M_PI);
+  if (sweep && dt < 0) dt += 2 * float(M_PI);
+  int n = std::max(4, int(fabsf(dt) / (float(M_PI) / 16)));
+  for (int i = 1; i <= n; i++) {
+    float t = t1 + dt * i / n;
+    p.lineTo(c, cs * rx * cosf(t) - sn * ry * sinf(t) + ccx, sn * rx * cosf(t) + cs * ry * sinf(t) + ccy);
+  }
+}
+
+// An outline from SVG path data (M m L l H h V v C c A a Z z), in the pen's units
+std::vector<Contour> svgPath(Pen& p, const char* d) {
+  std::vector<Contour> out;
+  Contour cur{{}, true};
+  float cx = 0, cy = 0, sx = 0, sy = 0;
+  char cmd = 0;
+  auto num = [&](float& v) {
+    while (*d == ' ' || *d == ',' || *d == '\n') d++;
+    if (!*d || isalpha((unsigned char)*d)) return false;
+    char* e = nullptr;
+    v = strtof(d, &e);
+    if (e == d) return false;
+    d = e;
+    return true;
+  };
+  auto flag = [&](int& v) {
+    while (*d == ' ' || *d == ',' || *d == '\n') d++;
+    if (*d != '0' && *d != '1') return false;
+    v = *d++ - '0';
+    return true;
+  };
+  for (;;) {
+    while (*d == ' ' || *d == ',' || *d == '\n') d++;
+    if (!*d) break;
+    if (isalpha((unsigned char)*d)) cmd = *d++;
+    bool rel = cmd >= 'a';
+    float a[6];
+    switch (cmd) {
+      case 'M':
+      case 'm':
+        if (!num(a[0]) || !num(a[1])) return out;
+        if (!cur.xy.empty()) out.push_back(cur);
+        cur = Contour{{}, true};
+        cx = rel ? cx + a[0] : a[0], cy = rel ? cy + a[1] : a[1];
+        sx = cx, sy = cy;
+        p.moveTo(cur, cx, cy);
+        cmd = rel ? 'l' : 'L';  // more pairs after a move are lines
+        break;
+      case 'L':
+      case 'l':
+        if (!num(a[0]) || !num(a[1])) return out;
+        cx = rel ? cx + a[0] : a[0], cy = rel ? cy + a[1] : a[1];
+        p.lineTo(cur, cx, cy);
+        break;
+      case 'H':
+      case 'h':
+        if (!num(a[0])) return out;
+        cx = rel ? cx + a[0] : a[0];
+        p.lineTo(cur, cx, cy);
+        break;
+      case 'V':
+      case 'v':
+        if (!num(a[0])) return out;
+        cy = rel ? cy + a[0] : a[0];
+        p.lineTo(cur, cx, cy);
+        break;
+      case 'C':
+      case 'c':
+        for (float& v : a)
+          if (!num(v)) return out;
+        if (rel)
+          for (int i = 0; i < 6; i += 2) a[i] += cx, a[i + 1] += cy;
+        p.cubic(cur, a[0], a[1], a[2], a[3], a[4], a[5]);
+        cx = a[4], cy = a[5];
+        break;
+      case 'A':
+      case 'a': {
+        float rx, ry, rot;
+        int large, sweep;
+        if (!num(rx) || !num(ry) || !num(rot) || !flag(large) || !flag(sweep) || !num(a[0]) || !num(a[1])) return out;
+        float x = rel ? cx + a[0] : a[0], y = rel ? cy + a[1] : a[1];
+        arcTo(p, cur, cx, cy, rx, ry, rot, large != 0, sweep != 0, x, y);
+        cx = x, cy = y;
+        break;
+      }
+      case 'Z':
+      case 'z':
+        cx = sx, cy = sy;
+        cmd = 0;
+        break;
+      default: return out;  // what it doesn't read ends the outline
+    }
+  }
+  if (!cur.xy.empty()) out.push_back(cur);
+  return out;
 }
 
 }  // namespace
@@ -518,6 +648,27 @@ Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
     } else {
       p.stroke({p.circle(88, 88, 44)}, std::max(4 * u, 1.25f), true, true);
       p.fill({p.poly({72, 111, 111, 87, 72, 65}, true)});
+    }
+    m = p.mask;
+  } else if (icon == Icon::WhatsAppMark || icon == Icon::MusicMark) {
+    float s = float(std::min(w, h)), u = s / 24;
+    Pen p(ft_, w, h, u, (w - s) / 2, (h - s) / 2);
+    if (icon == Icon::WhatsAppMark) {
+      p.fill(svgPath(p, "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"));
+    } else {
+      p.stroke({p.circle(12, 12, 10.2f)}, 2.3f);
+      p.fill({p.poly({9.3f, 16.4f, 16.9f, 12, 9.3f, 7.6f}, true)});
+    }
+    m = p.mask;
+  } else if (icon == Icon::WhatsAppBubble || icon == Icon::WhatsAppPhone) {
+    // WhatsApp's logo on its 24-unit grid: the round bubble with its tail at the lower left; the phone
+    float s = float(std::min(w, h)), u = s / 24;
+    Pen p(ft_, w, h, u, (w - s) / 2, (h - s) / 2);
+    if (icon == Icon::WhatsAppBubble) {
+      p.fill({p.circle(12.05f, 11.89f, 11.89f)});
+      p.fill({p.poly({1.745f, 17.837f, 0.057f, 24, 6.362f, 22.346f, 4, 19.5f}, true)});
+    } else {
+      p.fill(svgPath(p, "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"));
     }
     m = p.mask;
   } else if (icon == Icon::VideoLogoButton || icon == Icon::VideoLogoPlay) {
@@ -607,6 +758,11 @@ void Icons::battery(Canvas& c, Rect r, Color color, float level, bool charging) 
 void Icons::musicLogo(Canvas& c, Rect r) {
   draw(c, Icon::MusicLogoDisc, r, rgb(0xff0000));
   draw(c, Icon::MusicLogoMarks, r, rgb(0xffffff));
+}
+
+void Icons::whatsappLogo(Canvas& c, Rect r) {
+  draw(c, Icon::WhatsAppBubble, r, rgb(0x25d366));
+  draw(c, Icon::WhatsAppPhone, r, rgb(0xffffff));
 }
 
 void Icons::videoLogo(Canvas& c, Rect r) {

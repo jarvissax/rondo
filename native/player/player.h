@@ -60,6 +60,10 @@ struct PlayerState {
   char path[512];
   char error[160];
   char codec[8];  // what the heard track was read as: "Opus", "AAC", "FLAC" … ("" not known yet)
+  // the microphone (recorder.h): recording, for how long, how loud now (0-100), why it wouldn't start
+  int32_t recording;
+  int64_t recordMs;
+  int32_t recordLevel, recordError;
   int32_t order[kMaxQueue];
 };
 
@@ -106,6 +110,10 @@ class PlayerHost {
   void fmMute(bool muted);
   void fmSpeaker(bool on);
   void click();  // the wheel's click sound
+  // The microphone into a WAV file (16 kHz mono; what plays pauses); stop keeps it or removes it.
+  // state().recording and recordMs follow it; recordError: why it didn't start.
+  void recordStart(const std::string& file);
+  void recordStop(bool keep);
   void sound(const SoundSettings& s);  // Settings › Sound for the output in use
   // Volume leveling's measurements: their file, the library's songs, whether measuring them may run
   void loudnessFile(const std::string& path);

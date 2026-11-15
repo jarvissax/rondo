@@ -98,9 +98,16 @@ class CoreHost {
   // from pump(). cacheMs: answered from rondo-core's memory if fetched that recently.
   using Reply = std::function<void(int status, const std::string& body)>;
   // cacheDir: where the answers kept for a while are on disk too ("": memory only)
-  void apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir = "");
+  // server, serverToken: the Rondo server connected, whatever YouTube's source (WhatsApp's routes go there)
+  void apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir = "", const std::string& server = "",
+                    const std::string& serverToken = "");
   uint32_t get(const std::string& path, int cacheMs, Reply done);
-  uint32_t post(const std::string& url, const std::string& json, Reply done);  // a full URL, no token
+  // a JSON body: to a full URL without the token (pairing), or to a server path ("/wa/link") with it
+  uint32_t post(const std::string& url, const std::string& json, Reply done);
+  // a file's bytes to a server path, with the token; given up on after deadlineMs (a video takes a while)
+  uint32_t upload(const std::string& path, const std::string& file, const std::string& contentType, Reply done, int deadlineMs = 300000);
+  // a server path saved into a file (written whole, or not at all); the reply's body is empty
+  uint32_t save(const std::string& path, const std::string& file, Reply done, int deadlineMs = 300000);
   void cancel(uint32_t id);
   // No network, no waiting: with no default route a request is answered at once with status 0 (as
   // one that couldn't connect), and so is every unanswered one when the network goes; an answer that

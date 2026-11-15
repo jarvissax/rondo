@@ -33,7 +33,7 @@ const Texture* Covers::get(const std::string& path, int w, int h, int blur, int6
   // the server's artwork that didn't come (Wi-Fi, a busy moment), or a video's frame (mediaserver busy):
   // asked again after 2, 4, 8 s, then every retryNs (1.0.x retried every 15 s). A video that has no
   // frame is answered from the thumbnail cache's "no picture" at once.
-  if (e.state == kMissing && (path.compare(0, 6, "/thumb") == 0 || isVideoPath(path)) &&
+  if (e.state == kMissing && (path.compare(0, 6, "/thumb") == 0 || path.compare(0, 9, "/wa/media") == 0 || isVideoPath(path)) &&
       now - e.readyAt > std::min<int64_t>(retryNs, (2000000000LL << std::min<int>(e.tries, 3)))) {
     e.state = kNone;
     if (e.tries < 8) e.tries++;

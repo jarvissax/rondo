@@ -115,8 +115,9 @@ void CoreHost::btConnect(const std::string& a) { send(kBtConnect, a.data(), uint
 void CoreHost::btDisconnect(const std::string& a) { send(kBtDisconnect, a.data(), uint32_t(a.size())); }
 void CoreHost::btForget(const std::string& a) { send(kBtForget, a.data(), uint32_t(a.size())); }
 
-void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir) {
-  std::string b = baseUrl + '\0' + token + '\0' + cacheDir;
+void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir, const std::string& server,
+                            const std::string& serverToken) {
+  std::string b = baseUrl + '\0' + token + '\0' + cacheDir + '\0' + server + '\0' + serverToken;
   send(kApiConfigure, b.data(), uint32_t(b.size()));
 }
 
@@ -142,6 +143,42 @@ uint32_t CoreHost::get(const std::string& path, int cacheMs, Reply done) {
   memcpy(&b[4], &ttl, 4);
   b += path;
   send(kApiGet, b.data(), uint32_t(b.size()));
+  return id;
+}
+
+uint32_t CoreHost::upload(const std::string& path, const std::string& file, const std::string& contentType, Reply done, int deadlineMs) {
+  uint32_t id = nextId_++;
+  pending_[id] = std::move(done);
+  if (!online_ && !replaying()) {
+    failed_.push_back(id);
+    return id;
+  }
+  deadline_[id] = now_ns() + int64_t(deadlineMs) * kMs;
+  std::string b(4, '\0');
+  memcpy(&b[0], &id, 4);
+  b += path;
+  b += '\0';
+  b += file;
+  b += '\0';
+  b += contentType;
+  send(kApiUpload, b.data(), uint32_t(b.size()));
+  return id;
+}
+
+uint32_t CoreHost::save(const std::string& path, const std::string& file, Reply done, int deadlineMs) {
+  uint32_t id = nextId_++;
+  pending_[id] = std::move(done);
+  if (!online_ && !replaying()) {
+    failed_.push_back(id);
+    return id;
+  }
+  deadline_[id] = now_ns() + int64_t(deadlineMs) * kMs;
+  std::string b(4, '\0');
+  memcpy(&b[0], &id, 4);
+  b += path;
+  b += '\0';
+  b += file;
+  send(kApiSave, b.data(), uint32_t(b.size()));
   return id;
 }
 

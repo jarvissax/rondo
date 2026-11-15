@@ -42,6 +42,8 @@ enum PlayerCommand : uint32_t {
   kWired,       // u8: the jack, 0 nothing, 1 a headset (with a microphone), 2 headphones
   kRestoreQueue,  // u32 start, i64 ms, u8 play, then the paths: the queue as it was before a restart
   kVolumeLimit,   // i32 the highest step the wheel and the dashboard may set (Settings › Sound › Volume limit)
+  kRecordStart,   // the WAV file to record the microphone into (what plays pauses)
+  kRecordStop,    // u8 keep: the file finished, or removed
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

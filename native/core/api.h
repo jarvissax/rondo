@@ -40,7 +40,10 @@ class Api {
  public:
   Api();
   ~Api();
-  void configure(const std::string& baseUrl, const std::string& token);
+  // baseUrl: where YouTube's routes go (the Rondo server, or direct mode's local one); server: the
+  // Rondo server connected, whatever YouTube's source (WhatsApp's /wa/ routes, and /@server/<path>
+  // for the server's own /<path>); "" none (they go to baseUrl)
+  void configure(const std::string& baseUrl, const std::string& token, const std::string& server = "", const std::string& serverToken = "");
   bool configured() const { return !base_.empty(); }
 
   // The Y1's own direct-mode server (direct/server.h's kBase): a path starting with it is asked there,
@@ -51,8 +54,11 @@ class Api {
   int get(const std::string& path, std::string& body);
   // As get(), answered from memory for ttlMs (screens reopened within two minutes open at once).
   int cached(const std::string& path, std::string& body, int64_t ttlMs = 120000);
-  // POST a JSON body to a full URL without the token (pairing: 1.0.x's bare client)
+  // POST a JSON body: to a full URL without the token (pairing: 1.0.x's bare client), or to a server
+  // path ("/wa/link") with it
   int post(const std::string& url, const std::string& json, std::string& body);
+  // POST a file's bytes to a server path, with the token (WhatsApp's voice messages, photos, videos)
+  int upload(const std::string& path, const std::string& file, const std::string& contentType, std::string& body);
   // The path into a file (written as .part, renamed when whole); progress(done, total) as it comes
   // cancel: checked as it goes; once true it stops (status 0, nothing written)
   int download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
@@ -71,7 +77,7 @@ class Api {
 
  private:
   CURL* curl_;
-  std::string base_, auth_;
+  std::string base_, auth_, server_, serverAuth_;
   // the URL for a path, and the Authorization header to send with it
   std::string urlFor(const std::string& path, std::string& auth) const;
   int lastMs_ = 0;

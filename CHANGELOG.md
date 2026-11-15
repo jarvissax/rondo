@@ -5,6 +5,43 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.0.4 (not released yet)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.0.3 does; WhatsApp needs your own server at 3.3.0 or newer (its admin page offers it).
+
+### New
+
+- **WhatsApp**, through your own Rondo server, in the main menu between YouTube Music and FM Radio.
+  Your chats and groups with their pictures, unread counts and last messages; messages as bubbles
+  with senders, replies, reactions, photos, videos and voice messages. Write on the wheel keyboard
+  (also as a reply), record a voice message with the Y1's built-in microphone, or send a photo or a
+  video from the card after seeing it. Photos open full screen, videos in the player, and voice
+  messages play in place of the music, which comes back after. New chat lists your contacts, and
+  every contact and group has a profile with the picture, number and about. There are no
+  notifications: what came is there when you open WhatsApp, and a chat you open is marked read. The
+  Y1 keeps your recent chats and the media you opened on the card (up to 1 GB), so they open at
+  once, also without a connection. The server is one of your WhatsApp's linked devices; you link it
+  once on its admin page ([how](docs/server.md#whatsapp)).
+- **Settings › YouTube › Connection test** checks YouTube from where it comes now: directly, a search
+  and a song's streams; through your server, the server's playback check.
+
+### Changed
+
+- **The server has its own place:** **Settings › Server** on the Y1 and a **Server** page on the
+  dashboard, because more than YouTube uses it now. There: its address, the connection test,
+  connecting with a code or a token, and what uses it. YouTube's own **Settings › YouTube › Connect
+  to** offers **Directly to YouTube**, and **Through my server** once a server is connected.
+  Connecting a server no longer switches YouTube over by itself (a Y1 that never chose still uses
+  it), and WhatsApp uses the server whatever YouTube's choice.
+- **YouTube, YouTube Music and WhatsApp have colored tiles** like every other entry, with their logos
+  in white, on the main menu, in Settings and on the dashboard.
+- **A main-menu entry that's new in an update goes where it belongs** (WhatsApp under YouTube Music),
+  after the entry before it, even when you've reordered the menu; it used to go just before
+  Settings.
+- **"Rondo server" everywhere**, no longer "music server": it does more than music now.
+
 ## 3.0.3 (November 14, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

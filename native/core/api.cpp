@@ -77,10 +77,13 @@ Api::Api() {
 
 Api::~Api() { curl_easy_cleanup(curl_); }
 
-void Api::configure(const std::string& baseUrl, const std::string& token) {
+void Api::configure(const std::string& baseUrl, const std::string& token, const std::string& server, const std::string& serverToken) {
   base_ = baseUrl;
   while (!base_.empty() && base_.back() == '/') base_.pop_back();
   auth_ = "Authorization: Bearer " + token;
+  server_ = server;
+  while (!server_.empty() && server_.back() == '/') server_.pop_back();
+  serverAuth_ = "Authorization: Bearer " + serverToken;
   cache_.clear();
 }
 
@@ -95,6 +98,17 @@ std::string Api::urlFor(const std::string& path, std::string& auth) const {
   if (path.compare(0, strlen(kLocal), kLocal) == 0) {
     auth = "Authorization: Bearer direct";
     return path;
+  }
+  // the Rondo server's own: WhatsApp, and /@server/<path> (its health while YouTube is direct)
+  bool wa = path.compare(0, 4, "/wa/") == 0, own = path.compare(0, 9, "/@server/") == 0;
+  if (wa || own) {
+    std::string p = own ? path.substr(8) : path;
+    if (!server_.empty()) {
+      auth = serverAuth_;
+      return server_ + p;
+    }
+    auth = auth_;
+    return base_ + p;
   }
   auth = auth_;
   return base_ + path;
@@ -272,8 +286,18 @@ int Api::download(const std::string& path, const std::string& file, const std::f
   return 200;
 }
 
-int Api::post(const std::string& url, const std::string& json, std::string& body) {
+int Api::post(const std::string& to, const std::string& json, std::string& body) {
   curl_slist* headers = curl_slist_append(nullptr, "Content-Type: application/json");
+  std::string url = to;
+  if (!to.empty() && to[0] == '/') {  // the server's route: its address and the token
+    std::string auth;
+    url = urlFor(to, auth);
+    if (!configured()) {
+      curl_slist_free_all(headers);
+      return 0;
+    }
+    headers = curl_slist_append(headers, auth.c_str());
+  }
   bool wide = false;  // the system's roots too, once the bundled two didn't verify the server
   long status = 0;
   for (int attempt = 0; attempt < 20; attempt++) {
@@ -285,7 +309,7 @@ int Api::post(const std::string& url, const std::string& json, std::string& body
     curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
     curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT_MS, 15000L);
     curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_LIMIT, 1L);  // 15 s without data (OkHttp's read timeout)
-    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_TIME, 15L);
+    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_TIME, to[0] == '/' ? 60L : 15L);  // a server route may take a while (WhatsApp's pairing code)
     curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, json.c_str());
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, long(json.size()));
@@ -305,6 +329,55 @@ int Api::post(const std::string& url, const std::string& json, std::string& body
   }
   curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
   curl_slist_free_all(headers);
+  return int(status);
+}
+
+int Api::upload(const std::string& path, const std::string& file, const std::string& contentType, std::string& body) {
+  std::string auth, url = urlFor(path, auth);
+  if (!configured()) return 0;
+  FILE* f = fopen(file.c_str(), "rb");
+  if (!f) return 0;
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
+  headers = curl_slist_append(headers, ("Content-Type: " + contentType).c_str());
+  bool wide = false;
+  long status = 0;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    body.clear();
+    fseek(f, 0, SEEK_SET);
+    curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl_, CURLOPT_USERAGENT, net::userAgent());
+    net::trust(curl_, wide);
+    curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+    curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT_MS, 15000L);
+    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_TIME, 60L);  // the server converts a voice message before it answers
+    curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl_, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl_, CURLOPT_READDATA, f);
+    curl_easy_setopt(curl_, CURLOPT_READFUNCTION, fread);
+    curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE_LARGE, curl_off_t(size));
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, collect);
+    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &body);
+    CURLcode rc = curl_easy_perform(curl_);
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &status);
+      break;
+    }
+    if (rc == CURLE_PEER_FAILED_VERIFICATION && !wide) {
+      wide = true;
+      continue;
+    }
+    if (!net::retryable(rc)) break;
+    usleep(500000);
+  }
+  curl_easy_setopt(curl_, CURLOPT_READFUNCTION, nullptr);
+  curl_easy_setopt(curl_, CURLOPT_READDATA, nullptr);
+  curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
+  curl_slist_free_all(headers);
+  fclose(f);
   return int(status);
 }
 

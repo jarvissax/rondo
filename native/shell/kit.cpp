@@ -23,8 +23,10 @@ void drawLabel(Env& e, const Label& l, float x, float top, Color c) {
 
 namespace tiles {
 // the brands
-const Tile music{Icon::Note, rgb(0x3a3a3a), rgb(0x141414), 2};
-const Tile video{Icon::Play, rgb(0x3a3a3a), rgb(0x141414), 1};
+// the services: their own colors with their marks in white (brandMark), like every other tile
+const Tile music{Icon::Note, rgb(0xff5a72), rgb(0xc8102e), 2};
+const Tile video{Icon::Play, rgb(0xff6a5c), rgb(0xd7001a), 1};
+const Tile whatsapp{Icon::Chat, rgb(0x63f08e), rgb(0x17a74c), 3};
 // the main menu
 const Tile nowPlaying{Icon::Bars, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile device{Icon::Library, rgb(0x5fb7ff), rgb(0x1f73e0)};  // Library
@@ -123,24 +125,29 @@ void drawTile(Env& e, const Tile& t, Rect r, float alpha) {
   e.c.pushAlpha(alpha);
   float radius = e.dpf(7);
   int layer = e.c.currentLayer();
+  e.c.shape(r, radius, t.top, t.bottom);
   if (!t.brand) {
-    e.c.shape(r, radius, t.top, t.bottom);
     int g = e.dp(16);
     e.c.layer(layer + 2);  // with the text: icons are in the glyph atlas
     if (t.glyph) e.icons.draw(e.c, t.kind, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
                  rgb(0xffffff));
   } else {
-    // the stroke lies over the white fill: an 11 % black edge on white is #e3e3e3
-    e.c.shape(r, radius, rgb(0xe3e3e3));
-    e.c.shape({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, radius - 1, rgb(0xffffff));
     e.c.layer(layer + 2);
-    int w = e.dp(19), h = t.brand == 1 ? e.dp(14) : e.dp(19);
-    Rect lr{r.x + float((int(r.w) - w) / 2), r.y + float((int(r.h) - h) / 2), float(w), float(h)};
-    if (t.brand == 1) e.icons.videoLogo(e.c, lr);
-    else e.icons.musicLogo(e.c, lr);
+    brandMark(e, t, r, float(e.dp(19)));
   }
   e.c.layer(layer);
   e.c.popAlpha();
+}
+
+void brandMark(Env& e, const Tile& t, Rect r, float size) {
+  float w = size, h = t.brand == 1 ? roundf(size * 0.72f) : size;
+  Rect lr{r.x + floorf((r.w - w) / 2), r.y + floorf((r.h - h) / 2), w, h};
+  if (t.brand == 1) {  // YouTube's button in white, its play mark cut out in the tile's red
+    e.icons.draw(e.c, Icon::VideoLogoButton, lr, rgb(0xffffff));
+    e.icons.draw(e.c, Icon::VideoLogoPlay, lr, mix(t.top, t.bottom, 0.55f));
+  } else {
+    e.icons.draw(e.c, t.brand == 3 ? Icon::WhatsAppMark : Icon::MusicMark, lr, rgb(0xffffff));
+  }
 }
 
 void fillDiagonal(Canvas& c, Rect r, Color c0, Color c1, Color c2) {

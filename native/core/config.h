@@ -54,7 +54,7 @@ struct Config {
 };
 
 // The main menu ids in their default order, and their labels.
-extern const char* const kMenuIds[6];
+extern const char* const kMenuIds[7];
 const char* menuLabel(const std::string& id);
 extern const float kTextScales[3];
 struct AccentPreset {

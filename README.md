@@ -1,10 +1,10 @@
 # Rondo
 
-**A click-wheel firmware for the Innioasis Y1: the music on your card, YouTube Music, YouTube and
-FM radio, all from the wheel.**
+**A click-wheel firmware for the Innioasis Y1: the music on your card, YouTube Music, YouTube,
+WhatsApp and FM radio, all from the wheel.**
 
 <p align="center">
-  <img src="docs/images/main-menu.png" width="400" alt="Rondo's main menu, with the song that's playing on the right">
+  <img src="docs/images/main-menu.png" width="400" alt="Rondo's main menu: Now Playing, Library, YouTube, YouTube Music, WhatsApp, FM Radio and Settings">
   <img src="docs/images/now-playing.png" width="400" alt="Now Playing, with the album cover and what's up next">
 </p>
 
@@ -21,8 +21,8 @@ The Innioasis Y1 is a small music player with an iPod-style click wheel. Underne
 Android 4.2. Rondo is a firmware for it, built from the community's Android 4.2 base with
 Android's whole app layer taken out: the Y1 starts straight into Rondo, a program of its own that
 draws every screen itself, 60 times a second, with menus made for the wheel. Play the music on
-your microSD card, stream YouTube Music and YouTube straight from the Y1, and listen to FM radio,
-all without a touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or
+your microSD card, stream YouTube Music and YouTube straight from the Y1, read and send WhatsApp
+messages through a server of your own, and listen to FM radio, all without a touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or
 the Y1's original software, and you can always go back.
 
 ## What it does
@@ -77,6 +77,29 @@ can do that part instead.
 
 Streams play as they arrive. Nothing from YouTube is stored, except a video you choose to
 download.
+
+### WhatsApp (with your own server)
+
+Your chats and groups on the Y1: read them, answer them, send voice messages recorded with the
+Y1's built-in microphone, and send photos and videos from the card. Photos and videos you receive
+open full screen, voice messages play in place of the music (which comes back after), and every
+contact has their picture, number and about. It works through your
+[Rondo server](#your-own-server-optional), which becomes one of your WhatsApp's linked devices,
+like WhatsApp Web: you link it once on the server's admin page, with a code you type on your
+phone.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/whatsapp.png" width="260" alt="WhatsApp's chats on the Y1, with pictures, unread counts and a voice message"><br>Your chats</td>
+    <td align="center"><img src="docs/images/whatsapp-chat.png" width="260" alt="A group chat with a photo, its caption and reactions"><br>A group chat</td>
+    <td align="center"><img src="docs/images/whatsapp-voice.png" width="260" alt="Recording a voice message with the Y1's microphone"><br>A voice message</td>
+  </tr>
+</table>
+
+The Y1 shows no notifications: what came is there when you open WhatsApp, and a chat you open is
+marked read. The server never shows you as online, so your phone keeps its own notifications. The
+Y1 keeps your recent chats, and the photos, videos and voice messages you opened, on the card (up
+to 1 GB), so they open at once and without a connection.
 
 ### Made for the wheel
 
@@ -138,7 +161,8 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
   carries data, for the install.
 - **2.4 GHz Wi-Fi** for YouTube, updates and the dashboard. The Y1 can't see 5 GHz networks.
 - Optional: a **[Rondo server](docs/server.md)** of your own, on a computer at home that stays on
-  (a 64-bit Raspberry Pi or a NAS is fine) or a small VPS. YouTube works without it.
+  (a 64-bit Raspberry Pi or a NAS is fine) or a small VPS. YouTube works without it; WhatsApp
+  needs it.
 
 ## Getting started
 
@@ -168,32 +192,43 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
 
 <p align="center"><img src="docs/images/admin.png" width="640" alt="The server's admin page"></p>
 
-You don't need a server: Rondo talks to YouTube itself. A Rondo server is for those who'd like
-one anyway. With it, the Y1 never talks to YouTube or Google: the server browses YouTube for it,
-finds the streams with yt-dlp (which keeps up with YouTube's changes and updates itself every
-day) and passes them on. It has its own YouTube account, signed in on its admin page, and it adds
-**Headphone match**. You run it with Docker at home or on a VPS, set it up from its admin page in
-the browser and connect your Y1 with a six-digit code; a new version installs with one click
-there. One server serves one Y1. See [Setting up a Rondo server](docs/server.md).
+You don't need a server for YouTube: Rondo talks to YouTube itself. A Rondo server does more
+for those who'd like one:
+
+- **WhatsApp.** The server is your WhatsApp's linked device and keeps your chats, photos, videos
+  and voice messages for the Y1. You link it on its admin page.
+- **YouTube without the Y1 talking to Google**, if you choose it in **Settings › YouTube ›
+  Connect to**: the server browses YouTube for the Y1, finds the streams with yt-dlp (which keeps
+  up with YouTube's changes and updates itself every day) and passes them on, with its own
+  YouTube account signed in on its admin page.
+- **Headphone match**, the sound corrected for your headphone model.
+
+You run it with Docker at home or on a VPS, set it up from its admin page in the browser and
+connect your Y1 with a six-digit code in **Settings › Server**; a new version installs with one
+click there. One server serves one Y1. See [Setting up a Rondo server](docs/server.md).
 
 ## How it works
 
 ```
  Innioasis Y1                  directly                         YouTube
-┌───────────────┐  Wi-Fi  ──────────────────────────────────▶ ┌─────────┐
-│ Rondo         │                                             │         │
-│ music on SD   │         or through   ┌───────────────────┐  │         │
-│ FM, Bluetooth │  Wi-Fi  ───────────▶ │ your Rondo server │─▶│         │
-└───────────────┘                      │ (Node, yt-dlp)    │  └─────────┘
-                                       └───────────────────┘
+┌───────────────┐  Wi-Fi  ──────────────────────────────────▶ ┌──────────┐
+│ Rondo         │                                             │          │
+│ music on SD   │         or through   ┌───────────────────┐  │          │
+│ FM, Bluetooth │  Wi-Fi  ───────────▶ │ your Rondo server │─▶│          │
+└───────────────┘                      │ (Node, yt-dlp,    │  └──────────┘
+                                       │  Baileys)         │─▶┌──────────┐
+                                       └───────────────────┘  │ WhatsApp │
+                                                              └──────────┘
 ```
 
 Rondo has its own YouTube client built in: it browses YouTube Music and YouTube the way their
-apps do and plays the streams as they arrive. With **Settings › YouTube › Connection › My
+apps do and plays the streams as they arrive. With **Settings › YouTube › Connect to › Through my
 server**, the Y1 talks only to your server instead, which browses YouTube with
 [youtubei.js](https://github.com/LuanRT/YouTube.js), finds the streams with
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) and passes audio and video through to the Y1 in a form
-it can play.
+it can play. WhatsApp always goes through the server, which is one of your WhatsApp's linked
+devices thanks to [Baileys](https://github.com/WhiskeySockets/Baileys) and passes the Y1 your
+chats, contacts and media, and sends what you write or record.
 
 ## The project
 
@@ -236,7 +271,7 @@ Rondo stands on other people's work:
   Y1's buttons behave.
 - On the Y1: **FFmpeg**, **curl**, **OpenSSL**, **FreeType**, **HarfBuzz**, **SQLite**,
   **libpng**, **libjpeg-turbo**, **yyjson**, **nghttp2**, and the **Roboto** and **Noto Color
-  Emoji** fonts. On the server: **youtubei.js**, **yt-dlp**, **Fastify** and **sharp**.
+  Emoji** fonts. On the server: **youtubei.js**, **yt-dlp**, **Baileys**, **Fastify** and **sharp**.
   **[AutoEq](https://github.com/jaakkopasanen/AutoEq)**'s measurements are behind Headphone match,
   and **[LRCLIB](https://lrclib.net)** has many of the lyrics. See
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
@@ -245,9 +280,11 @@ Rondo stands on other people's work:
 
 Rondo is released under the [MIT License](LICENSE).
 
-Rondo is an independent project. It isn't affiliated with or endorsed by Innioasis, Google or
-YouTube. YouTube and YouTube Music are trademarks of Google LLC. Rondo reaches YouTube the same way
-other unofficial clients do, which YouTube's terms don't allow and which YouTube can break at
-any time. Use your own account, and use it at your own risk. The pictures show openly licensed
-media (Kevin MacLeod's music, Blender's open movies and public-domain photos) and synthetic test
-albums made for the screenshots.
+Rondo is an independent project. It isn't affiliated with or endorsed by Innioasis, Google,
+YouTube, WhatsApp or Meta. YouTube and YouTube Music are trademarks of Google LLC; WhatsApp is a
+trademark of WhatsApp LLC. Rondo reaches YouTube the same way other unofficial clients do, which
+YouTube's terms don't allow and which YouTube can break at any time. Its WhatsApp is an unofficial
+linked device too: WhatsApp's terms don't allow it, and WhatsApp may close accounts that use one.
+Use your own accounts, and use them at your own risk. The pictures show openly licensed
+media (Kevin MacLeod's music, Blender's open movies and public-domain photos), synthetic test
+albums, and made-up people and chats made for the screenshots.

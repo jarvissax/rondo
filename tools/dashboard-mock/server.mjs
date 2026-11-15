@@ -6,6 +6,7 @@
 //   node tools/dashboard-mock/server.mjs --empty    empty card, nothing playing, no Wi-Fi
 //   node tools/dashboard-mock/server.mjs --slow     answers like a busy MT6572 (200-700 ms)
 //   PORT=9000 node tools/dashboard-mock/server.mjs
+//   SIGNED_IN=1 node tools/dashboard-mock/server.mjs  every visit paired (screenshots with headless Chrome)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -192,7 +193,7 @@ const PRESETS = [
   { name: 'Violet', accent: '#7b4fe0' }, { name: 'Amber', accent: '#e8860c' }, { name: 'Graphite', accent: '#4a4f59' },
 ];
 // key order is the default menu order, as on the device
-const LABELS = { nowPlaying: 'Now Playing', device: 'Library', videos: 'YouTube', music: 'YouTube Music', radio: 'FM Radio', settings: 'Settings' };
+const LABELS = { nowPlaying: 'Now Playing', device: 'Library', videos: 'YouTube', music: 'YouTube Music', whatsapp: 'WhatsApp', radio: 'FM Radio', settings: 'Settings' };
 let theme = {
   accent: '#1c5ccc', appearance: 'light', textScale: 1.4,
   menu: Object.keys(LABELS).map((id) => ({ id, visible: true })),
@@ -277,6 +278,7 @@ function serveFile(res, file) {
 }
 
 function authed(req) {
+  if (process.env.SIGNED_IN) return true;  // SIGNED_IN=1: every visit paired (screenshots with headless Chrome)
   const header = req.headers['x-rondo-session'];
   const cookie = /(?:^|;\s*)rondo_session=([^;]+)/.exec(req.headers.cookie || '')?.[1];
   return sessions.has(header) || sessions.has(cookie);
@@ -654,14 +656,19 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true });
   }
 
+  // the Rondo server, apart from YouTube's source (Directly, or My server once one is connected)
+  const serverJson = () => ({ url: server.url || '', tokenSet: !!server.token, connected: !!(server.url && server.token),
+    direct: !!server.directChosen || !server.url, directChosen: !!server.directChosen });
   if (pathname === '/api/server') {
-    if (method === 'GET') return send(res, 200, { url: server.url, tokenSet: !!server.token });
+    if (method === 'GET') return send(res, 200, serverJson());
     if (method === 'PUT') {
       const b = await readJson(req);
       if (!b) return err(res, 400, 'json');
       if ('url' in b) { if (typeof b.url !== 'string' || !/^https?:\/\/[^\s/]+/.test(b.url)) return err(res, 400, 'url'); server.url = b.url.replace(/\/+$/, ''); }
+      if ('code' in b) { if (String(b.code).replace(/\D/g, '') !== '123456') return err(res, 403, 'code'); server.token = 'paired'; }
       if ('token' in b) server.token = b.token || null;
-      return send(res, 200, { url: server.url, tokenSet: !!server.token });
+      if ('direct' in b && !('url' in b) && !('token' in b) && (b.direct || server.url)) server.directChosen = !!b.direct;
+      return send(res, 200, serverJson());
     }
   }
   if (pathname === '/api/server/test' && method === 'POST') {

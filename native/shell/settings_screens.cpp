@@ -564,10 +564,24 @@ Rows connectionsRows(SettingsGroupScreen&) {
           settingRow("Bluetooth", bluetoothState(), tiles::bluetooth, true, [] { g_app->push(makeBluetooth()); })};
 }
 
-// YouTube: where it comes from and how videos play
+// YouTube: where it comes from (directly, or through the Rondo server when one is connected: Settings ›
+// Server) and how videos play
+std::string youtubeSource() { return directMode() ? "Directly" : "My server"; }
 Rows youtubeRows(SettingsGroupScreen&) {
   Rows rows;
-  rows.push_back(settingRow("Connection", g_serverState, tiles::server, true, [] { g_app->push(makeServer()); }));
+  rows.push_back(settingRow("Connect to", youtubeSource(), tiles::server, true, [] {
+    std::vector<std::pair<std::string, std::string>> c{{"Directly to YouTube", "direct"}};
+    if (!g_config.server.url.empty()) c.push_back({"Through my server", "server"});
+    g_app->push(makeChoice(
+        "Connect to", std::move(c), [] { return std::string(directMode() ? "direct" : "server"); },
+        [](const std::string& v) { useDirect(v == "direct"); },
+        [](const std::string& v) {
+          if (v == "server") return g_config.server.url.substr(g_config.server.url.find("//") == std::string::npos ? 0 : g_config.server.url.find("//") + 2);
+          return std::string(g_config.server.url.empty() ? "no server: connect one in Settings \xe2\x80\xba Server" : "no server needed");
+        }));
+  }));
+  // whether YouTube answers and plays from where it comes now (directly, or through the server)
+  rows.push_back(settingRow("Connection test", "", tiles::rescan, true, [] { g_app->push(makeYouTubeTest()); }));
   // the account: the server's own (its admin page); in direct mode the code sign-in, here or on the
   // dashboard, and cookies.txt from the dashboard
   if (directMode()) {
@@ -834,13 +848,9 @@ class SettingsScreen : public ShellListScreen {
     Rows rows;
     rows.push_back(settingRow("Dashboard", "", tiles::dashboard, true, [] { g_app->push(makeDashboard()); }));
     rows.push_back(settingRow("Connections", wifi_, tiles::connections, true, [] { pushGroup("Connections", connectionsRows); }));
-    rows.push_back(settingRow("YouTube", g_serverState, tiles::video, true, [] {
-      // the connection asked again each time the group shows: back from switching it, it says the new one
-      pushGroup("YouTube", youtubeRows, [] {
-        serverState([](const std::string& s) { g_serverState = s; });
-        askDirectAccount();
-      });
-    }));
+    // the Rondo server on its own: YouTube may use it (its Connect to), WhatsApp does
+    rows.push_back(settingRow("Server", g_serverState, tiles::server, true, [] { g_app->push(makeServer()); }));
+    rows.push_back(settingRow("YouTube", youtubeSource(), tiles::video, true, [] { pushGroup("YouTube", youtubeRows, [] { askDirectAccount(); }); }));
     rows.push_back(settingRow("Sound", soundState(), tiles::equalizer, true, [] { g_app->push(makeSound()); }));
     rows.push_back(settingRow("Display", accentName(g_config.theme.accent), tiles::display, true, [] { pushGroup("Display", displayRows); }));
     rows.push_back(settingRow("Controls", "", tiles::controls, true, [] { pushGroup("Controls", controlsRows); }));
@@ -848,7 +858,7 @@ class SettingsScreen : public ShellListScreen {
                               true, [] { pushGroup("System", systemRows); }));
     list_.setRows(std::move(rows), true);
   }
-  // on opening Settings: the YouTube row says Checking… until the server answers
+  // on opening Settings (and back to it): the Server row says Checking… until the server answers
   void checkServer() {
     g_serverState = "Checking\xe2\x80\xa6";
     render();

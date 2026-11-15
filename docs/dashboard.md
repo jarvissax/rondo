@@ -34,8 +34,8 @@ the Rondo row, does the same with a `rondo-<version>.rondo` you downloaded from 
 [releases page](https://github.com/jarvissax/rondo/releases). A release that needs a new firmware
 shows no Install button: it points to Innioasis Updater CE instead.
 
-The sidebar has the pages in groups: **Overview**, **Library** and **FM Radio**, then
-**Connections** (Wi-Fi, Bluetooth, YouTube) and **Settings** (Sound, Theme, General). On a phone the
+The sidebar has the pages in groups: **Overview**, **Library**, **FM Radio** and **YouTube**, then
+**Connections** (Wi-Fi, Bluetooth, Server) and **Settings** (Sound, Theme, General). On a phone the
 tabs at the bottom are Overview, Library, Radio, YouTube and **Settings**, which lists the rest.
 
 ## Library
@@ -143,17 +143,37 @@ and the speaker. You can also name, reorder and delete saved stations, save the 
 found, and set the region. Wired headphones must be plugged into the Y1, because they're the
 antenna.
 
+## Server
+
+<p align="center"><img src="images/dashboard-server.png" width="640" alt="The dashboard's Server page: the server's address, connecting with a code, a token, the connection test"></p>
+
+Your [Rondo server](server.md), set up apart from YouTube, because more than YouTube uses it. The
+Y1's own **Settings › Server** does the same on the Y1.
+
+- **Your server:** its address, whether the connection is encrypted, whether the Y1 is connected,
+  and a link to its admin page.
+- **Connect to a server:** enter the server's address and the code from its admin page
+  (**Device › Connect a Rondo**), then press **Connect**. YouTube's own choice stays as it is.
+- **Use a token instead:** only for servers started with an `API_TOKEN` setting. Servers set up
+  as in the server guide don't need it.
+- **Connection test:** the Y1 calls the server and reports how long it took, the server's version,
+  whether yt-dlp is ready and whether an account is connected.
+- **Used for:** YouTube (through the server, or directly, as chosen on the YouTube page) and
+  WhatsApp, which works only through the server and is linked on the server's admin page, not
+  here.
+
 ## YouTube
 
 Where YouTube Music and YouTube come from: **Directly to YouTube** (nothing to set up, and what
-a Rondo without a server uses) or **My server**, the [Rondo server](server.md) the Y1 is
-connected to. The Y1's own **Settings › YouTube** does the same on the Y1.
+a Rondo without a server uses) or **My server**, the [Rondo server](server.md) connected on the
+Server page (the choice is there once one is). The Y1's own **Settings › YouTube › Connect to**
+does the same on the Y1.
 
 - **YouTube account** (directly to YouTube): **Sign in with a code**, as a smart TV does: **Get a
   code**, open google.com/device, enter the code and allow access; the page updates by itself.
   That brings YouTube's home, Subscriptions and History, and YouTube Music's playlists and Liked
-  Music. The Y1 can do the same itself (Settings › YouTube › YouTube account). With a server, the
-  server's own account counts: sign it in on its admin page.
+  Music. The Y1 can do the same itself (Settings › YouTube › YouTube account). Through your
+  server, the server's own account counts: sign it in on its admin page.
 - **YouTube Music home and history** (optional, directly to YouTube): a **cookies.txt** from a
   browser. Open a private window, sign in at youtube.com, export the cookies with a cookies.txt
   browser extension, close the window at once, then **Upload cookies.txt** here. The page says who
@@ -161,14 +181,6 @@ connected to. The Y1's own **Settings › YouTube** does the same on the Y1.
   shown; **Sign out** deletes it. A separate Google account for your Rondo is the safest choice.
   With it, YouTube Music has your own home and history too.
 - **Video quality:** Auto (up to 360p, which plays smoothest), or a fixed height.
-- **Your server:** its address, whether the connection is encrypted, and a link to its admin
-  page.
-- **Connect to a server:** enter the server's address and the code from its admin page
-  (**Device › Connect a Rondo**), then press **Connect**.
-- **Use a token instead:** only for servers started with an `API_TOKEN` setting. Servers set up
-  as in the server guide don't need it.
-- **Connection test:** the Y1 calls the server and reports how long it took, whether yt-dlp is
-  ready and whether an account is connected.
 
 **Downloads:** paste a YouTube link (or a video id), pick 720p, 480p or 360p and press
 **Download**: your Rondo saves it to `Videos/YouTube` on its card with its subtitles. Choose **Song**

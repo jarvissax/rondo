@@ -74,7 +74,8 @@ static bool hasDefaultRoute() {
   return any;
 }
 
-// Two threads fetch the server's API, each with its own libcurl handle (its connection kept open);
+// Four threads fetch the server's API, each with its own libcurl handle (its connection kept open; a
+// long poll or an upload holds one for a while: WhatsApp's);
 // their replies go back on the socket, one whole message at a time.
 class ApiWorkers {
  public:
@@ -82,7 +83,7 @@ class ApiWorkers {
     // libcurl's global setup isn't thread-safe: both handles are made here, before the threads
     for (auto& a : apis_) a.reset(new Api());
     download_.reset(new Api());  // the downloads' own (a bundle takes minutes: requests go on meanwhile)
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < kWorkers; i++) {
       pthread_t t;
       starting_ = i;
       pthread_create(&t, nullptr, run, this);
@@ -90,9 +91,10 @@ class ApiWorkers {
       while (starting_ >= 0) usleep(1000);  // each thread takes its handle first
     }
   }
-  void configure(const std::string& base, const std::string& token, const std::string& diskDir) {
+  void configure(const std::string& base, const std::string& token, const std::string& diskDir, const std::string& server = "",
+                 const std::string& serverToken = "") {
     pthread_mutex_lock(&mu_);
-    base_ = base, token_ = token, generation_++;
+    base_ = base, token_ = token, server_ = server, serverToken_ = serverToken, generation_++;
     cache_.clear();
     disk_ = diskDir;
     if (!disk_.empty()) {
@@ -131,19 +133,19 @@ class ApiWorkers {
     cancelDownload_ = false;
     publish([](CoreState& s) { s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0, s.downloadSeq++; });
     pthread_mutex_lock(&mu_);
-    std::string base = base_, token = token_;
+    std::string base = base_, token = token_, server = server_, serverToken = serverToken_;
     pthread_mutex_unlock(&mu_);
     struct Job {
       ApiWorkers* self;
-      std::string base, token, path, file;
+      std::string base, token, server, serverToken, path, file;
     };
-    Job* j = new Job{this, base, token, std::move(path), std::move(file)};
+    Job* j = new Job{this, base, token, server, serverToken, std::move(path), std::move(file)};
     pthread_t t;
     pthread_create(&t, nullptr, [](void* p) -> void* {
       std::unique_ptr<Job> job(static_cast<Job*>(p));
       prctl(PR_SET_NAME, "rondo-download");
       Api& api = *job->self->download_;
-      api.configure(job->base, job->token);
+      api.configure(job->base, job->token, job->server, job->serverToken);
       int status = api.download(job->path, job->file, [](int64_t done, int64_t total) {
         publish([&](CoreState& s) { s.downloadDone = done, s.downloadTotal = total; });
       }, &job->self->cancelDownload_);
@@ -151,6 +153,24 @@ class ApiWorkers {
       return nullptr;
     }, j);
     pthread_detach(t);
+  }
+  // a file's bytes to the server (body: the file, a zero byte, its content type)
+  void upload(uint32_t id, std::string path, std::string fileAndType) {
+    pthread_mutex_lock(&mu_);
+    Job j{id, 0, std::move(path), true, std::move(fileAndType)};
+    j.upload = true;
+    jobs_.push_back(std::move(j));
+    pthread_cond_signal(&cv_);
+    pthread_mutex_unlock(&mu_);
+  }
+  // a server path into a file (body: the file), written whole or not at all
+  void save(uint32_t id, std::string path, std::string file) {
+    pthread_mutex_lock(&mu_);
+    Job j{id, 0, std::move(path), true, std::move(file)};
+    j.save = true;
+    jobs_.push_back(std::move(j));
+    pthread_cond_signal(&cv_);
+    pthread_mutex_unlock(&mu_);
   }
   void post(uint32_t id, std::string url, std::string body) {
     pthread_mutex_lock(&mu_);
@@ -166,6 +186,8 @@ class ApiWorkers {
     std::string path;  // a POST's: the full URL
     bool post;
     std::string body;
+    bool upload = false;  // body: the file, a zero byte, its content type
+    bool save = false;    // body: the file the answer is saved in
   };
   struct Cached {
     std::string body;
@@ -185,11 +207,19 @@ class ApiWorkers {
       while (jobs_.empty()) pthread_cond_wait(&cv_, &mu_);
       Job j = jobs_.front();
       jobs_.pop_front();
-      if (generation != generation_) generation = generation_, api.configure(base_, token_);
+      if (generation != generation_) generation = generation_, api.configure(base_, token_, server_, serverToken_);
       if (j.post) {
         pthread_mutex_unlock(&mu_);
         std::string body;
-        int status = hasDefaultRoute() ? api.post(j.path, j.body, body) : 0;
+        int status = 0;
+        if (hasDefaultRoute() && j.save) {
+          status = api.download(j.path, j.body, [](int64_t, int64_t) {});
+        } else if (hasDefaultRoute() && j.upload) {
+          size_t z = j.body.find('\0');
+          if (z != std::string::npos) status = api.upload(j.path, j.body.substr(0, z), j.body.substr(z + 1), body);
+        } else if (hasDefaultRoute()) {
+          status = api.post(j.path, j.body, body);
+        }
         reply(j.id, status, body);
         continue;
       }
@@ -359,7 +389,9 @@ class ApiWorkers {
     return int64_t(t.tv_sec) * 1000 + t.tv_nsec / 1000000;
   }
   int sock_;
-  std::unique_ptr<Api> apis_[2], download_;
+  static constexpr int kWorkers = 4;
+  std::string server_, serverToken_;  // the Rondo server, whatever YouTube's source (Api::configure)
+  std::unique_ptr<Api> apis_[kWorkers], download_;
   std::atomic<int> starting_{-1};
   pthread_mutex_t mu_ = PTHREAD_MUTEX_INITIALIZER, writeMu_ = PTHREAD_MUTEX_INITIALIZER;
   pthread_cond_t cv_ = PTHREAD_COND_INITIALIZER;
@@ -482,18 +514,24 @@ void runCore(int sock, CoreState* shm) {
       case kBtDisconnect: bt.disconnect(std::string(reinterpret_cast<const char*>(p), len)); break;
       case kBtForget: bt.forget(std::string(reinterpret_cast<const char*>(p), len)); break;
       case kApiConfigure: {
-        // the base URL, a zero byte, the token, a zero byte, the cache's folder
+        // the base URL, the token, the cache's folder, the Rondo server and its token, zero bytes between
         std::string s(reinterpret_cast<const char*>(p), len);
-        size_t z = s.find('\0'), z2 = z == std::string::npos ? z : s.find('\0', z + 1);
-        std::string token = z == std::string::npos ? "" : s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
-        std::string cacheDir = z2 == std::string::npos ? "" : s.substr(z2 + 1);
-        api.configure(s.substr(0, z), token, cacheDir);
+        std::vector<std::string> f;
+        for (size_t at = 0;;) {
+          size_t z = s.find('\0', at);
+          f.push_back(s.substr(at, z == std::string::npos ? std::string::npos : z - at));
+          if (z == std::string::npos) break;
+          at = z + 1;
+        }
+        f.resize(5);
+        std::string token = f[1], cacheDir = f[2];
+        api.configure(f[0], token, cacheDir, f[3], f[4]);
         // direct mode keeps its visitor id and rules beside the prefs (the cache's folder's folder)
         static std::string directData;
         std::string data = cacheDir.empty() ? "" : cacheDir.substr(0, cacheDir.rfind('/'));
         if (!data.empty() && data != directData) directData = data, direct::setDataDir(data);
         pthread_mutex_lock(&g_clockMu);
-        g_clockBase = s.substr(0, z), g_clockToken = token;
+        g_clockBase = f[0], g_clockToken = token;
         pthread_mutex_unlock(&g_clockMu);
         break;
       }
@@ -514,6 +552,26 @@ void runCore(int sock, CoreState* shm) {
         break;
       }
       case kDownloadCancel: api.cancelDownload_ = true; break;
+      case kApiSave: {
+        if (len < 4) break;
+        uint32_t id;
+        memcpy(&id, p, 4);
+        std::string rest(reinterpret_cast<const char*>(p + 4), len - 4);
+        size_t z = rest.find('\0');
+        if (z == std::string::npos) break;
+        api.save(id, rest.substr(0, z), rest.substr(z + 1));
+        break;
+      }
+      case kApiUpload: {
+        if (len < 4) break;
+        uint32_t id;
+        memcpy(&id, p, 4);
+        std::string rest(reinterpret_cast<const char*>(p + 4), len - 4);
+        size_t z = rest.find('\0');
+        if (z == std::string::npos) break;
+        api.upload(id, rest.substr(0, z), rest.substr(z + 1));
+        break;
+      }
       case kApiGet: {
         if (len < 8) break;
         uint32_t id, ttl;

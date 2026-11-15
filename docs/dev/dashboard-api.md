@@ -275,17 +275,21 @@ The Rondo's Bluetooth screen from the browser. The Rondo searches while the page
   connection: the page should say so first.
 - `DELETE /api/wifi/saved?id=<id>` → `{"ok": true}`
 
-### YouTube: where it comes from
-- `GET /api/server` → `{"url": "https://music.example.com" | "", "tokenSet": true, "direct": bool, "directChosen": bool}`.
-  `direct`: the Rondo talks to YouTube itself (chosen, or no server set up); `directChosen`: the
-  choice as made.
-- `PUT /api/server` with one of: `{"direct": bool}` (switch; to a server only when one is set up),
-  `{"url"?: "…", "code": "123456"}` (connect with the code from the server's admin page: the Rondo
-  calls its `POST /device/pair`; `403 {"error": "code"}`, `400 {"error": "unreachable"}`), or
-  `{"url"?: "…", "token"?: "…"}` (an address and/or an `API_TOKEN`). Connecting chooses the server.
-  → the `GET` shape (the token never echoed).
-- `POST /api/server/test` → `{"ok": true, "latencyMs": 180, "ytdlp": "2026.10.29…" | "direct", "playbackOk": true | null, "signedIn": bool}`
-  or `{"ok": false, "error": "unreachable" | "unauthorized" | "HTTP <n>"}`: whichever source is in use.
+### The Rondo server, and where YouTube comes from
+The dashboard's **Server** page and **YouTube** page share these (since 3.0.4 the server is set up
+apart from YouTube: WhatsApp uses it whatever YouTube's choice).
+- `GET /api/server` → `{"url": "https://music.example.com" | "", "tokenSet": true, "connected": bool, "direct": bool, "directChosen": bool}`.
+  `connected`: an address and a token; `direct`: YouTube comes from YouTube itself (chosen, or no
+  server set up); `directChosen`: the choice as made.
+- `PUT /api/server` with one of: `{"direct": bool}` (YouTube's choice; to the server only when one is
+  set up), `{"url"?: "…", "code": "123456"}` (connect with the code from the server's admin page: the
+  Rondo calls its `POST /device/pair`; `403 {"error": "code"}`, `400 {"error": "unreachable"}`), or
+  `{"url"?: "…", "token"?: "…"}` (an address and/or an `API_TOKEN`). Connecting leaves YouTube's
+  choice as it is (a Rondo that never chose uses the server). → the `GET` shape (the token never
+  echoed).
+- `POST /api/server/test` → `{"ok": true, "latencyMs": 180, "ytdlp": "2026.10.29…", "version": "3.3.0" | null, "versionNeeded": "3.1.0", "versionOk": bool, "playbackOk": true | null, "signedIn": bool}`
+  or `{"ok": false, "error": "none" | "unreachable" | "unauthorized" | "HTTP <n>"}`: the Rondo server
+  itself (its `/healthz` and `/time`), whatever YouTube's source.
 
 ### YouTube account (directly to YouTube)
 With a server, these answer `{"mode": "server"}`: the server's admin page signs it in.

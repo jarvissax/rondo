@@ -72,7 +72,8 @@ class ImageLoader {
   // Decodes into the cache only, at low priority and only while the UI is still (no reply).
   bool prefetch(const Request& r);
   // The server artwork ("/thumb?…" paths) comes from: its base URL and the device's token.
-  void configure(const std::string& baseUrl, const std::string& token);
+  // server, serverToken: the Rondo server connected, whatever YouTube's source (WhatsApp's pictures)
+  void configure(const std::string& baseUrl, const std::string& token, const std::string& server = "", const std::string& serverToken = "");
   // Tells the helper the UI moved at `now`: prefetching waits until it has been still 1.5 s.
   void active(int64_t now);
   void cancelAll();

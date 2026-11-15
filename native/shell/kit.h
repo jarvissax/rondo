@@ -63,12 +63,12 @@ std::vector<Label> wrap(Env& e, const std::string& s, float sp, bool bold, float
 struct Tile {
   Icon kind;
   Color top, bottom;
-  int brand = 0;  // 1 YouTube, 2 YouTube Music
+  int brand = 0;  // 1 YouTube, 2 YouTube Music, 3 WhatsApp
   bool glyph = true;  // false: the color alone (the accent swatches)
 };
 namespace tiles {
 // Each screen's rows have tiles of their own: no glyph and no color twice on one screen
-extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,
+extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bluetooth, quality, server, about, songs, artists,
     albums, dashboard, brightness, timer, radio, lyrics, sound, accel, wheel, videos, shuffle, power, restart, theme,
     playlists, add, search, recent, del, rescan, shorts, update, equalizer, clock,
     // 2.0: Settings' groups, Library's sections and the rows in them
@@ -81,6 +81,8 @@ extern const Tile music, video, device, nowPlaying, settings, wifi, bluetooth, q
     eqPreset, eqEdit, match, boost, leveling, amplifier, limit;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
+// a service's mark in white, size wide, centered in r (YouTube's play mark in its tile's red)
+void brandMark(Env& e, const Tile& t, Rect r, float size);
 
 // GradientDrawable TL_BR with three colors (the main menu's preview pane).
 void fillDiagonal(Canvas& c, Rect r, Color c0, Color c1, Color c2);

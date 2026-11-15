@@ -14,7 +14,7 @@
 
 namespace rondo {
 
-const char* const kMenuIds[6] = {"nowPlaying", "device", "videos", "music", "radio", "settings"};
+const char* const kMenuIds[7] = {"nowPlaying", "device", "videos", "music", "whatsapp", "radio", "settings"};
 const float kTextScales[3] = {1.25f, 1.4f, 1.55f};
 const AccentPreset kAccentPresets[6] = {{"iPod Blue", "#1c5ccc"}, {"Rondo Red", "#ff3b4f"}, {"Mint", "#11a683"},
                                         {"Violet", "#7b4fe0"},    {"Amber", "#e8860c"},     {"Graphite", "#4a4f59"}};
@@ -24,6 +24,7 @@ const char* menuLabel(const std::string& id) {
   if (id == "videos") return "YouTube";
   if (id == "device") return "Library";
   if (id == "nowPlaying") return "Now Playing";
+  if (id == "whatsapp") return "WhatsApp";
   if (id == "radio") return "FM Radio";
   if (id == "settings") return "Settings";
   return "";
@@ -46,19 +47,26 @@ void sanitize(Theme& t) {
     bool dup = std::any_of(seen.begin(), seen.end(), [&](const MenuEntry& s) { return s.id == e.id; });
     if (known && !dup) seen.push_back(e);
   }
-  // an entry added in a later version goes just before Settings, not after it
-  std::vector<MenuEntry> added;
-  for (const char* id : kMenuIds)
-    if (std::none_of(seen.begin(), seen.end(), [&](const MenuEntry& s) { return s.id == id; })) added.push_back({id, true});
-  size_t settingsAt = seen.size();
-  for (size_t i = 0; i < seen.size(); i++)
-    if (seen[i].id == "settings") settingsAt = i;
-  std::vector<MenuEntry> menu(seen.begin(), seen.begin() + long(settingsAt));
-  for (auto& a : added)
-    if (a.id != "settings") menu.push_back(a);
-  menu.insert(menu.end(), seen.begin() + long(settingsAt), seen.end());
-  for (auto& a : added)
-    if (a.id == "settings") menu.push_back(a);
+  // an entry added in a later version goes where it is by default: after the entry before it in
+  // kMenuIds that the menu has (WhatsApp under YouTube Music), wherever the owner moved that one;
+  // Settings at the end
+  std::vector<MenuEntry> menu = seen;
+  auto indexOf = [&](const char* id) {
+    for (size_t i = 0; i < menu.size(); i++)
+      if (menu[i].id == id) return long(i);
+    return -1L;
+  };
+  for (size_t k = 0; k < std::size(kMenuIds); k++) {
+    if (indexOf(kMenuIds[k]) >= 0) continue;
+    long at = 0;  // with none of the entries before it: first
+    for (long j = long(k) - 1; j >= 0; j--)
+      if (long i = indexOf(kMenuIds[j]); i >= 0) {
+        at = i + 1;
+        break;
+      }
+    if (!strcmp(kMenuIds[k], "settings")) at = long(menu.size());
+    menu.insert(menu.begin() + at, MenuEntry{kMenuIds[k], true});
+  }
   for (auto& m : menu)
     if (m.id == "settings") m.visible = true;
   t.menu = menu;

@@ -57,8 +57,10 @@ int64_t g_stateAt = 0;
 
 }  // namespace
 
+bool g_queueLent = false;
+
 void resumeTick(int64_t now) {
-  if (now - g_stateAt < 5 * kSec) return;
+  if (g_queueLent || now - g_stateAt < 5 * kSec) return;
   PlayerState s = g_player.state();
   if (s.video || s.fmOn || !g_player.active() || s.index < 0) return;
   const std::vector<std::string>& q = g_player.queue();

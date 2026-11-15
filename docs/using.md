@@ -24,13 +24,13 @@ on or off, like Bluetooth headphones' buttons.
 
 ## Main menu
 
-**Now Playing**, **Library**, **YouTube**, **YouTube Music**, **FM Radio** and **Settings**. The
-right side shows what's highlighted, or what's playing. **Settings › Display › Theme › Main menu** changes
+**Now Playing**, **Library**, **YouTube**, **YouTube Music**, **WhatsApp**, **FM Radio** and
+**Settings**. The right side shows what's highlighted, or what's playing. **Settings › Display › Theme › Main menu** changes
 the order and which entries show up.
 
 <p align="center">
-  <img src="images/main-menu.png" width="360" alt="The main menu in the dark look">
-  <img src="images/main-menu-light.png" width="360" alt="The main menu in the light look">
+  <img src="images/main-menu.png" width="360" alt="The main menu in the dark look, WhatsApp highlighted">
+  <img src="images/main-menu-light.png" width="360" alt="The main menu in the light look, YouTube Music highlighted">
 </p>
 
 ## Library: music, videos, photos and files
@@ -110,16 +110,16 @@ cable gives the card back to the Y1 as well. The dashboard can also upload music
 ## YouTube Music and YouTube
 
 Both work as soon as the Y1 is on Wi-Fi: Rondo talks to YouTube itself, with nothing to set up.
-(If you'd rather it went through a [server](server.md) of your own, choose **My server** in
-**Settings › YouTube › Connection**.) They open on a home page, with tabs across the top: turn the
+(If you'd rather it went through a [server](server.md) of your own, connect the server in
+**Settings › Server**, then choose **Through my server** in **Settings › YouTube › Connect to**.) They open on a home page, with tabs across the top: turn the
 wheel on the tab row and press center to switch. YouTube Music's home is shelves, as in the app:
 each section a row of covers that slides along as you turn the wheel, then on into the next. **Search** uses an on-screen keyboard you type on
 with the wheel.
 
 - **Signed in**, you also get **Library** (your playlists and Liked Music) in YouTube Music, and
   **Subscriptions** and **History** in YouTube, whose home is then picked for you. Sign in with a
-  code in **Settings › YouTube › YouTube account** (see [Settings](#settings)); with a server, the
-  server's own account counts. YouTube Music's own home and history also need a cookies.txt (on
+  code in **Settings › YouTube › YouTube account** (see [Settings](#settings)); through a server,
+  the server's own account counts. YouTube Music's own home and history also need a cookies.txt (on
   the dashboard's YouTube page, or the server's admin page).
 - **Hold center on a song** to play it now or next, add it to the queue, **Start radio** (songs
   like this one) or **Download** it. An album or a playlist has **Download all** at its top.
@@ -147,6 +147,59 @@ when you're signed in. **Next / Previous** move to the next or previous short,
 the **wheel** is the volume and **center** pauses. Moving on slides like on a phone: the short
 slides up and away as the next one comes in from below. The next few shorts load while you watch,
 so moving on takes about a second.
+
+## WhatsApp
+
+WhatsApp works through your own [Rondo server](server.md) (3.3.0 or newer): the server becomes one
+of your WhatsApp's linked devices, like WhatsApp Web on a computer, and the Y1 reads and sends
+through it. Connect the Y1 to the server in **Settings › Server**, then link WhatsApp once on the
+server's admin page: **WhatsApp › Get a code**, and type the code on your phone under WhatsApp's
+**Settings › Linked devices › Link a device › Link with phone number instead**
+([more](server.md#whatsapp)). Your recent chats come over in a minute or two.
+
+<p align="center">
+  <img src="images/whatsapp.png" width="360" alt="WhatsApp's chats: pictures, last messages, times, ticks and unread counts">
+  <img src="images/whatsapp-chat.png" width="360" alt="A group chat: a photo with its caption and reactions, and a reply">
+</p>
+
+- **Chats:** the newest first (pinned ones on top), each with its picture, its last message (a mic
+  and the length for a voice message, an icon for a photo or a video), the time, ticks on yours and
+  the unread count. **New chat** at the top lists your contacts (Next and Previous jump a letter).
+  **Hold center** on a chat for its profile: the picture, the name, the number and the about.
+- **A chat** shows its messages as bubbles, the newest at the bottom, with the day between them;
+  in a group, each one's sender. Replies show what they answer, and reactions sit under the
+  bubble. Turn the wheel to go through the messages; up past the first, earlier ones load. Under
+  them are three buttons: **Message**, **Voice** and **Photo**.
+- **Center on a message** opens what it holds: a photo full screen, a video in the player, a voice
+  message played (the music pauses and comes back after; center again stops it). On a text, or
+  holding center on any message: **Reply**, open or play it, the sender's profile (in a group) and
+  the chat's profile. A message that couldn't be sent says so: center sends it again.
+- **Message** opens the keyboard: letters, digits and symbols. What you typed and didn't send is
+  still there next time. **Send** sends it; from a message's **Reply**, it goes as a reply.
+- **Voice** records with the Y1's built-in microphone at once (what's playing pauses): center
+  sends it, Menu throws it away. Up to 15 minutes.
+- **Photo** lists the photos and videos on the card, the newest first: center shows the one you
+  picked, and center again sends it.
+
+<p align="center">
+  <img src="images/whatsapp-reply.png" width="360" alt="A reply quoting the message it answers, and a voice message">
+  <img src="images/whatsapp-voice.png" width="360" alt="Recording a voice message: the microphone and the time">
+</p>
+
+Your messages' ticks are as on your phone: a clock while it goes, one tick sent, two delivered,
+two blue read (or played).
+
+- **No notifications.** The Y1 doesn't say a message came: it's there when you open WhatsApp. The
+  server never shows you as online, so your phone keeps its own notifications.
+- **Opening a chat marks it read**, as on your phone (blue ticks, if you have them on).
+- **On the card:** the Y1 keeps your recent chats, and the photos, videos and voice messages you
+  opened, in a hidden folder (`.rondo/whatsapp`), up to 1 GB, the oldest going first. They open at
+  once, also without a connection.
+- **Not yet:** reacting, typing emoji (emoji you receive show), opening documents (open them on
+  your phone), calls and status updates.
+- **WhatsApp's terms don't allow unofficial apps** like this one, and WhatsApp may close accounts
+  that use them. You can unlink any time, on the server's admin page or on your phone under
+  **Linked devices**.
 
 ## Now Playing
 
@@ -198,18 +251,19 @@ turns the radio off.
   <img src="images/accent-colors.png" width="360" alt="Choosing an accent color">
 </p>
 
-Settings has the **Dashboard** at the top, then six groups: **Connections** (Wi-Fi, Bluetooth),
-**YouTube** (the connection, the account, video quality), **Sound**, **Display** (theme,
-brightness, screen off, subtitles, lyrics), **Controls** (the wheel) and **System** (date and
-time, updates, About, shut down).
+Settings has the **Dashboard** at the top, then **Connections** (Wi-Fi, Bluetooth), **Server**
+(your Rondo server), **YouTube** (where it comes from, the account, video quality), **Sound**,
+**Display** (theme, brightness, screen off, subtitles, lyrics), **Controls** (the wheel) and
+**System** (date and time, updates, About, shut down).
 
 | Setting | |
 | --- | --- |
 | **Dashboard** | Starts the dashboard; see below. |
 | **Connections › Wi-Fi** | Join networks. Hold center on a saved network to forget it. |
 | **Connections › Bluetooth** | Pair and connect headphones or speakers. |
-| **YouTube › Connection** | **Directly to YouTube** (no server needed; what a Y1 without a server uses) or **My server**, the [Rondo server](server.md) you connected. Below: the address, a **Connection test**, **Connect to a server** with its address and the code from its admin page, and **Use a token instead**. A switch shows the new source's home and tabs at once. |
-| **YouTube › YouTube account** | Directly to YouTube: **sign in with a code**, as a smart TV does. The Y1 shows a code; open google.com/device on your phone or computer, enter it and allow access, and the screen closes by itself. That brings YouTube's home for you, Subscriptions and History, and your YouTube Music playlists and Liked Music. YouTube Music's own home and history also need a cookies.txt (on the dashboard's YouTube page). The sign-in stays on the Y1; choose the row again to sign out. With a server, this row isn't there: the server's own account counts. |
+| **Server** | The [Rondo server](server.md) this Y1 uses: its address, a **Connection test**, what uses it (YouTube when you choose it, WhatsApp always), **Connect to a server** with its address and the code from its admin page, and **Use a token instead**. Connecting one leaves YouTube's own choice as it is. |
+| **YouTube › Connect to** | **Directly to YouTube** (no server needed), or **Through my server** once one is connected in **Settings › Server**. A switch shows the new source's home and tabs at once. |
+| **YouTube › YouTube account** | Directly to YouTube: **sign in with a code**, as a smart TV does. The Y1 shows a code; open google.com/device on your phone or computer, enter it and allow access, and the screen closes by itself. That brings YouTube's home for you, Subscriptions and History, and your YouTube Music playlists and Liked Music. YouTube Music's own home and history also need a cookies.txt (on the dashboard's YouTube page). The sign-in stays on the Y1; choose the row again to sign out. Through your server, this row isn't there: the server's own account counts. |
 | **YouTube › Video quality** | Auto (up to 360p), or 720p, 480p or 360p. A video without that height plays the next one down. |
 | **Sound** | See [Sound](#sound) below. |
 | **Display › Theme** | The accent color, light or dark, the text size, and the main menu's entries and order. |
@@ -263,7 +317,7 @@ the same Wi-Fi and type the code. From there you can:
   folders, organize the card, and make playlists and smart playlists,
 - change the theme, the sound, the menu and every setting above,
 - manage Wi-Fi, Bluetooth and the FM radio, sign in to YouTube, download YouTube videos, and
-  connect a server.
+  connect a server (its own **Server** page).
 
 Leaving the Dashboard screen on the Y1 (Menu) stops it. See [The dashboard](dashboard.md) for
 each page.

@@ -58,9 +58,9 @@ server). If the Updater offers **Keep my settings**, choose it: on its first sta
 Bluetooth headphones stay. Without it they start fresh. Your music and playlists on the card are
 never touched.
 
-Rondo 1.0 needed a server for YouTube; 2.0 doesn't. If you had one, Rondo 2.0 keeps using it
-(**My server**). To go without it, choose **Directly to YouTube** in **Settings › YouTube ›
-Connection**.
+Rondo 1.0 needed a server for YouTube; 2.0 doesn't. If you had one, Rondo keeps using it
+(**Through my server**). To go without it, choose **Directly to YouTube** in **Settings › YouTube ›
+Connect to**; the server stays connected in **Settings › Server**.
 
 ## First start
 
@@ -74,8 +74,8 @@ Connection**.
 3. **YouTube Music and YouTube** work as soon as the Y1 is on Wi-Fi: Rondo talks to YouTube
    itself, with nothing to set up. For your own home, subscriptions, history and playlists, sign
    in with a code in **Settings › YouTube › YouTube account** (or on the dashboard's YouTube page).
-4. **A server** is optional. If you want one, [set it up](server.md), then connect the Y1 to it in
-   **Settings › YouTube › Connection › Connect to a server**.
+4. **A server** is optional for YouTube and needed for WhatsApp. If you want one,
+   [set it up](server.md), then connect the Y1 to it in **Settings › Server › Connect to a server**.
 
 Then see [Using Rondo](using.md) for what the wheel and each button do.
 

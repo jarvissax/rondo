@@ -188,6 +188,7 @@ input { caret-color: var(--accent-hi); }
 .vh-actions { display: flex; gap: 8px; }
 .gh { font-size: 17px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -.005em; }
 .help { color: var(--text-2); font-size: 14px; margin: -6px 0 14px; }
+.group + .help, .note + .help { margin-top: 14px; }  /* under a card, not a heading: apart from it */
 
 /* ---------- tiles (Widgets.kt) ---------- */
 .tile {
@@ -198,20 +199,26 @@ input { caret-color: var(--accent-hi); }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .22);
 }
 .tile .i { width: 20px; height: 20px; }
-.tile.t-brand { background: #fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .11); }
-.tile.t-brand .brand-logo { width: 23px; height: 23px; }
-.tile.t-brand .brand-logo.wide { height: 16px; }
+/* YouTube, YouTube Music, WhatsApp: their colors, their marks in white (YouTube's play mark cut out) */
+.t-youtube { --t1: #ff6a5c; --t2: #d7001a; }
+.t-ytmusic { --t1: #ff5a72; --t2: #c8102e; }
+.t-whatsapp { --t1: #63f08e; --t2: #17a74c; }
+.brand-glyph { width: 62%; height: auto; }
+.brand-glyph.yt { width: 72%; }
+.brand-glyph .cut { fill: var(--cut, #e5121f); }
+.tab:not([aria-current]) .brand-glyph .cut { fill: var(--tabs-bg, #0d0d0f); }  /* gray like the others: the mark cut out of the bar */
 /* the Rondo's palette (shell/kit.cpp's tiles): no page shows a color twice */
 .t-music, .t-songs { --t1: #ff5e7e; --t2: #e0144c; }
 .t-video, .t-videos { --t1: #ff6b5a; --t2: #e01e1e; }
 .t-device, .t-storage, .t-files { --t1: #5fb7ff; --t2: #1f73e0; }
 .t-wifi, .t-zone { --t1: #4fc3f7; --t2: #0288d1; }
 .t-now, .t-nowPlaying, .t-battery, .t-click { --t1: #7be07b; --t2: #26a83b; }
-.t-server { --t1: #ff6b5a; --t2: #e01e1e; }
+.t-server { --t1: #7be07b; --t2: #26a83b; }  /* the Rondo server: green, as its tile on the Y1 */
 .t-settings, .t-about, .t-search { --t1: #b8bcc4; --t2: #6f747d; }
 .t-quality, .t-albums, .t-radio { --t1: #ffb04d; --t2: #f07a12; }
 .t-subtitles { --t1: #5fe0b5; --t2: #10a37a; }
 .t-downloads { --t1: #7be07b; --t2: #26a83b; }
+
 .t-brightness, .t-photos, .t-amp { --t1: #ffd24d; --t2: #f0a012; }
 .t-timer, .t-coverflow { --t1: #8fa3b8; --t2: #52657a; }
 .t-theme, .t-artists, .t-account { --t1: #c58cff; --t2: #7b3fe0; }
@@ -602,9 +609,7 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   background: linear-gradient(var(--t1), var(--t2)); color: #fff;
 }
 .pv-tile svg { width: calc(16 * var(--S)); height: calc(16 * var(--S)); }
-.pv-tile.brand { background: #fff; box-shadow: inset 0 0 0 max(1px, var(--u)) rgb(0 0 0 / .11); }
-.pv-tile.brand .brand-logo { width: calc(19 * var(--S)); height: calc(19 * var(--S)); }
-.pv-tile.brand .brand-logo.wide { height: calc(14 * var(--S)); }
+.pv-tile .brand-glyph { width: calc(19 * var(--S)); height: auto; }
 .pv-label { flex: 1; min-width: 0; font-size: calc(15 * var(--S)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pv-row.sel .pv-label { font-weight: 600; }
 .pv-chev { flex: none; width: calc(8 * var(--S)); height: calc(12 * var(--S)); margin-left: calc(5 * var(--S)); color: var(--chev); }

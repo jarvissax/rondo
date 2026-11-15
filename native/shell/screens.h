@@ -63,6 +63,8 @@ void playStreamsAppend(const Item& item, bool next);  // Play next / Add to queu
 void rememberStream(const std::string& path, const Item& item);  // a restored queue's streamed song
 // resume.cpp: the queue kept across a restart (saved from the loop, put back at startup)
 void resumeTick(int64_t now);
+// a WhatsApp voice message plays in the queue's place (whatsapp_screens.cpp): the queue isn't saved meanwhile
+extern bool g_queueLent;
 void resumeSaveNow();  // on the way out
 void resumeRestore();
 bool resumeWaitingForCard();  // the restore waits for the card (resumeRestore again once it is mounted)
@@ -98,6 +100,7 @@ void fmTick();
 std::unique_ptr<Screen> makeBluetooth();
 // Settings › Server, its row's state ("OK · signed in", "Unreachable"…), and the main menu's account check
 std::unique_ptr<Screen> makeServer();
+std::unique_ptr<Screen> makeYouTubeTest();  // Settings › YouTube › Connection test: YouTube from where it comes now
 // A list to pick one of (name, value): the current one says so, a pick goes back
 std::unique_ptr<Screen> makeChoice(std::string title, std::vector<std::pair<std::string, std::string>> choices,
                                    std::function<std::string()> current, std::function<void(const std::string&)> pick,
@@ -134,6 +137,12 @@ extern std::function<void()> g_onServerChanged;  // the server's address or toke
 bool directMode();
 std::string apiBase();
 std::string apiToken();
+// The Rondo server connected (an address and a token), whatever YouTube's source: WhatsApp and the
+// server's own checks use it. serverUrl() "": none set up.
+bool serverConnected();
+void useDirect(bool on);  // Settings › YouTube › Connect to: directly (true) or through the server
+std::string serverUrl();
+std::string serverToken();
 // Software update (SoftwareUpdate.kt): this Y1's firmware number, GET /update's version, and which is newer
 constexpr const char* kVersion = kRondoVersion;  // core/version.h (tools/set-version.sh)
 int firmwareLevel();

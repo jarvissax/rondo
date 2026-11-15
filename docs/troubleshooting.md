@@ -65,54 +65,82 @@ Settings › System › Software update, or report it with Rondo's log ([how](#s
 
 Rondo talks to YouTube itself, so it only needs Wi-Fi that reaches the internet. Check that the Y1
 is on Wi-Fi (Settings › Connections › Wi-Fi), then press center to try again. **Settings ›
-YouTube › Connection › Connection test** asks YouTube and says how long it took and whether
-playback works. Some guest and office networks block YouTube.
+YouTube › Connection test** asks YouTube and says how long it took and whether playback works. Some guest and office networks block YouTube.
 
 ### Songs or videos won't play, or stop partway
 
 YouTube changes things often.
 
-- **Directly to YouTube:** try again in a moment, and run the **Connection test** in Settings ›
-  YouTube › Connection. If playback keeps failing, look for a newer Rondo in Settings › System ›
-  Software update.
-- **With a server:** on the admin page, open **Resolver** and press **Update now**, then **Test
-  playback**. **Activity** shows the errors behind it. Settings › YouTube on the Y1 says "Playback
-  failing" while this is the problem.
+- **Directly to YouTube:** try again in a moment, and run **Settings › YouTube › Connection
+  test**. If playback keeps failing, look for a newer Rondo in Settings › System › Software
+  update.
+- **Through your server:** on the admin page, open **Resolver** and press **Update now**, then
+  **Test playback**. **Activity** shows the errors behind it. Settings › Server on the Y1 says
+  "Playback failing" while this is the problem.
 
 ### Library, Subscriptions or History are missing
 
 They only appear when you're signed in to YouTube. Directly to YouTube, sign in with a code in
-**Settings › YouTube › YouTube account** (or on the dashboard's YouTube page). With a server, sign
-the server in on its admin page ([details](server.md#your-youtube-account-optional)).
+**Settings › YouTube › YouTube account** (or on the dashboard's YouTube page). Through your
+server, sign the server in on its admin page ([details](server.md#your-youtube-account-optional)).
 
 ### YouTube Music's home looks generic
 
 Your own YouTube Music home and history need a cookies.txt: on the dashboard's YouTube page
-directly to YouTube, or on the server's admin page with a server. If you uploaded one and it
+directly to YouTube, or on the server's admin page through your server. If you uploaded one and it
 stopped working, the dashboard (or the admin page's **Activity**) says the cookies were signed
 out. Export new ones in a private window, and close the window right after.
 
 ### Headphone match says "The server didn't answer"
 
 Headphone match looks your headphone model up through a [Rondo server](server.md), so it needs one
-connected (**My server**). Everything else in Settings › Sound works without one.
+connected in **Settings › Server**. Everything else in Settings › Sound works without one.
 
 ## With a server
 
-### Settings › YouTube says "Unreachable"
+### Settings › Server says "Unreachable"
 
 - **At home:** the Y1 and the server must be on the same network, and the server's address must
   not have changed. Give the server a fixed address in your router.
 - **On a VPS:** check the HTTPS from a computer with the `openssl` command in the
   [server guide](server.md#on-a-vps). If you use Cloudflare, the record must be "DNS only".
-- Check the address in **Settings › YouTube › Connection**: `http://` for home, `https://` for a VPS,
-  and the right port.
-- Away from home with a home server, choose **Directly to YouTube** there instead.
+- Check the address in **Settings › Server**: `http://` for home, `https://` for a VPS, and the
+  right port.
+- Away from home with a home server, choose **Directly to YouTube** in **Settings › YouTube ›
+  Connect to** instead (WhatsApp waits until the server is reachable again).
 
 ### "Token refused"
 
 The server no longer knows this Y1. Another Rondo may have been connected, or the server was set
 up again. Connect again with a new code from the admin page (**Device › Connect a Rondo**).
+
+## WhatsApp
+
+### "WhatsApp works through your Rondo server"
+
+WhatsApp needs a [Rondo server](server.md), 3.3.0 or newer, connected in **Settings › Server**.
+YouTube's own choice doesn't matter: WhatsApp uses the server even when YouTube comes directly.
+
+### "WhatsApp isn't linked yet"
+
+Link it on the server's admin page, **WhatsApp** ([how](server.md#whatsapp)).
+
+### My phone says it couldn't link the device
+
+Codes are good for about two and a half minutes: on the admin page, **Cancel** and **Get a code**
+again, and type the new one soon. Check the number has its country code. If it keeps failing, wait
+a few minutes before trying again: WhatsApp slows down repeated tries.
+
+### New messages don't show up
+
+Open WhatsApp on the Y1: it shows no notifications, and what came is there when you open it. If
+the top of the chats says it's connecting, the server is reaching WhatsApp; if your phone removed
+the server from **Linked devices**, the admin page says it's no longer linked: link it again.
+
+### A photo, video or voice message says WhatsApp doesn't have it any more
+
+WhatsApp keeps media on its own servers for a while only. The server keeps what came while it was
+linked; older media from before the link may be gone. Open it on your phone instead.
 
 ## The Y1
 

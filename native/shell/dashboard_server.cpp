@@ -870,7 +870,7 @@ Response Server::status() {
   return json(obj({{"device", device}, {"battery", battery}, {"storage", storage}, {"wifi", *wifi}, {"about", *about}, {"player", *player}}));
 }
 
-// Connections to the music server (or direct mode's local one) for artwork, lent to one page request
+// Connections to the Rondo server (or direct mode's local one) for artwork, lent to one page request
 // at a time: the page asks for many at once, and through rondo-core they waited behind its two workers
 // and the UI thread (Nov 10: covers that never came while a list was loading).
 struct ArtApi {
@@ -894,7 +894,7 @@ void returnArtApi(std::unique_ptr<ArtApi> a) {
   pthread_mutex_unlock(&g_artApiMu);
 }
 
-// YouTube Music and YouTube artwork through the music server, or direct mode's local one
+// YouTube Music and YouTube artwork through the Rondo server, or direct mode's local one
 Response Server::thumb(const std::string& path) {
   if (path.compare(0, 7, "/thumb?") != 0) return error(404, "not found");
   std::vector<uint8_t> bytes;
@@ -1142,7 +1142,7 @@ Response Server::putServer(const Body& b) {
     std::string paired;
     if (!reply.text("token", paired) || paired.empty()) return error(403, "code");
     onMain([target, paired] {
-      g_config.server.url = target, g_config.server.token = paired, g_config.server.direct = false;
+      g_config.server.url = target, g_config.server.token = paired;  // YouTube's Connect to stays as chosen
       saveConfigNow();
       if (g_onServerChanged) g_onServerChanged();
     });
@@ -1164,7 +1164,6 @@ Response Server::putServer(const Body& b) {
     onMain([hasUrl, url, token] {
       if (hasUrl && !url.empty()) g_config.server.url = url;
       if (!token.empty()) g_config.server.token = token;
-      g_config.server.direct = false;  // a server set up here is the one to use
       saveConfigNow();
       if (g_onServerChanged) g_onServerChanged();
     });
@@ -1172,17 +1171,21 @@ Response Server::putServer(const Body& b) {
   return serverJson();
 }
 
-// reachability from /healthz (no token), then an authenticated call to check the token
+// reachability from /healthz (no token), then an authenticated call to check the token: the Rondo
+// server's own, whatever YouTube's source (/@server/, Api::urlFor)
 Response Server::testServer() {
+  bool none = false;
+  onMain([&none] { none = g_config.server.url.empty(); });
+  if (none) return json(obj({{"ok", "false"}, {"error", str("none")}}));
   int64_t started = monoNs();
   std::string body;
-  int st = coreCall(false, "/healthz", "", body);
+  int st = coreCall(false, "/@server/healthz", "", body);
   int64_t latency = (monoNs() - started) / 1000000;
   Health h;
   if (st == 200 && !parseHealth(body, h)) st = 0;
   if (st == 200) {
     std::string ignored;
-    st = coreCall(false, "/time", "", ignored);
+    st = coreCall(false, "/@server/time", "", ignored);
   }
   if (st == 200)
     return json(obj({{"ok", "true"},
@@ -1204,6 +1207,7 @@ Response Server::testServer() {
 std::string serverInfoJson() {
   return obj({{"url", str(g_config.server.url)},
               {"tokenSet", boolean(!g_config.server.token.empty())},
+              {"connected", boolean(serverConnected())},
               {"direct", boolean(directMode())},
               {"directChosen", boolean(g_config.server.direct)}});
 }

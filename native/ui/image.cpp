@@ -384,7 +384,7 @@ struct Worker {
   // are made before the threads), configured by kConfigure
   std::unique_ptr<rondo::Api> apis[4];
   std::atomic<int> nextApi{0};
-  std::string base, token;
+  std::string base, token, server, serverToken;
   int generation = 0;
 
   static constexpr int64_t kQuietNs = 1500000000LL;  // still this long before prefetching
@@ -467,12 +467,13 @@ struct Worker {
       }
   }
 
-  static bool remote(const char* path) { return !strncmp(path, "/thumb", 6); }
+  // the server's pictures: /thumb artwork, WhatsApp's avatars and photos (/wa/)
+  static bool remote(const char* path) { return !strncmp(path, "/thumb", 6) || !strncmp(path, "/wa/", 4); }
 
   // a thumbnail from the server: <base><thumb>&w=<width>&h=<height>, as 1.0.x's ImageLoader asked
   bool fetch(rondo::Api& api, int& apiGeneration, const Msg& r, std::vector<uint8_t>& bytes) {
     pthread_mutex_lock(&mu);
-    if (apiGeneration != generation) apiGeneration = generation, api.configure(base, token);
+    if (apiGeneration != generation) apiGeneration = generation, api.configure(base, token, server, serverToken);
     pthread_mutex_unlock(&mu);
     int w = srcW(r), h = srcH(r);
     std::string body;
@@ -721,9 +722,15 @@ struct Worker {
         freeSlots.push_back(m.slot);
       } else if (m.type == kConfigure) {
         std::string s = m.path;
-        size_t nl = s.find('\n');
-        base = s.substr(0, nl);
-        token = nl == std::string::npos ? "" : s.substr(nl + 1);
+        std::vector<std::string> f;
+        for (size_t at = 0;;) {
+          size_t nl = s.find('\n', at);
+          f.push_back(s.substr(at, nl == std::string::npos ? std::string::npos : nl - at));
+          if (nl == std::string::npos) break;
+          at = nl + 1;
+        }
+        f.resize(4);
+        base = f[0], token = f[1], server = f[2], serverToken = f[3];
         generation++;
       }
       pthread_cond_broadcast(&cv);
@@ -794,8 +801,8 @@ bool ImageLoader::request(const Request& r) {
 
 bool ImageLoader::prefetch(const Request& r) { return sendRequest(sock_, kPrefetch, r); }
 
-void ImageLoader::configure(const std::string& baseUrl, const std::string& token) {
-  Request r{0, baseUrl + "\n" + token, 0, 0, 0};
+void ImageLoader::configure(const std::string& baseUrl, const std::string& token, const std::string& server, const std::string& serverToken) {
+  Request r{0, baseUrl + "\n" + token + "\n" + server + "\n" + serverToken, 0, 0, 0};
   sendRequest(sock_, kConfigure, r);
 }
 

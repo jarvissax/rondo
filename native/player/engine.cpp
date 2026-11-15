@@ -48,6 +48,7 @@ extern "C" {
 #include "amplifier.h"
 #include "loudness.h"
 #include "fm.h"
+#include "recorder.h"
 #include "protocol.h"
 #include "video.h"
 
@@ -189,6 +190,13 @@ class Engine {
   // ---- FM radio: its sound in a ring of its own, played instead of music's ----
   FmRadio fm_{[this] { fmChanged(); }, [this](const int16_t* pcm, size_t frames) { fmSound(pcm, frames); }};
   void fmChanged();  // from the radio's threads
+  // ---- the microphone (WhatsApp's voice messages): recorded into a WAV file ----
+  Recorder mic_{[this] { micChanged(); }};
+  void micChanged() {  // from the recorder's thread
+    pthread_mutex_lock(&mu_);
+    publish();
+    pthread_mutex_unlock(&mu_);
+  }
   void fmSound(const int16_t* pcm, size_t frames);
   void fmVolumes(bool on);  // the radio's own volume while it sounds, music's again after
   void fmSpeakerApply(bool on);
@@ -353,6 +361,7 @@ void Engine::publish() {
   else s.path[0] = 0;
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
   memcpy(s.codec, heardCodec_, sizeof(s.codec));
+  s.recording = mic_.recording(), s.recordMs = mic_.ms(), s.recordLevel = mic_.level(), s.recordError = mic_.error();
   size_t n = std::min(order_.size(), size_t(kMaxQueue));
   for (size_t i = 0; i < n; i++) s.order[i] = order_[i];
   __atomic_add_fetch(&s.seq, 1, __ATOMIC_ACQ_REL);  // even: consistent
@@ -558,6 +567,17 @@ void Engine::command(const std::vector<uint8_t>& m) {
       break;
     }
     case kFmStop: radio = [this] { fm_.stop(); }; break;
+    case kRecordStart: {
+      std::string path(reinterpret_cast<const char*>(p), len);
+      setPlaying(false);  // what plays would be recorded too
+      radio = [this, path] { mic_.start(path); };
+      break;
+    }
+    case kRecordStop: {
+      bool keep = len && p[0];
+      radio = [this, keep] { mic_.stop(keep); };
+      break;
+    }
     case kFmTune: {
       int32_t f = i32at(0);
       radio = [this, f] { fm_.tune(f); };

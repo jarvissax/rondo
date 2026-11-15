@@ -166,6 +166,11 @@ void PlayerHost::fmSpeaker(bool on) {
   send(kFmSpeaker, &v, 1);
 }
 void PlayerHost::click() { send(kClick); }
+void PlayerHost::recordStart(const std::string& file) { send(kRecordStart, file.data(), uint32_t(file.size())); }
+void PlayerHost::recordStop(bool keep) {
+  uint8_t v = keep;
+  send(kRecordStop, &v, 1);
+}
 void PlayerHost::loudnessFile(const std::string& path) { send(kLoudness, path.data(), uint32_t(path.size())); }
 void PlayerHost::analyzeList(const std::vector<std::string>& paths) {
   std::string all;

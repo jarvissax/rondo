@@ -125,15 +125,15 @@ function sigSvg(level, cls = 'sig') {
   const on = (n) => (level >= n ? '' : ' class="off"');
   return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path${on(4)} d="M4.22 8.22a11 11 0 0 1 15.56 0"/><path${on(3)} d="M7.05 11.05a7 7 0 0 1 9.9 0"/><path${on(2)} d="M9.88 13.88a3 3 0 0 1 4.24 0"/></g><circle${on(1)} cx="12" cy="18.5" r="1.7" fill="currentColor"/></svg>`;
 }
-// the official logos (YouTube Music: 176-unit grid; YouTube: 28.57 × 20), as on the device (Widgets.kt).
-// Small copies get a thicker ring, like the device, so it doesn't vanish at tile size.
-const ytmSvg = (cls, ring) => `<svg class="${cls}" viewBox="0 0 176 176" aria-hidden="true"><circle cx="88" cy="88" r="88" fill="#f00"/><circle cx="88" cy="88" r="44" fill="none" stroke="#fff" stroke-width="${ring}"/><path d="M72 111L111 87L72 65Z" fill="#fff"/></svg>`;
-const ytSvg = (cls) => `<svg class="${cls}" viewBox="0 0 28.57 20" aria-hidden="true"><path d="M27.9727 3.12324C27.6435 1.89323 26.6768 .926623 25.4468 .597366C23.2197 0 14.285 0 14.285 0C14.285 0 5.35042 0 3.12323 .597366C1.89323 .926623 .926623 1.89323 .597366 3.12324C0 5.35042 0 10 0 10C0 10 0 14.6496 .597366 16.8768C.926623 18.1068 1.89323 19.0734 3.12323 19.4026C5.35042 20 14.285 20 14.285 20C14.285 20 23.2197 20 25.4468 19.4026C26.6768 19.0734 27.6435 18.1068 27.9727 16.8768C28.5701 14.6496 28.5701 10 28.5701 10C28.5701 10 28.5677 5.35042 27.9727 3.12324Z" fill="#f00"/><path d="M11.4253 14.2854L18.8477 10.0004L11.4253 5.71533Z" fill="#fff"/></svg>`;
-const MUSIC_LOGO = ytmSvg('pv-glyph', 4);
-const VIDEO_LOGO = ytSvg('pv-glyph wide');
-const BRAND_SMALL = { music: ytmSvg('brand-logo', 8), video: ytSvg('brand-logo wide') };
-// the white app-icon tile the two YouTube entries use instead of a colored one
-const brandTile = (brand, cls = 'tile t-brand') => `<span class="${cls}">${BRAND_SMALL[brand]}</span>`;
+// YouTube's, YouTube Music's and WhatsApp's marks in white on their own colors, as on the Y1's menu
+// (YouTube's play mark cut out in its tile's red)
+const MARK = {
+  video: (cls) => `<svg class="${cls} yt" viewBox="0 0 28.57 20" aria-hidden="true"><path fill="currentColor" d="M27.9727 3.12324C27.6435 1.89323 26.6768 .926623 25.4468 .597366C23.2197 0 14.285 0 14.285 0C14.285 0 5.35042 0 3.12323 .597366C1.89323 .926623 .926623 1.89323 .597366 3.12324C0 5.35042 0 10 0 10C0 10 0 14.6496 .597366 16.8768C.926623 18.1068 1.89323 19.0734 3.12323 19.4026C5.35042 20 14.285 20 14.285 20C14.285 20 23.2197 20 25.4468 19.4026C26.6768 19.0734 27.6435 18.1068 27.9727 16.8768C28.5701 14.6496 28.5701 10 28.5701 10C28.5701 10 28.5677 5.35042 27.9727 3.12324Z"/><path class="cut" d="M11.4253 14.2854L18.8477 10.0004L11.4253 5.71533Z"/></svg>`,
+  music: (cls) => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" fill="none" stroke="currentColor" stroke-width="2.3"/><path fill="currentColor" d="M9.3 16.4L16.9 12L9.3 7.6Z"/></svg>`,
+  whatsapp: (cls) => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>`,
+};
+const BRAND_CLASS = { video: 't-youtube', music: 't-ytmusic', whatsapp: 't-whatsapp' };
+const brandTile = (brand, cls = 'tile') => `<span class="${cls} ${BRAND_CLASS[brand]}">${MARK[brand]('brand-glyph')}</span>`;
 
 // ---------- API ----------
 class ApiError extends Error {
@@ -306,10 +306,11 @@ const NAV = [
   { id: 'overview', label: 'Overview', tile: 'rondo', tab: true },
   { id: 'library', label: 'Library', tile: 'device', glyph: 'library', tab: true },
   { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio', tab: true },
+  { id: 'youtube', label: 'YouTube', brand: 'video', tab: true },
   { group: 'Connections' },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
-  { id: 'server', label: 'YouTube', tile: 'server', glyph: 'cloud', tab: true },
+  { id: 'server', label: 'Server', tile: 'server', glyph: 'cloud' },
   { group: 'Settings' },
   { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'sliders' },
   { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
@@ -321,11 +322,12 @@ const PAGES = [...NAV.filter((n) => n.id), MORE];
 const TABS = [...NAV.filter((n) => n.tab), MORE];
 const inMore = (id) => !TABS.some((t) => t.id === id && t !== MORE);
 const tileHtml = (tile, glyph) => `<span class="tile t-${tile}">${glyph ? icon(glyph) : markTile}</span>`;
+const navTile = (n) => (n.brand ? brandTile(n.brand) : tileHtml(n.tile, n.glyph));  // YouTube's logo for its page
 function buildNav() {
-  $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${n.group}</div>` : `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
+  $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${n.group}</div>` : `<a href="#${n.id}" data-id="${n.id}">${navTile(n)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
   $('#moreRows').innerHTML = NAV.filter((n) => !n.tab).map((n) => n.group ? `</div><h2 class="gh">${n.group}</h2><div class="group">`
-    : `<a class="row more-row" href="#${n.id}">${tileHtml(n.tile, n.glyph)}<div class="row-main"><div class="row-title">${n.label}</div></div>${icon('chevron', 'chev')}</a>`).join('').replace(/^<\/div>/, '') + '</div>';
-  $('#tabs').innerHTML = TABS.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
+    : `<a class="row more-row" href="#${n.id}">${navTile(n)}<div class="row-main"><div class="row-title">${n.label}</div></div>${icon('chevron', 'chev')}</a>`).join('').replace(/^<\/div>/, '') + '</div>';
+  $('#tabs').innerHTML = TABS.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${navTile(n)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
 }
 function route() {
   const id = location.hash.slice(1);
@@ -349,7 +351,8 @@ function enterView(id, force = false) {
   if (id === 'wifi') loadWifi();
   if (id === 'bluetooth') loadBluetooth();
   if (id === 'radio') loadRadio();
-  if (id === 'server') { loadServer(); loadYtAccount(); loadDownloads(); if (!S.settings) loadSettings(); }
+  if (id === 'server') loadServer();
+  if (id === 'youtube') { loadServer(); loadYtAccount(); loadDownloads(); if (!S.settings) loadSettings(); }
 }
 
 // ---------- status polling ----------
@@ -589,7 +592,7 @@ function renderDevice() {
       ${w ? `<span class="row-value" aria-label="Signal ${w.signal} of 4">${sigSvg(w.signal ?? 0)}</span>` : ''}
     </div>
     <div class="row">
-      <span class="tile t-server">${icon('cloud')}</span>
+      ${brandTile('video')}
       <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${esc(ab.connectTo || '')}${ab.timeZone ? ` · Time zone ${esc(ab.timeZone)}` : ''}</div></div>
     </div>
     <div class="row">
@@ -661,7 +664,7 @@ function sendUpdate(blob, btn) {
   });
 }
 // ---------- a newer Rondo ----------
-// Asked by this browser, not by the Rondo (which talks only to its music server), of the update
+// Asked by this browser, not by the Rondo (which talks only to its Rondo server, or to YouTube directly), of the update
 // page's site: latest.json names the newest release and the firmware it needs, once its rom.zip is
 // out (.github/workflows/release.yml), the same answer the Rondo and the update page get. Nothing
 // shows when the site can't be reached from here.
@@ -1613,8 +1616,9 @@ window.addEventListener('drop', (e) => {
 // ---------- theme ----------
 const MENU = {
   // t: the preview's dark backdrop behind the red logos (Tiles in Widgets.kt)
-  music: { tile: 'music', glyph: 'note', brand: 'music', t: ['#3a3a3a', '#141414'], title: 'YouTube Music', logo: MUSIC_LOGO },
-  videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#3a3a3a', '#141414'], title: 'YouTube', logo: VIDEO_LOGO },
+  music: { tile: 'music', glyph: 'note', brand: 'music', t: ['#ff5a72', '#c8102e'], title: 'YouTube Music', logo: MARK.music('pv-glyph') },
+  videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#ff6a5c', '#d7001a'], title: 'YouTube', logo: MARK.video('pv-glyph wide') },
+  whatsapp: { tile: 'whatsapp', glyph: 'chat', brand: 'whatsapp', t: ['#63f08e', '#17a74c'], title: 'WhatsApp', logo: MARK.whatsapp('pv-glyph') },
   device: { tile: 'device', glyph: 'folder', t: ['#5fb7ff', '#1f73e0'], title: 'Library' },
   nowPlaying: { tile: 'now', glyph: 'bars', t: ['#7be07b', '#26a83b'], title: 'Nothing playing' },
   radio: { tile: 'radio', glyph: 'radio', t: ['#ffb04d', '#f07a12'], title: 'FM Radio' },
@@ -1655,7 +1659,7 @@ function renderPreview() {
   const level = st.battery?.level ?? 80;
   const rows = items.map((m) => {
     const d = MENU[m.id] || MENU.settings;
-    return `<div class="pv-row${m.id === S.pvSel ? ' sel' : ''}" data-id="${m.id}">${d.brand ? brandTile(d.brand, 'pv-tile brand') : `<span class="pv-tile" style="--t1:${d.t[0]};--t2:${d.t[1]}"><svg aria-hidden="true"><use href="#i-${d.glyph}"/></svg></span>`}<span class="pv-label">${esc(m.label)}</span><svg class="pv-chev" aria-hidden="true"><use href="#i-chevron"/></svg></div>`;
+    return `<div class="pv-row${m.id === S.pvSel ? ' sel' : ''}" data-id="${m.id}">${d.brand ? brandTile(d.brand, 'pv-tile') : `<span class="pv-tile" style="--t1:${d.t[0]};--t2:${d.t[1]}"><svg aria-hidden="true"><use href="#i-${d.glyph}"/></svg></span>`}<span class="pv-label">${esc(m.label)}</span><svg class="pv-chev" aria-hidden="true"><use href="#i-chevron"/></svg></div>`;
   }).join('');
   el.setAttribute('aria-label', `Preview of your Rondo’s main menu: ${items.map((m) => m.label).join(', ')}. ${t.appearance === 'dark' ? 'Dark' : 'Light'}, ${textScaleName(t.textScale)} text.`);
   el.innerHTML = `<div class="pv${t.appearance === 'dark' ? ' dark' : ''}" style="--s:${t.textScale}">
@@ -1686,7 +1690,7 @@ function paneHtml(id) {
       <div class="pv-pt">${esc(p.title)}</div>${sub ? `<div class="pv-pd">${esc(sub)}</div>` : ''}<div class="pv-prog"><span></span></div></div>`;
   }
   const visual = d.logo
-    ? `<div class="pv-visual">${d.logo}</div>`
+    ? `<div class="pv-visual boxed">${d.logo}</div>`
     : `<div class="pv-visual boxed"><svg class="pv-glyph" aria-hidden="true"><use href="#i-${d.glyph}"/></svg></div>`;
   // like the device: the title only, no hint line under it
   return `<div class="pv-pane" style="--p1:${d.t[0]};--p2:${d.t[1]};--p3:${darker(d.t[1], 0.7)}">${visual}<div class="pv-pt">${esc(d.title)}</div></div>`;
@@ -2372,7 +2376,7 @@ async function loadDownloads() {
   } catch (e) {
     if (e.status !== 401 && !S.downloads) $('#dlBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the downloads. ${esc(reason(e))}</div></div>`;
   }
-  if (S.route === 'server' && S.downloads?.jobs.some((j) => j.state === 'waiting' || j.state === 'running')) dlTimer = setTimeout(loadDownloads, 2000);
+  if (S.route === 'youtube' && S.downloads?.jobs.some((j) => j.state === 'waiting' || j.state === 'running')) dlTimer = setTimeout(loadDownloads, 2000);
 }
 function renderDownloads() {
   const d = S.downloads, el = $('#dlBody');
@@ -2456,14 +2460,17 @@ $('#dlBody').addEventListener('submit', async (e) => {
   } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
 });
 
-// ---------- music server ----------
+// ---------- the Rondo server, and where YouTube comes from ----------
 async function loadServer() {
-  if (!S.server) $('#serverBody').innerHTML = '<div class="group"><div class="lib-skel"></div><div class="lib-skel"></div></div>';
+  const skel = '<div class="group"><div class="lib-skel"></div><div class="lib-skel"></div></div>';
+  if (!S.server) $('#serverBody').innerHTML = skel, $('#ytBody').innerHTML = skel;
   try {
     S.server = await api('GET', '/api/server');
     renderServer();
+    renderYouTube();
   } catch (e) {
-    if (e.status !== 401 && !S.server) $('#serverBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the server settings. ${esc(reason(e))}</div></div>`;
+    const msg = `<div class="group"><div class="row-empty">Couldn’t load the settings. ${esc(reason(e))}</div></div>`;
+    if (e.status !== 401 && !S.server) $('#serverBody').innerHTML = msg, $('#ytBody').innerHTML = msg;
   }
 }
 // a plain-http address (a server at home reached by IP) is fine on your own Wi-Fi only
@@ -2494,7 +2501,7 @@ function watchTv() {
     cd.textContent = left ? `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'This code expired. Get a new one.';
   }, 1000);
   tvTimer = setTimeout(async () => {
-    if (S.route !== 'server') return;
+    if (S.route !== 'youtube') return;
     try {
       const was = S.ytTv;
       S.ytTv = await api('GET', '/api/youtube/tv', undefined, { timeout: 30000 });
@@ -2599,21 +2606,30 @@ function renderQuality() {
       <div class="row-main"><div class="row-title">Video quality</div><div class="row-sub">Auto picks up to 360p, which plays smoothest. A video without the one picked plays the next one down.</div></div>
       <div class="row-control">${segHtml('videoQuality', QUALITY, S.settings.videoQuality ?? null, 'Video quality')}</div></div></div>`;
 }
+// YouTube's page: where it comes from (directly, or through the server when one is connected), the
+// account, playback
+function renderYouTube() {
+  const s = S.server, el = $('#ytBody');
+  if (!el || !s) return;
+  el.innerHTML = `
+    <div class="group">
+      <div class="row row-wide set-row">${brandTile('video')}
+        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? `Rondo talks to YouTube itself: nothing to set up. Sign in below for Library, Subscriptions and History.${s.url ? '' : ' To go through your own server, connect one on the <a class="link" href="#server">Server</a> page.'}` : 'YouTube Music and YouTube come through your server.'}</div></div>
+        <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="Connect to" id="srvMode">
+          <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">Directly to YouTube</button>
+          ${s.url ? `<button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0">My server</button>` : ''}</div></div></div>
+    </div>
+    <div id="ytAccount"></div>
+    <h2 class="gh">Playback</h2>
+    <div id="ytQuality"></div>`;
+  renderAccount();
+  renderQuality();
+}
+// the Server page: the server, connecting to one, the test, and what uses it
 function renderServer() {
   const s = S.server;
   const admin = s.url ? `${s.url.replace(/\/+$/, '')}/admin` : '';
   $('#serverBody').innerHTML = `
-    <div class="group">
-      <div class="row row-wide set-row"><span class="tile t-server">${icon('cloud')}</span>
-        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? 'Rondo talks to YouTube itself: nothing to set up. Sign in below for Library, Subscriptions and History.' : 'Everything goes through your server.'}</div></div>
-        <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="Connect to" id="srvMode">
-          <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">Directly to YouTube</button>
-          <button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0"${s.url ? '' : ' disabled title="Connect to a server below first"'}>My server</button></div></div></div>
-    </div>
-    <div id="ytAccount"></div>
-    <h2 class="gh">Playback</h2>
-    <div id="ytQuality"></div>
-    <h2 class="gh">Your server</h2>
     <div class="group">
       <div class="srv-field">
         <div class="row-title">Your server</div>
@@ -2656,13 +2672,18 @@ function renderServer() {
       <div class="test-head"><div class="row-main"><div class="row-title">Connection test</div><div class="row-sub">Your Rondo calls the server and reports back.</div></div>
         <button class="btn btn-primary" type="button" id="srvTest">${icon('refresh')}<span>Test</span></button></div>
       <div class="test-res" id="testRes" hidden></div>
+    </div>
+    <h2 class="gh">Used for</h2>
+    <div class="group">
+      <a class="row more-row" href="#youtube">${brandTile('video')}
+        <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${!s.url ? 'Comes directly from YouTube.' : s.direct ? 'Comes directly from YouTube: you can switch it on the YouTube page.' : 'Comes through this server.'}</div></div>${icon('chevron', 'chev')}</a>
+      <div class="row set-row">${brandTile('whatsapp')}
+        <div class="row-main"><div class="row-title">WhatsApp</div><div class="row-sub">${s.url ? `Works only through the server. Link it on the server’s admin page${admin ? ` (<a class="link" href="${esc(admin)}#whatsapp" target="_blank" rel="noopener">open it</a>)` : ''}.` : 'Works only through a server: connect one above.'}</div></div></div>
     </div>`;
-  renderAccount();
-  renderQuality();
 }
-const serverBody = $('#serverBody');
-serverBody.addEventListener('change', (e) => { if (e.target.id === 'cookiesFile' && e.target.files[0]) sendCookies(e.target.files[0]); });
-serverBody.addEventListener('click', async (e) => {
+const serverBody = $('#serverBody'), ytBody = $('#ytBody');
+ytBody.addEventListener('change', (e) => { if (e.target.id === 'cookiesFile' && e.target.files[0]) sendCookies(e.target.files[0]); });
+ytBody.addEventListener('click', async (e) => {
   const seg = e.target.closest('#ytQuality .seg[data-key]'), v = e.target.closest('#ytQuality [data-v]');
   if (seg && v) {
     $$('button', seg).forEach((x) => x.setAttribute('aria-checked', String(x === v)));
@@ -2689,6 +2710,7 @@ serverBody.addEventListener('click', async (e) => {
   try {
     S.server = await api('PUT', '/api/server', { direct: b.dataset.direct === '1' });
     renderServer();
+    renderYouTube();
     loadYtAccount();
     toast('Saved on your Rondo');
   } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
@@ -2810,6 +2832,7 @@ async function testServer() {
       unreachable: ['Can’t reach the server', 'Check the address, and that the server is running.'],
       unauthorized: ['The server refused the token', 'Replace the token with the one your server expects.'],
       rondo: ['Your Rondo didn’t answer', 'Keep Settings › Dashboard open on the Rondo and try again.'],
+      none: ['No server yet', 'Connect to one above.'],
     }[r.error] || ['The test failed', r.error || 'No details.'];
     res.innerHTML = `<div class="row"><svg class="i err-ico" aria-hidden="true"><use href="#i-alert"/></svg><div class="row-main"><div class="row-title">${esc(msg[0])}</div><div class="row-sub">${esc(msg[1])}</div></div></div>`;
   }
@@ -3029,7 +3052,7 @@ soundBody.addEventListener('input', (e) => {
 // Headphone match: a model looked up on the server's AutoEq index, its correction kept with the output
 function findMatch() {
   const o = soundOutput();
-  openSheet(`<h2>Headphone match</h2><p>For ${esc(o.label)}. Through your music server.</p>
+  openSheet(`<h2>Headphone match</h2><p>For ${esc(o.label)}. Through your Rondo server.</p>
     <form class="sheet-form" id="matchForm"><label class="search pick-search">${icon('search')}<input type="search" placeholder="Like Sennheiser HD 650 or AirPods Pro" value="${esc(o.key.startsWith('bt:') ? o.label : '')}" autocomplete="off" aria-label="Headphone model"></label></form>
     <div class="match-list" id="matchList"></div><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
   const input = $('input', sheet), list = $('#matchList', sheet);

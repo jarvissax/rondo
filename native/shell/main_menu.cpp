@@ -2,6 +2,7 @@
 // the right.
 #include "app.h"
 #include "screens.h"
+#include "whatsapp.h"
 
 namespace rondo::shell {
 
@@ -60,6 +61,7 @@ class MainMenuScreen : public Screen {
       const Tile* tile;
     };
     static const E kEntries[] = {{"music", "YouTube Music", &tiles::music}, {"videos", "YouTube", &tiles::video},
+                                 {"whatsapp", "WhatsApp", &tiles::whatsapp},
                                  {"device", "Library", &tiles::device},     {"nowPlaying", "Now Playing", &tiles::nowPlaying},
                                  {"radio", "FM Radio", &tiles::radio},      {"settings", "Settings", &tiles::settings}};
     std::vector<Row> rows;
@@ -77,6 +79,7 @@ class MainMenuScreen : public Screen {
         if (m.id == "music") r.onSelect = [] { g_app->push(makeMusic()); };
         if (m.id == "videos") r.onSelect = [] { g_app->push(makeVideo()); };
         if (m.id == "radio") r.onSelect = [] { g_app->push(makeFm()); };
+        if (m.id == "whatsapp") r.onSelect = [] { g_app->push(makeWhatsApp()); };
         rows.push_back(std::move(r));
       }
     }
@@ -205,6 +208,7 @@ class MainMenuScreen : public Screen {
     std::string radioName = fm.fmOn ? "FM " + fmName(fm.fmFrequency) : "";
     std::string name = tile == &tiles::music       ? "YouTube Music"
                        : tile == &tiles::video      ? "YouTube"
+                       : tile == &tiles::whatsapp   ? "WhatsApp"
                        : tile == &tiles::device     ? "Library"
                        : tile == &tiles::nowPlaying ? (fm.fmOn ? radioName : "Nothing playing")
                        : tile == &tiles::radio      ? (fm.fmOn ? radioName : "FM Radio")
@@ -215,17 +219,13 @@ class MainMenuScreen : public Screen {
     float bx = ix + float((int(iw) - box) / 2);
     Rect vis{bx, top, float(box), float(box)};
     e.c.layer(2);
+    e.c.shape(vis, e.dpf(22), 0x2dffffff);
+    e.c.layer(4);
     if (!tile->brand) {
-      e.c.shape(vis, e.dpf(22), 0x2dffffff);
       int g = e.dp(70);
-      e.c.layer(4);
       e.icons.draw(e.c, tile->kind, {bx + float((box - g) / 2), top + float((box - g) / 2), float(g), float(g)}, rgb(0xffffff));
     } else {
-      e.c.layer(4);
-      int gw = tile->brand == 1 ? e.dp(80) : e.dp(70), gh = tile->brand == 1 ? e.dp(56) : e.dp(70);
-      Rect lr{bx + float((box - gw) / 2), top + float((box - gh) / 2), float(gw), float(gh)};
-      if (tile->brand == 1) e.icons.videoLogo(e.c, lr);
-      else e.icons.musicLogo(e.c, lr);
+      brandMark(e, *tile, vis, float(tile->brand == 1 ? e.dp(76) : e.dp(70)));
     }
     e.c.layer(4);
     drawLabel(e, title, centerText(ix, iw, title.w), top + box + e.dp(9), rgb(0xffffff));
