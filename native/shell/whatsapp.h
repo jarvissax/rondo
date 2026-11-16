@@ -1,6 +1,6 @@
 // WhatsApp on the Y1, through the Rondo server (server/src/whatsapp.ts, the /wa/ routes): the server is
 // one of the owner's WhatsApp linked devices; the Y1 reads and sends through it. No notifications:
-// what came is seen when WhatsApp is opened (Emin's decisions, Nov 15).
+// what came is seen when WhatsApp is opened (decided Nov 15).
 //
 // WaClient keeps what the screens show: the chats, each opened chat's messages, the contacts. While a
 // WhatsApp screen is open it follows the server's changes (a long poll of /wa/updates). A copy is kept

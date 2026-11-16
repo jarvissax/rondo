@@ -154,7 +154,7 @@ export function registerWhatsAppRoutes(app: FastifyInstance, wa: WhatsApp): void
       .contacts()
       .filter((c) => c.jid.endsWith("@s.whatsapp.net") && (c.name || c.notify))
       .map((c) => wa.contactJson(c.jid) as { name: string; saved: boolean });
-    // as the phone lists them: names that start with a letter first, then the rest ("+994…", "@name"), A to Z
+    // as the phone lists them: names that start with a letter first, then the rest ("+1 555…", "@name"), A to Z
     const letter = (s: string) => Number(/^\p{L}/u.test(s.replace(/^~/, "")));
     all.sort((a, b) => Number(b.saved) - Number(a.saved) || letter(b.name) - letter(a.name) || a.name.localeCompare(b.name));
     return { contacts: all };
