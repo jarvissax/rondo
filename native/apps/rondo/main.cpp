@@ -464,6 +464,7 @@ int main(int argc, char** argv) {
     if (downloadsTick()) changed = true;  // YouTube › Download's queue
     if (g_core.expire()) changed = true;  // requests given up on (no network, or no answer in 30 s)
     streamsNetwork(status.online);  // read with the status, every 500 ms
+    aheadTick(now_ns());            // the next song's and the resting row's streams, found meanwhile
     soundTick();
     playStatsTick();
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
@@ -571,6 +572,7 @@ int main(int argc, char** argv) {
       if (int64_t wake = powerWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = mainQueueWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = g_core.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
+      if (int64_t wake = aheadWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       int r = poll(p, 6, timeout);
       if (runMainQueue()) moving = true;  // the dashboard's requests, on this thread
       if (r > 0 && (p[4].revents & POLLIN)) {  // drawing may start again after a suspend

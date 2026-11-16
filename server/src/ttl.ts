@@ -2,7 +2,7 @@
 // the same screen share one youtubei.js request; a rejected load is dropped instead of cached.
 
 export class TtlCache<V> {
-  private readonly entries = new Map<string, { expires: number; value: Promise<V> }>();
+  private readonly entries = new Map<string, { expires: number; value: Promise<V>; loaded?: boolean; renewing?: boolean }>();
 
   // `ttl` is fixed (ms from the load starting) or chosen per value once the load resolves, so lyrics
   // keep hits longer than misses. A per-value entry does not expire while its load is pending, so
@@ -37,6 +37,36 @@ export class TtlCache<V> {
       if (oldest === undefined) break;
       this.entries.delete(oldest);
     }
+    return value;
+  }
+
+  // As get(), and once the value has expired, it is still served for up to `staleMs` more while a
+  // fresh one loads in the background (it takes the entry's place when it arrives; a failed load
+  // leaves the old value). For screens that should open at once: a home page a few minutes old.
+  getStale(key: string, load: () => Promise<V>, staleMs: number): Promise<V> {
+    const hit = this.entries.get(key);
+    const now = this.now();
+    if (hit && hit.loaded && hit.expires <= now && hit.expires + staleMs > now) {
+      if (!hit.renewing) {
+        hit.renewing = true;
+        const value = load();
+        value.then(
+          () => {
+            const ttl = this.ttl;
+            const entry = { expires: typeof ttl === "number" ? this.now() + ttl : Infinity, value, loaded: true };
+            this.entries.delete(key);
+            this.entries.set(key, entry);
+          },
+          () => {
+            hit.renewing = false;
+          },
+        );
+      }
+      return hit.value;
+    }
+    const value = this.get(key, load);
+    const entry = this.entries.get(key);
+    if (entry && entry.value === value && !entry.loaded) value.then(() => (entry.loaded = true), () => {});
     return value;
   }
 

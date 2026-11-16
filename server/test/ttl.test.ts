@@ -59,3 +59,33 @@ describe("TtlCache", () => {
     expect([await first, await second]).toEqual(["v", "v"]);
   });
 });
+
+describe("TtlCache.getStale", () => {
+  it("serves an expired value while a fresh one loads, then the fresh one", async () => {
+    let now = 0;
+    const cache = new TtlCache<string>(100, 10, () => now);
+    expect(await cache.getStale("home", async () => "v1", 1000)).toBe("v1");
+    now = 150; // expired, within the stale window
+    let release: (v: string) => void = () => {};
+    let loads = 0;
+    const slow = () => (loads++, new Promise<string>((ok) => (release = ok)));
+    expect(await cache.getStale("home", slow, 1000)).toBe("v1");
+    expect(await cache.getStale("home", slow, 1000)).toBe("v1"); // one reload at a time
+    expect(loads).toBe(1);
+    release("v2");
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(await cache.getStale("home", async () => "v3", 1000)).toBe("v2");
+  });
+
+  it("keeps the old value when the reload fails, and waits for a load past the stale window", async () => {
+    let now = 0;
+    const cache = new TtlCache<string>(100, 10, () => now);
+    await cache.getStale("home", async () => "v1", 1000);
+    now = 150;
+    expect(await cache.getStale("home", async () => Promise.reject(new Error("offline")), 1000)).toBe("v1");
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(await cache.getStale("home", async () => "v2", 1000)).toBe("v1"); // tried again in the background
+    now = 5000; // long past: the screen waits for a fresh page
+    expect(await cache.getStale("home", async () => "v9", 1000)).toBe("v9");
+  });
+});

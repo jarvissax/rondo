@@ -19,6 +19,7 @@ struct Card {
   std::string title, subtitle, thumb;
   const Tile* tile = nullptr;  // a banner's, instead of a picture
   std::function<void()> onSelect, onLongSelect;
+  std::string ahead;  // a song's or a video's id: resolved in the background once the wheel rests here
 };
 
 struct Shelf {

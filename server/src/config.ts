@@ -25,6 +25,10 @@ export interface Config {
   logLevel: string;
   healthVideo: string;
   ytdlpUseCookies: boolean;
+  // the YouTube client yt-dlp asks first ("" = yt-dlp's own choice): visionos gives plain links, so
+  // yt-dlp skips YouTube's player script and its challenges (about 2.5 s a video instead of 5); a
+  // video it doesn't fully cover is asked again with yt-dlp's own choice
+  ytdlpPlayerClient: string;
   debugTtlS?: number;
 }
 
@@ -52,6 +56,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // yt-dlp resolves anonymously (verified working); account cookies switch it to clients that
     // may need PO tokens. Turn on only if YouTube starts challenging the VPS (plan, risk 2).
     ytdlpUseCookies: env.YTDLP_USE_COOKIES === "1",
+    ytdlpPlayerClient: env.YTDLP_PLAYER_CLIENT ?? "visionos",
     debugTtlS: env.DEBUG_TTL_S ? Number(env.DEBUG_TTL_S) : undefined,
   };
 }

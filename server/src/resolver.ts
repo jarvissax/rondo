@@ -158,6 +158,11 @@ export function parseYtdlp(
 
 export type YtdlpRunner = (args: string[]) => Promise<string>;
 
+// the sound (Opus or AAC) and at least one picture: what the Y1 plays and downloads
+function complete(v: ResolvedVideo): boolean {
+  return (v.formats.has(OPUS_ITAG) || v.formats.has(AUDIO_ITAG)) && DASH_VIDEO_ITAGS.some((i) => v.formats.has(i));
+}
+
 export function execRunner(config: Config): YtdlpRunner {
   return async (args) => {
     const { stdout } = await run(config.ytdlpBin, args, { timeout: 20_000, maxBuffer: 32 * 1024 * 1024 });
@@ -174,7 +179,27 @@ export class Resolver {
     private readonly runYtdlp: YtdlpRunner = execRunner(config),
     // DEBUG_TTL_S shortens cache validity to exercise mid-playback re-resolves
     private readonly debugTtlMs: number | undefined = config.debugTtlS ? config.debugTtlS * 1000 : undefined,
+    private readonly log?: { info: (o: object, msg: string) => void },
   ) {}
+
+  // resolves in the background, at most one at a time (the next song while this one plays); a video
+  // already cached or on its way is left alone
+  ahead(id: string): void {
+    if (!isVideoId(id) || this.inflight.has(id) || this.queued.includes(id)) return;
+    const hit = this.cache.get(id);
+    if (hit && this.fresh(hit)) return;
+    this.queued.push(id);
+    if (this.queued.length > 4) this.queued.shift();
+    if (!this.aheadBusy) void this.drainAhead();
+  }
+
+  private readonly queued: string[] = [];
+  private aheadBusy = false;
+  private async drainAhead(): Promise<void> {
+    this.aheadBusy = true;
+    for (let id = this.queued.shift(); id; id = this.queued.shift()) await this.resolve(id).catch(() => undefined);
+    this.aheadBusy = false;
+  }
 
   private fresh(v: ResolvedVideo): boolean {
     const now = Date.now();
@@ -198,13 +223,29 @@ export class Resolver {
   }
 
   private async runAndStore(id: string): Promise<ResolvedVideo> {
-    // HLS and DASH manifests are never used (plain https formats only): skipping them saves ~1.5 s
-    const args = ["-J", "--no-playlist", "--no-warnings", "--extractor-args", "youtube:skip=hls,dash,translated_subs"];
-    if (this.config.ytdlpUseCookies && (await access(this.config.cookiesFile).then(() => true, () => false))) {
-      args.push("--cookies", this.config.cookiesFile);
+    const cookies = this.config.ytdlpUseCookies && (await access(this.config.cookiesFile).then(() => true, () => false));
+    const once = async (client: string): Promise<ResolvedVideo> => {
+      // HLS and DASH manifests are never used (plain https formats only): skipping them saves ~1.5 s
+      const args = ["-J", "--no-playlist", "--no-warnings", "--extractor-args", "youtube:skip=hls,dash,translated_subs" + (client ? `;player_client=${client}` : "")];
+      if (cookies) args.push("--cookies", this.config.cookiesFile);
+      args.push("--", `https://www.youtube.com/watch?v=${id}`);
+      const t = Date.now();
+      const v = parseYtdlp(id, JSON.parse(await this.runYtdlp(args)));
+      this.log?.info({ id, client: client || "default", ms: Date.now() - t }, "resolved");
+      return v;
+    };
+    // the quick client first; yt-dlp's own choice when it fails or misses the sound or every picture
+    let video: ResolvedVideo | undefined;
+    const first = this.config.ytdlpPlayerClient;
+    if (first) {
+      try {
+        video = await once(first);
+        if (!complete(video)) video = undefined;
+      } catch (err) {
+        this.log?.info({ id, client: first, err: (err as Error).message.split("\n")[0] }, "resolve: trying yt-dlp's own clients");
+      }
     }
-    args.push("--", `https://www.youtube.com/watch?v=${id}`);
-    const video = parseYtdlp(id, JSON.parse(await this.runYtdlp(args)));
+    video ??= await once("");
     this.cache.set(id, video);
     if (this.cache.size > 500) {
       const oldest = this.cache.keys().next().value as string;

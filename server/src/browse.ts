@@ -47,6 +47,7 @@ const PAGE_ITEMS = 10;
 // lists that are not paged (album, up next)
 const LIST_ITEMS = 100;
 const CACHE_TTL_MS = 120_000;
+const STALE_MS = 15 * 60_000;
 // /thumb asks Google for twice the output size and downscales it (lanczos3): sharper than Google's
 // own resize, and full-resolution color for the 4:4:4 JPEG
 const THUMB_OVERSAMPLE = 2;
@@ -678,6 +679,13 @@ export class Browse {
     return (await this.cache.get(key, load)) as T;
   }
 
+  // As cached(), but a page past its 2 minutes is still served (for up to 15 more) while a fresh one
+  // loads in the background, so a home screen opens at once. Its `next` token still has 13 min left.
+  async cachedStale<T>(key: string, load: () => Promise<T>): Promise<T> {
+    await this.yt();
+    return (await this.cache.getStale(key, load, STALE_MS)) as T;
+  }
+
   // the loader of a later page; undefined when the token is unknown, expired or from another list
   async more(scope: string, token: string): Promise<(() => Promise<Page<unknown>>) | undefined> {
     await this.session(); // replaced cookies drop the old session's tokens
@@ -922,7 +930,10 @@ export class Browse {
 }
 
 // returns the Browse instance so /lyrics can share its Innertube session
-export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Config; tv?: TvAccount; prepare?: (ids: string[]) => void }): Browse {
+export function registerBrowseRoutes(
+  app: FastifyInstance,
+  deps: { config: Config; tv?: TvAccount; prepare?: (ids: string[]) => void; ahead?: (id: string) => void },
+): Browse {
   const browse = new Browse(deps.config, app.log, deps.tv);
   if (deps.prepare) browse.prepare = deps.prepare;
 
@@ -960,13 +971,13 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
     path: string,
     scope: string,
     first: () => Promise<unknown>,
-    opts: { cache?: boolean; account?: boolean; shape?: (p: Page<unknown>) => unknown } = {},
+    opts: { cache?: boolean; stale?: boolean; account?: boolean; shape?: (p: Page<unknown>) => unknown } = {},
   ) =>
     app.get<{ Querystring: { next?: string } }>(path, async (req, reply) => {
       if (opts.account && !(await browse.hasAccount())) return reply.code(503).send({ error: "no_cookies" });
       const next = nextOf(req.query);
       if (next) return later(reply, scope, next, opts.shape);
-      return run(reply, () => (opts.cache ? browse.cached(scope, first) : first()));
+      return run(reply, () => (opts.stale ? browse.cachedStale(scope, first) : opts.cache ? browse.cached(scope, first) : first()));
     });
 
   app.get<{ Querystring: { q?: string; type?: string; next?: string } }>("/music/search", async (req, reply) => {
@@ -975,7 +986,7 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
     const q = (req.query.q ?? "").trim();
     const type = req.query.type ?? "song";
     if (!q || !MUSIC_TYPES.has(type)) return reply.code(400).send({ error: "query" });
-    return run(reply, () => browse.musicSearch(q, type));
+    return run(reply, () => browse.cached(`music/search/${type}/${q.toLowerCase()}`, () => browse.musicSearch(q, type)));
   });
 
   app.get<{ Querystring: { q?: string; next?: string } }>("/video/search", async (req, reply) => {
@@ -983,10 +994,10 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
     if (next) return later(reply, "video/search", next);
     const q = (req.query.q ?? "").trim();
     if (!q) return reply.code(400).send({ error: "query" });
-    return run(reply, () => browse.videoSearch(q));
+    return run(reply, () => browse.cached(`video/search/${q.toLowerCase()}`, () => browse.videoSearch(q)));
   });
 
-  list("/music/home", "music/home", () => browse.musicHome(), { cache: true, shape: homePage });
+  list("/music/home", "music/home", () => browse.musicHome(), { stale: true, shape: homePage });
 
   app.get("/music/library", async (_req, reply) => account(reply, "music/library", () => browse.musicLibrary()));
 
@@ -1019,10 +1030,16 @@ export function registerBrowseRoutes(app: FastifyInstance, deps: { config: Confi
   app.get<{ Params: { id: string } }>("/music/next/:id", async (req, reply) => {
     const id = req.params.id;
     if (!isVideoId(id)) return reply.code(400).send({ error: "id" });
-    return run(reply, () => browse.cached(`music/next/${id}`, () => browse.musicNext(id)));
+    return run(reply, async () => {
+      const page = await browse.cached(`music/next/${id}`, () => browse.musicNext(id));
+      // the song after this one: its streams ready by the time it plays (yt-dlp takes seconds)
+      const next = (page as { items?: { id?: string }[] }).items?.find((i) => i.id && i.id !== id)?.id;
+      if (next) deps.ahead?.(next);
+      return page;
+    });
   });
 
-  list("/video/home", "video/home", () => browse.videoHome(), { cache: true });
+  list("/video/home", "video/home", () => browse.videoHome(), { stale: true });
   list("/video/subscriptions", "video/subscriptions", () => browse.videoSubscriptions(), { cache: true, account: true });
   list("/video/history", "video/history", () => browse.videoHistory(), { cache: true, account: true });
   list("/video/shorts", "video/shorts", () => browse.videoShorts(), { cache: true });

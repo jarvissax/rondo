@@ -67,7 +67,7 @@ export async function buildApp(
   });
 
   const health = new Health(config, app.log);
-  const resolver = new Resolver(config, opts.ytdlpRunner ?? execRunner(config));
+  const resolver = new Resolver(config, opts.ytdlpRunner ?? execRunner(config), undefined, app.log);
   health.setResolveProbe(async () => (await resolver.resolve(config.healthVideo, { force: true })).formats.size > 0);
 
   // the browse routes come after the auth hook (below); the admin page asks them about the account
@@ -99,7 +99,12 @@ export async function buildApp(
   registerTimezoneRoutes(app, { timezone: opts.timezone ?? new TimezoneService({ log: app.log }) }); // Rondo 2.0's time zone
   registerUpdateRoutes(app, opts.updates); // Settings › Software update
   // the first shorts of a Shorts list start resolving at once (their streams are asked for next)
-  const routes = registerBrowseRoutes(app, { config, tv, prepare: (ids) => ids.forEach((id) => void resolver.resolve(id).catch(() => undefined)) });
+  const routes = registerBrowseRoutes(app, {
+    config,
+    tv,
+    prepare: (ids) => ids.forEach((id) => void resolver.resolve(id).catch(() => undefined)),
+    ahead: (id) => resolver.ahead(id),
+  });
   browse = routes;
   tv.onChange = () => routes.forget();
   const lyrics = new LyricsService({

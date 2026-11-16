@@ -4,8 +4,24 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## 3.4.1 (not released yet)
+## 3.5.0 (not released yet)
 
+- **Finding a video's streams takes half as long:** about 2 s instead of 4-5 s on a VPS, so a song
+  or video the Rondo hasn't played before starts and downloads that much sooner. yt-dlp asks YouTube's
+  visionos client first, which gives plain links (no player script to download and run), and asks
+  again with its own choice of clients when that fails or misses the sound or the picture
+  (`YTDLP_PLAYER_CLIENT=` in the server's environment leaves it to yt-dlp from the start). Each
+  lookup's time is in the log.
+- **yt-dlp's unpacked build:** it starts in about 0.65 s instead of 1.3 s (the one-file build unpacks
+  itself on every run). The container installs it on the data volume and updates it from yt-dlp's
+  nightly builds once a day, and the admin page's **Update yt-dlp** does the same
+  (`infra/ytdlp-install.sh`); a server moves to it on its next start.
+- **The next song is found ahead of time:** when the Rondo asks for a song's Up next, the server
+  finds the streams of the song after it in the background. `/resolve/<id>?ahead=1` does that for
+  any song or video and answers at once (Rondo 3.0.6 asks for the next song while one plays, and for
+  the one you rest on in a list).
+- **Home opens at once:** a home page older than 2 minutes is shown (for up to 15 more) while a fresh
+  one loads; the same search within 2 minutes comes from memory.
 - **The admin page's icons sit centered in their tiles** by how they look (as on the Rondo), and
   WhatsApp's logo is the size of the others.
 

@@ -6,7 +6,7 @@ import { VERSION } from "./version.js";
 import { execFile } from "node:child_process";
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -21,6 +21,8 @@ import type { ServerUpdate } from "./serverUpdate.js";
 import { isNewer, type Updates } from "./updates.js";
 
 const run = promisify(execFile);
+// the container's yt-dlp installer (infra/ytdlp-install.sh, copied into the image)
+const YTDLP_INSTALL = process.env.YTDLP_INSTALL ?? "/ytdlp-install.sh";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const CODE_MS = 10 * 60 * 1000;
 const ACCOUNT_CHECK_MS = 15 * 60 * 1000;
@@ -379,7 +381,11 @@ export class Admin {
   async updateYtdlp() {
     const before = await this.ytdlpVersion();
     try {
-      await run(this.deps.config.ytdlpBin, ["-U"], { timeout: 180_000 });
+      // the container's unpacked build updates through its install script (infra/ytdlp-install.sh);
+      // a yt-dlp installed some other way updates itself
+      const script = await access(YTDLP_INSTALL).then(() => true, () => false);
+      if (script) await run(YTDLP_INSTALL, ["update"], { timeout: 180_000, env: { ...process.env, YTDLP_BIN: this.deps.config.ytdlpBin } });
+      else await run(this.deps.config.ytdlpBin, ["-U"], { timeout: 180_000 });
     } catch (err) {
       return { ok: false, before, after: before, error: (err as Error).message.split("\n")[0] };
     }

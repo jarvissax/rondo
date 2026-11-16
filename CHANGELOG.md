@@ -9,6 +9,13 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
 ### Changed
 
+- **Songs and videos start sooner on YouTube and YouTube Music:** while a song plays, Rondo has the
+  next one's streams found, and so for the song or video you rest on in a list for half a second.
+  Play and Next then start without waiting for that: through a Rondo server about 1.2 s instead of
+  6-7 s for a song it hadn't found yet, and directly it saves YouTube's lookup too. Only where the
+  streams are is found ahead; nothing is downloaded. Rondo server 3.5.0 also finds a new song in
+  about 2 s instead of 5 (older servers work as before).
+
 - **Icons sit centered in their tiles**, on the Rondo and on its dashboard. Each is placed by how it
   looks, not just by its outline: Library no longer sits low, the gauge (Wheel acceleration) no longer
   sits high, WhatsApp's logo no longer leans left, play triangles sit a touch right, and an odd

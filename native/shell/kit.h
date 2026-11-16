@@ -109,7 +109,12 @@ struct Row {
   bool chevron = false, enabled = true;
   const Tile* tile = nullptr;
   std::function<void()> onSelect, onLongSelect;
+  std::string ahead;  // a song's or a video's id: resolved in the background once the wheel rests here
 };
+
+// the row or card selected now ("" none), from the lists on each move: its streams are resolved
+// once the wheel rests there (streams.cpp; screens.h has the rest)
+void restingOn(const std::string& id);
 
 // RowList's styles: SHELL (the iPod lists, 36 units), MUSIC (YouTube Music, 42 units, a white focus
 // card), VIDEO (YouTube, 66 units, comes with those screens).

@@ -119,6 +119,7 @@ void ShelfView::move(int by) {
   if (to == at_) return;
   at_ = to;
   place(false);
+  if (const Card* c = selected()) restingOn(c->ahead);
   if (onNearEnd && order_[size_t(at_)].first >= int(shelves_.size()) - 2) onNearEnd();
 }
 

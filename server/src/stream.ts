@@ -137,7 +137,14 @@ export function registerStreamRoutes(
     return reply.code(500).send({ error: "internal" });
   });
 
-  app.get<{ Params: { id: string } }>("/resolve/:id", async (req) => {
+  app.get<{ Params: { id: string }; Querystring: { ahead?: string } }>("/resolve/:id", async (req, reply) => {
+    // ?ahead=1 (server 3.5.0): resolve it in the background and answer at once; the Rondo asks for the
+    // next song while one plays, and for the row the wheel rests on (older servers resolve and answer)
+    if (req.query.ahead !== undefined) {
+      if (!isVideoId(req.params.id)) throw new HttpError(400, "bad_id");
+      resolver.ahead(req.params.id);
+      return reply.code(202).send({ ok: true });
+    }
     const video = await resolve(req.params.id);
     const formats: Record<string, unknown> = {};
     for (const [itag, f] of video.formats) {

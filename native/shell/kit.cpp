@@ -269,6 +269,7 @@ void RowList::setRows(std::vector<Row> rows, bool keepSelection) {
   top_.clear();
   placed_ = false;
   if (onSelectionChanged) onSelectionChanged();
+  if (selected_ >= 0) restingOn(rows_[size_t(selected_)].ahead);
 }
 
 void RowList::layout(Env& e, float w, float h) {
@@ -322,6 +323,7 @@ void RowList::selectIndex(int i) {
   selected_ = i;
   ensureVisible();
   if (old != i && onSelectionChanged) onSelectionChanged();
+  if (old != i) restingOn(rows_[size_t(i)].ahead);
   if (onNearEnd && selected_ >= int(rows_.size()) - 5) onNearEnd();
 }
 

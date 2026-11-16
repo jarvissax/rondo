@@ -16,15 +16,20 @@ case "$(uname -m)" in
     ;;
 esac
 
-# a missing binary, or one that can't run here (built for another machine), is downloaded again
-if [ ! -x "$BIN" ] || ! "$BIN" --version >/dev/null 2>&1; then
+# yt-dlp's unpacked build (ytdlp-install.sh): put in place when it's missing or still the one-file
+# build, and a newer nightly fetched once a day
+if [ -n "$(find "$BIN" -maxdepth 0 -mmin +1440 2>/dev/null)" ]; then
+  /ytdlp-install.sh update || echo "[entrypoint] yt-dlp: the update didn't work, keeping this one" >&2
+else
+  /ytdlp-install.sh || echo "[entrypoint] yt-dlp: the unpacked build couldn't be installed" >&2
+fi
+# still nothing that runs (no network to GitHub's zip, say): the one-file build, as before
+if ! "$BIN" --version >/dev/null 2>&1; then
   echo "[entrypoint] downloading yt-dlp ($ASSET)"
+  rm -f "$BIN"
   curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$ASSET" -o "$BIN"
   chmod a+rx "$BIN"
   "$BIN" --update-to nightly || true
-elif [ -n "$(find "$BIN" -mmin +1440 2>/dev/null)" ]; then
-  echo "[entrypoint] yt-dlp older than 24h, updating"
-  "$BIN" -U || true
 fi
 
 echo "[entrypoint] yt-dlp $("$BIN" --version), deno $(deno --version | head -1), ffmpeg $(ffmpeg -version | head -1 | cut -d' ' -f3)"

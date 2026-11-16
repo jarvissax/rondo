@@ -2,6 +2,7 @@
 // audioMediaItem: AAC from YouTube Music through the server's range proxy), with what the screens show
 // about each (title, subtitle, artwork), kept here since the library knows nothing of them.
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <map>
@@ -114,6 +115,61 @@ void streamsNetwork(bool online) {
   waiting = true, triedAt = now;
   fprintf(stderr, "rondo: the stream failed: again where it stopped (try %d)\n", tries);
   g_player.play();
+}
+
+// ---- resolving ahead (screens.h) ----
+namespace {
+constexpr int64_t kRest = 500 * 1000000LL;      // the wheel still for half a second: the row is wanted
+constexpr int64_t kAgain = 20 * 60 * kSec;       // a video asked for is not asked again for 20 minutes
+std::map<std::string, int64_t> g_asked;           // id -> when
+std::string g_resting;
+int64_t g_restSince = 0;
+int g_lastIndex = -2, g_lastNext = -2;
+size_t g_lastCount = 0;
+
+std::string idOfStream(const std::string& path) {  // "/s/<id>/140" -> id
+  size_t a = 3, b = path.find('/', a);
+  return isStream(path) && b != std::string::npos ? path.substr(a, b - a) : "";
+}
+
+const bool kLog = getenv("RONDO_AHEAD_LOG");
+
+void ask(const std::string& id, int64_t now) {
+  if (id.size() != 11) return;
+  auto it = g_asked.find(id);
+  if (kLog) fprintf(stderr, "ahead: %s%s\n", id.c_str(), it != g_asked.end() && now - it->second < kAgain ? " (asked already)" : "");
+  if (it != g_asked.end() && now - it->second < kAgain) return;
+  if (g_asked.size() > 300) g_asked.clear();
+  g_asked[id] = now;
+  // the answer doesn't matter: an older server resolves before it answers, a newer one at once
+  g_core.get("/resolve/" + Api::escape(id) + "?ahead=1", 0, [](int, const std::string&) {});
+}
+}  // namespace
+
+void restingOn(const std::string& id) {
+  int64_t now = now_ns();
+  // the row it leaves, if it rested there long enough and the main loop hadn't looked yet
+  if (!g_resting.empty() && g_resting != id && now - g_restSince >= kRest) ask(g_resting, now);
+  if (id == g_resting) return;
+  g_resting = id;
+  g_restSince = now;
+}
+
+int64_t aheadWakeAt() { return g_resting.empty() ? 0 : g_restSince + kRest; }
+
+void aheadTick(int64_t now) {
+  // the song after the one playing, once one starts (and when the queue or its order changes)
+  PlayerState s = g_player.state();
+  const std::vector<std::string>& queue = g_player.queue();
+  if (s.index != g_lastIndex || s.nextIndex != g_lastNext || queue.size() != g_lastCount) {
+    g_lastIndex = s.index, g_lastNext = s.nextIndex, g_lastCount = queue.size();
+    if (s.index >= 0 && s.nextIndex >= 0 && s.nextIndex < int(queue.size())) ask(idOfStream(queue[size_t(s.nextIndex)]), now);
+  }
+  // the row the wheel rests on
+  if (!g_resting.empty() && now - g_restSince >= kRest) {
+    ask(g_resting, now);
+    g_resting.clear();
+  }
 }
 
 }  // namespace rondo::shell

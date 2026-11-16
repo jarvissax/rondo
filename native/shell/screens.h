@@ -59,6 +59,11 @@ std::string streamPath(const Item& it);
 bool isStream(const std::string& path);
 const Item* streamItem(const std::string& path);
 void playStreams(const std::vector<Item>& items, int start);
+// Resolving ahead (the server's or direct mode's /resolve/<id>?ahead=1, which answers at once): the
+// song after the one playing, and the song or video the wheel rests on for half a second, so play or
+// Next starts without waiting for its streams to be found. Only the streams' addresses; no media.
+void aheadTick(int64_t now);            // main.cpp's periodic work
+int64_t aheadWakeAt();                  // when the row resting now has rested long enough (0: none)
 void playStreamsAppend(const Item& item, bool next);  // Play next / Add to queue
 void rememberStream(const std::string& path, const Item& item);  // a restored queue's streamed song
 // resume.cpp: the queue kept across a restart (saved from the loop, put back at startup)

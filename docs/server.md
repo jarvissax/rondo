@@ -202,8 +202,8 @@ session:
 
 ## Keeping it running
 
-- **yt-dlp updates itself** every day. When YouTube changes something and playback stops, press
-  **Update now** on the admin page's **Resolver** page.
+- **yt-dlp is kept up to date:** the server looks for a newer build every day. When YouTube changes
+  something and playback stops, press **Update now** on the admin page's **Resolver** page.
 - **Updating the server:** when a newer server is out, the admin page's Overview says so. Press
   **Update**: the server downloads the new version and restarts on it, in a minute or two. Your
   admin password, account and connected Y1 stay; sign in to the admin page again afterwards. This

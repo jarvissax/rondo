@@ -404,6 +404,12 @@ void mpdRoute(const Request& r, Response& out) {
 void resolveRoute(const Request& r, Response& out) {
   std::string id = r.path.substr(9);
   if (!isVideoId(id)) return out.error(400, "bad_id");
+  if (r.query.count("ahead")) {  // the next song, or the row the wheel rests on: resolved meanwhile
+    prepare(id);
+    out.status = 202;
+    out.body = "{\"ok\":true}";
+    return;
+  }
   auto res = resolve(id);
   if (!res) return out.error(502, "resolve");
   std::string s = "{\"duration\":" + std::to_string(res->details.seconds) + ",\"formats\":{";

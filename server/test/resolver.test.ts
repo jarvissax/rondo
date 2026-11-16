@@ -84,6 +84,55 @@ describe("Resolver", () => {
   });
 });
 
+describe("Resolver's clients", () => {
+  const fresh = (j: object) => JSON.stringify(j).replace(/expire=\d+/g, `expire=${Math.floor(Date.now() / 1000) + 3600}`);
+  const clientOf = (args: string[]) => /player_client=(\w+)/.exec(args.find((a) => a.startsWith("youtube:")) ?? "")?.[1] ?? "default";
+  const noSound = { ...fixture, formats: fixture.formats.filter((f: { format_id: string }) => !/^(140|251)/.test(f.format_id)) };
+
+  it("asks visionos first and keeps its answer when it has the sound and a picture", async () => {
+    const asked: string[] = [];
+    const r = new Resolver(config, async (args) => (asked.push(clientOf(args)), fresh(fixture)));
+    expect((await r.resolve("dQw4w9WgXcQ")).formats.has(251)).toBe(true);
+    expect(asked).toEqual(["visionos"]);
+  });
+
+  it("asks yt-dlp's own clients when visionos fails or misses the sound", async () => {
+    for (const first of [async () => Promise.reject(new Error("ERROR: no formats")), async () => fresh(noSound)]) {
+      const asked: string[] = [];
+      const r = new Resolver(config, async (args) => (asked.push(clientOf(args)), clientOf(args) === "visionos" ? first() : fresh(fixture)));
+      expect((await r.resolve("dQw4w9WgXcQ")).formats.has(140)).toBe(true);
+      expect(asked).toEqual(["visionos", "default"]);
+    }
+  });
+
+  it("leaves the choice to yt-dlp with YTDLP_PLAYER_CLIENT empty", async () => {
+    const asked: string[] = [];
+    const own = loadConfig({ API_TOKEN: "t".repeat(64), COOKIES_FILE: "/nonexistent", YTDLP_PLAYER_CLIENT: "" });
+    await new Resolver(own, async (args) => (asked.push(clientOf(args)), fresh(fixture))).resolve("dQw4w9WgXcQ");
+    expect(asked).toEqual(["default"]);
+  });
+
+  it("resolves ahead one video at a time, and not one it already has", async () => {
+    let running = 0, most = 0;
+    const done: string[] = [];
+    const r = new Resolver(config, async (args) => {
+      most = Math.max(most, ++running);
+      await new Promise((ok) => setTimeout(ok, 10));
+      running--;
+      done.push(args.at(-1)!.slice(-11));
+      return fresh(fixture);
+    });
+    await r.resolve("aaaaaaaaaaa");
+    r.ahead("aaaaaaaaaaa");
+    r.ahead("bbbbbbbbbbb");
+    r.ahead("ccccccccccc");
+    r.ahead("bbbbbbbbbbb");
+    await new Promise((ok) => setTimeout(ok, 80));
+    expect(done).toEqual(["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]);
+    expect(most).toBe(1);
+  });
+});
+
 describe("parseCaptions", () => {
   it("keeps the video's own tracks and the speech recognition's original, not its translations", () => {
     const vtt = (q: string, name: string) => [{ ext: "json3", url: `j${q}`, name }, { ext: "vtt", url: `v${q}`, name }];

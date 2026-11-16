@@ -126,6 +126,7 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
     Item item = it;
     r.onSelect = [item, queue] { openMusicItem(item, queue()); };
     if (!container) r.onLongSelect = [item] { openSongMenu(item); };
+    if (!container && !it.id.empty() && it.id[0] != '/') r.ahead = it.id;
     rows.push_back(std::move(r));
   }
   return rows;
@@ -140,6 +141,7 @@ std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::
     Item item = it;
     c.onSelect = [item, queue] { openMusicItem(item, queue()); };
     if (!isContainer(it.kind)) c.onLongSelect = [item] { openSongMenu(item); };
+    if (!isContainer(it.kind) && !it.id.empty() && it.id[0] != '/') c.ahead = it.id;
     cards.push_back(std::move(c));
   }
   return cards;
@@ -156,6 +158,7 @@ std::vector<Row> videoRows(const std::vector<Item>& items) {
     Item item = it;
     r.onSelect = [item] { openVideo(item); };
     if (!it.id.empty() && it.id[0] != '/') r.onLongSelect = [item] { askDownload(item); };
+    if (!it.id.empty() && it.id[0] != '/') r.ahead = it.id;
     rows.push_back(std::move(r));
   }
   return rows;

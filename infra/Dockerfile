@@ -20,7 +20,8 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/admin ./admin
 COPY native/assets/fonts/Roboto-Regular.ttf ./admin/fonts/Roboto-Regular.ttf
 COPY infra/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY infra/ytdlp-install.sh /ytdlp-install.sh
+RUN chmod +x /entrypoint.sh /ytdlp-install.sh
 ENV YTDLP_BIN=/data/bin/yt-dlp PORT=3000
 EXPOSE 3000
 ENTRYPOINT ["/entrypoint.sh"]
