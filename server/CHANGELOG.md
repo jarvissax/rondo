@@ -18,7 +18,7 @@ version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
   (`infra/ytdlp-install.sh`); a server moves to it on its next start.
 - **The next song is found ahead of time:** when the Rondo asks for a song's Up next, the server
   finds the streams of the song after it in the background. `/resolve/<id>?ahead=1` does that for
-  any song or video and answers at once (Rondo 3.0.6 asks for the next song while one plays, and for
+  any song or video and answers at once (Rondo 3.1.0 asks for the next song while one plays, and for
   the one you rest on in a list).
 - **Home opens at once:** a home page older than 2 minutes is shown (for up to 15 more) while a fresh
   one loads; the same search within 2 minutes comes from memory.

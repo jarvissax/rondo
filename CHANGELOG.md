@@ -5,7 +5,11 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## 3.0.6 (not released yet)
+## 3.1.0 (November 16, 2026)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.0.5 does.
 
 ### Changed
 
@@ -13,9 +17,9 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
   next one's streams found, and so for the song or video you rest on in a list for half a second.
   Play and Next then start without waiting for that: through a Rondo server about 1.2 s instead of
   6-7 s for a song it hadn't found yet, and directly it saves YouTube's lookup too. Only where the
-  streams are is found ahead; nothing is downloaded. Rondo server 3.5.0 also finds a new song in
-  about 2 s instead of 5 (older servers work as before).
-
+  streams are is found ahead; nothing is downloaded. The next Rondo server (3.5.0) also finds a new
+  song's streams in about 2 s instead of 5, and answers these early asks at once; the servers out
+  now find them too, a moment slower.
 - **Icons sit centered in their tiles**, on the Rondo and on its dashboard. Each is placed by how it
   looks, not just by its outline: Library no longer sits low, the gauge (Wheel acceleration) no longer
   sits high, WhatsApp's logo no longer leans left, play triangles sit a touch right, and an odd
