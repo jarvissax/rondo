@@ -12,6 +12,9 @@
 #    (Rondo's is, and Innioasis Updater CE lists only releases with a rom.zip). The admin page hears
 #    of it from GitHub's list (server/src/updates.ts) once the images are out.
 name: Server release
+# the run's title in the Actions tab: GitHub would otherwise use the tagged commit's message, which
+# names Rondo's release when both are tagged on the same commit
+run-name: Server release ${{ inputs.tag || github.ref_name }}
 
 on:
   push:
