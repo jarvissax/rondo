@@ -153,9 +153,9 @@ describe("the WhatsApp store", () => {
     const s = open();
     s.mapLid("99999@lid", ALI);
     expect(s.pnOf("99999@lid")).toBe(ALI);
-    s.upsertContact({ jid: ALI, name: "Ali Aliyev" });
+    s.upsertContact({ jid: ALI, name: "Ali Morgan" });
     s.upsertContact({ jid: ALI, notify: "Ali" });
-    expect(s.contact(ALI)).toMatchObject({ name: "Ali Aliyev", notify: "Ali" });
+    expect(s.contact(ALI)).toMatchObject({ name: "Ali Morgan", notify: "Ali" });
     s.wipe();
     expect(s.contacts()).toEqual([]);
   });

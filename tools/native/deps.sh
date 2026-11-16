@@ -5,6 +5,11 @@
 # release and are checked against tools/native/deps.lock; a library missing from the lock file has its
 # SHA-256 recorded on first download (review the change before committing it).
 #
+# No path of the Mac that builds them goes into the libraries (they ship in public releases): source
+# file names are kept relative to the repository (-ffile-prefix-map), OpenSSL is built for the folders
+# it would have on the Y1 and staged from there, and FFmpeg's recorded configure line names no folder.
+# Check a bundle with: strings -a <file> | grep "$HOME"
+#
 #   tools/native/deps.sh [name...]      default: all, in dependency order
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -34,12 +39,13 @@ LIBS=(
   "noto-emoji 2026-09-24-unicode18_0 https://github.com/googlefonts/noto-emoji/raw/v2026-09-24-unicode18_0/2D/fonts/NotoColorEmoji.ttf"
 )
 BIN=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin
+MAP="-ffile-prefix-map=$ROOT/="  # __FILE__ as native/third_party/src/…, not the full path
 
 ANDROID_ARGS=(-G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA"
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake"
   -DANDROID_ABI=armeabi-v7a -DANDROID_ARM_NEON=ON -DANDROID_PLATFORM=android-17
   -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-  -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG"
+  -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG $MAP" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG $MAP"
   -DCMAKE_INSTALL_PREFIX="$OUT" -DCMAKE_PREFIX_PATH="$OUT" -DCMAKE_FIND_ROOT_PATH="$OUT")
 
 fetch() {  # name version url -> unpacked source directory on stdout
@@ -106,16 +112,22 @@ for spec in "${LIBS[@]}"; do
       mkdir -p "$OUT/fonts" && cp "$dir" "$OUT/fonts/NotoColorEmoji.ttf"
       echo "deps: noto-emoji in place" ;;
     sqlite)  # the amalgamation: one C file
-      "$BIN/armv7a-linux-androideabi17-clang" -O2 -DNDEBUG -fPIC -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
+      "$BIN/armv7a-linux-androideabi17-clang" -O2 -DNDEBUG $MAP -fPIC -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION \
         -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 -DSQLITE_ENABLE_FTS5 -c "$dir/sqlite3.c" -o "$TP/sqlite3.o"
       "$BIN/llvm-ar" rcs "$OUT/lib/libsqlite3.a" "$TP/sqlite3.o"
       cp "$dir/sqlite3.h" "$OUT/include/"
       echo "deps: sqlite built" ;;
     yyjson) build yyjson "$dir" -DYYJSON_BUILD_TESTS=OFF ;;
-    openssl)  # its own Configure; android-arm at API 17, static
+    openssl)  # its own Configure; android-arm at API 17, static. Its folders (OpenSSL_version()) are
+      # compiled in, so it's built for /system/rondo and staged into $OUT from there
+      rm -rf "$TP/stage/openssl"
       (cd "$dir" && export ANDROID_NDK_ROOT="$NDK" PATH="$BIN:$PATH" &&
         ./Configure android-arm -D__ANDROID_API__=17 no-shared no-tests no-docs no-apps no-engine no-module \
-          --prefix="$OUT" --libdir=lib -O2 >/dev/null && make -j8 build_libs >/dev/null 2>&1 && make install_dev >/dev/null)
+          --prefix=/system/rondo --openssldir=/system/rondo/ssl --libdir=lib -O2 >/dev/null &&
+        make clean >/dev/null 2>&1 && make -j8 build_libs >/dev/null 2>&1 &&
+        make install_dev DESTDIR="$TP/stage/openssl" >/dev/null)
+      cp -R "$TP/stage/openssl/system/rondo/include/." "$OUT/include/"
+      cp -R "$TP/stage/openssl/system/rondo/lib/." "$OUT/lib/"
       echo "deps: openssl built" ;;
     nghttp2) build nghttp2 "$dir" -DENABLE_LIB_ONLY=ON -DBUILD_STATIC_LIBS=ON -DBUILD_SHARED_LIBS=OFF -DENABLE_DOC=OFF ;;
     curl) build curl "$dir" -DBUILD_CURL_EXE=OFF -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF -DENABLE_CURL_MANUAL=OFF \
@@ -136,7 +148,10 @@ for spec in "${LIBS[@]}"; do
         --enable-decoder=flac,mp3,mp3float,mp2,mp2float,mp1,mp1float,aac,aac_latm,vorbis,opus,alac,ac3,eac3,dca,truehd,mlp,wmav1,wmav2,wmapro,wmalossless,ape,wavpack,tta,tak,mpc7,mpc8,amrnb,amrwb,dsd_lsbf,dsd_msbf,dsd_lsbf_planar,dsd_msbf_planar,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be,pcm_u8,pcm_s8,pcm_alaw,pcm_mulaw,adpcm_ms,adpcm_ima_wav,adpcm_ima_qt \
         --enable-parser=flac,mpegaudio,aac,vorbis,opus,ac3,dca,mlp,tak,amr,h264 --enable-bsf=h264_mp4toannexb \
         --enable-muxer=mp4 \
-        --extra-cflags="-O2" >/dev/null && make -j8 >/dev/null 2>&1 && make install >/dev/null)
+        --extra-cflags="-O2" >/dev/null &&
+        # avutil_configuration() returns the configure line: without this Mac's folders
+        sed -i.orig -e "s|$ROOT|rondo|g" -e "s|$HOME|~|g" config.h && rm -f config.h.orig &&
+        make -j8 >/dev/null 2>&1 && make install >/dev/null)
       echo "deps: ffmpeg built" ;;
     harfbuzz) build harfbuzz "$dir" -DHB_HAVE_FREETYPE=ON -DHB_BUILD_SUBSET=OFF -DHB_BUILD_UTILS=OFF \
               -DFREETYPE_INCLUDE_DIRS="$OUT/include/freetype2" -DFREETYPE_LIBRARY="$OUT/lib/libfreetype.a" ;;

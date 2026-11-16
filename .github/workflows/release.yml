@@ -139,5 +139,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web-updater/dist
-      - id: deploy
+      # GitHub now and then can't find the artifact it was just given ("Found 0 artifact(s)", 3.0.4):
+      # then wait and deploy once more
+      - id: first
         uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.first.outcome == 'failure'
+        run: sleep 60
+      - id: again
+        if: steps.first.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+      - id: deploy
+        run: echo "page_url=${{ steps.first.outputs.page_url || steps.again.outputs.page_url }}" >> "$GITHUB_OUTPUT"

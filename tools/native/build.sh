@@ -6,11 +6,12 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SDK=${ANDROID_SDK:-$HOME/Library/Android/sdk}
 NDK=${NDK:-$SDK/ndk/23.2.8568313}
 CMAKE=${CMAKE:-$SDK/cmake/3.22.1/bin/cmake}
+MAP="-ffile-prefix-map=$ROOT/="  # no folder of this Mac in the binaries (they ship in public releases)
 [[ -d $ROOT/native/sysroot/system-lib ]] || "$ROOT/tools/native/sysroot.sh"
 "$CMAKE" -S "$ROOT/native" -B "$ROOT/native/build/y1" -G Ninja \
   -DCMAKE_MAKE_PROGRAM="$SDK/cmake/3.22.1/bin/ninja" \
   -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-17 -DANDROID_STL=c++_static \
   -DCMAKE_BUILD_TYPE=${BUILD_TYPE:-Release} \
-  -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" >/dev/null
+  -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG $MAP" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG $MAP" >/dev/null
 "$CMAKE" --build "$ROOT/native/build/y1" ${1:+--target "$@"}
