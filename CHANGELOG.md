@@ -5,6 +5,29 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.1.2 (November 16, 2026)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.1.1 does. Shorts, fixed and smoother, through a Rondo server and directly.
+
+### Fixed
+
+- **Shorts raced through the list:** moving on from a short whose sound was still opening left that
+  short's "Can't play" on the next one, which Shorts then skipped too, and the one after it, until the
+  list ran out. Each short now plays, and four in a row that really won't (no network, the server down)
+  stop it with "Can't play Shorts right now"; Next tries again.
+- **Shorts never run out:** more come as you go, a page that doesn't come is asked for again, and
+  Next at the end of what has come waits for more. A list kept open for more than half an hour (or
+  through a restart of the server) starts again from a fresh first page instead of ending. The
+  "3 of 16+" count is gone.
+- **Shorts move smoothly:** a short plays at 480p at most (the Shorts box is 202 by 360; at 720p one
+  frame in ten came late), and the swipe to the next one keeps all its frames: the short you leave
+  pauses at once, and the next one starts as the swipe ends.
+- **YouTube directly, on a phone's hotspot:** a hotspot refuses many new connections, and each refusal
+  failed a request, so a short could take 5-9 s to start. Rondo now asks again at once, as it always
+  has with a Rondo server: about 3 s.
+
 ## 3.1.1 (November 16, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
