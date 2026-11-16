@@ -178,4 +178,13 @@ describe("the WhatsApp store", () => {
     expect(s.chats(before).map((c) => c.jid)).toEqual(["1@s.whatsapp.net"]);
     expect(s.message("1@s.whatsapp.net", "M1")?.status).toBe(3);
   });
+
+  it("keeps no reaction whose sender is unknown", () => {
+    const s = new WaStore(":memory:");
+    s.upsertChat("1@s.whatsapp.net", { at: 1 });
+    s.putMessage({ chat: "1@s.whatsapp.net", id: "M1", fromMe: true, sender: "me", senderName: "", at: 1, kind: "text", text: "hi", status: 2 });
+    s.apply({ kind: "react", chat: "1@s.whatsapp.net", target: "M1", sender: "1@s.whatsapp.net", emoji: "\u2764\ufe0f" });
+    s.apply({ kind: "react", chat: "1@s.whatsapp.net", target: "M1", sender: "", emoji: "\u2764\ufe0f" });
+    expect(Object.keys(s.message("1@s.whatsapp.net", "M1")!.reactions)).toEqual(["1@s.whatsapp.net"]);
+  });
 });

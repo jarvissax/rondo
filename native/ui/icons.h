@@ -24,7 +24,7 @@ enum class Icon : uint8_t {
   Vibrate, Wheel, Chip, Key, Diamond, Queue, Seek, Download, Sync, Usb, Device, Broadcast, Library, Mic,
   Type, Menu, Wand, Bolt, Lock, Captions,
   // WhatsApp's: a chat, send, a message read (two ticks)
-  Chat, Send, Ticks, Tick,
+  Chat, Send, Ticks, Tick, Smile,
   // the brand logos, each in two colors (drawn as their two masks)
   MusicLogoDisc, MusicLogoMarks, VideoLogoButton, VideoLogoPlay, WhatsAppBubble, WhatsAppPhone,
   // the marks alone, drawn white on their tiles: WhatsApp's (ring, tail, phone), YouTube Music's (ring, play)

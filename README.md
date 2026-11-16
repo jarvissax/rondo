@@ -80,8 +80,9 @@ download.
 
 ### WhatsApp (with your own server)
 
-Your chats and groups on the Y1: read them, answer them, send voice messages recorded with the
-Y1's built-in microphone, and send photos and videos from the card. Photos and videos you receive
+Your chats and groups on the Y1: read them, search them by name or number, answer them (with
+emoji too), react to messages, send voice messages recorded with the Y1's built-in microphone, and
+send photos and videos from the card. Photos and videos you receive
 open full screen, voice messages play in place of the music (which comes back after), and every
 contact has their picture, number and about. It works through your
 [Rondo server](#your-own-server-optional), which becomes one of your WhatsApp's linked devices,

@@ -150,7 +150,7 @@ so moving on takes about a second.
 
 ## WhatsApp
 
-WhatsApp works through your own [Rondo server](server.md) (3.3.0 or newer): the server becomes one
+WhatsApp works through your own [Rondo server](server.md) (3.3.0 or newer; reacting needs 3.4.0): the server becomes one
 of your WhatsApp's linked devices, like WhatsApp Web on a computer, and the Y1 reads and sends
 through it. Connect the Y1 to the server in **Settings › Server**, then link WhatsApp once on the
 server's admin page: **WhatsApp › Get a code**, and type the code on your phone under WhatsApp's
@@ -164,18 +164,28 @@ server's admin page: **WhatsApp › Get a code**, and type the code on your phon
 
 - **Chats:** the newest first (pinned ones on top), each with its picture, its last message (a mic
   and the length for a voice message, an icon for a photo or a video), the time, ticks on yours and
-  the unread count. **New chat** at the top lists your contacts (Next and Previous jump a letter).
-  **Hold center** on a chat for its profile: the picture, the name, the number and the about.
+  the unread count. **Hold center** on a chat for its profile: the picture, the name, the number
+  and the about. At the top:
+  - **Search**: type a name (any case, with or without accents) or a number (three digits or more,
+    wherever they are in it) and press **Search** for the chats and contacts that match; Menu goes
+    back to the keyboard. It doesn't search messages.
+  - **New chat** lists your contacts (Next and Previous jump a letter), with a Search of its own
+    at the top for contacts only.
 - **A chat** shows its messages as bubbles, the newest at the bottom, with the day between them;
   in a group, each one's sender. Replies show what they answer, and reactions sit under the
   bubble. Turn the wheel to go through the messages; up past the first, earlier ones load. Under
   them are three buttons: **Message**, **Voice** and **Photo**.
 - **Center on a message** opens what it holds: a photo full screen, a video in the player, a voice
   message played (the music pauses and comes back after; center again stops it). On a text, or
-  holding center on any message: **Reply**, open or play it, the sender's profile (in a group) and
-  the chat's profile. A message that couldn't be sent says so: center sends it again.
-- **Message** opens the keyboard: letters, digits and symbols. What you typed and didn't send is
-  still there next time. **Send** sends it; from a message's **Reply**, it goes as a reply.
+  holding center on any message: **React**, **Reply**, open or play it, the sender's profile (in a
+  group) and the chat's profile. A message that couldn't be sent says so: center sends it again.
+- **React** shows 👍 ❤️ 😂 😮 😢 🙏 🔥 👏 first, then every emoji of the keyboard: center on one
+  reacts with it (in place of your earlier one). Once you've reacted, **Take back** sits on top,
+  and center on your own emoji takes it back too.
+- **Message** opens the keyboard: letters, digits, symbols and emoji. The 😊 key opens four pages of
+  faces, hands and hearts, and things (‹ and › turn them, **abc** goes back to letters), and
+  **Del** takes off a whole emoji. What you typed and didn't send is still there next time.
+  **Send** sends it; from a message's **Reply**, it goes as a reply.
 - **Voice** records with the Y1's built-in microphone at once (what's playing pauses): center
   sends it, Menu throws it away. Up to 15 minutes.
 - **Photo** lists the photos and videos on the card, the newest first: center shows the one you
@@ -195,8 +205,7 @@ two blue read (or played).
 - **On the card:** the Y1 keeps your recent chats, and the photos, videos and voice messages you
   opened, in a hidden folder (`.rondo/whatsapp`), up to 1 GB, the oldest going first. They open at
   once, also without a connection.
-- **Not yet:** reacting, typing emoji (emoji you receive show), opening documents (open them on
-  your phone), calls and status updates.
+- **Not yet:** opening documents (open them on your phone), calls and status updates.
 - **WhatsApp's terms don't allow unofficial apps** like this one, and WhatsApp may close accounts
   that use them. You can unlink any time, on the server's admin page or on your phone under
   **Linked devices**.

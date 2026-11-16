@@ -224,9 +224,12 @@ changed after one.
   "contact" | "poll" | "deleted" | "unsupported", "text" (or a caption), "media": {"mime", "seconds",
   "width", "height", "size", "fileName", "gif"}?, "preview": true? (a small picture at
   `/wa/media/…?preview=1`), "quoted": {"id", "sender", "name", "kind", "text"}?, "status": 0 theirs, 1
-  waiting, 2 sent, 3 delivered, 4 read, 5 played, "edited", "reactions": [{"emoji", "count"}], "seq"}`.
+  waiting, 2 sent, 3 delivered, 4 read, 5 played, "edited", "reactions": [{"emoji", "count"}] (each
+  person once), "mine": "<emoji>" or "" (your own reaction; 3.4.0), "seq"}`.
 - `POST /wa/chats/:jid/read` → `{"ok": true}`: the chat's unread messages read (receipts sent).
 - `POST /wa/chats/:jid/text` `{"text", "quoted": "<id>"?}` → the message sent (status 2).
+- `POST /wa/chats/:jid/react` `{"id", "emoji"}` (3.4.0) → the message reacted to, with your reaction:
+  any emoji (at most 12 code points), `""` takes yours back.
 - `POST /wa/chats/:jid/voice` with a WAV body (`audio/wav`, 16-bit mono, as the Y1 records) → the
   message sent: converted to Ogg Opus (48 kHz, 24 kb/s) with its waveform, sent as a voice message.
 - `POST /wa/chats/:jid/media?kind=image|video&caption=` with the file as the body (`image/jpeg`,

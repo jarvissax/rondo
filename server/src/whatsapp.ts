@@ -311,12 +311,8 @@ export class WhatsApp {
       const del = ev["messages.delete"];
       if (del && "keys" in del)
         for (const k of del.keys) if (k.id) this.store.apply({ kind: "delete", chat: this.resolve(k.remoteJid), target: k.id });
-      for (const r of ev["messages.reaction"] ?? []) {
-        if (!r.key.id) continue;
-        const chat = this.resolve(r.key.remoteJid, (r.key as { remoteJidAlt?: string }).remoteJidAlt);
-        const who = r.reaction.key?.fromMe ? this.myJid() : this.resolve(r.reaction.key?.participant ?? r.reaction.key?.remoteJid);
-        this.store.apply({ kind: "react", chat, target: r.key.id, sender: who, emoji: r.reaction.text ?? "" });
-      }
+      // reactions come as messages too (take: changeOf), which say who sent them; Baileys'
+      // "messages.reaction" repeats them without that, so it isn't read
       for (const c of [...(ev["chats.upsert"] ?? []), ...(ev["chats.update"] ?? [])]) this.takeChat(c);
       for (const jid of ev["chats.delete"] ?? []) this.store.deleteChat(this.resolve(jid));
       for (const c of [...(ev["contacts.upsert"] ?? []), ...(ev["contacts.update"] ?? [])]) this.takeContact(c);
@@ -392,6 +388,11 @@ export class WhatsApp {
     }
     const raw = proto.WebMessageInfo.encode(msg).finish();
     const isNew = this.store.putMessage(m, raw);
+    // the history's messages carry their reactions with them
+    for (const r of msg.reactions ?? []) {
+      const by = r.key?.fromMe ? me : m.chat.endsWith("@g.us") ? this.resolve(r.key?.participant) : m.chat;
+      if (by && r.text) this.store.apply({ kind: "react", chat: m.chat, target: m.id, sender: by, emoji: r.text });
+    }
     if (msg.pushName && !m.fromMe && m.sender) this.store.upsertContact({ jid: m.sender, notify: msg.pushName });
     if (live && isNew && !m.fromMe) this.store.addUnread(m.chat, 1);
     // what's heard as it happens is saved at once; the history's media when first asked for
@@ -547,6 +548,21 @@ export class WhatsApp {
     return raw ? (proto.WebMessageInfo.decode(raw) as WAMessage) : undefined;
   }
 
+  // a reaction to a message, as the owner ("" takes it back); the message's key as WhatsApp gave it
+  async react(chat: string, id: string, emoji: string): Promise<WaStoredMessage | undefined> {
+    const sock = this.sockOrThrow();
+    const m = this.store.message(chat, id);
+    if (!m) return undefined;
+    const raw = this.store.raw(chat, id);
+    const key = raw
+      ? (proto.WebMessageInfo.decode(raw).key as WAMessage["key"])
+      : { remoteJid: chat, id, fromMe: m.fromMe, ...(chat.endsWith("@g.us") && !m.fromMe ? { participant: m.sender } : {}) };
+    await sock.sendMessage(chat, { react: { text: emoji, key } });
+    this.store.apply({ kind: "react", chat, target: id, sender: this.myJid(), emoji });
+    this.changed();
+    return this.store.message(chat, id);
+  }
+
   async sendText(chat: string, text: string, quoted?: string): Promise<WaStoredMessage | undefined> {
     const sent = await this.sockOrThrow().sendMessage(chat, { text }, { quoted: this.quotedOf(chat, quoted) });
     return sent ? this.kept(sent) : undefined;
@@ -641,9 +657,16 @@ export class WhatsApp {
   }
 
   messageJson(m: WaStoredMessage): object {
-    const reactions = Object.entries(m.reactions);
+    // a person once, whatever form their id was heard in (their number, or a private id mapped to it);
+    // none without one (kept before Nov 16)
+    const me = this.myJid();
+    const byPerson = new Map<string, string>();
+    for (const [who, emoji] of Object.entries(m.reactions)) {
+      if (!who || !emoji) continue;
+      byPerson.set(who.endsWith("@lid") ? this.store.pnOf(who) || who : who, emoji);
+    }
     const counts = new Map<string, number>();
-    for (const [, emoji] of reactions) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+    for (const emoji of byPerson.values()) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
     return {
       id: m.id,
       fromMe: m.fromMe,
@@ -659,6 +682,7 @@ export class WhatsApp {
       status: m.status,
       edited: m.edited,
       reactions: [...counts].map(([emoji, count]) => ({ emoji, count })),
+      mine: (me && byPerson.get(me)) || "", // the owner's own reaction ("" none)
       seq: m.seq,
     };
   }

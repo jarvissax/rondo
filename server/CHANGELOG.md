@@ -4,6 +4,18 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## 3.4.0 (not released yet)
+
+- **Reacting from the Rondo** (Rondo 3.0.5): `POST /wa/chats/:jid/react` reacts to a message with
+  any emoji, or takes your reaction back, and every message says your own reaction (`mine`).
+- **Fixed: a reaction counted twice.** WhatsApp tells of a reaction twice, once without saying who
+  sent it; the server now counts each person once, also for reactions it kept before.
+- **The admin page's Overview is about your Rondo and this server:** "Everything works" means your
+  Rondo is connected, and the picture shows the two of them. YouTube (which the Rondo may use
+  directly) and WhatsApp keep their rows under Status, which say when they need something.
+- **Update on the admin page works on a server first set up from a local build:** it moves the
+  server to the published image.
+
 ## 3.3.0 (November 15, 2026)
 
 - **WhatsApp** (Rondo 3.0.4). The server becomes one of your WhatsApp's linked devices, like

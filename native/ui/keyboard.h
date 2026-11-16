@@ -1,7 +1,7 @@
 // The on-screen keyboard, navigated like a TV remote (today's TvKeyboard.kt): the wheel walks the keys
 // in reading order, Next/Prev move right/left in the row, Play moves down, Menu moves up (Menu on the
 // top row closes it), Center types. Lower case, upper case and symbols, so Wi-Fi passwords can be
-// typed. The highlight glides between keys.
+// typed; with emoji (WhatsApp), a key beside Space opens pages of them. The highlight glides between keys.
 #pragma once
 #include <string>
 #include <vector>
@@ -17,7 +17,13 @@ class Keyboard {
  public:
   enum class Result { None, Typed, Delete, Action, Close };
 
-  explicit Keyboard(std::string actionLabel = "Search", bool shell = false);
+  explicit Keyboard(std::string actionLabel = "Search", bool shell = false, bool emoji = false);
+  // the emoji it offers, page after page (kEmojiPerPage each); also what WhatsApp's reactions pick from
+  static const std::vector<std::string>& emojiList();
+  static constexpr int kEmojiPerPage = 40;
+  // the last character of UTF-8 text gone: a whole emoji (with its skin tone, variation and joined
+  // parts), else one code point
+  static void deleteLast(std::string& s);
   // A key press (wheel pulses: Key::WheelCw/Ccw). Typed text is in typed().
   Result handle(Key k);
   // TvKeyboard.handle()'s actions: the next or previous key in reading order, right/left in the row,
@@ -50,10 +56,11 @@ class Keyboard {
   void draw(Canvas& c, Text& text, const Palette& p, Rect area, int bigPx, int smallPx);
 
  private:
-  enum class Layout { Lower, Upper, Symbols };
+  enum class Layout { Lower, Upper, Symbols, Emoji };
   struct K {
     std::string label, value;
     int row, col, span;
+    bool emoji = false;  // drawn at the big size, though it's several bytes
   };
   void build(Layout l);
   void switchTo(Layout l);
@@ -61,8 +68,9 @@ class Keyboard {
   void vertical(int dir);
 
   std::string action_;
-  bool shell_;
+  bool shell_, emoji_;
   Layout layout_ = Layout::Lower;
+  int emojiPage_ = 0;
   std::vector<K> keys_;
   int cursor_ = 0;
   std::string typed_;

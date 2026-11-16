@@ -109,6 +109,7 @@ WaMessage parseMessage(yyjson_val* m) {
   w.kind = sget(m, "kind");
   w.text = sget(m, "text");
   w.status = statusOf(m, "status");
+  w.mine = sget(m, "mine");
   w.edited = bget(m, "edited");
   w.preview = bget(m, "preview");
   w.seq = iget(m, "seq");
@@ -625,6 +626,43 @@ void WaClient::retry(const std::string& jid, const std::string& id) {
     if (copy.kind == "voice") return sendFile(jid, "/wa/chats/" + jidPath(jid) + "/voice", copy.localFile, "audio/wav", copy);
     return sendMedia(jid, copy.localFile, copy.kind == "video");
   }
+}
+
+void WaClient::react(const std::string& jid, const std::string& id, const std::string& emoji) {
+  auto& v = threads_[jid].msgs;
+  auto it = std::find_if(v.begin(), v.end(), [&](const WaMessage& x) { return x.id == id; });
+  if (it == v.end()) return;
+  WaMessage before = *it;
+  auto add = [&](const std::string& e, int by) {
+    for (auto r = it->reactions.begin(); r != it->reactions.end(); ++r)
+      if (r->emoji == e) {
+        r->count += by;
+        if (r->count <= 0) it->reactions.erase(r);
+        return;
+      }
+    if (by > 0) it->reactions.push_back({e, by});
+  };
+  if (!it->mine.empty()) add(it->mine, -1);
+  if (!emoji.empty()) add(emoji, 1);
+  it->mine = emoji;
+  changed();
+  uint32_t gen = generation_;
+  std::string body = "{\"id\":" + jstr(id) + ",\"emoji\":" + jstr(emoji) + "}";
+  g_core.post("/wa/chats/" + jidPath(jid) + "/react", body, [this, gen, jid, before](int status, const std::string& reply) {
+    if (gen != generation_) return;
+    if (status == 200) {
+      if (yyjson_doc* d = yyjson_read(reply.data(), reply.size(), 0)) {
+        upsert(jid, parseMessage(yyjson_doc_get_root(d)));
+        yyjson_doc_free(d);
+      }
+      return changed();
+    }
+    upsert(jid, before);  // as it was
+    changed();
+    g_app->toast(status == 404 ? "Reacting needs Rondo server 3.4.0: update it on its admin page"
+                 : status == 0 ? "The reaction didn\xe2\x80\x99t go: no connection"
+                               : "The reaction didn\xe2\x80\x99t go (HTTP " + std::to_string(status) + ")");
+  });
 }
 
 // the server's answer to something sent: the message as WhatsApp has it replaces ours

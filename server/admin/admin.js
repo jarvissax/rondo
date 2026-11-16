@@ -449,8 +449,6 @@ function tick() {
 }
 
 // ---------- what's ok, what isn't ----------
-const RANK = { bad: 3, warn: 2, info: 1, off: 1, ok: 0 };
-const worst = (...xs) => xs.reduce((a, b) => (RANK[b] > RANK[a] ? b : a), 'ok');
 function areas(st) {
   const c = st.cookies || {}, d = st.device || {}, y = st.ytdlp || {}, s = st.server || {}, tv = st.tv || {};
   const https = s.https ?? S.state?.https ?? false;
@@ -516,12 +514,10 @@ function renderChrome() {
 // ---------- overview ----------
 function renderOverview() {
   const a = areas(S.status);
-  const level = worst(a.yt.level === 'off' ? 'ok' : a.yt.level, a.dev.level === 'info' ? 'ok' : a.dev.level, a.rz.level === 'off' ? 'ok' : a.rz.level);
+  // the summary is the Rondo and this server: YouTube (directly or through this server, the Rondo's
+  // choice) and WhatsApp have their own rows under Status, which say when they need something
+  const level = a.dev.level === 'info' ? 'ok' : a.dev.level;
   const todo = [];
-  if (a.rz.level === 'bad') todo.push(['bad', 'The last playback check failed. Update yt-dlp, then test playback again.', '#resolver', 'Open resolver']);
-  if (a.yt.level === 'bad') todo.push(['bad', 'YouTube signed the server out. Upload new cookies.', '#youtube', 'Upload cookies']);
-  if (a.yt.level === 'off' && !st0().cookies?.present && !st0().tv?.signedIn) todo.push(['info', 'Signed out. Sign in with a code for your home, subscriptions, history and playlists.', '#youtube', 'Sign in']);
-  if (a.yt.level === 'warn') todo.push(['warn', 'cookies.txt is signed out: YouTube Music home and history are generic. Upload new cookies.', '#youtube', 'Upload cookies']);
   if (a.dev.level === 'warn') todo.push(['warn', S.pair && !S.pair.expired ? 'A connect code is waiting for your Rondo.' : 'Connect your Rondo so it can stream from this server.', '#device', S.pair && !S.pair.expired ? 'Show code' : 'Connect']);
   if (a.dev.level === 'info') todo.push(['info', 'Your Rondo uses API_TOKEN from the server’s environment. Connect it here to give it its own token.', '#device', 'Connect']);
   // newer releases (updates.ts on the server, asked of GitHub every 6 hours)
@@ -531,32 +527,22 @@ function renderOverview() {
     const text = `Rondo server ${news.server.version} is out. This server runs ${a.s.version}.`;
     todo.push(S.serverUpdate?.available ? ['info', text, '#server-update', 'Update'] : ['info', text, UPDATE_HELP, 'How to update']);
   }
-  const problems = todo.filter((t) => t[0] !== 'info').length;
-  // a fresh server with nothing broken: the two setup steps
-  const fresh = !a.c.present && !a.d.source && problems === 2;
-  const title = level === 'ok' ? 'Everything works'
-    : fresh ? 'Two steps left'
-    : `${problems} ${problems === 1 ? 'thing needs' : 'things need'} attention`;
+  const title = level === 'ok' ? 'Everything works' : 'Connect your Rondo';
   const sub = level === 'ok'
-    ? 'Your Rondo streams YouTube Music and YouTube through this server.'
-    : level === 'bad' ? 'Songs and videos may not play until this is fixed.'
-    : fresh ? 'Add a YouTube account and connect your Rondo, and it’s ready to stream.'
-    : 'Your Rondo can stream, with a few gaps until this is done.';
+    ? 'Your Rondo is connected to this server.'
+    : 'Then it can use this server for YouTube and WhatsApp.';
 
   const link = (lv) => {
     const dot = lv === 'ok' ? icon('check') : lv === 'bad' || lv === 'warn' ? icon('alert') : '';
     return `<div class="link ${lv}" aria-hidden="true"><span class="link-dot">${dot}</span></div>`;
   };
+  // the Rondo and this server: what they serve (YouTube, WhatsApp) has its own row under Status
   const devLevel = a.d.source ? 'ok' : 'off';
-  const ytLink = worst(a.yt.level === 'off' ? 'ok' : a.yt.level, a.rz.level === 'off' ? 'ok' : a.rz.level);
-  const ytNode = a.rz.level === 'bad' ? { level: 'bad', text: 'Playback failing' } : { level: a.yt.level === 'off' ? '' : a.yt.level, text: a.yt.node };
   const chain = `
-    <div class="chain" role="img" aria-label="Rondo: ${esc(a.d.source ? 'connected' : 'not connected')}. This server: ${a.https ? 'HTTPS' : 'not encrypted'}. YouTube: ${esc(ytNode.text)}.">
+    <div class="chain" role="img" aria-label="Rondo: ${esc(a.d.source ? 'connected' : 'not connected')}. This server: ${a.https ? 'HTTPS' : 'not encrypted'}.">
       <div class="node">${tileHtml(a.d.source ? 'device' : 'off', 'player')}<span class="node-name">Rondo</span><span class="node-state ${a.d.source ? '' : 'warn'}">${esc(a.dev.node)}</span></div>
       ${link(devLevel)}
       <div class="node">${tileHtml('rondo')}<span class="node-name">This server</span><span class="node-state ${a.https ? '' : 'warn'}">${a.https ? 'HTTPS' : 'Not encrypted'}</span></div>
-      ${link(ytLink)}
-      <div class="node">${ytTile()}<span class="node-name">YouTube</span><span class="node-state ${ytNode.level}">${esc(ytNode.text)}</span></div>
     </div>`;
   const sum = $('#sum');
   sum.className = `sum ${level === 'ok' ? '' : level}`;

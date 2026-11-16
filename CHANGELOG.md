@@ -5,6 +5,27 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.0.5 (not released yet)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.0.4 does; WhatsApp needs your server at 3.3.0, and reacting at 3.4.0.
+
+### New
+
+- **React to WhatsApp messages:** **React** on a message's menu shows 👍 ❤️ 😂 😮 😢 🙏 🔥 👏 first,
+  then every emoji of the keyboard. Center on one reacts with it; **Take back** (or your own emoji
+  again) takes it back.
+- **Emoji in your WhatsApp messages:** the keyboard's 😊 key opens four pages of emoji (faces, hands
+  and hearts, things); ‹ and › turn them, and **Del** takes off a whole emoji.
+- **Search in WhatsApp:** **Search** on top of the chats finds chats and contacts by name (any case,
+  with or without accents) or by three or more digits of a number; **New chat** has a Search of its
+  own for your contacts. Messages aren't searched.
+
+### Fixed
+
+- A WhatsApp reaction showed as two; with Rondo server 3.4.0 each person counts once.
+
 ## 3.0.4 (November 15, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

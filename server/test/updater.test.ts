@@ -6,7 +6,7 @@ import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { ServerUpdate } from "../src/serverUpdate.js";
 import { compareApi, type Docker, pickApiVersion, splitImage } from "../src/updater/docker.js";
-import { type ContainerInfo, createBody, type ImageInfo, updateContainer } from "../src/updater/recreate.js";
+import { type ContainerInfo, createBody, type ImageInfo, PUBLISHED_IMAGE, updateContainer } from "../src/updater/recreate.js";
 
 describe("Docker API versions", () => {
   it("speaks the engine's version, capped at ours and never under its minimum", () => {
@@ -208,5 +208,14 @@ describe("the admin routes", () => {
     expect((await app.inject({ method: "GET", url: "/admin/api/server/update", headers: { cookie } })).json()).toEqual({ available: true, state: "idle" });
     expect((await app.inject({ method: "POST", url: "/admin/api/server/update", headers: { cookie } })).json()).toEqual({ ok: true });
     expect(started).toBe(1);
+  });
+
+  it("moves a server built on its own machine onto the published image", async () => {
+    const { docker, calls } = fakeDocker({ newId: "sha256:new", startsOk: true });
+    const c = (await docker.call("GET", "/containers/rondo/json")) as ContainerInfo;
+    c.Config.Image = "y1-y1:dev";
+    calls.length = 0;
+    await updateContainer(docker, "rondo", { answers: async () => true });
+    expect(calls).toContain(`pull ${PUBLISHED_IMAGE}`);
   });
 });

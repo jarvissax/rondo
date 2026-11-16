@@ -94,6 +94,9 @@ async function comesUp(docker: Docker, id: string, answers: () => Promise<boolea
   return false;
 }
 
+// the server's published image, for a container that runs one built on its own machine
+export const PUBLISHED_IMAGE = "ghcr.io/jarvissax/rondo-server:latest";
+
 // pulls the image `target` runs (by name, such as ghcr.io/jarvissax/rondo-server:latest) and, when
 // it has changed, moves `target` onto it
 export async function updateContainer(
@@ -103,8 +106,11 @@ export async function updateContainer(
 ): Promise<UpdateResult> {
   const progress = opts.progress ?? (() => {});
   const c = await docker.call<ContainerInfo>("GET", `/containers/${encodeURIComponent(target)}/json`);
-  const ref = c.Config.Image ?? "";
-  if (!ref || ref.startsWith("sha256:")) throw new Error(`${target} runs an image without a name, so there's nothing to pull`);
+  const running = c.Config.Image ?? "";
+  if (!running || running.startsWith("sha256:")) throw new Error(`${target} runs an image without a name, so there's nothing to pull`);
+  // a server built on this machine (a development build such as "y1-y1:dev") has no registry to
+  // pull it from: the published image takes its place
+  const ref = running.includes("/") ? running : PUBLISHED_IMAGE;
   // the old image's defaults, before the pull moves its name: Docker's containerd image store
   // stops showing an image by its ID once nothing names it
   const oldImage = await docker.call<ImageInfo>("GET", `/images/${c.Image}/json`).catch(() => null);

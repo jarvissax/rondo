@@ -406,7 +406,7 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
 .skel { height: 14px; border-radius: 7px; background: var(--surface-3); animation: pulse 1.4s ease-in-out infinite; }
 
 /* the chain: Rondo, this server, YouTube */
-.chain { display: grid; grid-template-columns: auto minmax(20px, 1fr) auto minmax(20px, 1fr) auto; align-items: start; }
+.chain { display: grid; grid-template-columns: auto minmax(20px, 1fr) auto; align-items: start; }
 .node { width: 92px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .node .tile { width: 52px; height: 52px; border-radius: 14px; }
 .node .tile .i { width: 30px; height: 30px; }
@@ -673,7 +673,7 @@ input.is-invalid:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px
   .sum { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "text chain" "todo todo"; align-items: center; gap: 24px 40px; padding: 26px 26px 24px; }
   .sum > .todo { margin-top: 0; }
   .sum-title { font-size: 24px; }
-  .chain { min-width: 400px; }
+  .chain { min-width: 260px; }
 
   .pairing { grid-template-columns: minmax(0, 290px) minmax(0, 1fr); gap: 36px; padding: 28px; }
   .pairing.is-done { grid-template-columns: 1fr; }

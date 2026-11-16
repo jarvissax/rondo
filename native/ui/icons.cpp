@@ -484,6 +484,11 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.poly({6.5f, 12.5f, 11.5f, 12.5f}, false), p.poly({14, 12.5f, 17.5f, 12.5f}, false),
                 p.poly({6.5f, 16, 9.5f, 16}, false), p.poly({12, 16, 17.5f, 16}, false)}, 2);
       break;
+    case Icon::Smile:  // reacting: a smiling face
+      p.stroke({p.circle(12, 12, 9.2f)}, 2);
+      p.fill({p.circle(8.8f, 10, 1.5f), p.circle(15.2f, 10, 1.5f)});
+      p.stroke({p.arc(7.5f, 8.5f, 16.5f, 17.5f, 20, 140)}, 2);
+      break;
     case Icon::Chat: {  // WhatsApp: a speech bubble with its tail at the lower left
       p.fill({p.roundRect(2.5f, 3, 21.5f, 17.5f, 7)});
       p.fill({p.poly({5.5f, 14, 11, 16.5f, 3.5f, 21.5f}, true)});

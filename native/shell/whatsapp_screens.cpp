@@ -264,6 +264,8 @@ float voiceProgress() {
 std::map<std::string, std::string> g_drafts;  // what was typed and not sent, per chat
 
 std::unique_ptr<Screen> makeChat(const std::string& jid, const std::string& name, bool group);
+std::unique_ptr<Screen> makeSearch(bool contactsOnly);  // chats and contacts by name or number
+std::unique_ptr<Screen> makeReact(const std::string& jid, const std::string& id, const std::string& mine);
 std::unique_ptr<Screen> makeProfile(const std::string& jid, const std::string& name, bool group, bool offerChat);
 
 // ===================================================================================================
@@ -322,7 +324,7 @@ class ChatsScreen : public Screen {
       top += nh;
     }
     float rowH = float(e.dp(46)), viewH = h - top;
-    int count = int(chats.size()) + 1;  // "New chat" first
+    int count = int(chats.size()) + 2;  // Search and New chat first
     if (count != count_ || rowH != rowH_ || viewH != viewH_) {
       int keep = list_.selected();
       list_.configure(count, rowH, viewH);
@@ -338,35 +340,37 @@ class ChatsScreen : public Screen {
         e.c.layer(1);
         e.c.shape({float(e.dp(4)), y + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
       }
-      if (i == 0) newChatRow(e, w, y, rowH);
-      else chatRow(e, w, y, rowH, chats[size_t(i - 1)]);
+      if (i == 0) actionRow(e, w, y, rowH, Icon::Search, kSel, "Search", "Names and numbers");
+      else if (i == 1) actionRow(e, w, y, rowH, Icon::Plus, kGreen, "New chat", "Your contacts");
+      else chatRow(e, w, y, rowH, chats[size_t(i - 2)]);
     }
     e.c.popClip();
-    if (chats.empty()) centered(e, w, top + rowH, viewH - rowH, "No chats yet", "Start one with New chat.");
+    if (chats.empty()) centered(e, w, top + 2 * rowH, viewH - 2 * rowH, "No chats yet", "Start one with New chat.");
     e.c.layer(0);
   }
 
  private:
   void open(bool hold) {
     int i = list_.selected();
-    if (i == 0) return g_app->push(makeContacts());
+    if (i == 0) return g_app->push(makeSearch(false));
+    if (i == 1) return g_app->push(makeContacts());
     const std::vector<WaChat>& chats = waClient().chats();
-    if (i - 1 >= int(chats.size())) return;
-    const WaChat& ch = chats[size_t(i - 1)];
+    if (i - 2 >= int(chats.size())) return;
+    const WaChat& ch = chats[size_t(i - 2)];
     g_app->push(hold ? makeProfile(ch.jid, ch.name, ch.group, false) : makeChat(ch.jid, ch.name, ch.group));
   }
   std::unique_ptr<Screen> makeContacts();
-  void newChatRow(Env& e, float w, float y, float rowH) {
+  void actionRow(Env& e, float w, float y, float rowH, Icon icon, Color circle, const char* title, const char* sub) {
     int a = e.dp(34);
     Rect r{float(e.dp(10)), y + float((int(rowH) - a) / 2), float(a), float(a)};
     e.c.layer(2);
-    e.c.shape(r, r.w / 2, kGreen);
+    e.c.shape(r, r.w / 2, circle);
     int g = e.dp(18);
     e.c.layer(4);
-    e.icons.draw(e.c, Icon::Plus, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
+    e.icons.draw(e.c, icon, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
     float x = r.x + a + e.dp(10);
-    Label t = label(e, "New chat", 13, true, w - x - e.dp(10));
-    Label s = label(e, "Your contacts", 10, false, w - x - e.dp(10));
+    Label t = label(e, title, 13, true, w - x - e.dp(10));
+    Label s = label(e, sub, 10, false, w - x - e.dp(10));
     float ty = y + float((int(rowH) - t.h - s.h - e.dp(1)) / 2);
     drawLabel(e, t, x, ty, kText);
     drawLabel(e, s, x, ty + t.h + e.dp(1), kMuted);
@@ -445,9 +449,9 @@ class ContactsScreen : public Screen {
       case Action::Down: return list_.move(steps), true;
       case Action::Up: return list_.move(-steps), true;
       case Action::Next:
-      case Action::Prev: {  // the next or previous first letter
+      case Action::Prev: {  // the next or previous first letter (row 0 is Search)
         if (all.empty()) return true;
-        int at = list_.selected();
+        int at = std::max(0, list_.selected() - 1);
         auto letter = [&](int i) { return all[size_t(i)].name.empty() ? ' ' : toupper((unsigned char)all[size_t(i)].name[0]); };
         int cur = letter(at), i = at;
         if (a == Action::Next) {
@@ -459,12 +463,13 @@ class ContactsScreen : public Screen {
             while (i > 0 && letter(i - 1) == prev) i--;
           }
         }
-        list_.select(i);
+        list_.select(i + 1);
         return true;
       }
       case Action::Select:
       case Action::LongSelect: {
-        int i = list_.selected();
+        int i = list_.selected() - 1;
+        if (i == -1) return g_app->push(makeSearch(true)), true;
         if (i < 0 || i >= int(all.size())) return true;
         const WaContact& c = all[size_t(i)];
         g_app->push(a == Action::Select ? makeChat(c.jid, c.name, false) : makeProfile(c.jid, c.name, false, true));
@@ -489,19 +494,31 @@ class ContactsScreen : public Screen {
     if (!waClient().contactsLoaded()) return centered(e, w, top, h - top, "Loading your contacts\xe2\x80\xa6");
     if (all.empty()) return centered(e, w, top, h - top, "No contacts yet");
     float rowH = float(e.dp(42)), viewH = h - top;
-    if (int(all.size()) != count_ || viewH != viewH_) {
-      list_.configure(int(all.size()), rowH, viewH);
+    if (int(all.size()) + 1 != count_ || viewH != viewH_) {
+      list_.configure(int(all.size()) + 1, rowH, viewH);
       if (count_ < 0) list_.select(0);
-      count_ = int(all.size()), viewH_ = viewH;
+      count_ = int(all.size()) + 1, viewH_ = viewH;
     }
     e.c.pushClip({0, top, w, viewH});
     for (int i = list_.first(); i <= list_.last(); i++) {
-      const WaContact& c = all[size_t(i)];
       float y = top + i * rowH - list_.scroll();
       if (i == list_.selected()) {
         e.c.layer(1);
         e.c.shape({float(e.dp(4)), y + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
       }
+      if (i == 0) {  // Search
+        int a = e.dp(30);
+        Rect r{float(e.dp(10)), y + float((int(rowH) - a) / 2), float(a), float(a)};
+        e.c.layer(2);
+        e.c.shape(r, r.w / 2, kSel);
+        int g = e.dp(16);
+        e.c.layer(4);
+        e.icons.draw(e.c, Icon::Search, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
+        Label t = label(e, "Search", 13, true);
+        drawLabel(e, t, r.x + a + e.dp(10), y + float((int(rowH) - t.h) / 2), kText);
+        continue;
+      }
+      const WaContact& c = all[size_t(i - 1)];
       int a = e.dp(30);
       avatar(e, c.jid, false, {float(e.dp(10)), y + float((int(rowH) - a) / 2), float(a), float(a)});
       float x = float(e.dp(10) + a + e.dp(10));
@@ -610,7 +627,7 @@ class ProfileScreen : public Screen {
 class ComposeScreen : public Screen {
  public:
   ComposeScreen(std::string jid, std::string name, WaQuote quote)
-      : jid_(std::move(jid)), name_(std::move(name)), quote_(std::move(quote)), kb_("Send") {
+      : jid_(std::move(jid)), name_(std::move(name)), quote_(std::move(quote)), kb_("Send", false, true) {
     kb_.setTyped(g_drafts[jid_]);
   }
   ~ComposeScreen() override { g_drafts[jid_] = kb_.typed(); }
@@ -1086,6 +1103,271 @@ class MessageMenu : public Screen {
 };
 
 // ===================================================================================================
+// Reacting: any emoji, the usual ones first; mine outlined, and taking it back on top
+
+class ReactScreen : public Screen {
+ public:
+  ReactScreen(std::string jid, std::string id, std::string mine) : jid_(std::move(jid)), id_(std::move(id)), mine_(std::move(mine)) {
+    static const char* kQuick[] = {"\xf0\x9f\x91\x8d", "\xe2\x9d\xa4\xef\xb8\x8f", "\xf0\x9f\x98\x82", "\xf0\x9f\x98\xae",
+                                   "\xf0\x9f\x98\xa2", "\xf0\x9f\x99\x8f", "\xf0\x9f\x94\xa5", "\xf0\x9f\x91\x8f"};
+    for (const char* q : kQuick) emoji_.push_back(q);
+    for (const std::string& e : Keyboard::emojiList())
+      if (std::find(emoji_.begin(), emoji_.end(), e) == emoji_.end()) emoji_.push_back(e);
+    // on mine to start with, else on the first
+    if (!mine_.empty()) {
+      auto at = std::find(emoji_.begin(), emoji_.end(), mine_);
+      sel_ = at == emoji_.end() ? 0 : int(at - emoji_.begin()) + 1;
+    }
+  }
+  std::string title() const override { return "React"; }
+  bool statusBar() const override { return false; }
+  bool onAction(Action a, int steps) override {
+    int n = int(emoji_.size()) + (mine_.empty() ? 0 : 1);
+    switch (a) {
+      case Action::Down: sel_ = std::min(n - 1, sel_ + steps); return true;
+      case Action::Up: sel_ = std::max(0, sel_ - steps); return true;
+      case Action::Next:
+      case Action::LongNext: sel_ = std::min(n - 1, sel_ + kCols); return true;
+      case Action::Prev:
+      case Action::LongPrev: sel_ = std::max(0, sel_ - kCols); return true;
+      case Action::Select: {
+        bool back = !mine_.empty() && sel_ == 0;
+        std::string e = back ? "" : emoji_[size_t(sel_ - (mine_.empty() ? 0 : 1))];
+        if (e == mine_) e = "";  // mine again: taken back
+        waClient().react(jid_, id_, e);
+        g_app->pop();
+        return true;
+      }
+      default: return false;
+    }
+  }
+  bool step(float dt) override { return scroll_.step(scrollTo_, dt, 30); }
+  void draw(Env& e, float w, float h) override {
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, kBg);
+    waHeader(e, w, "React", mine_.empty() ? "Pick an emoji" : "Center on yours takes it back");
+    float top = float(e.dp(31)), pad = float(e.dp(6));
+    float cell = floorf((w - 2 * pad) / kCols), rowH = cell;
+    float y0 = top + pad;
+    float headH = mine_.empty() ? 0 : float(e.dp(30)) + pad;
+    // the selected row whole in view
+    int row = !mine_.empty() && sel_ == 0 ? -1 : (sel_ - (mine_.empty() ? 0 : 1)) / kCols;
+    float viewH = h - y0 - pad;
+    float selTop = row < 0 ? 0 : headH + row * rowH, selBottom = row < 0 ? headH : selTop + rowH;
+    if (selTop < scrollTo_) scrollTo_ = selTop;
+    if (selBottom > scrollTo_ + viewH) scrollTo_ = selBottom - viewH;
+    if (!placed_) scroll_.snap(scrollTo_), placed_ = true;
+    e.c.pushClip({0, y0, w, viewH});
+    float base = y0 - scroll_.x;
+    if (!mine_.empty()) {  // taking mine back
+      Rect r{pad, base, w - 2 * pad, float(e.dp(30))};
+      e.c.layer(1);
+      e.c.shape(r, r.h / 2, sel_ == 0 ? kGreen : kSel);
+      e.c.layer(4);
+      Label l = label(e, "Take back " + mine_, 12, true);
+      drawLabel(e, l, centerText(r.x, r.w, l.w), r.y + float((int(r.h) - l.h) / 2), sel_ == 0 ? rgb(0x0b141a) : kText);
+    }
+    for (int i = 0; i < int(emoji_.size()); i++) {
+      float x = pad + (i % kCols) * cell, y = base + headH + (i / kCols) * rowH;
+      if (y + rowH < y0 || y > y0 + viewH) continue;
+      int at = i + (mine_.empty() ? 0 : 1);
+      Rect r{x + 2, y + 2, cell - 4, rowH - 4};
+      if (at == sel_) {
+        e.c.layer(1);
+        e.c.shape(r, e.dpf(8), 0xff3b4a54);
+      }
+      if (emoji_[size_t(i)] == mine_) {
+        e.c.layer(2);
+        e.c.shape({r.x + 3, r.y + 3, r.w - 6, r.h - 6}, e.dpf(7), 0x5525d366);
+      }
+      e.c.layer(4);
+      Label l = label(e, emoji_[size_t(i)], 20, false);
+      drawLabel(e, l, centerText(r.x, r.w, l.w), r.y + float((int(r.h) - l.h) / 2), kText);
+    }
+    e.c.popClip();
+    e.c.layer(0);
+  }
+
+ private:
+  static constexpr int kCols = 8;
+  std::string jid_, id_, mine_;
+  std::vector<std::string> emoji_;
+  int sel_ = 0;
+  Spring scroll_;
+  float scrollTo_ = 0;
+  bool placed_ = false;
+};
+
+std::unique_ptr<Screen> makeReact(const std::string& jid, const std::string& id, const std::string& mine) {
+  return std::unique_ptr<Screen>(new ReactScreen(jid, id, mine));
+}
+
+// ===================================================================================================
+// Search: chats and contacts by name (any case, any accents) or by the digits of a number; not
+// messages. Type on the keyboard, Search shows what matches; Menu goes back to the keyboard.
+
+class SearchScreen : public Screen {
+ public:
+  explicit SearchScreen(bool contactsOnly) : contactsOnly_(contactsOnly), kb_("Search") {
+    waClient().hold();
+    waClient().loadContacts([] {});
+  }
+  ~SearchScreen() override { waClient().release(); }
+  std::string title() const override { return contactsOnly_ ? "Search contacts" : "Search WhatsApp"; }
+  bool statusBar() const override { return false; }
+  bool onAction(Action a, int steps) override {
+    if (showing_) {
+      switch (a) {
+        case Action::Back: showing_ = false; return true;
+        case Action::Down: return list_.move(steps), true;
+        case Action::Up: return list_.move(-steps), true;
+        case Action::Select:
+        case Action::LongSelect: {
+          int i = list_.selected();
+          if (i < 0 || i >= int(found_.size())) return true;
+          const Found& f = found_[size_t(i)];
+          g_app->push(a == Action::Select ? makeChat(f.jid, f.name, f.group) : makeProfile(f.jid, f.name, f.group, true));
+          return true;
+        }
+        default: return false;
+      }
+    }
+    switch (a) {  // the keyboard takes every control; Menu on its top row leaves
+      case Action::Down: kb_.nextKey(); return true;
+      case Action::Up: kb_.prevKey(); return true;
+      case Action::Next:
+      case Action::LongNext: kb_.right(); return true;
+      case Action::Prev:
+      case Action::LongPrev: kb_.left(); return true;
+      case Action::PlayPause: kb_.down(); return true;
+      case Action::Back: return kb_.up();
+      case Action::Select: {
+        Keyboard::Result r = kb_.press();
+        if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);
+        if (r == Keyboard::Result::Action) search();
+        return true;
+      }
+      default: return false;
+    }
+  }
+  bool step(float dt) override { return showing_ ? list_.step(dt) : kb_.step(dt); }
+  bool tick(int64_t) override {
+    voiceTick();
+    if (waClient().serial() == seen_) return false;
+    seen_ = waClient().serial();
+    if (showing_ && waiting_ && waClient().contactsLoaded()) search();  // the contacts came after Search
+    return true;
+  }
+  void draw(Env& e, float w, float h) override {
+    const Palette& p = e.p;
+    e.c.layer(0);
+    e.c.fill({0, 0, w, h}, kBg);
+    waHeader(e, w, title());
+    float bx = float(e.dp(8)), by = float(e.dp(31) + e.dp(4)), bw = w - 2 * bx, bh = float(e.dp(28));
+    e.c.layer(2);
+    e.c.shape({bx, by, bw, bh}, e.dpf(14), p.raised);
+    e.c.layer(4);
+    int icon = e.dp(12);
+    float ix = bx + e.dp(10);
+    e.icons.draw(e.c, Icon::Search, {ix, by + float((int(bh) - icon) / 2), float(icon), float(icon)}, kMuted);
+    float fx = ix + icon + e.dp(8), fw = bx + bw - e.dp(10) - fx;
+    bool empty = kb_.typed().empty() && !showing_;
+    Label field = label(e, empty ? "|  A name or a number" : showing_ ? kb_.typed() : kb_.typed() + "|", 14, false, fw);
+    drawLabel(e, field, fx, by + float((int(bh) - field.h) / 2), empty ? kMuted : kText);
+    float area = by + bh + e.dp(5);
+    if (showing_) {
+      float rowH = float(e.dp(42)), viewH = h - area;
+      if (found_.empty()) {
+        centered(e, w, area, viewH, waiting_ ? "Looking\xe2\x80\xa6" : "Nothing found", waiting_ ? "" : "Names and numbers only, not messages.");
+        return;
+      }
+      if (configured_ != int(found_.size())) list_.configure(int(found_.size()), rowH, viewH), list_.select(0), configured_ = int(found_.size());
+      e.c.pushClip({0, area, w, viewH});
+      for (int i = list_.first(); i <= list_.last(); i++) {
+        const Found& f = found_[size_t(i)];
+        float y = area + i * rowH - list_.scroll();
+        if (i == list_.selected()) {
+          e.c.layer(1);
+          e.c.shape({float(e.dp(4)), y + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
+        }
+        int a = e.dp(30);
+        avatar(e, f.jid, f.group, {float(e.dp(10)), y + float((int(rowH) - a) / 2), float(a), float(a)});
+        float x = float(e.dp(10) + a + e.dp(10));
+        e.c.layer(4);
+        Label n = label(e, f.name, 13, true, w - x - e.dp(10));
+        Label s = label(e, f.sub, 10, false, w - x - e.dp(10));
+        float ty = y + float((int(rowH) - n.h - s.h - e.dp(1)) / 2);
+        drawLabel(e, n, x, ty, kText);
+        drawLabel(e, s, x, ty + n.h + e.dp(1), kMuted);
+      }
+      e.c.popClip();
+      e.c.layer(0);
+      return;
+    }
+    Label hint = label(e, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type", 9,
+                       false, w);
+    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
+    e.c.layer(1);
+    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
+    e.c.layer(4);
+    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), kMuted);
+    e.c.layer(0);
+  }
+
+ private:
+  struct Found {
+    std::string jid, name, sub;
+    bool group = false;
+  };
+  static std::string digitsOf(const std::string& s) {
+    std::string d;
+    for (char c : s)
+      if (c >= '0' && c <= '9') d += c;
+    return d;
+  }
+  // a name containing the words typed (any case or accents), or a number containing the digits typed
+  static bool matches(const std::string& q, const std::string& qd, const std::string& name, const std::string& name2, const std::string& number) {
+    if (!q.empty() && (fold(name).find(q) != std::string::npos || (!name2.empty() && fold(name2).find(q) != std::string::npos))) return true;
+    return qd.size() >= 3 && digitsOf(number).find(qd) != std::string::npos;
+  }
+  void search() {
+    std::string typed = kb_.typed();
+    size_t a = typed.find_first_not_of(' '), b = typed.find_last_not_of(' ');
+    if (a == std::string::npos) return;
+    typed = typed.substr(a, b - a + 1);
+    // digits alone (with + - ( ) and spaces): a number; anything else: a name
+    bool number = typed.find_first_not_of("0123456789+-() ") == std::string::npos;
+    std::string q = number ? "" : fold(typed), qd = number ? digitsOf(typed) : "";
+    found_.clear();
+    std::vector<std::string> seen;
+    if (!contactsOnly_)
+      for (const WaChat& c : waClient().chats()) {
+        std::string num = c.group ? "" : c.jid.substr(0, c.jid.find('@'));
+        if (!matches(q, qd, c.name, "", c.jid.find("@s.whatsapp.net") != std::string::npos ? num : "")) continue;
+        found_.push_back({c.jid, c.name, c.group ? "Group" : c.hasPreview ? c.preview.text : "+" + num, c.group});
+        seen.push_back(c.jid);
+      }
+    for (const WaContact& c : waClient().contacts()) {
+      if (std::find(seen.begin(), seen.end(), c.jid) != seen.end()) continue;
+      if (!matches(q, qd, c.name, c.pushName, c.number)) continue;
+      found_.push_back({c.jid, c.name, c.number, false});
+    }
+    waiting_ = !waClient().contactsLoaded();
+    showing_ = true;
+    configured_ = -1;
+  }
+  bool contactsOnly_;
+  Keyboard kb_;
+  bool showing_ = false, waiting_ = false;
+  std::vector<Found> found_;
+  WheelList list_;
+  int configured_ = -1;
+  uint32_t seen_ = 0;
+};
+
+std::unique_ptr<Screen> makeSearch(bool contactsOnly) { return std::unique_ptr<Screen>(new SearchScreen(contactsOnly)); }
+
+// ===================================================================================================
 // A chat
 
 class ChatScreen : public Screen {
@@ -1511,6 +1793,11 @@ void ChatScreen::activate(bool menu) {
   if (!menu && media) return openMedia(m);
   // the menu
   std::vector<MessageMenu::Entry> entries;
+  if (!m.sending && !m.failed && m.kind != "deleted") {
+    std::string id = m.id, mine = m.mine;
+    entries.push_back({mine.empty() ? "React" : "React (yours: " + mine + ")", Icon::Smile,
+                       [jid, id, mine] { g_app->push(makeReact(jid, id, mine)); }});
+  }
   if (!m.sending && !m.failed) {
     WaQuote q{m.id, m.sender, m.fromMe ? "You" : m.name.empty() ? name : m.name, m.kind, m.kind == "text" ? m.text : WaClient::summary(m)};
     entries.push_back({"Reply", Icon::Chat, [jid, name, q] { g_app->push(std::unique_ptr<Screen>(new ComposeScreen(jid, name, q))); }});

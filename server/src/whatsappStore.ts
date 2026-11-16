@@ -227,6 +227,7 @@ export class WaStore {
     this.db.prepare("UPDATE messages SET file = ? WHERE chat = ? AND id = ?").run(file, chat, id);
   }
   apply(c: Change): void {
+    if (c.kind === "react" && !c.sender) return; // whose it is unknown: it would count a second time
     const seq = this.next();
     this.touchChat(c.chat, seq);
     if (c.kind === "delete") {

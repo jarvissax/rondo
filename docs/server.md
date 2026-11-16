@@ -126,8 +126,8 @@ back to YouTube itself, and the server stays connected, for WhatsApp and for whe
 Open `<your server's address>/admin` any time to see how things are going. A sign-in lasts 12
 hours.
 
-- **Overview:** whether everything works, from the Y1 through the server to YouTube, and what
-  to do when something doesn't.
+- **Overview:** whether your Rondo is connected to the server, what needs doing, and a row for each
+  part (the server, its connection, the resolver, YouTube, your Rondo, WhatsApp) with its state.
 - **YouTube:** the server's YouTube account: sign in with a code, add or replace cookies.txt, or
   sign out.
 - **WhatsApp:** link your WhatsApp, see whose it is and how many chats came over, or unlink it.

@@ -73,6 +73,17 @@ export function registerWhatsAppRoutes(app: FastifyInstance, wa: WhatsApp): void
     });
   });
 
+  // a reaction from the Rondo (server 3.4.0): any emoji, "" to take it back
+  app.post<{ Params: { jid: string }; Body: { id?: string; emoji?: string } }>("/wa/chats/:jid/react", async (req, reply) => {
+    const jid = req.params.jid, id = String(req.body?.id ?? ""), emoji = String(req.body?.emoji ?? "");
+    if (!JID.test(jid) || !ID.test(id)) return bad(reply, "id");
+    if ([...emoji].length > 12) return bad(reply, "emoji");
+    return sent(reply, async () => {
+      const m = await wa.react(jid, id, emoji);
+      return m ? wa.messageJson(m) : undefined;
+    });
+  });
+
   app.post<{ Params: { jid: string } }>("/wa/chats/:jid/voice", { bodyLimit: BODY_LIMIT }, async (req, reply) => {
     const jid = req.params.jid;
     if (!JID.test(jid)) return bad(reply, "jid");
