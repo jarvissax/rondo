@@ -4,7 +4,7 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## 3.5.1 (not released yet)
+## 3.5.1 (November 16, 2026)
 
 - **Fixed: a chat with two new messages showed one unread.** WhatsApp's chat updates give the unread
   count as a step (one more), which the server took as the whole count; now each message counts once,
