@@ -2,7 +2,10 @@
 // looping, the vertical video on the left and what it is on the right. Next and Previous move between
 // shorts (the swipe of the app), the wheel is the volume as in every player, center pauses, Menu leaves.
 // The list is the server's /video/shorts: popular shorts, then YouTube's endless "watch next" chain.
-// The next shorts' details and streams are asked for while this one plays, so moving on is quick.
+// It never ends here: a page that didn't come is asked for again, a chain that ended or that the server
+// forgot (its pages are kept 30 minutes) starts over from a fresh first page, and Next at the end of
+// what has come waits for more. The next shorts' details and streams are asked for while this one
+// plays, so moving on is quick.
 // 2.0: moving between shorts is the phone's swipe: the short slides up and away as the next one comes
 // in from below (Previous: the other way), and the details beside it cross-fade.
 #include <set>
@@ -33,8 +36,14 @@ class ShortsScreen : public Screen {
     switch (a) {
       case Action::Up:
       case Action::Down: g_app->changeVolume(a == Action::Down ? 1 : -1); break;
-      case Action::Next: play(nextReady(), 1); break;
-      case Action::Prev: play(index_ - 1, -1); break;
+      case Action::Next:
+        failedInRow_ = 0, stuck_ = false;
+        play(nextReady(), 1);
+        break;
+      case Action::Prev:
+        failedInRow_ = 0, stuck_ = false, wantNext_ = false;
+        play(index_ - 1, -1);
+        break;
       case Action::Select:
       case Action::PlayPause: g_player.togglePlay(); break;
       case Action::Back: return false;
@@ -46,14 +55,25 @@ class ShortsScreen : public Screen {
   bool tick(int64_t now) override {
     PlayerState s = g_player.state();
     // a short that won't play (removed, age-restricted, a format the server can't stream): on to the
-    // next one in the same direction
+    // next one in the same direction. Several in a row means it isn't the shorts (the server or the
+    // network): it stops there and says so, and Next tries again.
     if (const Item* it = current()) {
       bool ours = s.video && videoSound(*it) == s.path;
-      if (ours && (s.error[0] || s.videoFailed) && skippedAt_ != index_) {
+      if (ours && (s.error[0] || s.videoFailed) && skippedAt_ != index_ && !stuck_) {
         skippedAt_ = index_;
-        play(index_ + step_, step_);
+        if (++failedInRow_ >= kMostSkipped) {
+          stuck_ = true;
+        } else {
+          play(index_ + step_, step_);
+        }
         return true;
       }
+      if (ours && shown_.picture) failedInRow_ = 0;
+    }
+    // more of the list, when the page asked for didn't come
+    if (retryAt_ && now_ns() >= retryAt_) {
+      retryAt_ = 0;
+      more();
     }
     Shown v = shown(s, now);
     bool changed = !(v == shown_);
@@ -102,7 +122,7 @@ class ShortsScreen : public Screen {
     }
     e.c.layer(2);
     if (shown_.waiting && !moving) {
-      Label l = label(e, "Loading\xe2\x80\xa6", 12, false);
+      Label l = label(e, stuck_ ? "Can't play Shorts right now" : "Loading\xe2\x80\xa6", 12, false, float(bw - e.dp(16)));
       drawLabel(e, l, centerText(0, float(bw), l.w), float((int(h) - l.h) / 2), e.p.darkMuted);
     }
     if (shown_.paused) {
@@ -123,10 +143,10 @@ class ShortsScreen : public Screen {
     // the details cross-fade: the outgoing short's out in the first half, the new one's in the second
     if (moving) {
       float out = clamp01(1 - t * 2), in = clamp01(t * 2 - 1);
-      if (out > 0) drawDetails(e, float(bw), w, h, outgoing_.title, outgoing_.subtitle, outgoing_.pos, out);
-      if (in > 0) drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), position(), in);
+      if (out > 0) drawDetails(e, float(bw), w, h, outgoing_.title, outgoing_.subtitle, out);
+      if (in > 0) drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), in);
     } else {
-      drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), position(), 1);
+      drawDetails(e, float(bw), w, h, detailTitle(), detailSubtitle(), 1);
     }
     e.c.layer(0);
   }
@@ -208,10 +228,6 @@ class ShortsScreen : public Screen {
     auto d = details_.find(it->id);
     return d != details_.end() && !d->second.subtitle.empty() ? d->second.subtitle : it->subtitle;
   }
-  std::string position() const {
-    if (!current()) return "";
-    return std::to_string(index_ + 1) + " of " + std::to_string(items_.size()) + (next_.empty() ? "" : "+");
-  }
 
   int headHeight(Env& e) {
     Label name = label(e, "Shorts", 14, true);
@@ -235,12 +251,11 @@ class ShortsScreen : public Screen {
   }
 
   void drawDetails(Env& e, float x0, float w, float h, const std::string& titleText, const std::string& subText,
-                   const std::string& posText, float alpha) {
+                   float alpha) {
     float left = x0 + e.dp(11), right = w - e.dp(10), top = float(e.dp(7)), bottom = h - e.dp(8);
     float iw = right - left;
     int headH = headHeight(e);
     std::vector<Label> title = wrap(e, titleText, 15, true, iw, 4), sub = wrap(e, subText, 11, false, iw, 2);
-    Label pos = label(e, posText, 10, false, iw);
     Label hint1 = label(e, "Next / Prev: another short", 9, false, iw);
     Label hint2 = label(e, "center: pause \xc2\xb7 wheel: volume", 9, false, iw);
     auto height = [&](const std::vector<Label>& ls, float sp, bool bold) {
@@ -249,7 +264,9 @@ class ShortsScreen : public Screen {
       return ls.empty() ? label(e, " ", sp, bold).h : t;
     };
     int titleH = height(title, 15, true), subH = height(sub, 11, false);
-    int content = headH + titleH + e.dp(4) + subH + pos.h + e.dp(3) + hint1.h + hint2.h;
+    // (1.0.x said "3 of 16+" above the hints: how many had come so far, which read as a limit in a list
+    // without one)
+    int content = headH + titleH + e.dp(4) + subH + hint1.h + hint2.h;
     int rest = std::max(0, int(bottom - top) - content);
     int gap1 = rest / 2, gap2 = rest - gap1;  // the two spacers share what is left
     e.c.layer(2);
@@ -261,8 +278,6 @@ class ShortsScreen : public Screen {
     for (const Label& l : sub) drawLabel(e, l, left, y, e.p.darkMuted), y += l.h;
     if (sub.empty()) y += subH;
     y += gap2;
-    drawLabel(e, pos, left, y, e.p.darkMuted);
-    y += pos.h + e.dp(3);
     drawLabel(e, hint1, left, y, e.p.darkFaint);
     drawLabel(e, hint2, left, y + hint1.h, e.p.darkFaint);
     e.c.popAlpha();
@@ -284,28 +299,56 @@ class ShortsScreen : public Screen {
     title_ = head, subtitle_ = detail;
     message_ = true;
   }
-  // more of the chain when few shorts are left
+  // More of the chain when few shorts are left. A page that doesn't come is asked for again in a few
+  // seconds (its token is kept). A chain that ended, or one the server no longer has (410: it keeps a
+  // chain 30 minutes, and none through a restart), starts over from a fresh first page, and the shorts
+  // not seen yet go on the end. Pages with nothing new are followed a few at a time.
   void more() {
-    if (next_.empty() || loadingMore_) return;
+    if (loadingMore_) return;
     loadingMore_ = true;
-    requests_.get("/video/shorts?next=" + Api::escape(next_), 0, [this](int status, const std::string& body) {
+    retryAt_ = 0;
+    std::string path = next_.empty() ? "/video/shorts" : "/video/shorts?next=" + Api::escape(next_);
+    requests_.get(path, 0, [this](int status, const std::string& body) {
       loadingMore_ = false;
-      if (status != 200) return;  // the token is kept: the next short tries again
+      if (status == 410 && !next_.empty()) {
+        next_.clear();
+        return more();
+      }
+      if (status != 200) {
+        retryAt_ = now_ns() + 5000 * kMs;
+        return;
+      }
       ItemsPage page;
       parseItems(body, page);
+      size_t had = items_.size();
       for (Item& n : page.items)
         if (std::none_of(items_.begin(), items_.end(), [&](const Item& i) { return i.id == n.id; })) items_.push_back(std::move(n));
       next_ = page.next;
+      if (items_.size() > had) {
+        emptyPages_ = 0;
+        if (wantNext_) {  // Next (or a short that wouldn't play) at the end: on to the first new one
+          wantNext_ = false;
+          play(index_ + 1, 1);
+        }
+      } else if (++emptyPages_ < 4) {
+        more();
+      }
     });
   }
 
   void play(int i, int direction) {
+    if (i >= int(items_.size()) && direction > 0) {  // past what has come: the next one when more do
+      wantNext_ = true;
+      more();
+      return;
+    }
     if (i < 0 || i >= int(items_.size())) return;
+    wantNext_ = false;
     // the one leaving: its picture as it is now (or its first frame), and its details, to slide away
     if (index_ >= 0 && i != index_ && canvas_ && boxW_ > 0) {
       const Item* was = current();
       outgoing_.thumb = was ? was->thumb : "";
-      outgoing_.title = detailTitle(), outgoing_.subtitle = detailSubtitle(), outgoing_.pos = position();
+      outgoing_.title = detailTitle(), outgoing_.subtitle = detailSubtitle();
       outgoingFrame_ = false;
       VideoSurface* v = VideoSurface::made();
       if (shown_.picture && v && v->width() > 0 && v->height() > 0) {
@@ -327,7 +370,7 @@ class ShortsScreen : public Screen {
     g_player.setRepeat(2);  // shorts loop, as in the app
     describe(item);
     warmAhead();
-    if (int(items_.size()) - i <= 5) more();
+    if (int(items_.size()) - i <= 8) more();
   }
 
   // The next three: their details and the server resolving their streams (2-7 s each with yt-dlp), so
@@ -384,6 +427,13 @@ class ShortsScreen : public Screen {
   std::set<std::string> describing_, warmed_, ready_;
   std::string next_;
   bool loadingMore_ = false;
+  bool wantNext_ = false;  // Next at the end of what has come: it plays the first of the next page
+  int64_t retryAt_ = 0;    // when to ask again for the page that didn't come (0: none to ask for)
+  int emptyPages_ = 0;     // pages in a row that brought nothing new
+  // shorts in a row that wouldn't play; at kMostSkipped it stops skipping (stuck_) until Next or Prev
+  static constexpr int kMostSkipped = 4;
+  int failedInRow_ = 0;
+  bool stuck_ = false;
   int index_ = -1, step_ = 1, skippedAt_ = -1;
   int savedRepeat_ = -1;
   std::string title_, subtitle_;
@@ -392,7 +442,7 @@ class ShortsScreen : public Screen {
   Requests requests_;
   // the swipe between shorts
   struct Outgoing : Texture {
-    std::string thumb, title, subtitle, pos;
+    std::string thumb, title, subtitle;
   } outgoing_;
   bool outgoingFrame_ = false;  // outgoing_ holds the picture as it was (else its first frame is drawn)
   Rect outgoingRect_{};

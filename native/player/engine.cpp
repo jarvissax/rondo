@@ -938,11 +938,14 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   }
   const char* codecName = !ok ? "" : codec->id == AV_CODEC_ID_OPUS ? "Opus" : codec->id == AV_CODEC_ID_AAC ? "AAC" : "";
   pthread_mutex_lock(&mu_);
-  if (!ok) {
+  // only for the track still asked for: one a restart stopped (another song, the next short) didn't
+  // open because it was stopped, and its error landed on the one after it (Shorts then skipped that
+  // one too, and the next, on and on)
+  if (gen == gen_ && !ok) {
     error_ = streamed ? "Can't play this song" : "Can't play " + path.substr(path.rfind('/') + 1);
     fprintf(stderr, "rondo-player: %s\n", error_.c_str());
   }
-  if (ok) error_.clear();
+  if (gen == gen_ && ok) error_.clear();
   if (ok && gen == gen_) {
     int64_t duration = fmt->duration > 0 ? fmt->duration / 1000 : 0;
     // ReplayGain: FFmpeg's reading of the tags (ID3 TXXX, Vorbis comments, APE), else the tag itself

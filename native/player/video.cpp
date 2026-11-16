@@ -243,7 +243,7 @@ void VideoDecoder::demuxLoop() {
       } else {
         fmt = nullptr;  // freed by avformat_open_input
       }
-      if (!ok) fprintf(stderr, "rondo-player: no picture from %s\n", url ? source.substr(source.find("/s/")).c_str() : source.c_str());
+      if (!ok && !gone()) fprintf(stderr, "rondo-player: no picture from %s\n", url ? source.substr(source.find("/s/")).c_str() : source.c_str());
     }
     pthread_mutex_lock(&mu_);
     if (!ok) {
