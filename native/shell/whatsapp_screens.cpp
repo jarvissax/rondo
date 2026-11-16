@@ -102,8 +102,7 @@ void avatar(Env& e, const std::string& jid, bool group, Rect r) {
     e.c.shape(r, r.w / 2, kCircles[hashOf(jid) % 4]);
     int g = int(r.w * 0.56f);
     e.c.layer(4);
-    e.icons.draw(e.c, group ? Icon::People : Icon::Person, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
-                 0xffcfd8dc);
+    e.icons.drawInTile(e.c, group ? Icon::People : Icon::Person, r, float(g), 0xffcfd8dc);
   }
   if (t) {
     e.c.layer(5);  // over the placeholder's glyph while it fades in
@@ -367,7 +366,7 @@ class ChatsScreen : public Screen {
     e.c.shape(r, r.w / 2, circle);
     int g = e.dp(18);
     e.c.layer(4);
-    e.icons.draw(e.c, icon, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
+    e.icons.drawInTile(e.c, icon, r, float(g), rgb(0xffffff));
     float x = r.x + a + e.dp(10);
     Label t = label(e, title, 13, true, w - x - e.dp(10));
     Label s = label(e, sub, 10, false, w - x - e.dp(10));
@@ -513,7 +512,7 @@ class ContactsScreen : public Screen {
         e.c.shape(r, r.w / 2, kSel);
         int g = e.dp(16);
         e.c.layer(4);
-        e.icons.draw(e.c, Icon::Search, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
+        e.icons.drawInTile(e.c, Icon::Search, r, float(g), rgb(0xffffff));
         Label t = label(e, "Search", 13, true);
         drawLabel(e, t, r.x + a + e.dp(10), y + float((int(rowH) - t.h) / 2), kText);
         continue;
@@ -1022,7 +1021,7 @@ class PickScreen : public Screen {
       drawLabel(e, s, x, ty + n.h + e.dp(1), kMuted);
       if (p.video) {
         int g = e.dp(14);
-        e.icons.draw(e.c, Icon::Play, {r.x + float((a - g) / 2), r.y + float((a - g) / 2), float(g), float(g)}, rgb(0xffffff));
+        e.icons.drawInTile(e.c, Icon::Play, r, float(g), rgb(0xffffff));
       }
     }
     e.c.popClip();

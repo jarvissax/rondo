@@ -207,6 +207,53 @@ input { caret-color: var(--accent-hi); }
 .brand-glyph.yt { width: 72%; }
 .brand-glyph .cut { fill: var(--cut, #e5121f); }
 .tab:not([aria-current]) .brand-glyph .cut { fill: var(--tabs-bg, #0d0d0f); }  /* gray like the others: the mark cut out of the bar */
+/* Icons in tiles sit by their optical center, as on the Rondo (Icons::place): halfway from the center of
+   the ink's bounding box to its center of mass, so a lopsided shape (Library's shelf, the gauge's open
+   bottom, WhatsApp's tail) looks centered. Percentages of the icon's own box, measured from each symbol
+   (shifts under 0.25 of its 24 units left out). */
+:is(.tile, .pv-tile, .pv-visual) use[href="#mark"] { transform: translate(0.7%, -0.5%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-prev"] { transform: translate(-2.5%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-next"] { transform: translate(2.5%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-note"] { transform: translate(-3%, -1.1%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-bars"] { transform: translate(1.2%, -6.1%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-folder"] { transform: translate(1.1%, -3.5%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-wifi"] { transform: translate(0, 4.8%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-check"] { transform: translate(-0.1%, -2.6%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-radio"] { transform: translate(0.4%, -2.3%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-cloud"] { transform: translate(-2%, -1%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-volume"] { transform: translate(-2%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-lock"] { transform: translate(0, -2.5%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-upload"] { transform: translate(0, -3.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-refresh"] { transform: translate(-1.4%, 1.7%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-theme"] { transform: translate(-2.8%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-lyrics"] { transform: translate(1.6%, 1.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-alert"] { transform: translate(0, -4.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-power"] { transform: translate(0, 1.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-playlist"] { transform: translate(0.1%, -1.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-star"] { transform: translate(0, -1.3%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-photo"] { transform: translate(-0.3%, -1.3%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-file"] { transform: translate(-1.9%, -0.8%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-headphones"] { transform: translate(0, -1.7%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-people"] { transform: translate(-0.7%, -4.9%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-tag"] { transform: translate(2.7%, 2.7%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-flame"] { transform: translate(-0.6%, -4.4%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-sparkle"] { transform: translate(0.1%, 2.8%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-stack"] { transform: translate(0, 1.6%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-tree"] { transform: translate(0.5%, 1.7%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-gauge"] { transform: translate(-0.9%, 10.6%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-diamond"] { transform: translate(0, 2.6%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-queue"] { transform: translate(4.6%, -2.7%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-seek"] { transform: translate(4.2%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-download"] { transform: translate(0, -5.5%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-usb"] { transform: translate(0.1%, 3.6%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-library"] { transform: translate(1.4%, -5.8%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-mic"] { transform: translate(0, -2%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-captions"] { transform: translate(0, -1.2%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-type"] { transform: translate(-0.1%, 1%); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-menu"] { transform: translate(2%, 0); }
+:is(.tile, .pv-tile, .pv-visual) use[href="#i-shuffle"] { transform: translate(-1.3%, 0); }
+/* WhatsApp's mark: its tail pulls it left and down */
+:is(.t-whatsapp .brand-glyph, .pv-mark.wa) > path { transform: translate(1.5%, -1.5%); }
 /* the Rondo's palette (shell/kit.cpp's tiles): no page shows a color twice */
 .t-music, .t-songs { --t1: #ff5e7e; --t2: #e0144c; }
 .t-video, .t-videos { --t1: #ff6b5a; --t2: #e01e1e; }
@@ -609,7 +656,8 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   background: linear-gradient(var(--t1), var(--t2)); color: #fff;
 }
 .pv-tile svg { width: calc(16 * var(--S)); height: calc(16 * var(--S)); }
-.pv-tile .brand-glyph { width: calc(19 * var(--S)); height: auto; }
+.pv-tile .brand-glyph { width: calc(16 * var(--S)); height: auto; }  /* the Rondo's brandMark: 16, YouTube 1.16 times */
+.pv-tile .brand-glyph.yt { width: calc(18.5 * var(--S)); }
 .pv-label { flex: 1; min-width: 0; font-size: calc(15 * var(--S)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pv-row.sel .pv-label { font-weight: 600; }
 .pv-chev { flex: none; width: calc(8 * var(--S)); height: calc(12 * var(--S)); margin-left: calc(5 * var(--S)); color: var(--chev); }
@@ -626,6 +674,8 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .pv-visual.art img { width: 100%; height: 100%; object-fit: cover; }
 .pv-glyph { width: calc(70 * var(--S)); height: calc(70 * var(--S)); }
 .pv-glyph.wide { width: calc(80 * var(--S)); height: calc(56 * var(--S)); }
+.pv-glyph.pv-mark { width: calc(61 * var(--S)); height: calc(61 * var(--S)); }  /* the services' marks, as on the Rondo */
+.pv-glyph.pv-mark.wide { width: calc(71 * var(--S)); height: calc(50 * var(--S)); }
 .pv-pt { margin-top: calc(9 * var(--S)); font-size: calc(14 * var(--S)); font-weight: 600; max-width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pv-pd { margin-top: calc(2 * var(--S)); font-size: calc(11 * var(--S)); color: rgb(255 255 255 / .84); max-width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pv-prog { width: calc(98 * var(--S)); height: calc(2 * var(--S)); margin-top: calc(6 * var(--S)); border-radius: 99px; background: rgb(255 255 255 / .27); overflow: hidden; }

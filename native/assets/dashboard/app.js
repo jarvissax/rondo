@@ -1616,10 +1616,10 @@ window.addEventListener('drop', (e) => {
 // ---------- theme ----------
 const MENU = {
   // t: the preview's dark backdrop behind the red logos (Tiles in Widgets.kt)
-  music: { tile: 'music', glyph: 'note', brand: 'music', t: ['#ff5a72', '#c8102e'], title: 'YouTube Music', logo: MARK.music('pv-glyph') },
-  videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#ff6a5c', '#d7001a'], title: 'YouTube', logo: MARK.video('pv-glyph wide') },
-  whatsapp: { tile: 'whatsapp', glyph: 'chat', brand: 'whatsapp', t: ['#63f08e', '#17a74c'], title: 'WhatsApp', logo: MARK.whatsapp('pv-glyph') },
-  device: { tile: 'device', glyph: 'folder', t: ['#5fb7ff', '#1f73e0'], title: 'Library' },
+  music: { tile: 'music', glyph: 'note', brand: 'music', t: ['#ff5a72', '#c8102e'], title: 'YouTube Music', logo: MARK.music('pv-glyph pv-mark') },
+  videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#ff6a5c', '#d7001a'], title: 'YouTube', logo: MARK.video('pv-glyph pv-mark wide') },
+  whatsapp: { tile: 'whatsapp', glyph: 'chat', brand: 'whatsapp', t: ['#63f08e', '#17a74c'], title: 'WhatsApp', logo: MARK.whatsapp('pv-glyph pv-mark wa') },
+  device: { tile: 'device', glyph: 'library', t: ['#5fb7ff', '#1f73e0'], title: 'Library' },
   nowPlaying: { tile: 'now', glyph: 'bars', t: ['#7be07b', '#26a83b'], title: 'Nothing playing' },
   radio: { tile: 'radio', glyph: 'radio', t: ['#ffb04d', '#f07a12'], title: 'FM Radio' },
   settings: { tile: 'settings', glyph: 'gear', t: ['#b8bcc4', '#6f747d'], title: 'Settings' },

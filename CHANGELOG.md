@@ -5,6 +5,18 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.0.6 (not released yet)
+
+### Changed
+
+- **Icons sit centered in their tiles**, on the Rondo and on its dashboard. Each is placed by how it
+  looks, not just by its outline: Library no longer sits low, the gauge (Wheel acceleration) no longer
+  sits high, WhatsApp's logo no longer leans left, play triangles sit a touch right, and an odd
+  leftover pixel is split instead of always going right and down.
+- **YouTube Music's and WhatsApp's logos are a little smaller on their tiles**, matching the other
+  icons and the dashboard.
+- **The dashboard's Theme preview shows Library's own icon** (the shelf) instead of a folder.
+
 ## 3.0.5 (November 16, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

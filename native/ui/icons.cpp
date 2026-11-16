@@ -636,18 +636,34 @@ bool Icons::init(Text& text) {
 }
 
 Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
+  return cached(icon, w, h, level, 0, 0, 0, float(w), float(h));
+}
+
+Text::Mask Icons::cached(Icon icon, int w, int h, int level, int spot, float bx, float by, float bw, float bh) {
   if (generation_ != text_->atlasGeneration()) {  // the atlas was cleared
     cache_.clear();
     generation_ = text_->atlasGeneration();
   }
-  auto key = std::make_tuple(int(icon), w, h, level);
+  auto key = std::make_tuple(int(icon), w, h, level, spot);
   auto it = cache_.find(key);
   if (it != cache_.end()) return it->second;
+  std::vector<uint8_t> m = raster(icon, w, h, level, bx, by, bw, bh);
+  Text::Mask t = text_->addMask(w, h, m.data());
+  if (!t.ok) {  // the atlas was full: it was cleared; add again
+    generation_ = text_->atlasGeneration();
+    cache_.clear();
+    t = text_->addMask(w, h, m.data());
+  }
+  cache_.emplace(key, t);
+  return t;
+}
+
+std::vector<uint8_t> Icons::raster(Icon icon, int w, int h, int level, float bx, float by, float bw, float bh) {
   std::vector<uint8_t> m;
   if (icon == Icon::MusicLogoDisc || icon == Icon::MusicLogoMarks) {
-    // MusicLogo: the official icon's 176-unit grid, fitted to the smaller side
-    float s = float(std::min(w, h)), u = s / 176;
-    Pen p(ft_, w, h, u, (w - s) / 2, (h - s) / 2);
+    // MusicLogo: the official icon's 176-unit grid, fitted to the box's smaller side
+    float s = std::min(bw, bh), u = s / 176;
+    Pen p(ft_, w, h, u, bx + (bw - s) / 2, by + (bh - s) / 2);
     if (icon == Icon::MusicLogoDisc) {
       p.fill({p.circle(88, 88, 88)});
     } else {
@@ -656,8 +672,8 @@ Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
     }
     m = p.mask;
   } else if (icon == Icon::WhatsAppMark || icon == Icon::MusicMark) {
-    float s = float(std::min(w, h)), u = s / 24;
-    Pen p(ft_, w, h, u, (w - s) / 2, (h - s) / 2);
+    float s = std::min(bw, bh), u = s / 24;
+    Pen p(ft_, w, h, u, bx + (bw - s) / 2, by + (bh - s) / 2);
     if (icon == Icon::WhatsAppMark) {
       p.fill(svgPath(p, "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"));
     } else {
@@ -667,8 +683,8 @@ Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
     m = p.mask;
   } else if (icon == Icon::WhatsAppBubble || icon == Icon::WhatsAppPhone) {
     // WhatsApp's logo on its 24-unit grid: the round bubble with its tail at the lower left; the phone
-    float s = float(std::min(w, h)), u = s / 24;
-    Pen p(ft_, w, h, u, (w - s) / 2, (h - s) / 2);
+    float s = std::min(bw, bh), u = s / 24;
+    Pen p(ft_, w, h, u, bx + (bw - s) / 2, by + (bh - s) / 2);
     if (icon == Icon::WhatsAppBubble) {
       p.fill({p.circle(12.05f, 11.89f, 11.89f)});
       p.fill({p.poly({1.745f, 17.837f, 0.057f, 24, 6.362f, 22.346f, 4, 19.5f}, true)});
@@ -678,8 +694,8 @@ Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
     m = p.mask;
   } else if (icon == Icon::VideoLogoButton || icon == Icon::VideoLogoPlay) {
     // VideoLogo: the official 28.57 x 20 outline
-    float k = std::min(w / 28.57f, h / 20.f);
-    Pen p(ft_, w, h, k, (w - 28.57f * k) / 2, (h - 20 * k) / 2);
+    float k = std::min(bw / 28.57f, bh / 20.f);
+    Pen p(ft_, w, h, k, bx + (bw - 28.57f * k) / 2, by + (bh - 20 * k) / 2);
     if (icon == Icon::VideoLogoButton) {
       Contour b{{}, true};
       p.moveTo(b, 27.9727f, 3.12324f);
@@ -701,19 +717,12 @@ Text::Mask Icons::mask(Icon icon, int w, int h, int level) {
     }
     m = p.mask;
   } else {
-    float s = std::min(w, h) / 24.f;
-    Pen p(ft_, w, h, s, (w - 24 * s) / 2, (h - 24 * s) / 2);
+    float s = std::min(bw, bh) / 24.f;
+    Pen p(ft_, w, h, s, bx + (bw - 24 * s) / 2, by + (bh - 24 * s) / 2);
     drawIcon(p, icon, std::clamp(level / 100.f, 0.f, 1.f));
     m = p.mask;
   }
-  Text::Mask t = text_->addMask(w, h, m.data());
-  if (!t.ok) {  // the atlas was full: it was cleared; add again
-    generation_ = text_->atlasGeneration();
-    cache_.clear();
-    t = text_->addMask(w, h, m.data());
-  }
-  cache_.emplace(key, t);
-  return t;
+  return m;
 }
 
 void Icons::draw(Canvas& c, Icon icon, Rect r, Color color, int level) {
@@ -721,6 +730,65 @@ void Icons::draw(Canvas& c, Icon icon, Rect r, Color color, int level) {
   if (w <= 0 || h <= 0) return;
   Text::Mask t = mask(icon, w, h, level);
   if (t.ok) c.glyph(text_->atlas(), {r.x, r.y, float(w), float(h)}, {t.u0, t.v0, t.u1 - t.u0, t.v1 - t.v0}, color);
+}
+
+namespace {
+// the margin of a placed icon's mask: room for its shift and for strokes past the box's edge
+int padFor(int bw, int bh) { return 2 + std::max(bw, bh) / 6; }
+}  // namespace
+
+Icons::Ink Icons::ink(Icon icon, int bw, int bh) {
+  auto key = std::make_tuple(int(icon), bw, bh);
+  auto it = ink_.find(key);
+  if (it != ink_.end()) return it->second;
+  int pad = padFor(bw, bh), w = bw + 2 * pad, h = bh + 2 * pad;
+  std::vector<uint8_t> m = raster(icon, w, h, 0, float(pad), float(pad), float(bw), float(bh));
+  int x0 = w, y0 = h, x1 = -1, y1 = -1;
+  double sum = 0, sx = 0, sy = 0;
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      int a = m[size_t(y) * size_t(w) + size_t(x)];
+      if (!a) continue;
+      sum += a, sx += a * (x + 0.5), sy += a * (y + 0.5);
+      if (a >= 128) x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
+    }
+  }
+  Ink k;
+  float cx = pad + bw / 2.f, cy = pad + bh / 2.f;
+  if (x1 >= 0 && sum > 0) {
+    k.cx = (x0 + x1 + 1) / 2.f - cx, k.cy = (y0 + y1 + 1) / 2.f - cy;
+    k.mx = float(sx / sum) - cx, k.my = float(sy / sum) - cy;
+  }
+  ink_.emplace(key, k);
+  return k;
+}
+
+Icons::Placed Icons::place(Icon icon, Rect area, float bw, float bh) {
+  Placed at;
+  at.bw = int(lroundf(bw)), at.bh = int(lroundf(bh));
+  if (at.bw <= 0 || at.bh <= 0) return at;
+  Ink k = ink(icon, at.bw, at.bh);
+  float ox = k.cx + 0.5f * (k.mx - k.cx), oy = k.cy + 0.5f * (k.my - k.cy);  // the optical center
+  float x = area.x + (area.w - at.bw) / 2 - ox, y = area.y + (area.h - at.bh) / 2 - oy;
+  float fx = floorf(x), fy = floorf(y);
+  at.qx = int(lroundf((x - fx) * 8)), at.qy = int(lroundf((y - fy) * 8));
+  if (at.qx == 8) at.qx = 0, fx += 1;
+  if (at.qy == 8) at.qy = 0, fy += 1;
+  at.pad = padFor(at.bw, at.bh);
+  at.x = fx - at.pad, at.y = fy - at.pad;
+  return at;
+}
+
+void Icons::drawPlaced(Canvas& c, Icon icon, const Placed& at, Color color) {
+  if (at.bw <= 0 || at.bh <= 0) return;
+  int w = at.bw + 2 * at.pad + 1, h = at.bh + 2 * at.pad + 1;
+  int spot = 1 + at.qx + 9 * at.qy + 81 * (at.bw + 1000 * at.bh);
+  Text::Mask t = cached(icon, w, h, 0, spot, at.pad + at.qx / 8.f, at.pad + at.qy / 8.f, float(at.bw), float(at.bh));
+  if (t.ok) c.glyph(text_->atlas(), {at.x, at.y, float(w), float(h)}, {t.u0, t.v0, t.u1 - t.u0, t.v1 - t.v0}, color);
+}
+
+void Icons::drawInTile(Canvas& c, Icon icon, Rect area, float size, Color color) {
+  drawPlaced(c, icon, place(icon, area, size, size), color);
 }
 
 namespace {

@@ -52,11 +52,40 @@ class Icons {
   void videoLogo(Canvas& c, Rect r);
   void whatsappLogo(Canvas& c, Rect r);  // WhatsApp's: the green bubble, the white phone
 
+  // An icon in a tile (or a round button): its box, bw x bh as draw() takes it, set so the icon's
+  // optical center sits on the area's center. The optical center is halfway from the center of the
+  // ink's bounding box to the ink's center of mass, so a lopsided shape (WhatsApp's tail, a radio's
+  // body under its antenna) looks centered, not just measures centered. The shapes are rasterized at
+  // that spot to an eighth of a pixel, so an odd leftover pixel is split instead of going right.
+  struct Placed {
+    float x = 0, y = 0;  // the mask's top-left (whole pixels)
+    int bw = 0, bh = 0;  // the box
+    int pad = 0;         // the mask's margin around the box
+    int qx = 0, qy = 0;  // the box's offset past x + pad, y + pad, in eighths of a pixel
+  };
+  Placed place(Icon icon, Rect area, float bw, float bh);
+  // Draws an icon at a placement: the one it was made for, or another of the same box (a logo's
+  // second color, so the two stay together).
+  void drawPlaced(Canvas& c, Icon icon, const Placed& at, Color color);
+  void drawInTile(Canvas& c, Icon icon, Rect area, float size, Color color);  // a square box
+
  private:
+  // where an icon's ink sits in its box: the bounding box's center (cx, cy) and the center of mass
+  // (mx, my), in pixels from the box's center
+  struct Ink {
+    float cx = 0, cy = 0, mx = 0, my = 0;
+  };
+  Ink ink(Icon icon, int bw, int bh);
+  // the shapes laid out in the box (bx, by, bw, bh) of a w x h mask, as mask() lays them out in the whole
+  std::vector<uint8_t> raster(Icon icon, int w, int h, int level, float bx, float by, float bw, float bh);
+  // a mask from the cache, or rastered and added to the atlas; spot: 0 for a whole view, else the
+  // placement's code (box and eighths)
+  Text::Mask cached(Icon icon, int w, int h, int level, int spot, float bx, float by, float bw, float bh);
   FT_Library ft_ = nullptr;
   Text* text_ = nullptr;
   uint32_t generation_ = 0;
-  std::map<std::tuple<int, int, int, int>, Text::Mask> cache_;
+  std::map<std::tuple<int, int, int, int, int>, Text::Mask> cache_;
+  std::map<std::tuple<int, int, int>, Ink> ink_;
 };
 
 // batteryColor() in IconView.kt: green from 50 %, amber from 20 %, red below.

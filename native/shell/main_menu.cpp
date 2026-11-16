@@ -223,9 +223,9 @@ class MainMenuScreen : public Screen {
     e.c.layer(4);
     if (!tile->brand) {
       int g = e.dp(70);
-      e.icons.draw(e.c, tile->kind, {bx + float((box - g) / 2), top + float((box - g) / 2), float(g), float(g)}, rgb(0xffffff));
+      e.icons.drawInTile(e.c, tile->kind, vis, float(g), rgb(0xffffff));
     } else {
-      brandMark(e, *tile, vis, float(tile->brand == 1 ? e.dp(76) : e.dp(70)));
+      brandMark(e, *tile, vis, float(e.dp(61)));
     }
     e.c.layer(4);
     drawLabel(e, title, centerText(ix, iw, title.w), top + box + e.dp(9), rgb(0xffffff));

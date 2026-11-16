@@ -214,9 +214,24 @@ code { font-family: var(--mono); font-size: .9em; padding: 1px 6px; border-radiu
 .t-device { --t1: #5fb7ff; --t2: #1f73e0; }
 .t-whatsapp { --t1: #63f08e; --t2: #17a74c; }
 /* YouTube's and WhatsApp's logos on their tiles (YouTube's play mark cut out in the tile's red) */
-.tile .brand-glyph { width: 66%; height: auto; }
+.tile .brand-glyph { width: 62%; height: auto; }  /* as on the Rondo and its dashboard */
 .tile .brand-glyph.yt { width: 72%; }
 .brand-glyph .cut { fill: var(--cut, #e5121f); }
+/* Icons in tiles sit by their optical center, as on the Rondo and its dashboard: halfway from the center
+   of the ink's bounding box to its center of mass. Percentages of the icon's own box, measured from each
+   symbol (shifts under 0.25 of its 24 units left out). */
+.tile use[href="#mark"] { transform: translate(0.7%, -0.5%); }
+.tile use[href="#i-check"] { transform: translate(-0.1%, -2.6%); }
+.tile use[href="#i-lock"] { transform: translate(0, -2.5%); }
+.tile use[href="#i-unlock"] { transform: translate(0.4%, -3%); }
+.tile use[href="#i-upload"] { transform: translate(0, -3.4%); }
+.tile use[href="#i-refresh"] { transform: translate(-1.4%, 1.7%); }
+.tile use[href="#i-alert"] { transform: translate(0, -4.4%); }
+.tile use[href="#i-account"] { transform: translate(0, -5.6%); }
+.tile use[href="#i-pulse"] { transform: translate(0.6%, -1.2%); }
+.tile use[href="#i-signout"] { transform: translate(4.3%, 0); }
+.tile use[href="#i-file"] { transform: translate(-1.7%, -0.8%); }
+.t-whatsapp .brand-glyph > path { transform: translate(1.5%, -1.5%); }  /* its tail pulls it left and down */
 .t-ok { --t1: #7be07b; --t2: #26a83b; }
 .t-settings { --t1: #b8bcc4; --t2: #6f747d; }
 .t-resolver { --t1: #ffb04d; --t2: #f07a12; }

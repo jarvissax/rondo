@@ -119,8 +119,8 @@ const Tile usb{Icon::Usb, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile shorts{Icon::Shorts, rgb(0xff6b5a), rgb(0xe01e1e)};
 }  // namespace tiles
 
-// IconTile: the gradient tile (radius 7 units) with a 16-unit white glyph, or the white brand tile with
-// a 1 px edge at 11 % black and the logo.
+// IconTile: the gradient tile (radius 7 units) with its 16-unit white glyph, or a service's tile with
+// its mark (brandMark); either set by its optical center (Icons::place).
 void drawTile(Env& e, const Tile& t, Rect r, float alpha) {
   e.c.pushAlpha(alpha);
   float radius = e.dpf(7);
@@ -129,24 +129,25 @@ void drawTile(Env& e, const Tile& t, Rect r, float alpha) {
   if (!t.brand) {
     int g = e.dp(16);
     e.c.layer(layer + 2);  // with the text: icons are in the glyph atlas
-    if (t.glyph) e.icons.draw(e.c, t.kind, {r.x + float((int(r.w) - g) / 2), r.y + float((int(r.h) - g) / 2), float(g), float(g)},
-                 rgb(0xffffff));
+    if (t.glyph) e.icons.drawInTile(e.c, t.kind, r, float(g), rgb(0xffffff));
   } else {
     e.c.layer(layer + 2);
-    brandMark(e, t, r, float(e.dp(19)));
+    brandMark(e, t, r, float(e.dp(16)));
   }
   e.c.layer(layer);
   e.c.popAlpha();
 }
 
+// size: the round marks' (about 62 % of a tile, as on the dashboard); YouTube's wide button 1.16 times
+// as wide. Each is set by its optical center (Icons::place): WhatsApp's tail pulls it left and down.
 void brandMark(Env& e, const Tile& t, Rect r, float size) {
-  float w = size, h = t.brand == 1 ? roundf(size * 0.72f) : size;
-  Rect lr{r.x + floorf((r.w - w) / 2), r.y + floorf((r.h - h) / 2), w, h};
-  if (t.brand == 1) {  // YouTube's button in white, its play mark cut out in the tile's red
-    e.icons.draw(e.c, Icon::VideoLogoButton, lr, rgb(0xffffff));
-    e.icons.draw(e.c, Icon::VideoLogoPlay, lr, mix(t.top, t.bottom, 0.55f));
+  if (t.brand == 1) {  // YouTube's button in white, its play mark cut out in the tile's red, placed as one
+    float w = roundf(size * 1.16f), h = roundf(w * 0.72f);
+    Icons::Placed at = e.icons.place(Icon::VideoLogoButton, r, w, h);
+    e.icons.drawPlaced(e.c, Icon::VideoLogoButton, at, rgb(0xffffff));
+    e.icons.drawPlaced(e.c, Icon::VideoLogoPlay, at, mix(t.top, t.bottom, 0.55f));
   } else {
-    e.icons.draw(e.c, t.brand == 3 ? Icon::WhatsAppMark : Icon::MusicMark, lr, rgb(0xffffff));
+    e.icons.drawInTile(e.c, t.brand == 3 ? Icon::WhatsAppMark : Icon::MusicMark, r, size, rgb(0xffffff));
   }
 }
 
