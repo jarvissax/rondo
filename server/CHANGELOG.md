@@ -4,7 +4,7 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## 3.4.0 (not released yet)
+## 3.4.0 (November 16, 2026)
 
 - **Reacting from the Rondo** (Rondo 3.0.5): `POST /wa/chats/:jid/react` reacts to a message with
   any emoji, or takes your reaction back, and every message says your own reaction (`mine`).
