@@ -41,7 +41,8 @@ class Text {
  public:
   // fontDir holds the Y1's system fonts; regular is the bundled Roboto Regular (null: the system one);
   // emoji the bundled Noto Color Emoji (null or missing: Android 4.2's black-and-white AndroidEmoji).
-  bool init(const char* fontDir, const char* regular, const char* emoji = nullptr);
+  // emojiElse: the color emoji font taken when `emoji` can't be (missing, or no color bitmaps)
+  bool init(const char* fontDir, const char* regular, const char* emoji = nullptr, const char* emojiElse = nullptr);
   // A style at a pixel size. The same arguments always return the same id.
   int font(Weight weight, float px);
   float ascent(int font) const { return sizes_[font].ascent; }
@@ -104,7 +105,10 @@ class Text {
     size_t size = 0;
     hb_face_t* hb = nullptr;
     FT_Face ft = nullptr;
-    float strike = 0;  // a color bitmap font's one size (ppem): its glyphs are scaled from it
+    float strike = 0;  // a color bitmap font's size (ppem) its glyphs are scaled from
+    int strikeIndex = 0;  // which of its sizes that is
+    float look = 1;       // its emoji drawn this much bigger, to look Noto's size (some fonts' fill their size, Noto's are 1.17 of it)
+    float drop = 0;       // and this much lower (in sizes), to sit where Noto's do: centered 0.34 above the baseline
   };
   struct Size {
     int face;  // primary face for this style

@@ -100,7 +100,7 @@ int Text::openFace(const std::string& path) {
   return int(faces_.size() - 1);
 }
 
-bool Text::init(const char* fontDir, const char* regular, const char* emoji) {
+bool Text::init(const char* fontDir, const char* regular, const char* emoji, const char* emojiElse) {
   if (FT_Init_FreeType(&ft_) != 0) return false;
   std::string dir = fontDir;
   regular_ = regular ? openFace(regular) : -1;
@@ -111,12 +111,32 @@ bool Text::init(const char* fontDir, const char* regular, const char* emoji) {
     return false;
   }
   if (bold_ < 0) bold_ = regular_;
-  if (emoji) {
-    emoji_ = openFace(emoji);
+  for (const char* path : {emoji, emojiElse}) {
+    if (!path || emoji_ >= 0) continue;
+    emoji_ = openFace(path);
     if (emoji_ >= 0) {
       FT_Face f = faces_[emoji_].ft;
       if (f->num_fixed_sizes > 0 && FT_HAS_COLOR(f)) {
-        faces_[emoji_].strike = f->available_sizes[0].y_ppem / 64.0f;
+        // the smallest of its sizes of at least 48 px, else its largest (Noto has one, 136 px; others
+        // have several): enough for the biggest emoji drawn, little to scale down
+        int best = 0;
+        for (int i = 1; i < f->num_fixed_sizes; i++) {
+          float p = f->available_sizes[i].y_ppem / 64.0f, b = f->available_sizes[best].y_ppem / 64.0f;
+          if ((p >= 48 && (b < 48 || p < b)) || (b < 48 && p > b)) best = i;
+        }
+        faces_[emoji_].strikeIndex = best;
+        faces_[emoji_].strike = f->available_sizes[best].y_ppem / 64.0f;
+        // how tall an emoji is against its size (😀): Rondo's layouts were made with Noto's, 128 px at
+        // its 109 (so Noto's own comes out at exactly 1)
+        FT_Select_Size(f, best);
+        unsigned smile = FT_Get_Char_Index(f, 0x1F600);
+        if (smile && FT_Load_Glyph(f, smile, FT_LOAD_COLOR) == 0 && f->glyph->bitmap.rows > 0) {
+          Face& e = faces_[emoji_];
+          e.look = std::clamp((128.f / 109.f) / (f->glyph->bitmap.rows / e.strike), 0.8f, 1.5f);
+          // its center above the baseline, drawn at that size, against Noto's ((101 - 128 / 2) / 109)
+          float center = (f->glyph->bitmap_top - f->glyph->bitmap.rows / 2.f) / e.strike * e.look;
+          e.drop = std::clamp(center - (101.f - 128.f / 2) / 109.f, -0.5f, 0.5f);
+        }
       } else {
         emoji_ = -1;
       }
@@ -165,7 +185,7 @@ hb_font_t* Text::hbFont(int size, int face) {
   Size& s = sizes_[size];
   if (!s.hb[face]) {
     s.hb[face] = hb_font_create(faces_[face].hb);
-    int scale = int(lroundf(s.px * 64));
+    int scale = int(lroundf(s.px * 64 * faces_[face].look));  // an emoji takes the room it's drawn in
     hb_font_set_scale(s.hb[face], scale, scale);
   }
   return s.hb[face];
@@ -177,7 +197,7 @@ FT_Size Text::ftSize(int size, int face) {
     FT_Face f = faces_[face].ft;
     FT_New_Size(f, &s.ft[face]);
     FT_Activate_Size(s.ft[face]);
-    if (faces_[face].strike > 0) FT_Select_Size(f, 0);  // a bitmap font has its one size
+    if (faces_[face].strike > 0) FT_Select_Size(f, faces_[face].strikeIndex);  // a bitmap font: the size chosen
     else FT_Set_Char_Size(f, 0, FT_F26Dot6(lroundf(s.px * 64)), 72, 72);
   }
   return s.ft[face];
@@ -219,10 +239,10 @@ bool Text::rasterizeColor(Slot& s) {
   const FT_Bitmap& bm = f->glyph->bitmap;
   if (bm.pixel_mode != FT_PIXEL_MODE_BGRA || !bm.width || !bm.rows) return false;
   rasterizedFrame_++;
-  float k = sizes_[s.size].px / faces_[s.face].strike;
+  float k = sizes_[s.size].px / faces_[s.face].strike * faces_[s.face].look;
   int w = std::max(1, int(lroundf(bm.width * k))), h = std::max(1, int(lroundf(bm.rows * k)));
   s.left = int16_t(lroundf(f->glyph->bitmap_left * k));
-  s.top = int16_t(lroundf(f->glyph->bitmap_top * k));
+  s.top = int16_t(lroundf(f->glyph->bitmap_top * k - faces_[s.face].drop * sizes_[s.size].px));
   if (cShelfX_ + w + 2 > kColorW) cShelfY_ += cShelfH_, cShelfX_ = cShelfH_ = 0;
   if (cShelfY_ + h + 2 > kColorH) {  // full: start again (the color glyphs only)
     for (Slot& o : slots_)
