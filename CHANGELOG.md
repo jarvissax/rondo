@@ -5,6 +5,19 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 3.1.1 (not released yet)
+
+### New
+
+- **An emoji font of your own:** an `emoji.ttf` in Rondo's data folder is used instead of the bundled
+  emoji, drawn at the same size and in the same place, and kept through updates. With a Mac you can
+  make one from Apple's emoji ([how](docs/using.md#apples-emoji-from-your-own-mac)).
+
+### Fixed
+
+- **Recording a voice message:** the ring around the microphone grows and settles smoothly with your
+  voice (it was redrawn ten times a second, in jumps), and the time under it stays in place.
+
 ## 3.1.0 (November 16, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

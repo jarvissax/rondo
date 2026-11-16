@@ -315,6 +315,21 @@ Under **Every output**:
   headphones and the speaker; the loudest steps add some hiss.
 - **Volume limit:** the loudest step the wheel goes to, on every output (No limit as it ships).
 
+## Apple's emoji, from your own Mac
+
+Rondo draws emoji with Google's Noto Color Emoji. With a Mac you can give your Y1 Apple's instead,
+converted from your Mac's own copy of the font. Apple's emoji are Apple's, so the font isn't part of
+Rondo, this repository or its releases: each Mac makes its own.
+
+1. On the Mac, in a copy of this repository: `node tools/emoji/make-font.cjs`. It writes
+   `emoji.ttf` (about 13 MB, only the one size the Y1 uses) to the folder you're in.
+2. With the Y1 connected over USB: `adb push emoji.ttf /data/rondo/emoji.ttf`, then restart Rondo
+   (hold Power › Restart).
+
+Rondo takes `emoji.ttf` in its data folder over its own emoji, draws them at the same size and in the
+same place, and keeps it through updates. To go back: `adb shell rm /data/rondo/emoji.ttf` and restart.
+About a hundred emoji of people facing right don't draw with it.
+
 ## The dashboard
 
 **Settings › Dashboard** turns the Y1 into a small web server for as long as that screen is

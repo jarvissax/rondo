@@ -35,3 +35,6 @@ native/sysroot/
 native/build/
 native/third_party/
 tools/parity/.compare
+
+# an emoji font built from your own Mac (tools/emoji/make-font.cjs): yours, never committed
+emoji.ttf
