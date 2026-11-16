@@ -4,7 +4,7 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## 3.5.0 (not released yet)
+## 3.5.0 (November 16, 2026)
 
 - **Finding a video's streams takes half as long:** about 2 s instead of 4-5 s on a VPS, so a song
   or video the Rondo hasn't played before starts and downloads that much sooner. yt-dlp asks YouTube's
