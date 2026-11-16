@@ -5,7 +5,11 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## 3.1.1 (not released yet)
+## 3.1.1 (November 16, 2026)
+
+An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+3.1.0 does; Rondo server 3.5.1 fixes WhatsApp's unread counts and shows mentions by name.
 
 ### New
 
