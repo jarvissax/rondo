@@ -4,6 +4,15 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## 3.5.1 (not released yet)
+
+- **Fixed: a chat with two new messages showed one unread.** WhatsApp's chat updates give the unread
+  count as a step (one more), which the server took as the whole count; now each message counts once,
+  a chat read on the phone goes to 0, and one marked unread there shows 1.
+- **Mentions show names:** "@" and a number in a group message (more and more a private id rather
+  than a phone number) shows the person's name when the server knows them, in the message, in a reply's
+  quote and in the chat list.
+
 ## 3.5.0 (November 16, 2026)
 
 - **Finding a video's streams takes half as long:** about 2 s instead of 4-5 s on a VPS, so a song

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WAMessage } from "baileys";
-import { numberOf, waveform } from "../src/whatsapp.js";
+import { numberOf, waveform, WhatsApp } from "../src/whatsapp.js";
 import { changeOf, previewText, reduceMessage, type JidResolver } from "../src/whatsappReduce.js";
 import { WaStore } from "../src/whatsappStore.js";
 
@@ -186,5 +186,44 @@ describe("the WhatsApp store", () => {
     s.apply({ kind: "react", chat: "1@s.whatsapp.net", target: "M1", sender: "1@s.whatsapp.net", emoji: "\u2764\ufe0f" });
     s.apply({ kind: "react", chat: "1@s.whatsapp.net", target: "M1", sender: "", emoji: "\u2764\ufe0f" });
     expect(Object.keys(s.message("1@s.whatsapp.net", "M1")!.reactions)).toEqual(["1@s.whatsapp.net"]);
+  });
+});
+
+describe("WhatsApp's chats and mentions", () => {
+  const quiet = { info() {}, warn() {}, error() {}, debug() {} } as never;
+  const dirs: string[] = [];
+  const open = () => {
+    const dir = mkdtempSync(join(tmpdir(), "rondo-wa-"));
+    dirs.push(dir);
+    return new WhatsApp(dir, quiet);
+  };
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const live = (id: string) => msg({ key: { remoteJid: ALI, fromMe: false, id }, messageTimestamp: 1, message: { conversation: "hi" } });
+
+  it("counts each new message once, as a chat update's unreadCount is a step (Baileys)", async () => {
+    const wa = open();
+    const w = wa as unknown as { take(m: WAMessage, live: boolean): Promise<void>; takeChat(c: object, update?: boolean): void };
+    wa.store.upsertChat(ALI, { at: 1 });
+    for (const id of ["A1", "A2"]) {
+      await w.take(live(id), true);
+      w.takeChat({ id: ALI, unreadCount: 1 }, true); // Baileys' chats.update after each message
+    }
+    expect(wa.store.chat(ALI)?.unread).toBe(2);
+    w.takeChat({ id: ALI, unreadCount: 0 }, true); // read on the phone
+    expect(wa.store.chat(ALI)?.unread).toBe(0);
+    w.takeChat({ id: ALI, unreadCount: -1 }, true); // marked unread on the phone
+    expect(wa.store.chat(ALI)?.unread).toBe(1);
+    w.takeChat({ id: ALI, unreadCount: 5 }); // the history: the whole count
+    expect(wa.store.chat(ALI)?.unread).toBe(5);
+  });
+
+  it("shows a mention by the person's name, by number or private id, and leaves unknown ones", () => {
+    const wa = open();
+    wa.store.upsertContact({ jid: ALI, name: "Ali Morgan" });
+    wa.store.mapLid("99999999@lid", ALI);
+    expect(wa.named("hi @99999999, @15550000002 and @12345678")).toBe("hi @Ali Morgan, @Ali Morgan and @12345678");
+    expect(wa.named("mail me at a@b.c")).toBe("mail me at a@b.c");
   });
 });

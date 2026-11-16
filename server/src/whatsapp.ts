@@ -313,7 +313,8 @@ export class WhatsApp {
         for (const k of del.keys) if (k.id) this.store.apply({ kind: "delete", chat: this.resolve(k.remoteJid), target: k.id });
       // reactions come as messages too (take: changeOf), which say who sent them; Baileys'
       // "messages.reaction" repeats them without that, so it isn't read
-      for (const c of [...(ev["chats.upsert"] ?? []), ...(ev["chats.update"] ?? [])]) this.takeChat(c);
+      for (const c of ev["chats.upsert"] ?? []) this.takeChat(c);
+      for (const c of ev["chats.update"] ?? []) this.takeChat(c, true);
       for (const jid of ev["chats.delete"] ?? []) this.store.deleteChat(this.resolve(jid));
       for (const c of [...(ev["contacts.upsert"] ?? []), ...(ev["contacts.update"] ?? [])]) this.takeContact(c);
       for (const g of [...(ev["groups.upsert"] ?? []), ...(ev["groups.update"] ?? [])]) if (g.id && g.subject) this.store.upsertChat(g.id, { name: g.subject, group: true });
@@ -351,16 +352,27 @@ export class WhatsApp {
     });
   }
 
-  private takeChat(c: { id?: string | null; name?: string | null; unreadCount?: number | null; archived?: boolean | null; pinned?: number | null; conversationTimestamp?: unknown }): void {
+  // A chat as the history and chats.upsert give it (its unread count the whole count), or as
+  // chats.update changes it (update): there Baileys' unreadCount is a step, not a total. A positive one
+  // is the messages that just came, one each (summed when they came together), and take() already
+  // counted each of those; 0 is the chat read on the phone, -1 marked unread there. Taken as a total,
+  // two messages in a row showed 1 (Nov 16).
+  private takeChat(c: { id?: string | null; name?: string | null; unreadCount?: number | null; archived?: boolean | null; pinned?: number | null; conversationTimestamp?: unknown }, update = false): void {
     if (!c.id) return;
     const jid = this.resolve(c.id);
     if (!jid || jid === "status@broadcast" || jid.endsWith("@newsletter") || jid.endsWith("@broadcast")) return;
     const ts = Number(c.conversationTimestamp ?? 0);
+    let unread: number | undefined;
+    if (typeof c.unreadCount === "number") {
+      if (!update) unread = Math.max(0, c.unreadCount);
+      else if (c.unreadCount === 0) unread = 0;
+      else if (c.unreadCount < 0) unread = Math.max(1, this.store.chat(jid)?.unread ?? 0);
+    }
     this.store.upsertChat(jid, {
       name: isJidGroup(jid) ? (c.name ?? "") : "",
       group: !!isJidGroup(jid),
       ...(ts > 0 ? { at: ts * 1000 } : {}),
-      ...(typeof c.unreadCount === "number" ? { unread: Math.max(0, c.unreadCount) } : {}),
+      ...(unread !== undefined ? { unread } : {}),
       ...(typeof c.archived === "boolean" ? { archived: c.archived } : {}),
       ...(c.pinned !== undefined && c.pinned !== null ? { pinned: c.pinned > 0 } : {}),
     });
@@ -631,6 +643,23 @@ export class WhatsApp {
 
   // ---- the Rondo's JSON ----
 
+  // A mention as WhatsApp writes it in a text, "@" and a number: a phone number, or (in groups, more and
+  // more) a private id. Shown as the person's name when this account knows the number or the id; the
+  // rest stays as it was written.
+  named(text: string): string {
+    if (!text || !text.includes("@")) return text;
+    const me = this.myJid();
+    return text.replace(/@(\d{5,20})(?!\d)/g, (all, digits: string) => {
+      const lid = `${digits}@lid`, pn = `${digits}@s.whatsapp.net`;
+      const lidPn = this.store.pnOf(lid);
+      const who = lidPn || this.store.contact(lid) ? lid : this.store.contact(pn) || this.store.chat(pn) ? pn : "";
+      if (!who) return all;
+      if ((lidPn || who) === me) return "@You";
+      const name = this.nameOf(who).replace(/^~/, "");
+      return !name || name === "Someone" ? all : `@${name}`;
+    });
+  }
+
   chatJson(c: WaChatRow): object {
     const last = this.store.lastMessage(c.jid);
     return {
@@ -643,13 +672,13 @@ export class WhatsApp {
       archived: c.archived,
       preview: last
         ? {
-            text: previewText(last.kind, last.text, last.media),
+            text: this.named(previewText(last.kind, last.text, last.media)),
             fromMe: last.fromMe,
             sender: c.group && !last.fromMe ? this.nameOf(last.sender, last.senderName) : "",
             status: last.status,
             // what it is, so the list can draw it as WhatsApp does (a mic and 0:03 for a voice message)
             kind: last.kind,
-            caption: last.kind === "image" || last.kind === "video" ? last.text : "",
+            caption: last.kind === "image" || last.kind === "video" ? this.named(last.text) : "",
             seconds: last.media?.seconds ?? 0,
           }
         : null,
@@ -674,11 +703,11 @@ export class WhatsApp {
       name: m.fromMe ? "You" : m.chat.endsWith("@g.us") ? this.nameOf(m.sender, m.senderName) : "",
       at: m.at,
       kind: m.kind,
-      text: m.text,
+      text: this.named(m.text),
       ...(m.media ? { media: m.media } : {}),
       // the small preview picture: from /wa/media/<chat>/<id>?preview=1, not in the JSON
       ...(m.thumb ? { preview: true } : {}),
-      ...(m.quoted ? { quoted: { ...m.quoted, name: m.quoted.sender ? (m.quoted.sender === this.myJid() ? "You" : this.nameOf(m.quoted.sender)) : "" } } : {}),
+      ...(m.quoted ? { quoted: { ...m.quoted, text: this.named(m.quoted.text), name: m.quoted.sender ? (m.quoted.sender === this.myJid() ? "You" : this.nameOf(m.quoted.sender)) : "" } } : {}),
       status: m.status,
       edited: m.edited,
       reactions: [...counts].map(([emoji, count]) => ({ emoji, count })),
