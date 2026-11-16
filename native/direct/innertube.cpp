@@ -4,11 +4,13 @@
 #include <openssl/sha.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <curl/curl.h>
 #include <stdio.h>
 #include <string.h>
 
+#include <functional>
 #include <mutex>
 
 #include "json.h"
@@ -116,6 +118,30 @@ CURL* handle() {
   return c;
 }
 
+// curl_easy_perform, asked again at once (250 ms apart, up to 20 times) when the connect was refused or
+// the connection reset, as the server's connection does (api.cpp, net.h): a phone's hotspot refuses
+// many new connections, and direct mode opens one to each of Google's hosts (a video's own among
+// them), where server mode keeps one open to the server. Without this a refusal failed the request
+// (a short's streams, its page), and the player waited and asked again: shorts took 5-9 s to start
+// (Nov 16). `again` gets the try after it ready (what the failed one left thrown away); false ends it.
+CURLcode perform(CURL* h, const std::function<bool()>& again = nullptr) {
+  CURLcode rc = curl_easy_perform(h);
+  int tries = 1;
+  for (; tries < 20 && net::retryable(rc); tries++) {
+    if (again && !again()) break;
+    usleep(250000);
+    rc = curl_easy_perform(h);
+  }
+  if (tries > 1) {
+    char* url = nullptr;
+    curl_easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &url);
+    std::string host = url ? url : "";
+    host = host.substr(0, host.find('/', 8));
+    fprintf(stderr, "rondo-direct: %s: %s after %d tries\n", host.c_str(), rc == CURLE_OK ? "answered" : curl_easy_strerror(rc), tries);
+  }
+  return rc;
+}
+
 struct Collect {
   std::string* body;
   size_t max;
@@ -170,7 +196,7 @@ Fetched post(const std::string& url, const std::string& body, const std::vector<
   curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 20000L);
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, collect);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &col);
-  CURLcode rc = curl_easy_perform(h);
+  CURLcode rc = perform(h, [&] { return f.body.clear(), true; });
   long status = 0;
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
   if (hs) curl_slist_free_all(hs);
@@ -417,7 +443,7 @@ int innertube(const Client& c, const char* endpointName, const std::string& fiel
   curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L);
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, collect);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &col);
-  CURLcode rc = curl_easy_perform(h);
+  CURLcode rc = perform(h, [&] { return answer.clear(), true; });
   long status = 0;
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
   curl_slist_free_all(hs);
@@ -454,7 +480,7 @@ Fetched get(const std::string& url, const std::vector<std::string>& headers, siz
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &col);
   curl_easy_setopt(h, CURLOPT_HEADERFUNCTION, onHeader);
   curl_easy_setopt(h, CURLOPT_HEADERDATA, &heads);
-  CURLcode rc = curl_easy_perform(h);
+  CURLcode rc = perform(h, [&] { return f.body.clear(), heads = Heads(), true; });
   long status = 0;
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
   if (hs) curl_slist_free_all(hs);
@@ -499,7 +525,7 @@ int getStreamed(const std::string& url, const std::vector<std::string>& headers,
   curl_easy_setopt(st.h, CURLOPT_WRITEDATA, &st);
   curl_easy_setopt(st.h, CURLOPT_HEADERFUNCTION, onHeader);
   curl_easy_setopt(st.h, CURLOPT_HEADERDATA, &st.heads);
-  CURLcode rc = curl_easy_perform(st.h);
+  CURLcode rc = perform(st.h, [&] { return !st.started; });  // not once the stream has begun
   long status = 0;
   curl_easy_getinfo(st.h, CURLINFO_RESPONSE_CODE, &status);
   if (hs) curl_slist_free_all(hs);

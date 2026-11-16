@@ -53,6 +53,7 @@ class ShortsScreen : public Screen {
   }
 
   bool tick(int64_t now) override {
+    if (switchPending_ && !sliding(now_ns())) startCurrent();
     PlayerState s = g_player.state();
     // a short that won't play (removed, age-restricted, a format the server can't stream): on to the
     // next one in the same direction. Several in a row means it isn't the shorts (the server or the
@@ -81,7 +82,11 @@ class ShortsScreen : public Screen {
     return changed;
   }
 
-  bool step(float) override { return sliding(now_ns()); }
+  bool step(float) override {
+    bool moving = sliding(now_ns());
+    if (!moving && switchPending_) startCurrent();  // the swipe is over: the player on the new short
+    return moving;
+  }
 
   void draw(Env& e, float w, float h) override {
     canvas_ = &e.c;
@@ -345,7 +350,8 @@ class ShortsScreen : public Screen {
     if (i < 0 || i >= int(items_.size())) return;
     wantNext_ = false;
     // the one leaving: its picture as it is now (or its first frame), and its details, to slide away
-    if (index_ >= 0 && i != index_ && canvas_ && boxW_ > 0) {
+    bool slides = index_ >= 0 && i != index_ && canvas_ && boxW_ > 0;
+    if (slides) {
       const Item* was = current();
       outgoing_.thumb = was ? was->thumb : "";
       outgoing_.title = detailTitle(), outgoing_.subtitle = detailSubtitle();
@@ -366,11 +372,32 @@ class ShortsScreen : public Screen {
     if (savedRepeat_ < 0) savedRepeat_ = g_player.state().repeat;
     if (VideoSurface* v = VideoSurface::get()) v->clear();  // the still until this one's video draws
     expectPath_ = videoSound(item), armedAt_ = -1, askedNs_ = now_ns();
-    g_player.playVideo(videoSound(item), videoPictures(item, g_prefs.videoQuality));
-    g_player.setRepeat(2);  // shorts loop, as in the app
+    // The player moves to it once the swipe is over. Stopping a video as the swipe began (its decoder
+    // letting go of its pictures, 21 of them) cost the swipe's first 200 ms every other refresh: frames
+    // took 17-23 ms (frame log, Nov 16). Paused, the one leaving is quiet at once and lets go of
+    // nothing; the switch comes when nothing on screen moves, and the swipe keeps all its frames.
+    if (slides) {
+      g_player.pause();
+      switchPending_ = true;
+    } else {
+      startCurrent();
+    }
     describe(item);
     warmAhead();
     if (int(items_.size()) - i <= 8) more();
+  }
+
+  // the player on the short now on screen
+  void startCurrent() {
+    switchPending_ = false;
+    const Item* it = current();
+    if (!it) return;
+    armedAt_ = -1, askedNs_ = now_ns();
+    // 480p at most, whatever Video quality says: the box is 202 by 360, and drawing a 720 by 1280
+    // picture into it every frame took the GPU past a refresh one frame in ten (uneven motion,
+    // measured Nov 16); 480 by 854 is still more than twice the box, and half the download
+    g_player.playVideo(videoSound(*it), videoPictures(*it, std::min(g_prefs.videoQuality, 480)));
+    g_player.setRepeat(2);  // shorts loop, as in the app
   }
 
   // The next three: their details and the server resolving their streams (2-7 s each with yt-dlp), so
@@ -428,6 +455,7 @@ class ShortsScreen : public Screen {
   std::string next_;
   bool loadingMore_ = false;
   bool wantNext_ = false;  // Next at the end of what has come: it plays the first of the next page
+  bool switchPending_ = false;  // the player moves to the short on screen when its swipe is over
   int64_t retryAt_ = 0;    // when to ask again for the page that didn't come (0: none to ask for)
   int emptyPages_ = 0;     // pages in a row that brought nothing new
   // shorts in a row that wouldn't play; at kMostSkipped it stops skipping (stuck_) until Next or Prev
