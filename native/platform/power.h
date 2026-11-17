@@ -43,6 +43,12 @@ void shutdown();
 void cpuSetup();
 void cpuBoost(bool on);
 void cpuBothCores(bool on);
+// Early suspend pins the clock at the top step again: MediaTek's cpufreq early-suspend hook pauses DVFS
+// at 1001 MHz until late resume (mt_cpufreq_state_set(0); disassembled Nov 17), which cost 6–15 mA with
+// the screen off and music playing (alternating test, Nov 17). Called while dark, unpinClock() gives the
+// clock back to the governor once that hook has run: true once done (or nothing to do), false while the
+// hook hasn't run yet (call it again).
+bool unpinClock();
 void reboot();
 
 }  // namespace rondo::power

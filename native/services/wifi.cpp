@@ -753,12 +753,18 @@ void Wifi::driverSetup() {
   command("DRIVER RXFILTER-STOP");
   command("DRIVER RXFILTER-REMOVE 2");
   bool filters = command("DRIVER RXFILTER-START");
-  fprintf(stderr, "rondo-core: Wi-Fi set up: scans every 15 s, multicast filter %s, power save once joined\n", filters ? "on" : "refused");
+  fprintf(stderr, "rondo-core: Wi-Fi set up: scans every 15 s (60 s with the screen off), multicast filter %s, power save once joined\n",
+          filters ? "on" : "refused");
   if (!screenOn_) suspendMode(true);
 }
 
-// WifiNative.setSuspendOptimizations(): "DRIVER SETSUSPENDMODE 1" with the screen off
+// WifiNative.setSuspendOptimizations(): "DRIVER SETSUSPENDMODE 1" with the screen off (MediaTek's driver
+// refuses it). And with the screen off, the scan for a known network every 60 s instead of 15: away from
+// them, music with the screen off kept the radio scanning every 15 s (1–5 mA, Nov 17); found within a
+// minute is soon enough with nobody looking, and lit, it's every 15 s again (a scan at once).
 void Wifi::suspendMode(bool on) {
+  command(on ? "SCAN_INTERVAL 60" : "SCAN_INTERVAL 15");
+  if (!on && snapshot_().wifiState == 0) command("SCAN");  // not joined and not joining
   bool ok = command(on ? "DRIVER SETSUSPENDMODE 1" : "DRIVER SETSUSPENDMODE 0");
   static int said = -1;
   if (said != int(ok)) fprintf(stderr, "rondo-core: Wi-Fi suspend mode %s%s\n", on ? "on" : "off", ok ? "" : " (refused)");

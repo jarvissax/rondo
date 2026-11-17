@@ -142,6 +142,24 @@ void cpuBothCores(bool on) {
   writeFile(hp("cpu_num_base").c_str(), on ? "2" : "1");  // the governor keeps at least this many in
 }
 
+// /proc/cpufreq/cpufreq_state says "DVFS enabled" or "DVFS disabled". The kernel counts the pauses:
+// every 0 written adds one, every 1 takes one away while paused, and a 1 while not paused does nothing.
+// The early-suspend hook adds one; late resume's own 1 takes it away. So a 1 is written only while
+// paused (taking the hook's one away; late resume's 1 then finds DVFS running and does nothing), and a 0
+// never: a 0 too many would keep DVFS off for good. The hotplug governor's own early-suspend hook keeps
+// the second core out (cpu_hotplug_disable 1) as before.
+bool unpinClock() {
+  char b[32] = {0};
+  int fd = open("/proc/cpufreq/cpufreq_state", O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return true;  // not this kernel: nothing to do
+  ssize_t n = read(fd, b, sizeof(b) - 1);
+  close(fd);
+  if (n <= 0) return true;
+  if (!strstr(b, "disabled")) return false;  // early suspend's hook hasn't paused it yet
+  writeFile("/proc/cpufreq/cpufreq_state", "1");
+  return true;
+}
+
 namespace {
 // the card and the internal storage unmounted cleanly (their FAT marked clean), as Android's
 // MountService did before power-off; vold stops whatever still has a file open on them. At most 6 s.

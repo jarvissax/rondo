@@ -26,7 +26,11 @@ constexpr Color white = 0xffffffff;
 inline Color whiteA(int a) { return uint32_t(a) << 24 | 0xffffff; }
 inline Color blackA(int a) { return uint32_t(a) << 24; }
 
-const int kChoices[4] = {0, 720, 480, 360};  // 0: Auto (adaptive, capped at 360p)
+// 0: Auto, which is 360p (videoPictures): the screen shows 480×270 of a 16:9 video, so 360p already has
+// more than it can show, and the decoder works the CPU for every pixel (720p kept both cores ~63 % busy
+// at 1 GHz, Nov 17). Auto and 360p say "saves battery".
+const int kChoices[4] = {0, 720, 480, 360};
+bool savesBattery(int height) { return height == 0 || height == 360; }
 
 std::vector<std::string> pictures(const Item& item, int height) { return videoPictures(item, height); }
 
@@ -301,6 +305,7 @@ class VideoPlayerScreen : public Screen {
       for (int q : kChoices) {
         PanelRow r;
         r.text = q ? std::to_string(q) + "p" : "Auto";
+        if (savesBattery(q)) r.note = "saves battery";
         r.checked = g_prefs.videoQuality == q;
         r.pick = [self, q] { self->setQuality(q); };
         rows.push_back(r);

@@ -5,10 +5,10 @@
 //
 // In init.rc, zygote becomes disabled (no Java layer), the stock firmware's two root backdoors (aggsrv,
 // spwall) go, and the "rondo" service runs /system/rondo/start; the kernel sets the panel up at 60 Hz
-// (patchKernel).
+// and releases the USB clock it used to leave on after unplugging (patchKernel).
 // SurfaceFlinger still starts, to set the panel up as it always has, and the start script stops it
 // before Rondo draws to the framebuffer itself. Everything else (the kernel apart from the panel's eight
-// words, its command line, the other files of the ramdisk) stays byte for byte; the header's sizes and
+// words and the USB clock's four, its command line, the other files of the ramdisk) stays byte for byte; the header's sizes and
 // SHA-1 are made again.
 import java.io.*;
 import java.nio.*;
@@ -220,6 +220,18 @@ public class BootImage {
       {0xc041f978, 0xe7de3c12, 0x11a03403},  // bfi r3,r2,#24,#7 -> lslne r3,r3,#8
       // DSI_PHY_TIMCONFIG
       {0xc041fd40, 0xe59051ac, 0xe5d051ac},  // ldr r5,[r0,#428] -> ldrb r5,[r0,#428]
+      // usb_phy_switch_to_usb (mt_usb_connect calls it first): usb_enable_clock(1), then, unless the PHY is
+      // still in UART mode as the bootloader leaves it, an early return that never calls
+      // usb_enable_clock(0). usb_enable_clock counts and gates MT_CG_USB_SW_CG only when the count drops
+      // from 1 to 0, so from the second connect after a boot on, the USB clock stayed on after unplugging,
+      // and with it on, the chip never entered deep idle with the screen off (Nov 17: 2 of 2 first unplugs
+      // clean, 3 of 3 later ones stuck; deep idle off cost roughly 25-50 mA with music playing). The early
+      // return now goes through three words that release the clock first, in the zeros that page-align
+      // __start_rodata after __proc_info_end (0xc05a3a5c).
+      {0xc03a9aa4, 0x189da818, 0x1a07e7ed},  // ldmne sp,{r3,r4,r11,sp,pc} -> bne 0xc05a3a60
+      {0xc05a3a60, 0x00000000, 0xe3a00000},  // mov r0,#0
+      {0xc05a3a64, 0x00000000, 0xebf8170d},  // bl usb_enable_clock (0xc03a96a0)
+      {0xc05a3a68, 0x00000000, 0xe89da818},  // ldm sp,{r3,r4,r11,sp,pc}: usb_phy_switch_to_usb's return
   };
 
   // MediaTek's 512-byte header, then the zImage: its gzip'd Image is unpacked, patched and packed again
@@ -284,8 +296,8 @@ public class BootImage {
     if (gz.length != room) throw new IllegalStateException("kernel: packed to " + gz.length + " bytes, not " + room);
     byte[] out = kernel.clone();
     System.arraycopy(gz, 0, out, at, gz.length);
-    System.out.println("kernel: the panel at 60 Hz (" + KERNEL_PATCHES.length + " words), packed again into the same " + room + " bytes ("
-        + pad + " of padding)");
+    System.out.println("kernel: the panel at 60 Hz and the USB clock released on every connect (" + KERNEL_PATCHES.length
+        + " words), packed again into the same " + room + " bytes (" + pad + " of padding)");
     return out;
   }
 

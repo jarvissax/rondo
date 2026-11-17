@@ -45,6 +45,7 @@ std::map<Key, int64_t> g_swallowing;  // the keys whose release is swallowed, si
 int g_emptyReadings = 0, g_hotReadings = 0;
 bool g_lowWarned = false;
 int g_lastLevel = -1;
+int g_unpinTries = -1;  // while dark: how often unpinClock() was asked (-1: done, or not dark)
 
 constexpr int64_t kDimBrightness = 10;  // config_screenBrightnessDim
 
@@ -282,8 +283,14 @@ bool powerTick(int64_t now) {
   }
   if (g_stage == kOff && now - g_offAt >= 10000 * kMs) {
     g_stage = kSuspended;
+    g_unpinTries = 0;
     power::suspend(true);
   }
+  // early suspend's cpufreq hook pins the clock at the top step: given back to the governor once the
+  // hook has run (power.h unpinClock; with music playing, 598 MHz has room to spare). Asked on each tick
+  // while dark until it's done, at most 40 times (a kernel that never pauses it).
+  if (g_stage == kSuspended && !power::drawingAllowed() && g_unpinTries >= 0 && g_unpinTries < 40)
+    g_unpinTries = power::unpinClock() ? -1 : g_unpinTries + 1;
   // the battery, every 2 s
   if (now - g_lastBattery >= 2000 * kMs) {
     g_lastBattery = now;

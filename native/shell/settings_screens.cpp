@@ -617,7 +617,11 @@ Rows youtubeRows(SettingsGroupScreen&) {
                                     g_prefs.videoQuality = atoi(v.c_str());
                                     savePrefsNow();
                                   },
-                                  [](const std::string& v) { return v == "0" ? "up to 360p" : ""; }));
+                                  // Auto is 360p (video_player.cpp videoPictures): both fit the 480×360 screen, and
+                                  // the decoder's work grows with every pixel (Nov 17's battery measurements)
+                                  [](const std::string& v) {
+                                    return v == "0" ? "360p \xc2\xb7 saves battery" : v == "360" ? "saves battery" : "";
+                                  }));
                             }));
   return rows;
 }

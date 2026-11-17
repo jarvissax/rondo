@@ -214,6 +214,32 @@ how the firmware is put together is in [Building Rondo](../building.md#the-firmw
   runs 598 MHz idle and 1.0 GHz busy and the governor adds the second core under load. Taking the
   second core out or back in stalls the whole system 10–25 ms (a missed refresh in a slide), so Rondo
   keeps `cpu_num_base` at 2 while the screen is lit. The GPU has one operating point (416 MHz).
+- **Early suspend pins the clock again** (Nov 17, disassembled): MediaTek's cpufreq early-suspend
+  hook calls `mt_cpufreq_state_set(0)`, which pauses DVFS at 1001 MHz, and late resume calls
+  `mt_cpufreq_state_set(1)`. The hotplug governor's hook (`mt_hotplug_mechanism_early_suspend`) sets
+  `cpu_hotplug_disable` 1 and takes the second core out. `cpufreq_state` counts: each `0` adds one
+  (`g_dvfs_disable_count`), each `1` takes one away while paused, and a `1` while running does nothing.
+  So one `1` after the hook has run gives the clock back to the governor (598 MHz with music playing),
+  and late resume's `1` then finds it running; a second `0` would keep DVFS off for good. Pinned vs
+  598 MHz cost 6–15 mA with the screen off and music playing.
+- **Deep idle** (`/sys/power/idle_state`, `/sys/power/dpidle_state`): between audio buffers with the
+  screen off the chip enters MediaTek's deep idle ~40 times a second. It is refused while any clock in
+  `dpidle_condition_mask` is on; `dpidle_block_mask` shows which one blocked the last refusal, and
+  the kernel's `clks[]` table gives the names: CG_CTRL1 0x2000 is `MT_CG_USB_SW_CG`, CG_CTRL0 0x4
+  `MT_CG_MFG_MM_SW_CG` (the GPU), CG_MMSYS0 0x200000 `MT_CG_MUTEX_SLOW_CLOCK_SW_CG` (the display).
+  The display's and the GPU's clocks are on until early suspend (10 s after the backlight goes off),
+  then off. `echo "dpidle 0|1" > /sys/power/dpidle_state` switches it; one comparison put it at
+  roughly 25–50 mA.
+- **The USB clock stayed on after unplugging** (Nov 17, fixed in the firmware's kernel): with the
+  vendor's kernel, the first unplug from a computer after a boot turned `MT_CG_USB_SW_CG` off; from the
+  second on it stayed on (2 of 2 clean, 3 of 3 stuck), and deep idle never happened until the next
+  reboot. `usb_enable_clock()` (musb) keeps a count and gates the clock only when it drops from 1 to 0.
+  `usb_phy_switch_to_usb()`, which `mt_usb_connect()` calls first, counts one up and then returns early,
+  without counting back down, unless the PHY is still in the UART mode the bootloader leaves it in (so
+  only the first connect after a boot was balanced). Neither `/sys/devices/platform/mt_usb/cmode` 0 → 1
+  nor `/sys/class/android_usb/android0/enable` 0 → 1 releases it, and there is no `/dev/mem`,
+  `/dev/kmem` or `/proc/kcore`. `tools/firmware/BootImage.java` patches that early return to release the
+  clock first (four words); with it, three unplugs in a row each kept deep idle (~38/s).
 - **MediaTek's safety signals:** the thermal policy (init's `thermal_manager`) sends SIGIO with
   `si_code` 1 to the pid written to `/proc/driver/mtk_cl_sd_pid` when the chip must cool down (write
   1 to `/proc/driver/mtk_cl_sd_rst` at boot first); the battery driver's
