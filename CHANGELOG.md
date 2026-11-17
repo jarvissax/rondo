@@ -5,6 +5,29 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 4.0.0 (November 17, 2026)
+
+A new firmware that saves battery, most of all with the screen off. It installs only with Innioasis
+Updater CE (Y1, Type A, Rondo 4.0.0); turn on **Keep my settings** so your settings, Wi-Fi networks,
+server connection and paired headphones stay. Software update on 3.x shows 4.0.0 but can't install it
+([Moving from Rondo 3](docs/install.md#moving-from-rondo-3)). It works with Rondo server 3.1.0 or
+newer, as 3.1.2 does.
+
+### Battery
+
+- **Music with the screen off after charging from a computer:** after every unplug from a computer
+  except the first since the Y1 started, part of its USB controller stayed powered, and that kept the
+  chip out of its deepest rest between the moments music needs it: roughly 25-50 mA more for as long
+  as the Y1 ran. The new firmware turns it off after every unplug.
+- **The processor with the screen off** ran at its top speed the whole time. It now slows down when
+  there's little to do, as it does with the screen on; playing music takes little: about 6-15 mA less
+  while you listen.
+- **Wi-Fi away from home:** with the screen off, it looks for a network you know every minute instead
+  of every 15 seconds, and at once when the screen comes on.
+- **Video quality:** Auto and 360p say "saves battery" (Settings › YouTube › Video quality, and the
+  player's options). Auto is still 360p: a widescreen video fills 480 by 270 of the screen, and 720p
+  keeps both of the processor's cores busy.
+
 ## 3.1.2 (November 16, 2026)
 
 An update for the 3.0 firmware: Settings › System › Software update, the dashboard or the

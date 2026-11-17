@@ -2,10 +2,11 @@
 #pragma once
 
 namespace rondo {
-constexpr const char* kRondoVersion = "3.1.2";
-// the firmware this Rondo needs (ro.rondo.firmware): 3.0's, without the stock firmware's root backdoors
-// (2: 2.0's, the first without Android; Rondo 3.0 installs on it only with Innioasis Updater CE)
-constexpr int kFirmwareNeeded = 3;
+constexpr const char* kRondoVersion = "4.0.0";
+// the firmware this Rondo needs (ro.rondo.firmware): 4.0's, whose kernel turns the USB clock off after
+// every unplug (tools/firmware/BootImage.java; Rondo 4.0 installs only with Innioasis Updater CE)
+// (3: 3.0's, without the stock firmware's root backdoors; 2: 2.0's, the first without Android)
+constexpr int kFirmwareNeeded = 4;
 // The oldest Rondo server this Rondo works with, against the version the server says in GET /healthz
 // (server/src/version.ts; the server is released apart, tags server-v<version>). Raised only when this
 // Rondo needs something a newer server brings; an older server is asked to update (Settings › YouTube ›

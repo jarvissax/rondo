@@ -41,6 +41,15 @@ The same thing, with the file downloaded by hand:
 
 The Updater deletes the `rom.zip` once it has unpacked it, so download it again if you need it later.
 
+### Moving from Rondo 3
+
+Rondo 4.0 comes with a new firmware whose kernel saves battery after you charge from a computer (see
+[What's new](../CHANGELOG.md)), so it installs with Innioasis Updater CE like the first time: choose
+**Rondo**, version 4.0.0. If the Updater offers **Keep my settings**, choose it, and your settings,
+Wi-Fi networks, server connection and paired headphones stay. Software update on 3.x shows 4.0.0 but
+can't install it, because the firmware has to change too. Your music and playlists on the card are
+never touched.
+
 ### Moving from Rondo 2.0
 
 Rondo 3.0 comes with a new firmware, without the root backdoors Innioasis's own firmware (and so
