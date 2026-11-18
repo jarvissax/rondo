@@ -5,6 +5,41 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 4.0.1 (November 18, 2026)
+
+An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+4.0.0 does.
+
+### New
+
+- **YouTube Music playlists download as playlists:** Download playlist saves its songs and a
+  playlist of them in Library › Playlists, in YouTube's order and with the playlist's cover. A song
+  already on the card isn't downloaded twice, and downloading the playlist again brings it up to
+  date. Deleting it asks whether its songs go too. Now Playing's options download the song playing.
+- **Downloads pause and resume,** one or all, videos too, and go on after a restart or a power cut.
+  They wait by themselves while Wi-Fi is off, while the card is the computer's or full, and go on
+  afterwards. The dashboard has the same controls.
+- **Emoji on every keyboard,** each in its app's look: Rondo's own, YouTube's and YouTube Music's,
+  and WhatsApp's. Every emoji the Y1's emoji font draws, in tabs (recent ones, then Unicode's
+  groups), with skin tones, and found by name.
+- **WhatsApp's reaction bar:** a message's menu starts with 👍 ❤️ 😂 😮 😢 🙏, and + opens every emoji.
+
+### Fixed
+
+- **Voice messages that weren't sent:** one sent right after another WhatsApp action (marking a chat
+  read, a reaction, a text) could send garbage instead of the recording, or close WhatsApp and lose
+  it.
+- **Voice messages with a headset:** the Y1 can't use a headset's microphone, and a voice message
+  recorded with one held only a steady tone. With a headset in, Rondo now records from the Y1's own
+  microphone (inside, beside the jack).
+- **FM radio sounded doubled:** MediaTek's chip played the radio too, a moment ahead of Rondo's own.
+  Only Rondo's plays now.
+- **FM radio on the speaker:** choosing Speaker kept the sound in the headphones, or played only hiss.
+  The radio now plays from the speaker, with a volume of its own for each output. The headphones
+  play too: the Y1's speaker is fed from their amplifier, and they stay in as the antenna (the
+  Output setting says so).
+
 ## 4.0.0 (November 17, 2026)
 
 A new firmware that saves battery, most of all with the screen off. It installs only with Innioasis
