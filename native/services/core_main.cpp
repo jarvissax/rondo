@@ -128,27 +128,33 @@ class ApiWorkers {
   }
   // A file from the server (Software update's bundle), on a thread of its own; one at a time
   std::atomic<bool> cancelDownload_{false};
-  void download(std::string path, std::string file) {
+  // resumeFrom >= 0: YouTube › Download's, its part kept to go on with (Api::download)
+  void download(std::string path, std::string file, int64_t resumeFrom) {
     if (g_shm->downloadState == 1) return;
     cancelDownload_ = false;
-    publish([](CoreState& s) { s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0, s.downloadSeq++; });
+    publish([resumeFrom](CoreState& s) {
+      s.downloadState = 1, s.downloadDone = 0, s.downloadTotal = -1, s.downloadStatus = 0, s.downloadSeq++;
+      s.downloadSynced = resumeFrom > 0 ? resumeFrom : 0;
+    });
     pthread_mutex_lock(&mu_);
     std::string base = base_, token = token_, server = server_, serverToken = serverToken_;
     pthread_mutex_unlock(&mu_);
     struct Job {
       ApiWorkers* self;
       std::string base, token, server, serverToken, path, file;
+      int64_t resumeFrom;
     };
-    Job* j = new Job{this, base, token, server, serverToken, std::move(path), std::move(file)};
+    Job* j = new Job{this, base, token, server, serverToken, std::move(path), std::move(file), resumeFrom};
     pthread_t t;
     pthread_create(&t, nullptr, [](void* p) -> void* {
       std::unique_ptr<Job> job(static_cast<Job*>(p));
       prctl(PR_SET_NAME, "rondo-download");
       Api& api = *job->self->download_;
       api.configure(job->base, job->token, job->server, job->serverToken);
+      std::function<void(int64_t)> synced = [](int64_t bytes) { publish([&](CoreState& s) { s.downloadSynced = bytes; }); };
       int status = api.download(job->path, job->file, [](int64_t done, int64_t total) {
         publish([&](CoreState& s) { s.downloadDone = done, s.downloadTotal = total; });
-      }, &job->self->cancelDownload_);
+      }, &job->self->cancelDownload_, job->resumeFrom, &synced);
       publish([&](CoreState& s) { s.downloadState = status == 200 ? 2 : 3, s.downloadStatus = status; });
       return nullptr;
     }, j);
@@ -548,7 +554,10 @@ void runCore(int sock, CoreState* shm) {
       case kDownload: {
         std::string s(reinterpret_cast<const char*>(p), len);
         size_t z = s.find('\0');
-        if (z != std::string::npos) api.download(s.substr(0, z), s.substr(z + 1));
+        if (z == std::string::npos) break;
+        size_t z2 = s.find('\0', z + 1);  // where to go on from
+        std::string file = s.substr(z + 1, z2 == std::string::npos ? std::string::npos : z2 - z - 1);
+        api.download(s.substr(0, z), file, z2 == std::string::npos ? -1 : strtoll(s.c_str() + z2 + 1, nullptr, 10));
         break;
       }
       case kDownloadCancel: api.cancelDownload_ = true; break;

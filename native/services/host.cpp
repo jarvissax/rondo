@@ -33,10 +33,12 @@ bool CoreHost::start() {
   return true;
 }
 
-void CoreHost::download(const std::string& path, const std::string& file) {
+void CoreHost::download(const std::string& path, const std::string& file, int64_t resumeFrom) {
   std::string b = path;
   b += '\0';
   b += file;
+  b += '\0';
+  b += std::to_string(resumeFrom);
   send(kDownload, b.data(), uint32_t(b.size()));
 }
 

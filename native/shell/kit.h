@@ -74,7 +74,7 @@ extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bl
     // 2.0: Settings' groups, Library's sections and the rows in them
     connections, display, controls, system, account, output, textSize, menuOrder, repeat, musicSection, photos, files,
     folders, organize, usb, albumArtists, genres, coverFlow, played, mostPlayed, topRated, smart, newFolder, copyTo, moveTo,
-    renameTo, openFile, subtitles, downloads,
+    renameTo, openFile, subtitles, downloads, pauseAll, resumeAll,
     // YouTube Music's song menu
     playNow, playNext, addToQueue, startRadio, onCard,
     // Settings › Sound

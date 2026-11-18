@@ -9,8 +9,9 @@
 namespace rondo::shell {
 namespace {
 
-// YouTube › Downloads: those on their way (center: cancel), then the videos on the card (center plays,
-// hold center deletes); Library › Videos has the same files among the others
+// YouTube › Downloads: Pause downloads (or Resume), those on their way (center: pause, resume, cancel),
+// then the videos on the card (center plays, hold center deletes); Library › Videos has the same files
+// among the others
 class DownloadsScreen : public MusicListScreen {
  public:
   DownloadsScreen() : MusicListScreen("Downloads") {
@@ -37,7 +38,7 @@ class DownloadsScreen : public MusicListScreen {
 
  private:
   static std::string key() {
-    std::string k;
+    std::string k = downloadsHeld() + (downloadsGoing() ? "g" : "") + (downloadsPaused() ? "p" : "") + "|";
     for (const DownloadJob& j : downloadJobs())
       if (!j.song) k += j.id + char('0' + j.state) + std::to_string(j.percent) + j.stage + "|";
     for (const Item& it : downloadedVideos()) k += it.id + "|";
@@ -46,35 +47,19 @@ class DownloadsScreen : public MusicListScreen {
   void render() {
     key_ = key();
     std::vector<Row> rows;
+    bool any = false;
+    for (const DownloadJob& j : downloadJobs()) any = any || (!j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running || j.state == DownloadJob::Paused));
+    if (any) rows.push_back(downloadsPauseRow());  // all of them: videos and songs are one queue
     for (const DownloadJob& j : downloadJobs()) {
       if (j.song || j.state == DownloadJob::Done) continue;  // a song's are YouTube Music's
       Row r;
       r.title = j.title;
-      std::string q = std::to_string(j.quality) + "p";
-      // the percent only while a part comes in (Getting subtitles and Saving kept the last part's 100 %)
-      bool part = j.stage.empty() || j.stage.compare(0, 11, "Downloading") == 0;
-      std::string pct = part ? std::to_string(j.percent) + "% \xc2\xb7 " : "";
-      r.subtitle = j.state == DownloadJob::Running ? (j.stage.empty() ? "Downloading" : j.stage) + " \xc2\xb7 " + pct + q
-                   : j.state == DownloadJob::Waiting ? "Waiting \xc2\xb7 " + q
-                                                     : "Didn't download: " + j.error;
+      r.subtitle = downloadRowState(j, std::to_string(j.quality) + "p");
       r.thumb = j.thumb;
       std::string id = j.id;
-      bool failed = j.state == DownloadJob::Failed;
-      Item item;
-      item.kind = "video", item.id = j.id, item.title = j.title, item.subtitle = j.channel, item.thumb = j.thumb;
-      int quality = j.quality;
-      r.onSelect = [id, failed, item, quality] {
-        if (failed) {
-          g_app->push(makeChoice("Download", {{"Try again", "again"}, {"Leave it", "leave"}}, [] { return std::string("again"); },
-                                 [item, quality](const std::string& v) {
-                                   if (v == "again") downloadVideo(item, quality);
-                                 }));
-        } else {
-          g_app->push(makeChoice("Download", {{"Keep downloading", "keep"}, {"Cancel it", "cancel"}}, [] { return std::string("keep"); },
-                                 [id](const std::string& v) {
-                                   if (v == "cancel") cancelDownload(id);
-                                 }));
-        }
+      r.onSelect = [id] {
+        for (const DownloadJob& d : downloadJobs())
+          if (d.id == id) return openDownloadMenu(d);
       };
       rows.push_back(std::move(r));
     }
@@ -103,11 +88,17 @@ class DownloadsScreen : public MusicListScreen {
 Row downloadsRow() {
   Row d;
   d.title = "Downloads";
-  int on = int(downloadedVideos().size()), going = 0;
-  for (const DownloadJob& j : downloadJobs()) going += !j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
-  d.subtitle = going ? std::to_string(going) + " downloading" + (on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "")
-               : on  ? std::to_string(on) + (on == 1 ? " video" : " videos") + " on the card, to watch offline"
-                     : "Videos saved to watch offline";
+  int on = int(downloadedVideos().size()), going = 0, paused = 0;
+  for (const DownloadJob& j : downloadJobs()) {
+    going += !j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
+    paused += !j.song && j.state == DownloadJob::Paused;
+  }
+  std::string cardPart = on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "";
+  std::string held = downloadsHeld();  // why they wait: Wi-Fi, the card
+  d.subtitle = going    ? (held.empty() ? std::to_string(going) + " downloading" : held) + cardPart
+               : paused ? std::to_string(paused) + " paused" + cardPart
+               : on     ? std::to_string(on) + (on == 1 ? " video" : " videos") + " on the card, to watch offline"
+                        : "Videos saved to watch offline";
   d.tile = &tiles::downloads;
   d.onSelect = [] { g_app->push(std::unique_ptr<Screen>(new DownloadsScreen())); };
   return d;

@@ -3,8 +3,11 @@
 #include <atomic>
 #include <thread>
 
+#include <unistd.h>
+
 #include "../platform/usb_drive.h"
 #include "app.h"
+#include "downloads.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -15,8 +18,19 @@ std::atomic<int> g_switch{0};
 
 void startSwitch(bool on) {
   g_switch = 1;
+  // YouTube's downloads let go of the card first (vold kills whoever keeps a file open there) and wait
+  // until it's back (downloads.h)
+  if (on) downloadsCardAway(true);
   std::thread([on] {
+    if (on) {
+      usleep(500000);  // a part asked for a moment ago: the core has it running by now
+      for (int quiet = 0, k = 0; quiet < 3 && k < 40; k++) {
+        quiet = downloadsUsingCard() ? 0 : quiet + 1;
+        usleep(250000);
+      }
+    }
     usb::setShared(on);
+    if (!usb::shared()) downloadsCardAway(false);
     g_switch = 2;
   }).detach();
 }
@@ -76,6 +90,7 @@ class UsbDriveScreen : public ShellListScreen {
       h.title = "While it's on";
       rows.push_back(h);
       add("Music on the card is paused", "It comes back when the drive is off", nullptr, false, nullptr);
+      if (downloadsGoing()) add("Downloads wait", "They go on when the drive is off", nullptr, false, nullptr);
     } else {
       add("Use as USB drive", "Copy files from your computer", &tiles::usb, true, [this] { switchTo(true); });
       add("Not now", "Keep listening while it charges", nullptr, true, [] { g_app->pop(); });

@@ -17,11 +17,20 @@ namespace rondo::shell {
 
 std::string downloadDir();  // the card's Videos/YouTube
 
+//
+// The queue is kept (download-queue.json beside prefs.json): a restart, an update or a crash finds it as
+// it was. What a download has fetched stays on the card (hidden, beside where it goes) until it is
+// whole, so a paused or interrupted one goes on from there (a Range request: the server's /s/ and
+// direct mode's both take them); every 1 MB it is flushed to the card and that size noted
+// (download-part), so after a power cut it goes on from bytes the card surely has.
+// It holds itself, and says why: while the card is the computer's (USB drive), with no network
+// (Wi-Fi gone: it goes on when it's back, instead of failing), and with the card full.
 struct DownloadJob {
   std::string id, title, channel, thumb;
   bool song = false;  // a YouTube Music song (an .m4a in Music/YouTube Music), else a video
+  bool alone = true;  // a song asked for by itself, not only for a downloaded playlist (kept when the playlist goes)
   int quality = 480;  // the height asked for (a video)
-  enum State { Waiting, Running, Done, Failed } state = Waiting;
+  enum State { Waiting, Running, Done, Failed, Paused } state = Waiting;
   int percent = 0;
   std::string stage;  // "Picture", "Sound", "Subtitles", "Saving"
   std::string error, file;
@@ -29,9 +38,27 @@ struct DownloadJob {
 
 // Queued (false: already on the card or in the queue); a toast says which
 bool downloadVideo(const Item& item, int quality);
-const std::vector<DownloadJob>& downloadJobs();  // this session's, the newest last
-bool downloadsActive();  // one waiting or running: the CPU stays up with the screen off (power_screens.cpp)
-void cancelDownload(const std::string& id);      // a waiting or running one; its parts deleted
+const std::vector<DownloadJob>& downloadJobs();  // the queue: the kept one and this session's, the newest last
+// one running, or waiting with nothing holding it: the CPU stays up with the screen off (power_screens.cpp)
+bool downloadsActive();
+void cancelDownload(const std::string& id);      // a waiting, running or paused one, its parts deleted; a failed one off the list
+void retryDownload(const std::string& id);       // a failed one waits again, in its place
+// Pause and resume: one, or all (videos and songs: one queue). A paused one keeps what it has.
+void pauseDownload(const std::string& id);
+void resumeDownload(const std::string& id);
+void pauseDownloads();
+void resumeDownloads();
+// Moves on whenever anything a screen shows of the downloads changes (a percent too)
+uint32_t downloadsSerial();
+bool downloadsGoing();  // one waiting or running (the screens' Pause row)
+bool downloadsPaused();  // one paused (Resume)
+// Why nothing starts now ("" nothing holds them): "The card is on the computer", "Waiting for Wi-Fi",
+// "Waiting to try again", "The card is full"
+std::string downloadsHeld();
+// USB drive: on, every download lets go of the card first (a file kept open there gets Rondo killed
+// when vold takes it); they go on when it's back. Thread-safe (the switch's thread calls it).
+void downloadsCardAway(bool away);
+bool downloadsUsingCard();  // a file still open on the card: the switch waits for it to close
 // The card's file of this video ("" none)
 std::string downloadedFile(const std::string& id);
 // The video id in a download's file name ("" when it isn't one)
@@ -54,12 +81,37 @@ std::string downloadsJson();
 //   Music/YouTube Music/<Album artist>/<Album> (<Year>)/<NN> - <Title>.m4a
 // Organize leaves the folder be. YouTube Music › Downloads lists them; they play from the card.
 std::string musicDownloadDir();  // the card's Music/YouTube Music
-// Queued (false: on the card or queued already; a toast says which unless quiet)
-bool downloadSong(const Item& song, bool quiet = false);
-int downloadSongs(const std::vector<Item>& songs);  // an album's or playlist's: how many were queued
+// Queued (false: on the card or queued already; a toast says which unless quiet). alone: asked for by
+// itself (false: for a playlist)
+bool downloadSong(const Item& song, bool quiet = false, bool alone = true);
+int downloadSongs(const std::vector<Item>& songs);  // an album's: how many were queued
 std::string downloadedSong(const std::string& id);  // the card's file of this song ("" none)
 // The downloaded songs on the card, the newest first (id: the file; subtitle: artist · album)
 std::vector<Item> downloadedSongs();
-bool deleteSong(const std::string& file);  // and its entry
+bool deleteSong(const std::string& file);  // and its entry; out of every playlist too
+
+// YouTube Music › a playlist › Download playlist: every song of it (a mix: the ones its first page has,
+// as it never ends) in the queue, and a playlist of them in Library, in YouTube's order:
+//   Playlists/YouTube Music/<Title>.m3u8
+// holding the songs on the card so far (each one that comes is put in its place). A song already on
+// the card is the same file, whatever playlists have it. Downloading it again brings it up to date:
+// its new songs come, the order is YouTube's; a song taken off it on YouTube leaves the playlist, not the card.
+struct PlaylistDownload {
+  std::string id, title;
+  std::string name;  // Library's (Playlists::youTubeKey)
+  bool mix = false;
+  bool loading = false;  // its songs being asked for
+  int total = 0, onCard = 0, going = 0, paused = 0;  // its songs; on the card; waiting, running or paused; paused
+};
+bool downloadPlaylist(const std::string& id, const std::string& title);  // false: being asked for already
+std::vector<PlaylistDownload> playlistDownloads();  // the newest first
+bool playlistDownload(const std::string& id, PlaylistDownload& out);
+std::string playlistDownloadOf(const std::string& libraryName);  // the YouTube id of a Library playlist ("" none)
+// Its file goes, and the downloads only it was waiting for; songsToo: its songs on the card too, except
+// those another downloaded playlist has or that were downloaded by themselves
+bool deletePlaylistDownload(const std::string& id, bool songsToo);
+// Library's playlist by its name (Playlists): a downloaded one through the above, else its file
+bool deleteLibraryPlaylist(const std::string& name, bool songsToo);
+bool isMixId(const std::string& id);  // a radio (RD…, not an album's RDCLAK…): no end
 
 }  // namespace rondo::shell

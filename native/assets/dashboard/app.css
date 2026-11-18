@@ -815,6 +815,8 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .sheet p { color: var(--text-2); margin-top: 8px; overflow-wrap: anywhere; }
 .sheet-actions { display: flex; gap: 10px; margin-top: 22px; }
 .sheet-actions .btn { flex: 1; height: 44px; font-size: 15px; }
+.sheet-actions-3 { flex-wrap: wrap; }
+.sheet-actions-3 .btn { flex: 1 1 140px; white-space: nowrap; }
 .song-sheet { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: center; }
 .song-sheet .art { width: 96px; height: 96px; border-radius: 10px; }
 .song-sheet .art .i { width: 32px; height: 32px; }
@@ -1155,13 +1157,25 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .sub-actions { display: flex; justify-content: flex-end; padding: 10px 14px 14px; }
 
 /* Downloads */
-.dl-form { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 14px; }
-.dl-form input { width: 100%; min-width: 0; }
+/* the link and Download on one line, what to save it as and its quality under them */
+.dl-form { display: grid; grid-template-columns: auto auto 1fr auto; grid-template-areas: "in in in go" "kind q . ."; gap: 10px; align-items: center; padding: 14px; }
+.dl-form input { grid-area: in; width: 100%; min-width: 0; }
+.dl-form .seg[data-key="dlKind"] { grid-area: kind; }
+.dl-form .seg[data-key="dlQuality"] { grid-area: q; }
+.dl-form > button { grid-area: go; }
 .dl-row .row-main { min-width: 0; }
 .dl-bar { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
 .dl-bar > span { display: block; height: 100%; background: var(--accent, #ff2d55); transition: width .4s ease; }
 .dl-row .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-bar.is-still > span { background: var(--text-2); opacity: .5; }  /* paused or waiting: what it has */
+.dl-h { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 20px 4px 8px; }
+#dlRows > .group:first-child { margin-top: 14px; }
+.dl-row .btn + .btn { margin-left: -4px; }
+.t-pause { --t1: #ffc94d; --t2: #e08a00; }
+.t-resume { --t1: #5fe0b5; --t2: #10a37a; }
+.t-playlists { --t1: #5fb7ff; --t2: #1f73e0; }
 @media (max-width: 640px) {
-  .dl-form { grid-template-columns: 1fr 1fr; }
-  .dl-form input { grid-column: 1 / -1; }
+  .dl-form { grid-template-columns: 1fr; grid-template-areas: "in" "kind" "q" "go"; }
+  .dl-form .seg { justify-self: start; }
+  .dl-lbl { display: none; }
 }

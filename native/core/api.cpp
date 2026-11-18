@@ -1,6 +1,7 @@
 #include "api.h"
 
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -161,6 +162,8 @@ struct Sink {
   const std::atomic<bool>* cancel = nullptr;
   CURL* h = nullptr;
   int64_t base = 0;      // where this attempt's answer starts in the file (a resume's Range)
+  const std::function<void(int64_t)>* synced = nullptr;  // told what is on the card for sure, every 1 MB
+  int64_t syncedAt = 0;
   bool checked = false;  // the answer's status looked at, on its first bytes
   bool refused = false;  // an error answer: its body isn't the file's
 };
@@ -175,12 +178,18 @@ size_t toFile(char* data, size_t size, size_t n, void* user) {
       s->refused = true;
     } else if (code == 200 && s->base > 0) {  // the whole file again (the Range not taken): it starts over
       if (fseek(s->f, 0, SEEK_SET) != 0 || ftruncate(fileno(s->f), 0) != 0) return 0;
-      s->base = s->done = s->reportedAt = 0;
+      s->base = s->done = s->reportedAt = s->syncedAt = 0;
+      if (s->synced) (*s->synced)(0);
     }
   }
   if (s->refused) return len;  // read and dropped: the status says what went wrong
   if (fwrite(data, 1, len, s->f) != len) return 0;
   s->done += int64_t(len);
+  if (s->synced && s->done - s->syncedAt >= (1 << 20)) {  // on the card for sure: a power cut takes no more than this
+    if (fflush(s->f) != 0 || fsync(fileno(s->f)) != 0) return 0;
+    s->syncedAt = s->done;
+    (*s->synced)(s->done);
+  }
   if (s->done - s->reportedAt >= 64 * 1024 || s->done == s->total) {
     s->reportedAt = s->done;
     (*s->progress)(s->done, s->total);
@@ -216,14 +225,28 @@ bool transferRetryable(CURLcode rc) {
 // after some); progress starts the count again, so only 12 tries in a row with nothing new (2.5 minutes)
 // end it. A server that answers the whole file instead starts it over.
 int Api::download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
-                  const std::atomic<bool>* cancel) {
+                  const std::atomic<bool>* cancel, int64_t resumeFrom, const std::function<void(int64_t)>* synced) {
   std::string auth, url = urlFor(path, auth);
   if (!configured() && url == base_ + path) return 0;
   std::string part = file + ".part";
-  FILE* f = fopen(part.c_str(), "wb");
+  bool keep = resumeFrom >= 0;
+  // a part to go on with: what of it is on the card for sure (a power cut may have left a tail the card
+  // never got, or zeros)
+  int64_t from = 0;
+  FILE* f = nullptr;
+  if (keep && (f = fopen(part.c_str(), "r+b"))) {
+    struct stat st;
+    from = fstat(fileno(f), &st) == 0 ? std::min<int64_t>(int64_t(st.st_size), resumeFrom) : 0;
+    if (ftruncate(fileno(f), from) != 0) from = 0, ftruncate(fileno(f), 0);
+  }
+  if (!f) f = fopen(part.c_str(), "wb");
   if (!f) return 0;
-  Sink sink{f, 0, -1, &progress, 0, cancel};
+  Sink sink{f, from, -1, &progress, from, cancel};
   sink.h = curl_;
+  sink.synced = synced;
+  sink.syncedAt = from;
+  if (keep && synced) (*synced)(from);  // what it goes on from (less than asked when the part was shorter)
+  if (from > 0) progress(from, -1);
   long status = 0;
   bool wide = false, complete = false;
   int64_t known = -1;  // the file's size, once an answer said it
@@ -278,9 +301,10 @@ int Api::download(const std::string& path, const std::string& file, const std::f
   if (cancel && cancel->load()) complete = false;
   status = complete ? 200 : status == 200 || status == 206 ? 0 : status;
   bool ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
+  if (ok && keep && synced) (*synced)(sink.done);  // what stays for next time is all on the card
   fclose(f);
   if (status != 200 || !ok || rename(part.c_str(), file.c_str()) != 0) {
-    unlink(part.c_str());
+    if (!keep) unlink(part.c_str());
     return status == 200 ? 0 : int(status);
   }
   return 200;

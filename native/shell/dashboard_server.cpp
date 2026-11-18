@@ -1299,6 +1299,35 @@ std::string videoIdIn(const std::string& text) {
   return "";
 }
 
+// A YouTube Music playlist in a link ("…/playlist?list=PL…", "…/browse/VLPL…") or as its id ("PL…",
+// "OLAK5uy_…", "RD…", "LM"); "" none. A watch link with a list in it is its song, not the list.
+std::string playlistIdIn(const std::string& text) {
+  std::string t = text;
+  while (!t.empty() && isspace((unsigned char)t.back())) t.pop_back();
+  while (!t.empty() && isspace((unsigned char)t[0])) t.erase(0, 1);
+  auto valid = [](const std::string& id) {
+    if (id.size() < 2 || id.size() > 80) return false;
+    for (char c : id)
+      if (!isalnum((unsigned char)c) && c != '-' && c != '_') return false;
+    return true;
+  };
+  std::string id;
+  size_t at;
+  if ((at = t.find("list=")) != std::string::npos && t.find("v=") == std::string::npos) {
+    id = t.substr(at + 5);
+    id = id.substr(0, id.find_first_of("&#?/"));
+  } else if ((at = t.find("/browse/VL")) != std::string::npos) {
+    id = t.substr(at + 10);
+    id = id.substr(0, id.find_first_of("&#?/"));
+  } else if (t.find('/') == std::string::npos && t.find('.') == std::string::npos) {
+    id = t.compare(0, 2, "VL") == 0 && t.size() > 4 ? t.substr(2) : t;
+    bool known = false;
+    for (const char* k : {"PL", "OLAK5uy_", "RD", "LM", "UU", "FL", "LL"}) known = known || id.compare(0, strlen(k), k) == 0;
+    if (!known || id.size() == 11) id.clear();  // 11 characters: a video's id
+  }
+  return valid(id) ? id : "";
+}
+
 std::string subtitleChoicesJson() {
   std::vector<std::string> sizes, colors, edges, langs;
   for (const char* n : kSubSizes) sizes.push_back(str(n));
@@ -1493,7 +1522,14 @@ std::string playlistJson(const Playlist& p) {
     if (!t || t->gone) missing++;
     else if (t->durationSec > 0) duration += t->durationSec;
   }
-  return obj({{"name", str(p.name)}, {"paths", arr(paths)}, {"missing", num(int64_t(missing))}, {"durationSec", num(int64_t(duration))}});
+  std::vector<std::pair<std::string, std::string>> o = {{"name", str(p.name)},           {"title", str(p.title())},
+                                                        {"paths", arr(paths)},          {"missing", num(int64_t(missing))},
+                                                        {"durationSec", num(int64_t(duration))}};
+  if (p.youtube) {  // a downloaded YouTube Music playlist: it follows YouTube's (downloads.h)
+    o.push_back({"youtube", "true"});
+    o.push_back({"ytId", str(playlistDownloadOf(p.name))});
+  }
+  return obj(o);
 }
 
 // Smart playlists (core/smart.h): each with its rules and what they pick now
@@ -2006,10 +2042,28 @@ Response Server::api(Request& r, const std::string& path) {
   if (path == "/downloads" && m == "POST") {
     std::string video, id;
     int64_t q = 480;
-    bool song = false;
-    b->text("video", video), b->integer("quality", q), b->flag("song", song);
+    bool song = false, wantList = false;
+    b->text("video", video), b->integer("quality", q), b->flag("song", song), b->flag("playlist", wantList);
+    // a YouTube Music playlist: all its songs, and a playlist of them in Library (downloads.h)
+    std::string list = playlistIdIn(video);
+    if (wantList && list.empty()) return error(400, "That isn't a playlist's link or id");
+    if (!list.empty()) {
+      std::string title, body;
+      if (coreCall(false, "/music/playlist/" + rondo::Api::escape(list), "", body, 60000) == 200)
+        if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+          yyjson_val* t = yyjson_obj_get(yyjson_doc_get_root(d), "title");
+          if (yyjson_is_str(t)) title = yyjson_get_str(t);
+          yyjson_doc_free(d);
+        }
+      return onUi([list, title] {
+        PlaylistDownload had;
+        if (playlistDownload(list, had) && had.loading) return error(409, "Its songs are being asked for already");
+        downloadPlaylist(list, title.empty() ? (had.title.empty() ? "Playlist" : had.title) : title);
+        return json(downloadsJson());
+      });
+    }
     id = videoIdIn(video);
-    if (id.empty()) return error(400, "That isn't a YouTube link or video id");
+    if (id.empty()) return error(400, "That isn't a YouTube link, a playlist or a video id");
     if (song) {  // a YouTube Music song: its details for the list (the download asks again for its tags)
       Item item;
       item.kind = "song", item.id = id;
@@ -2048,6 +2102,32 @@ Response Server::api(Request& r, const std::string& path) {
       for (const DownloadJob& j : downloadJobs())
         if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, "It's downloading already");
       downloadVideo(item, quality);
+      return json(downloadsJson());
+    });
+  }
+  // pause, resume (an id: that one; none: all of them), try a failed one again
+  if ((path == "/downloads/pause" || path == "/downloads/resume" || path == "/downloads/retry") && m == "POST") {
+    std::string id;
+    b->text("id", id);
+    if (path == "/downloads/retry" && id.empty()) return error(400, "id");
+    return onUi([path, id] {
+      if (path == "/downloads/retry") retryDownload(id);
+      else if (path == "/downloads/pause") id.empty() ? pauseDownloads() : pauseDownload(id);
+      else id.empty() ? resumeDownloads() : resumeDownload(id);
+      return json(downloadsJson());
+    });
+  }
+  // a downloaded playlist: brought up to date (POST), or deleted (DELETE; songs=1: its songs too)
+  if (path == "/downloads/playlist" && (m == "POST" || m == "DELETE")) {
+    std::string id = r.param("id");
+    if (id.empty()) b->text("id", id);
+    bool songsToo = r.param("songs") == "1";
+    if (id.empty()) return error(400, "id");
+    return onUi([m, id, songsToo] {
+      PlaylistDownload p;
+      if (!playlistDownload(id, p)) return error(404, "not found");
+      if (m == "POST") downloadPlaylist(id, p.title);
+      else deletePlaylistDownload(id, songsToo);
       return json(downloadsJson());
     });
   }
@@ -2409,7 +2489,8 @@ Response Server::api(Request& r, const std::string& path) {
   }
   if (path == "/playlists" && (m == "POST" || m == "PUT" || m == "DELETE")) {
     std::string name = r.param("name");
-    return onUi([b, m, name] {
+    bool songsToo = r.param("songs") == "1";
+    return onUi([b, m, name, songsToo] {
       std::string newName, problem;
       bool hasPaths;
       std::vector<std::string> paths = songPaths(*b, hasPaths);
@@ -2418,10 +2499,17 @@ Response Server::api(Request& r, const std::string& path) {
         problem = g_playlists.create(newName, hasPaths ? paths : std::vector<std::string>());
         return playlistResult(problem, Playlists::clean(newName));
       }
+      bool youtube = name.compare(0, strlen(Playlists::kYouTube) + 1, std::string(Playlists::kYouTube) + "/") == 0;
       if (m == "PUT") {
+        if (youtube) return error(409, "It follows the playlist on YouTube Music: update its download instead");
         bool renamed = b->text("name", newName);
         problem = g_playlists.update(name, renamed ? &newName : nullptr, hasPaths ? &paths : nullptr);
         return playlistResult(problem, renamed ? Playlists::clean(newName) : name);
+      }
+      if (youtube) {  // songs=1: its songs go too (those nothing else keeps)
+        Playlist had;
+        if (!g_playlists.get(name, had)) return playlistResult("That playlist is gone", "");
+        return playlistResult(deleteLibraryPlaylist(name, songsToo) ? "" : "Couldn't delete it", "");
       }
       problem = g_playlists.remove(name);
       return playlistResult(problem, "");

@@ -363,7 +363,7 @@ class LibrarySearchScreen : public Screen {
     }
     if (!words.empty())
       for (const Playlist& p : allPlaylists_) {
-        std::string n = fold(p.name);
+        std::string n = fold(p.title());
         if (std::all_of(words.begin(), words.end(), [&](const std::string& x) { return n.find(x) != std::string::npos; }))
           playlists_.push_back(p);
       }
@@ -465,7 +465,8 @@ class LibrarySearchScreen : public Screen {
     if (!playlists_.empty()) header("Playlists");
     for (const Playlist& p : playlists_) {
       Row r;
-      r.title = p.name;
+      r.title = p.title();
+      if (p.youtube) r.subtitle = "YouTube Music";
       r.trailing = std::to_string(p.paths.size());
       r.tile = &tiles::playlists;
       r.chevron = true;

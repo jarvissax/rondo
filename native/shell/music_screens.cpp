@@ -42,12 +42,15 @@ class SongMenuScreen : public MusicListScreen {
     // Download: saved to the card (Music/YouTube Music), to play with no connection
     std::string file = downloadedSong(song_.id);
     bool going = false;
+    bool paused = false;
     for (const DownloadJob& j : downloadJobs())
-      going = going || (j.id == song_.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running));
+      if (j.id == song_.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running || j.state == DownloadJob::Paused))
+        going = true, paused = j.state == DownloadJob::Paused;
     if (!file.empty()) {
       add("On the card", tiles::onCard, [this, file] { playFromCard(file); })->subtitle = "Downloaded: center plays it from the card";
     } else if (going) {
-      add("Downloading", tiles::downloads, [] { g_app->push(makeMusicDownloads()); })->subtitle = "YouTube Music \xe2\x80\xba Downloads";
+      add(paused ? "Download paused" : "Downloading", tiles::downloads, [] { g_app->push(makeMusicDownloads()); })->subtitle =
+          "YouTube Music \xe2\x80\xba Downloads";
     } else {
       add("Download", tiles::downloads, [this] {
         downloadSong(song_);
@@ -89,84 +92,149 @@ class SongMenuScreen : public MusicListScreen {
   Requests requests_;
 };
 
-// YouTube Music › Downloads: the songs on their way (center: cancel), then those on the card (center
-// plays them from there, from the one chosen; hold center deletes one). Library › Music has them too,
-// in Music/YouTube Music.
+// YouTube Music › Downloads: Pause downloads (or Resume), the downloaded playlists (center opens it in
+// Library, hold center: update or delete it), the songs on their way (center: pause, resume, cancel),
+// then those on the card (center plays them from there, from the one chosen; hold center deletes one).
+// Library › Music has them too, in Music/YouTube Music. A long queue (a playlist's 500 songs) is cheap:
+// the rows are made again only when one comes or goes; a percent is drawn from the job (fill).
 class MusicDownloadsScreen : public MusicListScreen {
  public:
   MusicDownloadsScreen() : MusicListScreen("Downloads") { render(); }
   bool waitsForContent() const override { return false; }
+  void onShow() override {
+    MusicListScreen::onShow();
+    render();
+  }
   bool tick(int64_t now) override {
     bool mini = MusicListScreen::tick(now);
-    if (key() == key_) return mini;
-    render();
-    return true;
+    uint32_t s = downloadsSerial();
+    if (s == serial_) return mini;
+    serial_ = s;
+    if (key() != key_) render();
+    return true;  // a percent at least: the rows on their way are drawn again
   }
 
  private:
+  // what decides the rows (not the percents)
   static std::string key() {
-    std::string k;
+    std::string k = downloadsHeld() + (downloadsGoing() ? "g" : "") + (downloadsPaused() ? "p" : "") + "|";
     for (const DownloadJob& j : downloadJobs())
-      if (j.song) k += j.id + char('0' + j.state) + std::to_string(j.percent) + j.stage + "|";
-    for (const Item& it : downloadedSongs()) k += it.id + "|";
+      if (j.song) k += j.id + char('0' + j.state) + "|";
+    for (const PlaylistDownload& p : playlistDownloads())
+      k += p.id + (p.loading ? "l" : "") + std::to_string(p.total) + "/" + std::to_string(p.onCard) + "/" + std::to_string(p.going) + "/" + std::to_string(p.paused) + "|";
     return k;
   }
   void render() {
     key_ = key();
+    serial_ = downloadsSerial();
     std::vector<Row> rows;
-    for (const DownloadJob& j : downloadJobs()) {
-      if (!j.song || j.state == DownloadJob::Done) continue;
-      Row r;
-      r.title = j.title;
-      bool part = j.stage.compare(0, 11, "Downloading") == 0;
-      r.subtitle = j.state == DownloadJob::Running ? (j.stage.empty() ? "Downloading" : j.stage) + (part ? " \xc2\xb7 " + std::to_string(j.percent) + "%" : "")
-                   : j.state == DownloadJob::Waiting ? "Waiting"
-                                                     : "Didn't download: " + j.error;
-      r.thumb = j.thumb;
-      std::string id = j.id;
-      bool failed = j.state == DownloadJob::Failed;
-      Item item;
-      item.kind = "song", item.id = j.id, item.title = j.title, item.subtitle = j.channel, item.thumb = j.thumb;
-      r.onSelect = [id, failed, item] {
-        if (failed)
-          g_app->push(makeChoice("Download", {{"Try again", "again"}, {"Leave it", "leave"}}, [] { return std::string("again"); },
-                                 [item](const std::string& v) {
-                                   if (v == "again") downloadSong(item);
-                                 }));
-        else
-          g_app->push(makeChoice("Download", {{"Keep downloading", "keep"}, {"Cancel it", "cancel"}}, [] { return std::string("keep"); },
-                                 [id](const std::string& v) {
-                                   if (v == "cancel") cancelDownload(id);
-                                 }));
-      };
+    ids_.clear();
+    auto add = [&](Row r, const std::string& job = "") {
       rows.push_back(std::move(r));
-    }
+      ids_.push_back(job);
+    };
+    auto header = [&](const char* title) {
+      Row h;
+      h.header = true;
+      h.title = title;
+      add(h);
+    };
+    bool going = false;
+    for (const DownloadJob& j : downloadJobs()) going = going || (j.song && j.state != DownloadJob::Done);
+    std::vector<PlaylistDownload> lists = playlistDownloads();
     std::vector<Item> songs = downloadedSongs();
-    auto files = std::make_shared<std::vector<std::string>>();
-    for (const Item& it : songs) files->push_back(it.id);
-    for (size_t k = 0; k < songs.size(); k++) {
-      const Item& it = songs[k];
-      Row r;
-      r.title = it.title, r.subtitle = it.subtitle, r.thumb = it.thumb;
-      r.trailing = it.durationSec > 0 ? formatTime(it.durationSec) : "";
-      int at = int(k);
-      r.onSelect = [files, at] {
-        g_player.playQueue(*files, at);
-        openNowPlaying();
-      };
-      std::string file = it.id;
-      r.onLongSelect = [file] {
-        g_app->push(makeChoice("Delete download", {{"Keep it", "keep"}, {"Delete it", "delete"}}, [] { return std::string("keep"); },
-                               [file](const std::string& v) {
-                                 if (v == "delete" && deleteSong(file)) g_app->toast("Deleted from the card");
-                               }));
-      };
-      rows.push_back(std::move(r));
+    int sections = int(going) + int(!lists.empty()) + int(!songs.empty());
+    if (downloadsGoing() || downloadsPaused()) add(downloadsPauseRow());
+    if (!lists.empty()) {
+      if (sections > 1) header("Playlists");
+      for (const PlaylistDownload& p : lists) {
+        Row r;
+        r.title = p.title;
+        r.tile = &tiles::playlists;
+        std::string n = std::to_string(p.total) + (p.total == 1 ? " song" : " songs");
+        r.subtitle = p.loading     ? std::string("Getting its songs\xe2\x80\xa6")
+                     : p.going && p.paused == p.going ? "Paused \xc2\xb7 " + std::to_string(p.onCard) + " of " + n
+                     : p.going     ? "Downloading \xc2\xb7 " + std::to_string(p.onCard) + " of " + n
+                     : p.onCard < p.total ? std::to_string(p.onCard) + " of " + n + " on the card"
+                                     : n + (p.mix ? " \xc2\xb7 a mix" : "");
+        std::string name = p.name;
+        bool there = p.onCard > 0 && !name.empty();
+        r.onSelect = [name, there] {
+          if (there) g_app->push(makePlaylist(name));
+          else g_app->toast("Its songs are on their way");
+        };
+        PlaylistDownload copy = p;
+        r.onLongSelect = [copy] { openPlaylistDownloadMenu(copy); };
+        add(r);
+      }
     }
-    if (rows.empty()) list_.setMessage("Nothing downloaded yet: hold center on a song and choose Download");
+    if (going) {
+      if (sections > 1) header("On the way");
+      for (const DownloadJob& j : downloadJobs()) {
+        if (!j.song || j.state == DownloadJob::Done) continue;
+        Row r;
+        r.title = j.title;
+        r.thumb = j.thumb;
+        std::string id = j.id;
+        r.onSelect = [id] {
+          for (const DownloadJob& d : downloadJobs())
+            if (d.id == id) return openDownloadMenu(d);
+        };
+        add(r, j.id);
+      }
+    }
+    if (!songs.empty()) {
+      if (sections > 1) header("On the card");
+      auto files = std::make_shared<std::vector<std::string>>();
+      for (const Item& it : songs) files->push_back(it.id);
+      for (size_t k = 0; k < songs.size(); k++) {
+        const Item& it = songs[k];
+        Row r;
+        r.title = it.title, r.subtitle = it.subtitle, r.thumb = it.thumb;
+        r.trailing = it.durationSec > 0 ? formatTime(it.durationSec) : "";
+        int at = int(k);
+        r.onSelect = [files, at] {
+          g_player.playQueue(*files, at);
+          openNowPlaying();
+        };
+        std::string file = it.id;
+        r.onLongSelect = [file] {
+          g_app->push(makeChoice("Delete download", {{"Keep it", "keep"}, {"Delete it", "delete"}}, [] { return std::string("keep"); },
+                                 [file](const std::string& v) {
+                                   if (v == "delete" && deleteSong(file)) g_app->toast("Deleted from the card");
+                                 }));
+        };
+        add(r);
+      }
+    }
+    // the rows on their way say what they're doing now, as they're drawn
+    list_.fill = [this](int i, Row& r) {
+      if (i < 0 || i >= int(ids_.size()) || ids_[size_t(i)].empty()) return;
+      for (const DownloadJob& j : downloadJobs())
+        if (j.id == ids_[size_t(i)]) r.subtitle = downloadRowState(j, "");
+    };
+    if (rows.empty()) list_.setMessage("Nothing downloaded yet: hold center on a song and choose Download, or open a playlist and choose Download playlist");
     else list_.setRows(std::move(rows), true);
   }
+  // a downloaded playlist's menu: update it, or delete it (its songs too, or not)
+  static void openPlaylistDownloadMenu(const PlaylistDownload& p) {
+    std::string id = p.id, title = p.title;
+    g_app->push(makeChoice(p.title, {{"Update it", "update"}, {"Delete it, keep its songs", "keep"}, {"Delete it and its songs", "songs"}, {"Leave it", "leave"}},
+                           [] { return std::string("leave"); },
+                           [id, title](const std::string& v) {
+                             if (v == "update") downloadPlaylist(id, title);
+                             else if ((v == "keep" || v == "songs") && deletePlaylistDownload(id, v == "songs"))
+                               g_app->toast(v == "songs" ? "Deleted with its songs" : "Deleted: its songs stay on the card");
+                           },
+                           [](const std::string& v) {
+                             return std::string(v == "update" ? "Its new songs come; the order is YouTube's"
+                                                : v == "songs" ? "Not those another playlist has, or you downloaded by themselves"
+                                                               : "");
+                           }));
+  }
   std::string key_;
+  uint32_t serial_ = 0;
+  std::vector<std::string> ids_;  // each row's download on its way ("" none)
 };
 
 // CollectionScreen: a playlist (pages of 100 appended as you scroll) or an album
@@ -202,14 +270,16 @@ class CollectionScreen : public MusicListScreen {
         };
         rows.push_back(all);
       }
-      if (!songs_.empty()) {
+      if (!songs_.empty() && album_) {
         Row dl;
         dl.title = songs_.size() > 1 ? "Download all" : "Download";
         dl.tile = &tiles::downloads;
-        dl.subtitle = album_ || next_.empty() ? std::string("To the card, to play offline")
-                                              : "The " + std::to_string(songs_.size()) + " loaded so far, to the card";
+        dl.subtitle = "To the card, to play offline";
         dl.onSelect = [this] { downloadSongs(songs_); };
         rows.push_back(dl);
+      } else if (!songs_.empty()) {
+        downloadAt_ = int(rows.size());
+        rows.push_back(downloadRow());
       }
       for (Row& r : musicRows(page.items, [this] { return songs_; })) rows.push_back(std::move(r));
       list_.setRows(std::move(rows));
@@ -230,11 +300,63 @@ class CollectionScreen : public MusicListScreen {
       list_.appendRows(musicRows(page.items, [this] { return songs_; }));
     });
   }
+  // a playlist's: the whole of it saved as a playlist in Library (downloads.h), or brought up to date
+  Row downloadRow() {
+    Row dl;
+    dl.tile = &tiles::downloads;
+    PlaylistDownload p;
+    bool had = playlistDownload(id_, p);
+    std::string id = id_, title = title_;
+    if (had && (p.loading || p.going)) {
+      dl.title = p.going && p.paused == p.going ? "Download paused" : "Downloading playlist";
+      dl.subtitle = p.loading ? std::string("Getting its songs\xe2\x80\xa6") : std::to_string(p.onCard) + " of " + std::to_string(p.total) + " songs on the card";
+      dl.onSelect = [] { g_app->push(makeMusicDownloads()); };
+    } else if (had) {
+      dl.title = "Update download";
+      dl.subtitle = std::to_string(p.onCard) + (p.onCard == 1 ? " song" : " songs") + " on the card \xc2\xb7 gets what's new";
+      dl.onSelect = [this, id, title] {
+        downloadPlaylist(id, title);
+        refreshDownloadRow();
+      };
+    } else {
+      dl.title = "Download playlist";
+      dl.subtitle = isMixId(id_) ? "Its " + std::to_string(songs_.size()) + " songs now, as a playlist in Library"
+                                 : std::string("All its songs, as a playlist in Library");
+      dl.onSelect = [this, id, title] {
+        downloadPlaylist(id, title);
+        refreshDownloadRow();
+      };
+    }
+    return dl;
+  }
+  void refreshDownloadRow() {
+    if (downloadAt_ < 0 || downloadAt_ >= int(list_.rows().size())) return;
+    std::vector<Row> rows = list_.rows();
+    rows[size_t(downloadAt_)] = downloadRow();
+    list_.setRows(std::move(rows), true);
+  }
+  void onShow() override {
+    MusicListScreen::onShow();
+    refreshDownloadRow();
+  }
+  bool tick(int64_t now) override {
+    bool mini = MusicListScreen::tick(now);
+    if (downloadAt_ < 0 || downloadsSerial() == serial_) return mini;
+    serial_ = downloadsSerial();
+    const std::vector<Row>& rows = list_.rows();
+    if (downloadAt_ >= int(rows.size())) return mini;
+    Row fresh = downloadRow();
+    if (fresh.title == rows[size_t(downloadAt_)].title && fresh.subtitle == rows[size_t(downloadAt_)].subtitle) return mini;
+    refreshDownloadRow();
+    return true;
+  }
   std::string id_;
   bool album_;
   std::vector<Item> songs_;
   std::string next_;
   bool loading_ = false;
+  int downloadAt_ = -1;  // the Download playlist row's place
+  uint32_t serial_ = 0;
   Requests requests_;
 };
 
@@ -409,14 +531,71 @@ void openSongMenu(const Item& song) { g_app->push(std::unique_ptr<Screen>(new So
 
 std::unique_ptr<Screen> makeMusicDownloads() { return std::unique_ptr<Screen>(new MusicDownloadsScreen()); }
 
+Row downloadsPauseRow() {
+  Row r;
+  bool going = downloadsGoing();
+  r.title = going ? "Pause downloads" : "Resume downloads";
+  r.subtitle = going ? "Videos and songs: each keeps what it has" : "Each goes on where it stopped";
+  r.tile = going ? &tiles::pauseAll : &tiles::resumeAll;
+  r.onSelect = [going] { going ? pauseDownloads() : resumeDownloads(); };
+  return r;
+}
+
+std::string downloadRowState(const DownloadJob& j, const std::string& what) {
+  std::string tail = what.empty() ? "" : " \xc2\xb7 " + what;
+  // the percent only while a part comes in (Getting subtitles and Saving kept the last part's 100 %)
+  bool part = j.stage.empty() || j.stage.compare(0, 11, "Downloading") == 0;
+  std::string pct = std::to_string(j.percent) + "%";
+  switch (j.state) {
+    case DownloadJob::Running: return (j.stage.empty() ? "Downloading" : j.stage) + (part ? " \xc2\xb7 " + pct : "") + tail;
+    case DownloadJob::Waiting: {
+      std::string held = downloadsHeld();
+      return (held.empty() ? "Waiting" : held) + (j.percent > 0 ? " \xc2\xb7 " + pct : "") + tail;
+    }
+    case DownloadJob::Paused: return "Paused" + (j.percent > 0 ? " \xc2\xb7 " + pct : "") + tail;
+    default: return "Didn't download: " + j.error;
+  }
+}
+
+void openDownloadMenu(const DownloadJob& j) {
+  std::string id = j.id;
+  if (j.state == DownloadJob::Failed)
+    g_app->push(makeChoice("Download", {{"Try again", "again"}, {"Leave it", "leave"}, {"Take it off the list", "remove"}},
+                           [] { return std::string("again"); },
+                           [id](const std::string& v) {
+                             if (v == "again") retryDownload(id);
+                             else if (v == "remove") cancelDownload(id);
+                           }));
+  else if (j.state == DownloadJob::Paused)
+    g_app->push(makeChoice("Download", {{"Resume it", "resume"}, {"Keep it paused", "keep"}, {"Cancel it", "cancel"}}, [] { return std::string("resume"); },
+                           [id](const std::string& v) {
+                             if (v == "resume") resumeDownload(id);
+                             else if (v == "cancel") cancelDownload(id);
+                           },
+                           [](const std::string& v) { return std::string(v == "resume" ? "From where it stopped" : ""); }));
+  else
+    g_app->push(makeChoice("Download", {{"Keep downloading", "keep"}, {"Pause it", "pause"}, {"Cancel it", "cancel"}}, [] { return std::string("keep"); },
+                           [id](const std::string& v) {
+                             if (v == "pause") pauseDownload(id);
+                             else if (v == "cancel") cancelDownload(id);
+                           },
+                           [](const std::string& v) { return std::string(v == "pause" ? "It keeps what it has" : ""); }));
+}
+
 Row musicDownloadsRow() {
   Row d;
   d.title = "Downloads";
-  int on = int(downloadedSongs().size()), going = 0;
-  for (const DownloadJob& j : downloadJobs()) going += j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
-  d.subtitle = going ? std::to_string(going) + " downloading" + (on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "")
-               : on  ? std::to_string(on) + (on == 1 ? " song" : " songs") + " on the card, to play offline"
-                     : "Songs saved to play offline";
+  int on = int(downloadedSongs().size()), going = 0, paused = 0;
+  for (const DownloadJob& j : downloadJobs()) {
+    going += j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
+    paused += j.song && j.state == DownloadJob::Paused;
+  }
+  std::string cardPart = on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "";
+  std::string held = downloadsHeld();  // why they wait: Wi-Fi, the card
+  d.subtitle = going    ? (held.empty() ? std::to_string(going) + " downloading" : held) + cardPart
+               : paused ? std::to_string(paused) + " paused" + cardPart
+               : on     ? std::to_string(on) + (on == 1 ? " song" : " songs") + " on the card, to play offline"
+                        : "Songs and playlists saved to play offline";
   d.tile = &tiles::downloads;
   d.onSelect = [] { g_app->push(makeMusicDownloads()); };
   return d;

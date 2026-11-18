@@ -16,6 +16,7 @@
 
 #include "../core/lyrics.h"
 #include "app.h"
+#include "downloads.h"
 #include "lyrics_view.h"
 #include "music_list.h"
 #include "screens.h"
@@ -714,8 +715,20 @@ class NowPlayingScreen : public Screen {
     std::string p = s.path;
     return s.video || p.empty() || isStream(p) || !g_library.find(p) ? std::string() : p;
   }
-  // a card song also has its rating (center: one star more, after five none)
-  int optionCount() const { return ratable().empty() ? 4 : 5; }
+  // a streamed song (YouTube Music), to download: its row's item, else null
+  static const Item* downloadable() {
+    PlayerState s = g_player.state();
+    return s.video || !isStream(s.path) ? nullptr : streamItem(s.path);
+  }
+  // a card song also has its rating (center: one star more, after five none); a streamed one, Download
+  int optionCount() const { return ratable().empty() && !downloadable() ? 4 : 5; }
+  static std::string downloadLabel(const Item& it) {
+    if (!downloadedSong(it.id).empty()) return "Downloaded";
+    for (const DownloadJob& j : downloadJobs())
+      if (j.id == it.id && j.state == DownloadJob::Paused) return "Download paused";
+      else if (j.id == it.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return "Downloading";
+    return "Download";
+  }
   std::string optionLabel(int i, const PlayerState& s) const {
     switch (i) {
       case 0: return "Scrub through the song";
@@ -723,6 +736,8 @@ class NowPlayingScreen : public Screen {
       case 2: return std::string("Shuffle: ") + (s.shuffle ? "On" : "Off");
       case 3: return std::string("Repeat: ") + (s.repeat == 1 ? "All" : s.repeat == 2 ? "One" : "Off");
       default: {
+        if (ratable().empty())
+          if (const Item* it = downloadable()) return downloadLabel(*it);
         const Track* t = g_library.find(ratable());
         int r = t ? t->rating : 0;
         std::string stars;
@@ -746,6 +761,15 @@ class NowPlayingScreen : public Screen {
       case 3: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
       default: {
         std::string p = ratable();
+        if (p.empty()) {  // Download: to the card (Music/YouTube Music), as the song menu's
+          if (const Item* it = downloadable()) {
+            Item song = *it;
+            options_ = false;
+            if (downloadLabel(song) == "Download") downloadSong(song);
+            else g_app->push(makeMusicDownloads());
+          }
+          break;
+        }
         if (const Track* t = g_library.find(p)) g_library.setRating(p, (t->rating + 1) % 6);
         break;
       }
@@ -771,10 +795,11 @@ class NowPlayingScreen : public Screen {
       bool on = i == cursor_;
       Rect r{x + pad, y + pad + float(i * rowH), float(pw - 2 * pad), float(rowH)};
       if (on) e.c.shape(r, e.dpf(6), white);
-      static const Icon kGlyphs[] = {Icon::Seek, Icon::Queue, Icon::Shuffle, Icon::Repeat, Icon::Star};
+      static const Icon kGlyphs[] = {Icon::Seek, Icon::Queue, Icon::Shuffle, Icon::Repeat, Icon::Star, Icon::Download};
       int g = e.dp(14), gx = e.dp(10);
       Color ink = on ? e.p.dark : white;
-      e.icons.draw(e.c, kGlyphs[std::min(i, 4)], {r.x + gx, r.y + float((rowH - g) / 2), float(g), float(g)}, ink);
+      int glyph = i < 4 ? i : ratable().empty() ? 5 : 4;
+      e.icons.draw(e.c, kGlyphs[glyph], {r.x + gx, r.y + float((rowH - g) / 2), float(g), float(g)}, ink);
       float tx = r.x + gx + g + e.dp(9);
       Label l = label(e, optionLabel(i, s), 13, on, r.x + r.w - e.dp(10) - tx);
       drawLabel(e, l, tx, r.y + float((rowH - l.h) / 2), ink);

@@ -185,9 +185,15 @@ does the same on the Y1.
 **Downloads:** paste a YouTube link (or a video id), pick 720p, 480p or 360p and press
 **Download**: your Rondo saves it to `Videos/YouTube` on its card with its subtitles. Choose **Song**
 (a YouTube Music link picks it by itself) to save a song instead, to `Music/YouTube Music` with its
-details, cover and lyrics. The list shows each one on its way (**Cancel**), then the videos and songs
-on the card (**Save** to your computer, or the bin to delete one). The Y1 has the same lists in
-YouTube › Home › Downloads and YouTube Music › Home › Downloads.
+details, cover and lyrics, or **Playlist** (a playlist's link picks it by itself) to save all of a
+YouTube Music playlist's songs and a playlist of them in Library › Playlists, in YouTube's order.
+**Pause all** / **Resume all** is over the list; then come the downloaded playlists (**Update** gets
+their new songs; the bin deletes one, with its songs or without), each download on its way
+(**Pause**, **Resume**, the cross cancels it), then the videos and songs on the card (**Save** to
+your computer, or the bin to delete one). A paused download keeps what it has and goes on from
+there, after a restart too. The Y1 has the same lists in YouTube › Home › Downloads and YouTube
+Music › Home › Downloads. In Library › Playlists, a downloaded playlist is marked YouTube Music: it
+plays and shuffles, **Update download** brings it up to date, and it isn't edited there.
 
 ## For developers
 

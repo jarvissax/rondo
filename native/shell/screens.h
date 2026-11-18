@@ -79,6 +79,13 @@ void openSongMenu(const Item& song);
 // YouTube Music › Downloads (music_screens.cpp), and Home's row for it
 std::unique_ptr<Screen> makeMusicDownloads();
 Row musicDownloadsRow();
+// YouTube Music's and YouTube's Downloads (music_screens.cpp): Pause downloads / Resume downloads (all of
+// them: one queue), what a row on its way says (what: "720p", "" none), and its menu (pause, resume,
+// cancel, try again)
+struct DownloadJob;  // downloads.h
+Row downloadsPauseRow();
+std::string downloadRowState(const DownloadJob& j, const std::string& what);
+void openDownloadMenu(const DownloadJob& j);
 std::string largeThumb(const std::string& thumb, int size);
 std::string artOf(const std::string& path, int size);
 // Wi-Fi (wifi_screens.cpp): its screen, and what Settings says about it (1.0.x's wifiName())

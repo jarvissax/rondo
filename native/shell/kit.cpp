@@ -52,6 +52,9 @@ const Tile output{Icon::Headphones, rgb(0xff7a93), rgb(0xd6304f)};
 const Tile theme{Icon::Theme, rgb(0xc58cff), rgb(0x7b3fe0)};
 const Tile subtitles{Icon::Captions, rgb(0x5fe0b5), rgb(0x10a37a)};  // Display › Subtitles
 const Tile downloads{Icon::Download, rgb(0x7be07b), rgb(0x26a83b)};  // Library › Videos › YouTube downloads
+// Downloads' Pause downloads and Resume downloads
+const Tile pauseAll{Icon::Pause, rgb(0xffc94d), rgb(0xe08a00)};
+const Tile resumeAll{Icon::Play, rgb(0x5fe0b5), rgb(0x10a37a)};
 // YouTube Music's song menu: Play now, Play next, Add to queue, Start radio, Download, On the card
 const Tile playNow{Icon::Play, rgb(0xff5e7e), rgb(0xe0144c)};
 const Tile playNext{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};

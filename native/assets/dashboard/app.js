@@ -1230,24 +1230,25 @@ function renderPlaylists() {
   if (S.openSmart) return renderSmart();
   if (S.openPlaylist) return renderPlaylist();
   const q = fold(S.libQuery.trim());
-  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.name).includes(w))) : all;
+  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.title || p.name).includes(w))) : all;
   $('#libSummary').textContent = all.length ? `${plural(all.length, 'playlist')}, made here or on your Rondo. They’re saved on the card.` : 'Playlists of songs on the card. They’re saved on the card, so they survive a reflash.';
   libList.innerHTML = `<div class="song pl-row pl-new" role="listitem" data-act="pl-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New playlist</span></span></div>` +
     (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art">${icon('playlist')}</span>
-      <span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span>
-      <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.name)}">${icon('chevron')}</button></span></div>`).join('')
+      <span class="s-main"><span class="s-title">${esc(p.title || p.name)}</span><span class="s-sub">${esc((p.youtube ? 'YouTube Music · ' : '') + plSub(p))}</span></span>
+      <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.title || p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.title || p.name)}">${icon('chevron')}</button></span></div>`).join('')
       : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '') +
     smartListHtml(q);
 }
 function renderPlaylist() {
   const p = S.playlists.find((x) => x.name === S.openPlaylist);
   if (!p) { S.openPlaylist = null; return renderPlaylists(); }
-  $('#libSummary').textContent = 'A playlist on the card.';
+  const yt = !!p.youtube;  // a downloaded YouTube Music playlist: it follows YouTube's, not edited here
+  $('#libSummary').textContent = yt ? 'A YouTube Music playlist downloaded to the card. It follows the one on YouTube Music: update it to get its new songs.' : 'A playlist on the card.';
   const rows = p.paths.map((path, i) => {
     const s = S.libByPath.get(path);
-    const up = `<button class="ib ib-sm" type="button" data-act="pl-up" data-i="${i}" aria-label="Move up"${i ? '' : ' disabled'}>${icon('up')}</button>`;
-    const down = `<button class="ib ib-sm" type="button" data-act="pl-down" data-i="${i}" aria-label="Move down"${i < p.paths.length - 1 ? '' : ' disabled'}>${icon('down')}</button>`;
-    const rm = `<button class="ib ib-sm" type="button" data-act="pl-remove" data-i="${i}" aria-label="Remove from the playlist">${icon('close')}</button>`;
+    const up = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-up" data-i="${i}" aria-label="Move up"${i ? '' : ' disabled'}>${icon('up')}</button>`;
+    const down = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-down" data-i="${i}" aria-label="Move down"${i < p.paths.length - 1 ? '' : ' disabled'}>${icon('down')}</button>`;
+    const rm = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-remove" data-i="${i}" aria-label="Remove from the playlist">${icon('close')}</button>`;
     if (!s) return `<div class="song pl-song is-missing" role="listitem"><span class="art">${icon('note')}</span><span class="s-main"><span class="s-title">${esc(fileName(path))}</span><span class="s-sub">Not on the card any more</span></span><span class="s-acts">${up}${down}${rm}</span></div>`;
     return `<div class="song pl-song${isPlaying(s) ? ' is-playing' : ''}" role="listitem" data-path="${esc(path)}" data-i="${i}">
       <span class="art"${s.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
@@ -1257,14 +1258,15 @@ function renderPlaylist() {
   const playable = p.paths.length > p.missing;
   libList.innerHTML = `<div class="pl-head">
       <button class="btn btn-sm btn-quiet" type="button" data-act="pl-back">${icon('chevron', 'i flip')}<span>Playlists</span></button>
-      <h2>${esc(p.name)}</h2><p>${esc(plSub(p))}</p>
+      <h2>${esc(p.title || p.name)}</h2><p>${esc((yt ? 'YouTube Music · ' : '') + plSub(p))}</p>
       <div class="pl-acts">
         <button class="btn btn-primary btn-sm" type="button" data-act="pl-play"${playable ? '' : ' disabled'}>${icon('play')}<span>Play on Rondo</span></button>
         <button class="btn btn-sm" type="button" data-act="pl-shuffle"${playable ? '' : ' disabled'}>${icon('shuffle')}<span>Shuffle</span></button>
-        <button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>Add songs</span></button>
-        <button class="btn btn-sm" type="button" data-act="pl-rename">Rename</button>
+        ${yt ? (p.ytId ? `<button class="btn btn-sm" type="button" data-act="pl-update">${icon('refresh')}<span>Update download</span></button>` : '')
+    : `<button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>Add songs</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-rename">Rename</button>`}
         <button class="btn btn-sm btn-red-text" type="button" data-act="pl-delete">${icon('trash')}<span>Delete</span></button>
-      </div></div>` + (rows || '<div class="lib-empty"><h3>No songs yet</h3><p>Use Add songs, or Add to playlist in a song’s details.</p></div>');
+      </div></div>` + (rows || (yt ? '<div class="lib-empty"><h3>No songs on the card yet</h3><p>They come as they download.</p></div>' : '<div class="lib-empty"><h3>No songs yet</h3><p>Use Add songs, or Add to playlist in a song’s details.</p></div>'));
   $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
 }
 async function playPlaylist(p, path) {
@@ -1274,7 +1276,7 @@ async function playPlaylist(p, path) {
     const st = await api('POST', '/api/player/play', { path: path || onCard[0], queue: onCard });
     if (S.status) { S.status.player = st; S.statusAt = performance.now(); }
     renderMini();
-    toast(`Playing “${p.name}” on your Rondo`);
+    toast(`Playing “${p.title || p.name}” on your Rondo`);
   } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
 }
 async function onPlaylistClick(e) {
@@ -1288,7 +1290,7 @@ async function onPlaylistClick(e) {
   if (!p) return;
   if (act === 'pl-open') { S.openPlaylist = p.name; window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) }); return renderPlaylists(); }
   if (act === 'pl-play') return playPlaylist(p);
-  if (act === 'pl-shuffle') return shufflePaths(p.paths, `“${p.name}”`);
+  if (act === 'pl-shuffle') return shufflePaths(p.paths, `“${p.title || p.name}”`);
   if (act === 'pl-song') return playPlaylist(p, row.dataset.path);
   if (act === 'pl-add') return addSongsSheet(p.name);
   if (act === 'pl-rename') {
@@ -1298,14 +1300,25 @@ async function onPlaylistClick(e) {
     if (saved) { S.openPlaylist = saved.name; renderPlaylists(); }
     return;
   }
-  if (act === 'pl-delete') {
-    if (!(await confirmSheet({ title: `Delete “${p.name}”?`, text: 'The playlist goes; its songs stay on the card.', action: 'Delete' }))) return;
+  if (act === 'pl-update') {
     try {
-      await api('DELETE', `/api/playlists?name=${encodeURIComponent(p.name)}`);
+      await api('POST', `/api/downloads/playlist?id=${encodeURIComponent(p.ytId)}`, {});
+      toast(`Updating “${p.title}” on your Rondo`);
+    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t update it. ${reason(e2)}`, 'err'); }
+    return;
+  }
+  if (act === 'pl-delete') {
+    const title = p.title || p.name;
+    // a downloaded one: its songs can go too
+    const how = p.youtube ? await dlListSheet({ title }) : (await confirmSheet({ title: `Delete “${title}”?`, text: 'The playlist goes; its songs stay on the card.', action: 'Delete' })) ? 'keep' : '';
+    if (!how) return;
+    try {
+      await api('DELETE', `/api/playlists?name=${encodeURIComponent(p.name)}${how === 'songs' ? '&songs=1' : ''}`);
       S.playlists = S.playlists.filter((x) => x !== p);
       S.openPlaylist = null;
+      if (how === 'songs') loadLibrary(true);
       renderPlaylists();
-      toast(`Deleted “${p.name}”`);
+      toast(how === 'songs' ? `Deleted “${title}” and its songs` : `Deleted “${title}”`);
     } catch (e2) { if (e2.status !== 401) toast(`Couldn’t delete it. ${reason(e2)}`, 'err'); }
     return;
   }
@@ -1354,7 +1367,7 @@ function addSongsSheet(name) {
 // from a song's details: pick a playlist, or start a new one with it
 async function addToPlaylistSheet(it) {
   const all = await loadPlaylists();
-  openSheet(`<h2>Add to a playlist</h2><p>“${esc(it.title || fileName(it.path))}”</p><div class="pick-list">${all.map((p) => {
+  openSheet(`<h2>Add to a playlist</h2><p>“${esc(it.title || fileName(it.path))}”</p><div class="pick-list">${all.filter((p) => !p.youtube).map((p) => {
     const has = p.paths.includes(it.path);
     return `<div class="pick" data-pl="${esc(p.name)}"><span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span><button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? 'Added' : 'Add'}</button></div>`;
   }).join('')}</div><div class="sheet-actions"><button class="btn" type="button" data-act="done">Done</button><button class="btn btn-primary" type="button" data-act="new">${icon('plus')}<span>New playlist</span></button></div>`);
@@ -2362,12 +2375,16 @@ async function forgetNet(id) {
 }
 
 // ---------- YouTube › Download ----------
-// The form (a link or an id; a video at the height chosen, or a YouTube Music song, saved to
-// Music/YouTube Music with its details and cover), then what's on its way (progress, cancel), then the
-// videos and songs on the card (save, delete). Asked again every 2 s while one is on its way.
+// The form (a link or an id: a video at the height chosen, a YouTube Music song saved to Music/YouTube
+// Music with its details and cover, or a YouTube Music playlist: all its songs, and a playlist of them
+// in Library › Playlists), Pause all / Resume all, the downloaded playlists (update, delete), what's on
+// its way (progress, pause, resume, cancel), then the videos and songs on the card (save, delete).
+// Asked again every 2 s while one is on its way. One queue on the Rondo: one at a time, videos and
+// songs; a paused one keeps what it has and goes on from there, after a restart too.
 let dlTimer = 0;
 const DL_QUALITY = [[720, '720p'], [480, '480p'], [360, '360p']];
-const DL_KIND = [['video', 'Video'], ['song', 'Song']];
+const DL_KIND = [['video', 'Video'], ['song', 'Song'], ['playlist', 'Playlist']];
+const dlGoing = (j) => j.state === 'waiting' || j.state === 'running';
 async function loadDownloads() {
   clearTimeout(dlTimer);
   try {
@@ -2376,7 +2393,24 @@ async function loadDownloads() {
   } catch (e) {
     if (e.status !== 401 && !S.downloads) $('#dlBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the downloads. ${esc(reason(e))}</div></div>`;
   }
-  if (S.route === 'youtube' && S.downloads?.jobs.some((j) => j.state === 'waiting' || j.state === 'running')) dlTimer = setTimeout(loadDownloads, 2000);
+  const busy = S.downloads && (S.downloads.jobs.some(dlGoing) || (S.downloads.playlists || []).some((p) => p.loading));
+  if (S.route === 'youtube' && busy) dlTimer = setTimeout(loadDownloads, 2000);
+}
+// what a row on its way says (as the Y1's rows do)
+function dlState(j, what) {
+  const tail = what ? ` · ${what}` : '';
+  const part = !j.stage || j.stage.startsWith('Downloading');  // the percent only while a part comes in, as on the Y1
+  if (j.state === 'running') return `${j.stage || 'Downloading'}${part ? ` · ${j.percent}%` : ''}${tail}`;
+  if (j.state === 'waiting') return `${S.downloads.held || 'Waiting'}${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
+  if (j.state === 'paused') return `Paused${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
+  return `Didn’t download: ${j.error}`;
+}
+function dlPlaylistSub(p) {
+  const n = plural(p.total, 'song');
+  if (p.loading) return 'Getting its songs…';
+  if (p.going) return `${p.paused === p.going ? 'Paused' : 'Downloading'} · ${p.onCard} of ${n}`;
+  if (p.onCard < p.total) return `${p.onCard} of ${n} on the card`;
+  return `${n}${p.mix ? ' · a mix' : ''} · in Library › Playlists`;
 }
 function renderDownloads() {
   const d = S.downloads, el = $('#dlBody');
@@ -2387,22 +2421,35 @@ function renderDownloads() {
         ${segHtml('dlKind', DL_KIND, S.dlKind || 'video', 'Download as').replace('seg seg-wide', 'seg')}
         ${segHtml('dlQuality', DL_QUALITY, S.dlQuality || 480, 'Quality').replace('seg seg-wide', 'seg')}
         <button class="btn btn-primary" type="submit">${icon('download')}<span>Download</span></button></form></div>
-      <div class="group" id="dlRows"></div>`;
+      <div id="dlRows"></div>`;
     syncDlKind();
   }
   const jobs = d.jobs.filter((j) => j.state !== 'done').reverse();
-  const rows = [
-    ...jobs.map((j) => {
-      const going = j.state === 'running' || j.state === 'waiting';
-      const part = !j.stage || j.stage.startsWith('Downloading');  // the percent only while a part comes in, as on the Y1
-      const what = j.kind === 'song' ? 'Song' : `${j.quality}p`;
-      const sub = j.state === 'running' ? `${esc(j.stage || 'Downloading')} · ${part ? `${j.percent}% · ` : ''}${what}` : j.state === 'waiting' ? `Waiting · ${what}` : `Didn’t download: ${esc(j.error)}`;
-      return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
-        <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${sub}</div>
-          ${j.state === 'running' ? `<div class="dl-bar"><span style="width:${j.percent}%"></span></div>` : ''}</div>
-        ${going ? `<button class="btn btn-sm" type="button" data-dl-cancel="${esc(j.id)}">Cancel</button>`
-          : `<button class="btn btn-sm" type="button" data-dl-again="${esc(j.id)}" data-q="${j.quality}" data-song="${j.kind === 'song' ? 1 : ''}">Try again</button>`}</div>`;
-    }),
+  const lists = d.playlists || [];
+  const going = jobs.some(dlGoing), paused = jobs.some((j) => j.state === 'paused');
+  const group = (title, rows) => rows.length ? `<h3 class="dl-h">${title}</h3><div class="group">${rows.join('')}</div>` : '';
+  const bar = going || paused ? `<div class="group"><div class="row dl-row dl-all">
+      <span class="tile ${going ? 't-pause' : 't-resume'}">${icon(going ? 'pause' : 'play')}</span>
+      <div class="row-main"><div class="row-title">${going ? 'Downloading' : 'Paused'}</div><div class="row-sub">${esc(d.held || (going ? 'One at a time, videos and songs' : 'Each goes on where it stopped'))}</div></div>
+      <button class="btn btn-sm${going ? '' : ' btn-primary'}" type="button" data-dl-all="${going ? 'pause' : 'resume'}">${going ? 'Pause all' : 'Resume all'}</button></div></div>` : '';
+  const listRows = lists.map((p) => `<div class="row dl-row"><span class="tile t-playlists">${icon('playlist')}</span>
+      <div class="row-main"><div class="row-title">${esc(p.title)}</div><div class="row-sub">${esc(dlPlaylistSub(p))}</div>
+        ${p.going && p.total ? `<div class="dl-bar"><span style="width:${Math.round((100 * p.onCard) / p.total)}%"></span></div>` : ''}</div>
+      ${p.loading ? '' : `<button class="btn btn-sm" type="button" data-dl-update="${esc(p.id)}" aria-label="Update ${esc(p.title)}">${icon('refresh')}<span class="dl-lbl">Update</span></button>`}
+      <button class="btn btn-sm btn-red-text" type="button" data-dl-list="${esc(p.id)}" aria-label="Delete ${esc(p.title)}">${icon('trash')}</button></div>`);
+  const jobRows = jobs.map((j) => {
+    const what = j.kind === 'song' ? 'Song' : `${j.quality}p`;
+    const acts = j.state === 'failed'
+      ? `<button class="btn btn-sm" type="button" data-dl-retry="${esc(j.id)}">Try again</button>
+         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="Take ${esc(j.title)} off the list">${icon('close')}</button>`
+      : `<button class="btn btn-sm" type="button" data-dl-${j.state === 'paused' ? 'resume' : 'pause'}="${esc(j.id)}">${j.state === 'paused' ? 'Resume' : 'Pause'}</button>
+         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="Cancel ${esc(j.title)}">${icon('close')}</button>`;
+    return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
+      <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${esc(dlState(j, what))}</div>
+        ${j.state === 'running' || (j.state !== 'failed' && j.percent) ? `<div class="dl-bar${j.state === 'running' ? '' : ' is-still'}"><span style="width:${j.percent}%"></span></div>` : ''}</div>
+      ${acts}</div>`;
+  });
+  const cardRows = [
     ...(d.songs || []).map((x) => `<div class="row dl-row"><span class="tile t-music">${icon('note')}</span>
         <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
         <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
@@ -2412,19 +2459,38 @@ function renderDownloads() {
         <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
         <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" aria-label="Delete ${esc(x.title)}">${icon('trash')}</button></div>`),
   ];
-  $('#dlRows').innerHTML = rows.length ? rows.join('') : '<div class="row-empty">Nothing downloaded yet.</div>';
+  const html = bar + group('Playlists', listRows) + group('On the way', jobRows) + group('On the card', cardRows);
+  $('#dlRows').innerHTML = html || '<div class="group"><div class="row-empty">Nothing downloaded yet.</div></div>';
 }
-// a song has no height to pick
+// a song or a playlist has no height to pick
 function syncDlKind() {
   const q = $('.seg[data-key="dlQuality"]');
-  if (q) q.hidden = (S.dlKind || 'video') === 'song';
+  if (q) q.hidden = (S.dlKind || 'video') !== 'video';
+}
+function setDlKind(kind) {
+  S.dlKind = kind;
+  $$('button', $('.seg[data-key="dlKind"]')).forEach((x) => x.setAttribute('aria-checked', String(JSON.parse(x.dataset.v) === kind)));
+  syncDlKind();
 }
 $('#dlBody').addEventListener('input', (e) => {
-  if (e.target.id !== 'dlVideo' || !/music\.youtube\.com/i.test(e.target.value)) return;
-  S.dlKind = 'song';  // a YouTube Music link: a song
-  $$('button', $('.seg[data-key="dlKind"]')).forEach((x) => x.setAttribute('aria-checked', String(JSON.parse(x.dataset.v) === 'song')));
-  syncDlKind();
+  if (e.target.id !== 'dlVideo') return;
+  const v = e.target.value;
+  // a playlist's link: the playlist; a YouTube Music link: a song
+  if (/[?&]list=/.test(v) && !/[?&]v=/.test(v) || /\/browse\/VL/.test(v)) setDlKind('playlist');
+  else if (/music\.youtube\.com/i.test(v)) setDlKind('song');
 });
+// delete a downloaded playlist: its songs stay, or go too
+function dlListSheet(p) {
+  return new Promise((resolve) => {
+    openSheet(`<h2>Delete “${esc(p.title)}”?</h2><p>The playlist goes from Library. Its songs can stay on the card, or go too, except those another downloaded playlist has or that you downloaded by themselves.</p>
+      <div class="sheet-actions sheet-actions-3"><button class="btn" type="button" data-r="">Cancel</button><button class="btn btn-danger" type="button" data-r="songs">With its songs</button><button class="btn btn-primary" type="button" data-r="keep">Keep its songs</button></div>`);
+    const onClick = (e) => { const b = e.target.closest('[data-r]'); if (b) finish(b.dataset.r); };
+    const finish = (v) => { sheet.removeEventListener('click', onClick); sheet.removeEventListener('close', onClose); if (sheet.open) sheet.close(); resolve(v); };
+    const onClose = () => finish('');
+    sheet.addEventListener('click', onClick);
+    sheet.addEventListener('close', onClose);
+  });
+}
 $('#dlBody').addEventListener('click', async (e) => {
   const seg = e.target.closest('.seg[data-key="dlQuality"], .seg[data-key="dlKind"]'), b = e.target.closest('[data-v]');
   if (seg && b) {
@@ -2433,13 +2499,27 @@ $('#dlBody').addEventListener('click', async (e) => {
     else S.dlQuality = JSON.parse(b.dataset.v);
     return;
   }
-  const cancel = e.target.closest('[data-dl-cancel]'), again = e.target.closest('[data-dl-again]'), del = e.target.closest('[data-dl-delete]');
+  const t = (k) => e.target.closest(`[data-dl-${k}]`);
+  const cancel = t('cancel'), retry = t('retry'), del = t('delete'), pause = t('pause'), resume = t('resume'), all = t('all'), update = t('update'), list = t('list');
   try {
     if (cancel) S.downloads = await api('POST', '/api/downloads/cancel', { id: cancel.dataset.dlCancel });
-    else if (again) S.downloads = await api('POST', '/api/downloads', { video: again.dataset.dlAgain, quality: +again.dataset.q, song: !!again.dataset.song }, { timeout: 40000 });
-    else if (del) {
+    else if (retry) S.downloads = await api('POST', '/api/downloads/retry', { id: retry.dataset.dlRetry });
+    else if (pause) S.downloads = await api('POST', '/api/downloads/pause', { id: pause.dataset.dlPause });
+    else if (resume) S.downloads = await api('POST', '/api/downloads/resume', { id: resume.dataset.dlResume });
+    else if (all) S.downloads = await api('POST', `/api/downloads/${all.dataset.dlAll}`, {});
+    else if (update) {
+      S.downloads = await api('POST', `/api/downloads/playlist?id=${encodeURIComponent(update.dataset.dlUpdate)}`, {});
+      toast('Bringing it up to date on your Rondo');
+    } else if (list) {
+      const p = (S.downloads.playlists || []).find((x) => x.id === list.dataset.dlList);
+      const how = p && await dlListSheet(p);
+      if (!how) return;
+      S.downloads = await api('DELETE', `/api/downloads/playlist?id=${encodeURIComponent(p.id)}${how === 'songs' ? '&songs=1' : ''}`);
+      S.playlists = null;  // Library's playlists changed
+      toast(how === 'songs' ? 'Deleted with its songs' : 'Deleted: its songs stay on the card');
+    } else if (del) {
       const name = del.closest('.row').querySelector('.row-title').textContent;
-      if (!await confirmSheet({ title: `Delete “${name}”?`, text: del.dataset.song ? 'It goes from the card.' : 'It goes from the card with its subtitles.', action: 'Delete' })) return;
+      if (!await confirmSheet({ title: `Delete “${name}”?`, text: del.dataset.song ? 'It goes from the card, and from the playlists it’s in.' : 'It goes from the card with its subtitles.', action: 'Delete' })) return;
       S.downloads = await api('DELETE', `/api/downloads?file=${encodeURIComponent(del.dataset.dlDelete)}`);
       toast('Deleted from the card');
     } else return;
@@ -2449,12 +2529,12 @@ $('#dlBody').addEventListener('click', async (e) => {
 });
 $('#dlBody').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const input = $('#dlVideo'), video = input.value.trim();
+  const input = $('#dlVideo'), video = input.value.trim(), kind = S.dlKind || 'video';
   if (!video) return input.focus();
   try {
-    S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480, song: (S.dlKind || 'video') === 'song' }, { timeout: 40000 });
+    S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480, song: kind === 'song', playlist: kind === 'playlist' }, { timeout: 70000 });
     input.value = '';
-    toast('Downloading on your Rondo');
+    toast(kind === 'playlist' ? 'Downloading the playlist on your Rondo' : 'Downloading on your Rondo');
     renderDownloads();
     loadDownloads();
   } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
@@ -3114,7 +3194,7 @@ function smRuleText(r) {
 const smSub = (p) => `${plural(p.count, 'song')}${p.durationSec ? ` · ${fmtDur(p.durationSec)}` : ''} · ${p.rules.map(smRuleText).join(p.match === 'any' ? ' or ' : ', ')}`;
 function smartListHtml(q) {
   const all = S.smart || [];
-  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.name).includes(w))) : all;
+  const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.title || p.name).includes(w))) : all;
   return `<div class="lhdr" role="heading" aria-level="3">Smart playlists</div>
     <div class="song pl-row pl-new" role="listitem" data-act="sm-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New smart playlist</span><span class="s-sub">Songs picked by rules: a genre, a year, what you play and rate</span></span></div>` +
     shown.map((p) => `<div class="song pl-row" role="listitem" data-sm="${esc(p.name)}"><span class="art">${icon('bolt')}</span>
@@ -3157,7 +3237,7 @@ async function playSmart(p, from) {
     const pl = await api('POST', '/api/player/play', { path: from || songs.paths[0], queue: songs.paths });
     if (S.status) { S.status.player = pl; S.statusAt = performance.now(); }
     renderMini(); markPlayingRows();
-    toast(`Playing “${p.name}” on your Rondo`);
+    toast(`Playing “${p.title || p.name}” on your Rondo`);
   } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
 }
 // true when the click was a smart playlist's

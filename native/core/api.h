@@ -61,8 +61,12 @@ class Api {
   int upload(const std::string& path, const std::string& file, const std::string& contentType, std::string& body);
   // The path into a file (written as .part, renamed when whole); progress(done, total) as it comes
   // cancel: checked as it goes; once true it stops (status 0, nothing written)
+  // resumeFrom >= 0: a .part already there goes on from min(its size, resumeFrom) and stays when it
+  // stops unfinished, a download to take up again later (YouTube › Download); every 1 MB it is
+  // flushed to the card and synced(bytes) says how much is there for sure (a power cut loses no more)
   int download(const std::string& path, const std::string& file, const std::function<void(int64_t, int64_t)>& progress,
-               const std::atomic<bool>* cancel = nullptr);
+               const std::atomic<bool>* cancel = nullptr, int64_t resumeFrom = -1,
+               const std::function<void(int64_t)>* synced = nullptr);
 
   int health(Health& out);
   int musicHome(SectionsPage& out);

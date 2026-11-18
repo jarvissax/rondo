@@ -109,10 +109,37 @@ let playlists = EMPTY ? [] : [
   { name: 'Road trip', paths: songs.filter((_, i) => i % 37 === 0).map((s) => s.path) },
   { name: 'Late night', paths: songs.filter((_, i) => i % 53 === 5).map((s) => s.path).concat(`${MUSIC}/Old/Gone song.flac`) },
 ];
+// a downloaded YouTube Music playlist (Playlists/YouTube Music on a real Rondo: name "YouTube Music/<title>")
+if (!EMPTY) playlists.push({ name: 'YouTube Music/Chill mornings', youtube: true, ytId: 'PLmockchill', paths: songs.filter((_, i) => i % 61 === 3).map((s) => s.path) });
 function playlistJson(p) {
   const by = new Map(songs.map((s) => [s.path, s]));
-  return { name: p.name, paths: p.paths, missing: p.paths.filter((x) => !by.has(x)).length, durationSec: p.paths.reduce((n, x) => n + (by.get(x)?.durationSec || 0), 0) };
+  return { name: p.name, title: p.name.replace(/^YouTube Music\//, ''), ...(p.youtube ? { youtube: true, ytId: p.ytId } : {}),
+    paths: p.paths, missing: p.paths.filter((x) => !by.has(x)).length, durationSec: p.paths.reduce((n, x) => n + (by.get(x)?.durationSec || 0), 0) };
 }
+
+// ---------- YouTube › Download (shell/downloads.cpp): one queue, one at a time, pause and resume ----------
+const dl = {
+  held: '',
+  jobs: EMPTY ? [] : [
+    { id: 'aaaaaaaaaa1', kind: 'song', title: 'Northbound', channel: 'Glass Harbor · Tides', quality: 480, state: 'running', percent: 34, stage: 'Downloading', error: '', file: '' },
+    { id: 'aaaaaaaaaa2', kind: 'song', title: 'Paper Satellites', channel: 'Velvet Static', quality: 480, state: 'waiting', percent: 0, stage: '', error: '', file: '' },
+    { id: 'aaaaaaaaaa3', kind: 'video', title: 'Live at the Pier', channel: 'Velvet Static', quality: 720, state: 'paused', percent: 61, stage: '', error: '', file: '' },
+    { id: 'aaaaaaaaaa4', kind: 'song', title: 'Sabah Yolu', channel: 'Gecə', quality: 480, state: 'failed', percent: 0, stage: '', error: 'The stream was refused (403)', file: '' },
+  ],
+  playlists: EMPTY ? [] : [
+    { id: 'PLmockroad', title: 'Road songs', name: 'YouTube Music/Road songs', mix: false, loading: false, total: 40, onCard: 12, going: 28 },
+    { id: 'PLmockchill', title: 'Chill mornings', name: 'YouTube Music/Chill mornings', mix: false, loading: false, total: 14, onCard: 14, going: 0 },
+  ],
+  songs: EMPTY ? [] : [{ file: `${MUSIC}/YouTube Music/Glass Harbor/Tides (2024)/03 - Lanterns.m4a`, id: 'bbbbbbbbbb1', title: 'Lanterns', subtitle: 'Glass Harbor · Tides' }],
+  files: [],
+};
+setInterval(() => {  // the one running moves on
+  const j = dl.jobs.find((x) => x.state === 'running');
+  if (!j) { const w = dl.jobs.find((x) => x.state === 'waiting'); if (w) w.state = 'running', w.stage = 'Downloading'; return; }
+  j.percent = Math.min(100, j.percent + 7);
+  if (j.percent >= 100) j.state = 'done';
+}, 1500);
+function downloadsJson() { return { dir: '/storage/sdcard0/Videos/YouTube', ...dl }; }
 let pending = []; // uploaded files, picked up by the next scan
 let scanning = false;
 
@@ -483,6 +510,7 @@ async function api(req, res, url) {
     if (method === 'GET') return send(res, 200, { playlists: playlists.map(playlistJson) });
     if (method === 'DELETE') { playlists = playlists.filter((p) => p !== find(name)); return send(res, 200, { ok: true }); }
     const body = await readJson(req);
+    if (method === 'PUT' && find(name)?.youtube) return err(res, 409, 'It follows the playlist on YouTube Music: update its download instead');
     if (method === 'POST') {
       const n = clean(body?.name);
       if (!n) return err(res, 400, 'Give it a name');
@@ -504,6 +532,45 @@ async function api(req, res, url) {
       if (paths) p.paths = paths;
       return send(res, 200, playlistJson(p));
     }
+  }
+  if (pathname === '/api/downloads' && method === 'GET') return send(res, 200, downloadsJson());
+  if (pathname === '/api/downloads' && method === 'POST') {
+    const body = await readJson(req);
+    const v = String(body?.video || '');
+    const list = (/[?&]list=([\w-]+)/.exec(v) || [])[1];
+    if (body?.playlist && !list) return err(res, 400, "That isn't a playlist's link or id");
+    if (list) dl.playlists.unshift({ id: list, title: 'New playlist', name: 'YouTube Music/New playlist', mix: list.startsWith('RD'), loading: true, total: 0, onCard: 0, going: 0 });
+    else dl.jobs.push({ id: v.slice(-11), kind: body?.song ? 'song' : 'video', title: 'A download', channel: '', quality: body?.quality || 480, state: 'waiting', percent: 0, stage: '', error: '', file: '' });
+    return send(res, 200, downloadsJson());
+  }
+  if (/^\/api\/downloads\/(pause|resume|retry|cancel)$/.test(pathname) && method === 'POST') {
+    const body = await readJson(req), act = pathname.split('/').pop(), id = body?.id;
+    for (const j of dl.jobs) {
+      if (id && j.id !== id) continue;
+      if (act === 'pause' && (j.state === 'waiting' || j.state === 'running')) j.state = 'paused', j.stage = '';
+      else if (act === 'resume' && j.state === 'paused') j.state = 'waiting';
+      else if (act === 'retry' && j.state === 'failed') j.state = 'waiting', j.error = '';
+      else if (act === 'cancel' && j.state === 'failed') j.state = 'gone';  // off the list
+      else if (act === 'cancel' && j.state !== 'done') j.state = 'failed', j.error = 'Cancelled';
+    }
+    dl.jobs = dl.jobs.filter((j) => j.state !== 'gone');
+    return send(res, 200, downloadsJson());
+  }
+  if (pathname === '/api/downloads/playlist') {
+    const id = url.searchParams.get('id');
+    const p = dl.playlists.find((x) => x.id === id);
+    if (!p) return err(res, 404, 'not found');
+    if (method === 'DELETE') {
+      dl.playlists = dl.playlists.filter((x) => x !== p);
+      playlists = playlists.filter((x) => x.name !== p.name);
+    }
+    return send(res, 200, downloadsJson());
+  }
+  if (pathname === '/api/downloads' && method === 'DELETE') {
+    const f = url.searchParams.get('file');
+    dl.songs = dl.songs.filter((x) => x.file !== f);
+    dl.files = dl.files.filter((x) => x.file !== f);
+    return send(res, 200, downloadsJson());
   }
   // an update APK from the page (SoftwareUpdate.kt installs it on a real Rondo, which then restarts)
   if (pathname === '/api/update' && method === 'PUT') {

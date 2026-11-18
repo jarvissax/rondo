@@ -65,7 +65,8 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
 - **Playlists:** **New playlist**, then **Add songs** (or hold center on any song and choose
   **Add to playlist**). Hold center on a song in a playlist to move it or take it out, and on a
   playlist to rename or delete it. Playlists are `.m3u8` files in the card's `Playlists` folder,
-  so music players on a computer open them too. **Smart playlists**, made on the
+  so music players on a computer open them too. Downloaded YouTube Music playlists are with them
+  (in `Playlists/YouTube Music`), marked YouTube Music. **Smart playlists**, made on the
   [dashboard](dashboard.md#library) from rules (a genre, a year, what you play and rate), are listed
   below them and pick their songs anew each time you open one.
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
@@ -122,21 +123,38 @@ with the wheel.
   the server's own account counts. YouTube Music's own home and history also need a cookies.txt (on
   the dashboard's YouTube page, or the server's admin page).
 - **Hold center on a song** to play it now or next, add it to the queue, **Start radio** (songs
-  like this one) or **Download** it. An album or a playlist has **Download all** at its top.
+  like this one) or **Download** it. Now Playing's options (hold center) have **Download** too, for
+  the song playing. An album has **Download all** at its top.
+- **A playlist** has **Download playlist** at its top: all its songs (a mix, which never ends:
+  the ones it shows when you open it), and a playlist of them in Library › Playlists, in the order
+  YouTube has, under its name and marked YouTube Music. It's a file in the card's
+  `Playlists/YouTube Music` folder, and has the songs on the card so far, so it plays from the
+  first one. A song you have already is the same file, whatever playlists it's in. **Update
+  download** (there, or holding center on it in Library) gets its new songs and takes YouTube's
+  order; a song taken off it on YouTube leaves the playlist but stays on the card. Library plays,
+  shuffles and deletes it, and doesn't edit it: deleting it asks whether its songs go too (not
+  those another downloaded playlist has, or that you downloaded by themselves).
 - **Downloaded songs** are saved to the card the way the library keeps music, in
   `Music/YouTube Music/Artist/Album (Year)/01 - Title.m4a`: YouTube's own AAC (nothing re-encoded),
   with the song's artist, album, year, track number, cover and lyrics (timed where LRCLIB has them)
-  in its tags. **YouTube Music › Home › Downloads** lists them, also with no connection: center
-  plays them from the card, hold center deletes one, and one on its way can be canceled there.
-  Library › Music has them too, and Organize leaves the folder as it is.
+  in its tags. **YouTube Music › Home › Downloads** lists the downloaded playlists, the songs on
+  their way and those on the card, also with no connection: center plays a song from the card,
+  hold center deletes one (from the playlists it's in too). Library › Music has them too, and
+  Organize leaves the folder as it is.
+- **Pause and resume:** **Pause downloads** at the top of Downloads pauses them all (videos and
+  songs: they're one queue, one at a time), and center on one pauses, resumes or cancels it. A
+  paused one keeps what it has and goes on from there, after a restart too: the queue is kept on
+  the Y1, and what came is saved on the card as it comes. They wait by themselves, and go on when
+  they can, while Wi-Fi is off, while the card is the computer's (USB drive) and when the card is
+  full; the rows say why.
 - Songs stream as YouTube's Opus, or its AAC where a song has no Opus; Now Playing says which
   ("Streaming · Opus").
 - Videos play at the quality set in **Settings › YouTube › Video quality** (Auto picks up to
   360p, the screen's size; up to 720p works). A video without that height plays the next one down.
 - **Hold center on a video** to download it to the card (720p, 480p or 360p) with its subtitles, to
   watch with no connection. **YouTube › Home › Downloads** lists them (also with no connection):
-  center plays one, hold center deletes it, and one on its way can be canceled there. They're saved
-  in `Videos/YouTube` on the card, so Library › Videos has them too.
+  center plays one, hold center deletes it, and one on its way can be paused, resumed or canceled
+  there. They're saved in `Videos/YouTube` on the card, so Library › Videos has them too.
 
 <p align="center"><img src="images/downloads.png" width="360" alt="YouTube › Home › Downloads: the videos saved on the card"></p>
 

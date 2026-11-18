@@ -8,6 +8,7 @@
 
 #include "../ui/keyboard.h"
 #include "app.h"
+#include "downloads.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -190,6 +191,7 @@ class AddToPlaylistScreen : public ShellListScreen {
     };
     rows.push_back(add);
     for (const Playlist& p : g_playlists.all()) {
+      if (p.youtube) continue;  // a downloaded one follows YouTube's
       bool has = std::all_of(paths_.begin(), paths_.end(),
                              [&](const std::string& s) { return std::find(p.paths.begin(), p.paths.end(), s) != p.paths.end(); });
       Row r;
@@ -300,10 +302,15 @@ class LocalSongMenuScreen : public RenderedList {
   std::string path_, playlist_, note_;
 };
 
-// PlaylistMenuScreen: rename or delete a playlist.
+// PlaylistMenuScreen: rename or delete a playlist. A downloaded YouTube Music one (downloads.h) isn't
+// renamed or edited here, it follows YouTube's: update it, or delete it with its songs or without.
 class PlaylistMenuScreen : public ShellListScreen {
  public:
-  explicit PlaylistMenuScreen(std::string name) : ShellListScreen(name) {
+  explicit PlaylistMenuScreen(std::string name) : ShellListScreen(Playlist{name, {}, isYouTube(name)}.title()) {
+    if (isYouTube(name)) {
+      youtube(name);
+      return;
+    }
     Row rename;
     rename.title = "Rename";
     rename.chevron = true;
@@ -325,13 +332,63 @@ class PlaylistMenuScreen : public ShellListScreen {
     };
     list_.setRows({rename, del});
   }
+
+ private:
+  static bool isYouTube(const std::string& name) {
+    std::string prefix = std::string(Playlists::kYouTube) + "/";
+    return name.compare(0, prefix.size(), prefix) == 0;
+  }
+  void youtube(const std::string& name) {
+    std::string title = Playlist{name, {}, true}.title(), id = playlistDownloadOf(name);
+    std::vector<Row> rows;
+    if (!id.empty()) {
+      Row up;
+      up.title = "Update download";
+      up.subtitle = "Its new songs come; the order is YouTube's";
+      up.tile = &tiles::downloads;
+      up.onSelect = [id, title] {
+        downloadPlaylist(id, title);
+        g_app->pop();
+      };
+      rows.push_back(up);
+    }
+    Row keep;
+    keep.title = "Delete playlist";
+    keep.subtitle = "Its songs stay on the card";
+    keep.tile = &tiles::del;
+    keep.onSelect = [name, title] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete " + quoted(title) + "?", "Its songs stay on the card.", "Delete playlist",
+                                                            [name] {
+                                                              deleteLibraryPlaylist(name, false);
+                                                              g_app->popTo("Playlists");
+                                                            })));
+    };
+    rows.push_back(keep);
+    Row all;
+    all.title = "Delete it and its songs";
+    all.subtitle = "Not those another playlist has, or downloaded by themselves";
+    all.onSelect = [name, title] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete " + quoted(title) + " and its songs?",
+                                                            "They're deleted from the card. Can't be undone.", "Delete them", [name] {
+                                                              deleteLibraryPlaylist(name, true);
+                                                              g_app->popTo("Playlists");
+                                                            })));
+    };
+    rows.push_back(all);
+    list_.setRows(std::move(rows));
+  }
 };
 
 // PlaylistScreen: shuffle it, add songs (search), then its songs in order. Hold center on a song to move
 // or remove it.
 class PlaylistScreen : public RenderedList {
  public:
-  explicit PlaylistScreen(std::string name) : RenderedList(name), name_(std::move(name)) { render(); }
+  explicit PlaylistScreen(std::string name) : RenderedList(name), name_(std::move(name)) {
+    std::string prefix = std::string(Playlists::kYouTube) + "/";
+    youtube_ = name_.compare(0, prefix.size(), prefix) == 0;
+    if (youtube_) title_ = name_.substr(prefix.size());
+    render();
+  }
   void onShow() override {
     g_library.rescanIfStale();  // 1.0.x: a playlist opening
     render();
@@ -356,18 +413,21 @@ class PlaylistScreen : public RenderedList {
       playNow(s, 0);
     };
     rows.push_back(shuffle);
-    Row add;
-    add.title = "Add songs";
-    add.tile = &tiles::add;
-    add.chevron = true;
     std::string name = name_;
-    add.onSelect = [name] { g_app->push(makeSearchToAdd(name)); };
-    rows.push_back(add);
+    if (!youtube_) {  // a downloaded one follows YouTube's: not edited here
+      Row add;
+      add.title = "Add songs";
+      add.tile = &tiles::add;
+      add.chevron = true;
+      add.onSelect = [name] { g_app->push(makeSearchToAdd(name)); };
+      rows.push_back(add);
+    }
     Row head;
     head.header = true;
-    head.title = items.empty() ? "No songs yet \xc2\xb7 Add songs, or hold center on any song"
-                               : std::to_string(items.size()) + (items.size() == 1 ? " song" : " songs") +
-                                     " \xc2\xb7 hold center: move or remove";
+    std::string count = std::to_string(items.size()) + (items.size() == 1 ? " song" : " songs");
+    head.title = youtube_       ? (items.empty() ? std::string("No songs on the card yet") : count + " \xc2\xb7 from YouTube Music")
+                 : items.empty() ? "No songs yet \xc2\xb7 Add songs, or hold center on any song"
+                                 : count + " \xc2\xb7 hold center: move or remove";
     rows.push_back(head);
     // one list shared by every row (a copy each was 821 x 821 strings), and each row's text and
     // artwork filled in when it is drawn, as Songs does
@@ -378,7 +438,8 @@ class PlaylistScreen : public RenderedList {
     for (size_t i = 0; i < items.size(); i++) {
       Row& r = rows[size_t(first_) + i];
       r.onSelect = [shared, i] { playNow(*shared, int(i)); };
-      r.onLongSelect = [shared, i, name] { g_app->push(makeSongMenu((*shared)[i], name)); };
+      std::string in = youtube_ ? "" : name;  // a downloaded one's songs aren't moved or taken out here
+      r.onLongSelect = [shared, i, in] { g_app->push(makeSongMenu((*shared)[i], in)); };
     }
     list_.fill = [this, shared](int i, Row& r) {
       if (i < first_ || i >= first_ + count_) return;
@@ -394,7 +455,7 @@ class PlaylistScreen : public RenderedList {
     if (missing > 0) {
       Row m;
       m.title = std::to_string(missing) + (missing == 1 ? " song isn't on the card" : " songs aren't on the card");
-      m.subtitle = "Copy them back, or they're skipped";
+      m.subtitle = youtube_ ? "Update its download to get them again" : "Copy them back, or they're skipped";
       m.enabled = false;
       rows.push_back(m);
     }
@@ -403,6 +464,7 @@ class PlaylistScreen : public RenderedList {
 
  private:
   std::string name_;
+  bool youtube_ = false;  // a downloaded YouTube Music playlist
   int first_ = 0, count_ = 0;  // where the songs' rows are
 };
 
@@ -433,7 +495,8 @@ class PlaylistsScreen : public RenderedList {
     }
     for (const Playlist& p : all) {
       Row r;
-      r.title = p.name;
+      r.title = p.title();
+      if (p.youtube) r.subtitle = "YouTube Music";
       r.trailing = std::to_string(p.paths.size());
       r.tile = &tiles::playlists;
       r.chevron = true;

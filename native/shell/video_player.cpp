@@ -352,12 +352,17 @@ class VideoPlayerScreen : public Screen {
         rows.push_back(r);
       } else if (job && job->state != DownloadJob::Done) {
         PanelRow r;
-        r.text = job->state == DownloadJob::Waiting ? "Waiting" : job->stage.empty() ? "Downloading" : job->stage;
-        r.note = job->state == DownloadJob::Running ? std::to_string(job->percent) + "%" : "";
+        r.text = job->state == DownloadJob::Paused ? "Paused" : job->state == DownloadJob::Waiting ? "Waiting" : job->stage.empty() ? "Downloading" : job->stage;
+        r.note = job->state != DownloadJob::Waiting && job->percent > 0 ? std::to_string(job->percent) + "%" : "";
         rows.push_back(r);
+        std::string id = item_.id;
+        PanelRow p;
+        bool paused = job->state == DownloadJob::Paused;
+        p.text = paused ? "Resume download" : "Pause download";
+        p.pick = [id, paused] { paused ? resumeDownload(id) : pauseDownload(id); };
+        rows.push_back(p);
         PanelRow c;
         c.text = "Cancel download";
-        std::string id = item_.id;
         c.pick = [id] { cancelDownload(id); };
         rows.push_back(c);
       } else {

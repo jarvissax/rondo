@@ -135,13 +135,22 @@ Jellyfin, Plex and Kodi expect (`native/core/organize.h`).
 - `GET /api/organize/status` → `{"running", "finished", "done", "total", "moved", "errors": ["…"]}`.
 
 ### Downloads
-- `GET /api/downloads` → `{"dir", "jobs": [{"id", "kind": "video" | "song", "title", "channel",
-  "quality", "state", "percent", "stage", "error", "file"}], "files": [video…], "songs": [{"file", "id",
-  "title", "subtitle"}]}`.
-- `POST /api/downloads` `{"video": "<link or id>", "quality": 480, "song": false}` → the same; with
-  `"song": true` a YouTube Music song, saved to `Music/YouTube Music/Artist/Album (Year)/NN - Title.m4a`.
-- `POST /api/downloads/cancel` `{"id"}`; `DELETE /api/downloads?file=<path>` (a video with its
-  subtitles, or a song).
+- `GET /api/downloads` → `{"dir", "held", "jobs": [{"id", "kind": "video" | "song", "title", "channel",
+  "quality", "state": "waiting" | "running" | "paused" | "done" | "failed", "percent", "stage", "error",
+  "file"}], "files": [video…], "songs": [{"file", "id", "title", "subtitle"}], "playlists": [{"id",
+  "title", "name", "mix", "loading", "total", "onCard", "going", "paused"}]}`. `held`: why nothing
+  starts now ("" nothing holds them: "Waiting for Wi-Fi", "The card is on the computer", "The card is
+  full"…). The queue is kept on the Y1 (`download-queue.json`) and a paused one keeps what it has.
+- `POST /api/downloads` `{"video": "<link or id>", "quality": 480, "song": false, "playlist": false}` →
+  the same; with `"song": true` a YouTube Music song, saved to `Music/YouTube Music/Artist/Album
+  (Year)/NN - Title.m4a`. A playlist's link or id (`…/playlist?list=PL…`, `PL…`, `OLAK5uy_…`, `RD…`)
+  downloads all its songs and a playlist of them (`Playlists/YouTube Music/<title>.m3u8`), or brings
+  one downloaded already up to date; `"playlist": true` refuses (`400`) anything else.
+- `POST /api/downloads/pause` and `/resume` `{"id"?}` (no id: all of them), `POST /api/downloads/retry`
+  `{"id"}` (a failed one waits again), `POST /api/downloads/cancel` `{"id"}`; `DELETE
+  /api/downloads?file=<path>` (a video with its subtitles, or a song, out of every playlist too).
+- `POST /api/downloads/playlist?id=<YouTube id>` updates a downloaded playlist; `DELETE
+  /api/downloads/playlist?id=<YouTube id>` deletes it (`&songs=1`: its songs too, as above).
 
 ### Fill in
 The dashboard's Fill in (`native/shell/fill_in.h`): missing song details and lyrics looked up
@@ -168,12 +177,17 @@ Songs on the card in a chosen order, kept as `.m3u8` files in the card's `Playli
 on a computer open them too, and they survive reflashing. The file name is the playlist's name (up
 to 60 characters; FAT can't hold `/ \ : * ? " < > |`, which become spaces). The Rondo's
 Library › Playlists works on the same files.
-- `GET /api/playlists` → `{"playlists": [{"name", "paths": ["/storage/sdcard0/Music/x.flac", …], "missing": 1,
-  "durationSec": 2950}]}`; `missing` counts songs no longer on the card (kept in the file).
+- `GET /api/playlists` → `{"playlists": [{"name", "title", "paths": ["/storage/sdcard0/Music/x.flac", …], "missing": 1,
+  "durationSec": 2950}]}`; `missing` counts songs no longer on the card (kept in the file). A downloaded
+  YouTube Music playlist (`Playlists/YouTube Music/<title>.m3u8`) has `"name": "YouTube Music/<title>"`,
+  `"youtube": true` and `"ytId"` (its YouTube id, for `POST /api/downloads/playlist`); `title` is the
+  name without the folder.
 - `POST /api/playlists` `{"name": "Road trip", "paths"?: […]}` → the playlist; `409` when the name is taken.
 - `PUT /api/playlists?name=<name>` `{"name"?: "new name", "paths"?: […]}` → the playlist: a rename and/or the
   whole new song list (reordered, added to, removed from). Only audio files on the card are kept.
-- `DELETE /api/playlists?name=<name>` → `{"ok": true}` (the songs stay on the card).
+- `DELETE /api/playlists?name=<name>` → `{"ok": true}` (the songs stay on the card). A downloaded one
+  takes `&songs=1` to delete its songs too (not those another downloaded playlist has, or that were
+  downloaded by themselves); `PUT` on one answers `409` (it follows the playlist on YouTube Music).
 - Errors are `{"error": "<a sentence to show>"}`.
 
 ### Smart playlists
@@ -305,12 +319,8 @@ With a server, these answer `{"mode": "server"}`: the server's admin page signs 
   `DELETE /api/youtube/cookies` signs out. The file stays on the Y1 (0600) and is never returned.
 
 ### YouTube downloads
-Videos saved to `Videos/YouTube` on the card with their subtitles (`native/shell/downloads.h`).
-- `GET /api/downloads` → `{"dir": "/storage/sdcard0/Videos/YouTube",
-  "jobs": [{"id", "title", "channel", "quality", "state": "waiting" | "running" | "done" | "failed", "percent", "stage", "error", "file"}],
-  "files": [{"file", "id", "title", "subtitle"}]}`.
+Videos saved to `Videos/YouTube` on the card with their subtitles, songs and playlists from YouTube
+Music (`native/shell/downloads.h`); the endpoints are under [Downloads](#downloads).
 - `POST /api/downloads` `{"video": "<link or id>", "quality": 720 | 480 | 360}` → the `GET` shape;
   `400` for something that isn't a YouTube link or id, `409` when it's on the card or on its way
   already.
-- `POST /api/downloads/cancel` `{"id"}` → the `GET` shape.
-- `DELETE /api/downloads?file=<path>` → the `GET` shape (the video and its subtitles).

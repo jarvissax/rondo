@@ -64,6 +64,7 @@ struct CoreState {
   int64_t downloadDone, downloadTotal;  // bytes
   int32_t downloadStatus;               // the HTTP status (0: no connection)
   int32_t downloadSeq;                  // one more for each download started (which one the state is of)
+  int64_t downloadSynced;               // a download kept to go on with: the bytes on the card for sure
 };
 
 class CoreHost {
@@ -122,8 +123,9 @@ class CoreHost {
   // that just opened waits a moment for its first answer, main.cpp)
   uint32_t nextRequestId() const { return nextId_; }
   bool pendingSince(uint32_t id) const { return pending_.lower_bound(id) != pending_.end(); }
-  // the server's path into a file, the progress in state().download*
-  void download(const std::string& path, const std::string& file);
+  // the server's path into a file, the progress in state().download*; resumeFrom >= 0: its .part
+  // goes on from there and stays when unfinished (Api::download)
+  void download(const std::string& path, const std::string& file, int64_t resumeFrom = -1);
   void cancelDownload();  // the one running stops: downloadState 3, status 0
   // The socket the replies come on (for poll()), and the replies that came: true when one was handed out.
   int fd() const { return sock_; }

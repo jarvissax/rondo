@@ -21,7 +21,7 @@ enum CoreCommand : uint32_t {
   kApiConfigure = 20,  // the server's base URL, a zero byte, the token
   kApiGet,             // u32 request id, u32 cache ms, the path
   kApiPost,            // u32 request id, the full URL, a zero byte, the JSON body (no token: pairing)
-  kDownload,           // the server's path, a zero byte, the file to write
+  kDownload,           // the server's path, a zero byte, the file to write, a zero byte, where to go on from (-1: anew)
   kDownloadCancel,     // the download running stops (its file is not written)
   kApiUpload,          // u32 request id, the server's path, a zero byte, the file, a zero byte, its content type
   kApiSave,            // u32 request id, the server's path, a zero byte, the file to save it in

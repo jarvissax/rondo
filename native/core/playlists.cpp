@@ -81,38 +81,82 @@ std::string Playlists::clean(const std::string& name) {
   return t.substr(0, cut);
 }
 
-std::vector<Playlist> Playlists::all() const {
-  std::vector<Playlist> out;
-  DIR* d = opendir(dir_.c_str());
-  if (!d) return out;
+void Playlists::list(const std::string& folder, bool youtube, std::vector<Playlist>& out) const {
+  DIR* d = opendir(folder.c_str());
+  if (!d) return;
   while (dirent* e = readdir(d)) {
     std::string name = e->d_name;
     if (name.empty() || name[0] == '.') continue;
     if (!endsWithNoCase(name, ".m3u8") && !endsWithNoCase(name, ".m3u")) continue;
-    std::string path = dir_ + "/" + name;
+    std::string path = folder + "/" + name;
     struct stat st;
     if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
-    out.push_back({stem(name), read(path)});
+    Playlist p;
+    p.name = youtube ? youTubeKey(stem(name)) : stem(name);
+    p.paths = read(path);
+    p.youtube = youtube;
+    out.push_back(std::move(p));
   }
   closedir(d);
-  std::sort(out.begin(), out.end(), [](const Playlist& a, const Playlist& b) { return lower(a.name) < lower(b.name); });
+}
+
+std::vector<Playlist> Playlists::all() const {
+  std::vector<Playlist> out;
+  list(dir_, false, out);
+  list(dir_ + "/" + kYouTube, true, out);
+  // by title; one of his own before a downloaded one of the same title
+  std::sort(out.begin(), out.end(), [](const Playlist& a, const Playlist& b) {
+    std::string x = lower(a.title()), y = lower(b.title());
+    return x != y ? x < y : !a.youtube && b.youtube;
+  });
   return out;
 }
 
 std::string Playlists::fileOf(const std::string& name) const {
-  std::string want = lower(clean(name));
-  DIR* d = opendir(dir_.c_str());
+  // "YouTube Music/<name>": a downloaded one, in its folder (clean() takes / out of the names typed)
+  std::string folder = dir_, key = name, prefix = std::string(kYouTube) + "/";
+  if (name.compare(0, prefix.size(), prefix) == 0) folder = dir_ + "/" + kYouTube, key = name.substr(prefix.size());
+  std::string want = lower(clean(key));
+  DIR* d = opendir(folder.c_str());
   if (!d) return "";
   std::string found;
   while (dirent* e = readdir(d)) {
     std::string f = e->d_name;
     if ((endsWithNoCase(f, ".m3u8") || endsWithNoCase(f, ".m3u")) && lower(stem(f)) == want) {
-      found = dir_ + "/" + f;
+      found = folder + "/" + f;
       break;
     }
   }
   closedir(d);
   return found;
+}
+
+std::string Playlists::freeYouTubeName(const std::string& title, const std::function<bool(const std::string&)>& taken) const {
+  std::string base = clean(title);
+  if (base.empty()) base = "Playlist";
+  for (int k = 1; k < 1000; k++) {
+    std::string name = base;
+    if (k > 1) {  // the title cut (whole characters) so it and " (k)" fit the 60 clean() keeps
+      std::string suffix = " (" + std::to_string(k) + ")";
+      size_t chars = 0, cut = base.size();
+      for (size_t i = 0; i < base.size(); i++)
+        if ((uint8_t(base[i]) & 0xc0) != 0x80 && chars++ == kMaxName - suffix.size()) {
+          cut = i;
+          break;
+        }
+      name = clean(base.substr(0, cut) + suffix);
+    }
+    if (fileOf(youTubeKey(name)).empty() && !(taken && taken(name))) return name;
+  }
+  return base;
+}
+
+bool Playlists::writeYouTube(const std::string& fileName, const std::vector<std::string>& paths) {
+  std::string folder = dir_ + "/" + kYouTube;
+  mkdir(dir_.c_str(), 0775);
+  mkdir(folder.c_str(), 0775);
+  std::string file = fileOf(youTubeKey(fileName));
+  return write(file.empty() ? folder + "/" + clean(fileName) + ".m3u8" : file, paths);
 }
 
 bool Playlists::get(const std::string& name, Playlist& out) const {
@@ -122,12 +166,12 @@ bool Playlists::get(const std::string& name, Playlist& out) const {
   return true;
 }
 
-std::string Playlists::resolve(const std::string& entry) const {
+std::string Playlists::resolve(const std::string& entry, const std::string& folder) const {
   std::string p = entry;
   std::replace(p.begin(), p.end(), '\\', '/');
   if ((p.size() > 2 && isalpha((unsigned char)p[0]) && p[1] == ':' && p[2] == '/') || p.find("://") != std::string::npos)
     return "";  // another computer's drive, or a URL
-  return normalize(p[0] == '/' ? p : dir_ + "/" + p);
+  return normalize(p[0] == '/' ? p : folder + "/" + p);
 }
 
 std::vector<std::string> Playlists::read(const std::string& file) const {
@@ -148,7 +192,7 @@ std::vector<std::string> Playlists::read(const std::string& file) const {
     if (a == std::string::npos) continue;
     s = s.substr(a, b - a + 1);
     if (s[0] == '#') continue;
-    std::string path = resolve(s);
+    std::string path = resolve(s, file.substr(0, file.rfind('/')));
     if (!path.empty() && seen.insert(path).second) out.push_back(path);  // each song once
   }
   fclose(f);
@@ -160,6 +204,9 @@ bool Playlists::write(const std::string& file, const std::vector<std::string>& p
   std::unordered_map<std::string, const Track*> byPath;
   for (const Track& t : library_.tracks()) byPath[t.path] = &t;
   std::string text = "#EXTM3U\n";
+  // songs relative to the file's folder: "../Music/…" from Playlists, "../../Music/…" from Playlists/YouTube Music
+  std::string up = "../";
+  for (size_t at = card_.size() + 1; (at = file.find('/', at)) != std::string::npos && at < file.rfind('/'); at++) up += "../";
   for (const std::string& p : paths) {
     auto it = byPath.find(p);
     if (it != byPath.end()) {
@@ -168,7 +215,7 @@ bool Playlists::write(const std::string& file, const std::vector<std::string>& p
       text += "#EXTINF:" + std::to_string(t->durationSec >= 0 ? t->durationSec : -1) + "," + who + "\n";
     }
     std::string prefix = card_ + "/";
-    text += (p.compare(0, prefix.size(), prefix) == 0 ? "../" + p.substr(prefix.size()) : p) + "\n";
+    text += (p.compare(0, prefix.size(), prefix) == 0 ? up + p.substr(prefix.size()) : p) + "\n";
   }
   std::string base = file.substr(file.rfind('/') + 1);
   std::string tmp = file.substr(0, file.rfind('/') + 1) + "." + base + ".tmp";
@@ -207,9 +254,10 @@ std::string Playlists::update(const std::string& name, const std::string* newNam
   if (newName) {
     std::string c = clean(*newName);
     if (c.empty()) return "Give it a name";
-    std::string other = fileOf(c);
+    bool youtube = file.compare(0, dir_.size() + 1 + strlen(kYouTube) + 1, dir_ + "/" + kYouTube + "/") == 0;  // stays in its folder
+    std::string other = fileOf(youtube ? youTubeKey(c) : c);
     if (!other.empty() && other != file) return "There's already a playlist called \xe2\x80\x9c" + c + "\xe2\x80\x9d";
-    target = dir_ + "/" + c + ".m3u8";
+    target = file.substr(0, file.rfind('/')) + "/" + c + ".m3u8";
   }
   if (target == file) return write(file, songs) ? "" : "Couldn't save the playlist";
   if (strcasecmp(target.c_str(), file.c_str()) == 0) {  // only the case changes: FAT sees one file
