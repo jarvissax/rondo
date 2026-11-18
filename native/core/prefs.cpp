@@ -107,6 +107,7 @@ Prefs loadPrefs(const std::string& path) {
   p.brightness = num("brightness", p.brightness);
   p.screenTimeoutMs = num("screenTimeoutMs", p.screenTimeoutMs);
   p.fmVolume = num("fmVolume", p.fmVolume);
+  p.fmSpeakerVolume = num("fmSpeakerVolume", p.fmSpeakerVolume);
   auto pick = [&](const char* k, int& out, int lo, int hi) { out = std::max(lo, std::min(hi, num(k, out))); };
   pick("subSize", p.subSize, 0, 3);
   pick("subColor", p.subColor, 0, 7);
@@ -141,11 +142,11 @@ bool savePrefs(const std::string& path, const Prefs& p) {
   auto b = [](bool v) { return v ? "true" : "false"; };
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
-                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
+                   "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"fmSpeakerVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
                    "\"clock24\":%s,\"subtitles\":%s,\"subLang\":\"%s\",\"subSize\":%d,\"subColor\":%d,\"subOpacity\":%d,"
                    "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
-                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, b(p.autoTime), b(p.autoZone), b(p.clock24),
+                   b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, p.fmSpeakerVolume, b(p.autoTime), b(p.autoZone), b(p.clock24),
                    b(p.subtitles), cleanLang(p.subLang).c_str(), p.subSize, p.subColor, p.subOpacity, p.subBack, p.subBackOpacity,
                    p.subEdge);
   std::string tmp = path + ".part";

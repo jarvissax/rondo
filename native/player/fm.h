@@ -38,6 +38,9 @@ class FmRadio {
   void seek(bool up, int min, int max);
   void scan(int min, int max);
   void setMuted(bool muted);
+  // The recording opened again once the output has moved (to the speaker or back): MediaTek's HAL
+  // connects the chip's sound to a recording for the output it is on when the recording opens
+  void reopenRecording();
 
   FmStatus status() const;
   bool active() const { return active_.load(); }      // on or starting
@@ -51,6 +54,8 @@ class FmRadio {
   void readStatus();
   void startSound();
   void stopSound();
+  bool openRecording();  // the record stream and its thread (the digital path is on)
+  void closeRecording();
   static void* recordThread(void* self);
   void record();
   template <typename F>

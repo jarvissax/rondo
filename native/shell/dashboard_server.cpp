@@ -1782,7 +1782,7 @@ std::string radioJson() {
       {"stereo", boolean(s.fmStereo)},
       {"muted", boolean(s.fmMuted)},
       // the radio's own volume, not the music volume
-      {"volume", num(int64_t(s.fmOn ? s.volume : std::max(0, g_prefs.fmVolume)))},
+      {"volume", num(int64_t(s.fmOn ? s.volume : std::max(0, r.speaker && g_prefs.fmSpeakerVolume >= 0 ? g_prefs.fmSpeakerVolume : g_prefs.fmVolume)))},
       {"maxVolume", num(int64_t(s.volumeMax > 0 ? s.volumeMax : 13))},  // the step count the player measured
       {"speaker", boolean(r.speaker)},
       {"seeking", boolean(s.fmSeeking)},
@@ -1809,7 +1809,7 @@ std::string putRadio(const Body& b) {
     int target = int(std::max<int64_t>(0, std::min<int64_t>(13, v)));
     PlayerState s = g_player.state();
     if (s.fmOn) g_player.changeVolume(target - s.volume);
-    g_prefs.fmVolume = target;
+    (g_config.radio.speaker ? g_prefs.fmSpeakerVolume : g_prefs.fmVolume) = target;  // the output's own step
     savePrefsNow();
   }
   if (b.flag("on", f)) {

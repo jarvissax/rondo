@@ -250,7 +250,7 @@ void FmRadio::readStatus() {
   int signal = rssi >= -60 ? 4 : rssi >= -70 ? 3 : rssi >= -80 ? 2 : rssi >= -90 ? 1 : 0;
   // the sound watchdog (FmRadio.kt): MediaTek's FM sound switch is one for the whole system, and
   // the record stream can stall; switched off, or no sound for 2 s, the path starts again, muted
-  if (!now.seeking && !now.scanning && rec_) {
+  if (!now.seeking && !now.scanning && sounding_.load()) {  // (a recording that didn't open again counts: no sound)
     int64_t quiet = nowMsFm() - lastSound_.load();
     android::String8 v = android::AudioSystem::getParameters(0, android::String8("GetFmEnable"));
     bool off = strstr(v.string(), "=false") != nullptr;
@@ -285,33 +285,59 @@ void FmRadio::readStatus() {
 // The digital FM path on, and its stream recorded (source 99, as MediaTek's FMAudioPlayer records it)
 void FmRadio::startSound() {
   android::AudioSystem::setParameters(0, android::String8("AudioSetFmDigitalEnable=1"));
+  if (!openRecording()) return;
+  sounding_ = true;
+  changed_();
+}
+
+void FmRadio::stopSound() {
+  if (!rec_ && !sounding_) return;
+  if (rec_) closeRecording();
+  sounding_ = false;
+  android::AudioSystem::setParameters(0, android::String8("AudioSetFmDigitalEnable=0"));
+  changed_();
+}
+
+bool FmRadio::openRecording() {
   auto* rec = new (::operator new(sizeof(android::AudioRecord) + 256))
       android::AudioRecord((audio_source_t)99, 44100, AUDIO_FORMAT_PCM_16_BIT, AUDIO_CHANNEL_IN_STEREO, 0);
   rec->incStrong(this);
   if (rec->initCheck() != 0 || rec->start() != 0) {
     fprintf(stderr, "rondo-player: the FM sound can't be recorded (%d)\n", rec->initCheck());
     rec->decStrong(this);
-    return;
+    return false;
   }
   rec_ = rec;
   lastSound_ = nowMsFm();  // the watchdog's count starts now
   recording_ = true;
-  sounding_ = true;
   pthread_create(&recThread_, nullptr, recordThread, this);
-  changed_();
+  return true;
 }
 
-void FmRadio::stopSound() {
-  if (!rec_) return;
+void FmRadio::closeRecording() {
   recording_ = false;
   auto* rec = static_cast<android::AudioRecord*>(rec_);
   rec->stop();  // first: a read waiting for sound returns
   pthread_join(recThread_, nullptr);
   rec->decStrong(this);
   rec_ = nullptr;
-  sounding_ = false;
-  android::AudioSystem::setParameters(0, android::String8("AudioSetFmDigitalEnable=0"));
-  changed_();
+}
+
+// On headphones MediaTek's HAL plays the chip's sound in its "direct" mode, and a recording opened then
+// takes it from the same connections. Moved to the speaker, the HAL leaves direct mode and takes those
+// connections down (SetFmDirectConnection(0) in its log), and the recording went flat: -61 dBFS, and
+// the speaker played only its own hiss (Nov 18). Opened again after the move, the recording is
+// connected for the speaker. The digital path stays on and the radio's state doesn't change.
+void FmRadio::reopenRecording() {
+  post([this] {
+    if (!rec_) return;
+    closeRecording();
+    if (!openRecording()) {  // the watchdog starts the whole path again within 2 s
+      lastSound_ = 0;
+      return;
+    }
+    if (kFmLog) fprintf(stderr, "fm: recording opened again for the output\n");
+  });
 }
 
 void* FmRadio::recordThread(void* self) {
@@ -324,6 +350,11 @@ void* FmRadio::recordThread(void* self) {
 void FmRadio::record() {
   auto* rec = static_cast<android::AudioRecord*>(rec_);
   static int16_t buf[2048 * 2];
+  // development (RONDO_FM_LOG): the recorded sound's level every 5 s, which no volume touches
+  double sum = 0;
+  int peak = 0;
+  size_t counted = 0;
+  int64_t loggedAt = nowMsFm();
   while (recording_) {
     ssize_t n = rec->read(buf, sizeof(buf));
     if (n <= 0) {
@@ -332,6 +363,21 @@ void FmRadio::record() {
     }
     lastSound_ = nowMsFm();
     sound_(buf, size_t(n) / 4);
+    if (kFmLog) {
+      for (ssize_t k = 0; k < n / 2; k++) {
+        int v = buf[k] < 0 ? -buf[k] : buf[k];
+        peak = std::max(peak, v);
+        sum += double(buf[k]) * buf[k];
+      }
+      counted += size_t(n / 2);
+      if (lastSound_ - loggedAt >= 5000) {
+        double rms = counted ? sqrt(sum / double(counted)) : 0;
+        printf("fm: recorded level: rms %.1f dBFS, peak %.1f dBFS\n", rms > 0 ? 20 * log10(rms / 32768) : -120.0,
+               peak > 0 ? 20 * log10(peak / 32768.0) : -120.0);
+        fflush(stdout);
+        sum = 0, peak = 0, counted = 0, loggedAt = lastSound_;
+      }
+    }
   }
 }
 

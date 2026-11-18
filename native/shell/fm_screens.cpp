@@ -91,7 +91,7 @@ void seek(bool up) {
 }
 void startRadio() {
   if (g_player.state().playing) g_player.pause();
-  g_player.fmStart(g_config.radio.frequency, g_prefs.fmVolume, g_config.radio.speaker);
+  g_player.fmStart(g_config.radio.frequency, g_prefs.fmVolume, g_config.radio.speaker, g_prefs.fmSpeakerVolume);
 }
 void saveRadio() {
   g_radioDirtyAt = 0;
@@ -571,10 +571,10 @@ void fmTick() {
     g_config.radio.names[s.fmFrequency] = s.fmName;
     saveRadio();
   }
-  if (s.fmVolume >= 0 && s.fmVolume != g_prefs.fmVolume) {
-    g_prefs.fmVolume = s.fmVolume;
-    savePrefsNow();
-  }
+  bool volumes = false;  // the radio's own steps (headphones, speaker), as the player has them
+  if (s.fmVolume >= 0 && s.fmVolume != g_prefs.fmVolume) g_prefs.fmVolume = s.fmVolume, volumes = true;
+  if (s.fmSpeakerVolume >= 0 && s.fmSpeakerVolume != g_prefs.fmSpeakerVolume) g_prefs.fmSpeakerVolume = s.fmSpeakerVolume, volumes = true;
+  if (volumes) savePrefsNow();
   if (g_radioDirtyAt && g_app->now() - g_radioDirtyAt > 1000 * kMs) saveRadio();
 }
 

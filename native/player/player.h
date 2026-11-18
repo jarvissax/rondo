@@ -51,7 +51,8 @@ struct PlayerState {
   int32_t fmOn, fmStarting, fmMuted, fmSeeking, fmScanning, fmStereo, fmSignal, fmSpeaker;
   int32_t fmError;      // 1: no wired headphones (the antenna), 2: the chip didn't start
   int32_t fmFrequency;  // tenths of MHz
-  int32_t fmVolume;     // the radio's own volume step (-1: not set yet)
+  int32_t fmVolume;     // the radio's own volume step on headphones (-1: not set yet)
+  int32_t fmSpeakerVolume;  // and on the speaker
   uint32_t fmScanSerial;  // moves on when a scan has finished: its stations in fmFound
   uint32_t fmSeekSerial;  // moves on when a seek has finished: its station in fmFrequency
   int32_t fmFoundCount;
@@ -102,7 +103,7 @@ class PlayerHost {
   void setVideoQuality(const std::vector<std::string>& picturePaths);
   void stopVideo();
   // FM radio (FmRadio.kt): frequencies in tenths of MHz; volume: the radio's own step (-1: music's)
-  void fmStart(int frequency, int volume, bool speaker);
+  void fmStart(int frequency, int volume, bool speaker, int speakerVolume);
   void fmStop();
   void fmTune(int frequency);
   void fmSeek(bool up, int min, int max);

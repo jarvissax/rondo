@@ -576,6 +576,7 @@ void Bluetooth::route(bool on, const std::string& address) {
     AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, AUDIO_DEVICE_OUT_BLUETOOTH_A2DP);
     AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_POLICY_DEVICE_STATE_AVAILABLE, address.c_str());
     AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, AUDIO_POLICY_FORCE_NONE);
+    AudioSystem::setForceUse(audio_policy_force_use_t(5), AUDIO_POLICY_FORCE_NONE);  // MediaTek's FM speaker (engine.cpp)
     routed_ = address;
   } else {
     AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE, address.c_str());

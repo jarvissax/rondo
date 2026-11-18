@@ -200,10 +200,18 @@ class Engine {
   void fmSound(const int16_t* pcm, size_t frames);
   void fmVolumes(bool on);  // the radio's own volume while it sounds, music's again after
   void fmSpeakerApply(bool on);
+  void fmToOutput();     // the radio's step for the output it plays on, on that output
+  audio_devices_t volumeDevice() const;  // the output music's volume is set on now
+  void fmSilenceChip();  // MediaTek's own FM path silent (only Rondo's copy of the radio sounds)
   std::vector<int16_t> fmRing_ = std::vector<int16_t>(size_t(kFmRingFrames) * 2);  // under mu_
   uint64_t fmWrite_ = 0, fmRead_ = 0;
   bool fmSounding_ = false;  // under mu_: what fill() plays
-  int fmVolume_ = -1, musicVolume_ = -1;
+  // The radio's own volume, one per output: headphones (or Bluetooth) and the speaker (-1: not set yet).
+  // Music's step on each output the radio played on is kept here and put back when it stops.
+  int fmVolume_ = -1, fmSpeakerVolume_ = -1;
+  std::vector<std::pair<audio_devices_t, int>> musicSaved_;
+  static bool onSpeaker(audio_devices_t device) { return (device & AUDIO_DEVICE_OUT_SPEAKER) != 0; }
+  int& fmStep(bool speaker) { return speaker ? fmSpeakerVolume_ : fmVolume_; }
   bool fmSpeaker_ = false, speakerForced_ = false;
   int videoPasses_ = 0;      // passes of a video's sound decoded since then (more than one: it repeats)
   bool waitingForPicture() const { return videoOn_ && !video_.ready() && monoNs() - videoWaitNs_ < 8000000000LL; }
@@ -351,7 +359,7 @@ void Engine::publish() {
   FmStatus fm = fm_.status();
   s.fmOn = fm.on, s.fmStarting = fm.starting, s.fmMuted = fm.muted, s.fmSeeking = fm.seeking;
   s.fmScanning = fm.scanning, s.fmStereo = fm.stereo, s.fmSignal = fm.signal, s.fmSpeaker = fmSpeaker_;
-  s.fmError = fm.error, s.fmFrequency = fm.frequency, s.fmVolume = fmVolume_;
+  s.fmError = fm.error, s.fmFrequency = fm.frequency, s.fmVolume = fmVolume_, s.fmSpeakerVolume = fmSpeakerVolume_;
   s.fmScanSerial = fm.scanSerial, s.fmSeekSerial = fm.seekSerial;
   s.fmFoundCount = int32_t(std::min<size_t>(fm.found.size(), 200));
   for (int i = 0; i < s.fmFoundCount; i++) s.fmFound[i] = int16_t(fm.found[size_t(i)]);
@@ -563,7 +571,11 @@ void Engine::command(const std::vector<uint8_t>& m) {
       setPlaying(false);  // opening the radio pauses music
       if (v >= 0) fmVolume_ = v;
       fmSpeaker_ = len > 8 && p[8];
-      radio = [this, f] { fm_.start(f); };
+      if (len >= 13 && i32at(9) >= 0) fmSpeakerVolume_ = i32at(9);
+      radio = [this, f] {
+        fmSilenceChip();  // before its path is switched on
+        fm_.start(f);
+      };
       break;
     }
     case kFmStop: radio = [this] { fm_.stop(); }; break;
@@ -667,8 +679,20 @@ void Engine::command(const std::vector<uint8_t>& m) {
     }
     case kFmSpeaker: {
       fmSpeaker_ = len && p[0];
-      bool on = fmSpeaker_ && fmSounding_;
-      radio = [this, on] { fmSpeakerApply(on); };
+      bool on = fmSpeaker_;
+      // while it sounds: its step on the output it leaves is kept, and the other output's comes on
+      // (silent radios out of the speaker, Nov 18: the speaker kept music's step, 0 or 1 of 13)
+      radio = [this, on] {
+        if (!fmOnOutput_) return;  // put in place when it sounds
+        readVolume();
+        fmStep(onSpeaker(volumeDevice())) = volume_;
+        fmSpeakerApply(on);
+        fmToOutput();
+        fm_.reopenRecording();  // connected for the output it is on now (fm.cpp)
+        pthread_mutex_lock(&mu_);
+        publish();
+        pthread_mutex_unlock(&mu_);
+      };
       break;
     }
     case kRelease:
@@ -809,35 +833,90 @@ void Engine::fmChanged() {
 }
 
 // STREAM_FM had its own volume in 1.0.x (the wheel set it while the radio played): the radio's step is
-// put on the output while it sounds, and music's back after it
+// put on the output while it sounds, and music's back after it. The radio has a step per output
+// (headphones, the speaker): switching outputs puts the other one's on, and a speaker's loud step never
+// follows the radio into the headphones.
 void Engine::fmVolumes(bool on) {
   using android::AudioSystem;
-  audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
-  readVolume();
-  fmOnOutput_ = on;
   if (on) {
-    musicVolume_ = volume_;
-    if (fmVolume_ < 0) fmVolume_ = volume_;
-    if (fmVolume_ > volumeLimit_) fmVolume_ = volumeLimit_;
-    if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, fmVolume_, device) == 0) volume_ = fmVolume_;
+    fmSilenceChip();
+    musicSaved_.clear();
+    fmOnOutput_ = true;
+    fmSpeakerApply(fmSpeaker_);  // the output first: its step goes on the output the radio plays on
+    fmToOutput();
+    if (fmSpeaker_) fm_.reopenRecording();  // it was opened on the headphones (fm.cpp)
   } else {
-    fmVolume_ = volume_;
-    if (musicVolume_ >= 0 && AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, musicVolume_, device) == 0) volume_ = musicVolume_;
+    readVolume();
+    if (fmOnOutput_) fmStep(onSpeaker(volumeDevice())) = volume_;
+    fmOnOutput_ = false;
+    fmSpeakerApply(false);
+    for (const auto& m : musicSaved_) AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, m.second, m.first);
+    musicSaved_.clear();
+    readVolume();
   }
-  fmSpeakerApply(on && fmSpeaker_);
   pthread_mutex_lock(&mu_);
   publish();
   pthread_mutex_unlock(&mu_);
 }
 
-// FmRadio.setSpeaker(): the radio out of the speaker (1.0.x's FM force-use; Rondo's radio is music's
-// output, so media's)
+// The radio's step for the output it plays on now, on that output, with music's step there kept first
+// (once: a second visit keeps the first). The first time on the speaker it takes the headphones' step,
+// the level the radio was heard at; the first time on headphones, music's there (a speaker's step is
+// never carried into the ears).
+void Engine::fmToOutput() {
+  using android::AudioSystem;
+  audio_devices_t device = volumeDevice();
+  int music = 0;
+  AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &music, device);
+  bool kept = false;
+  for (const auto& m : musicSaved_) kept = kept || m.first == device;
+  if (!kept) musicSaved_.push_back({device, music});
+  bool speaker = onSpeaker(device);
+  int& step = fmStep(speaker);
+  if (step < 0) step = speaker && fmVolume_ >= 0 ? fmVolume_ : music;
+  if (step > volumeLimit_) step = volumeLimit_;
+  if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, step, device) == 0) volume_ = step;
+}
+
+// MediaTek's own FM path: "AudioSetFmDigitalEnable=1" also sends the radio straight to the output, at
+// STREAM_FM's volume (stream 10, left at 1 of 13; AudioFlinger hands it on as SetFmVolume). Rondo plays
+// the radio itself (recorded, then through music's output), so both sounded, the chip's a fraction of
+// a second ahead: the radio sounded doubled (Reddit, Nov 18), and with the speaker chosen the chip's
+// stayed in the headphones. It's silenced on every output before the radio starts, when it sounds, and
+// after mediaserver comes back (which starts it at 1 again).
+void Engine::fmSilenceChip() {
+  using android::AudioSystem;
+  const audio_stream_type_t kStreamFm = audio_stream_type_t(10);  // MediaTek's STREAM_FM
+  for (audio_devices_t d : {AUDIO_DEVICE_OUT_SPEAKER, AUDIO_DEVICE_OUT_WIRED_HEADSET, AUDIO_DEVICE_OUT_WIRED_HEADPHONE,
+                            AUDIO_DEVICE_OUT_DEFAULT})
+    AudioSystem::setStreamVolumeIndex(kStreamFm, 0, d);
+  AudioSystem::setParameters(0, android::String8("SetFmVolume=0"));
+}
+
+// FmRadio.setSpeaker(): the radio out of the speaker with MediaTek's own FM force-use, as 1.0.x and
+// MediaTek's FM app do. Media's force-use did nothing (Nov 18: forced to the speaker, the output stayed
+// on the headphones, which the policy prefers for media while they're in); MediaTek's moves the
+// output the FM stream is on (active while the radio sounds), and Rondo's copy of the radio with it.
+constexpr audio_policy_force_use_t kForFmProprietary = audio_policy_force_use_t(5);  // MediaTek's FOR_PROPRIETARY
+
 void Engine::fmSpeakerApply(bool on) {
+  using android::AudioSystem;
   // the policy's own setting, not a copy: rondo-core clears it when Bluetooth audio connects
-  speakerForced_ = android::AudioSystem::getForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA) == AUDIO_POLICY_FORCE_SPEAKER;
+  speakerForced_ = AudioSystem::getForceUse(kForFmProprietary) == AUDIO_POLICY_FORCE_SPEAKER;
+  if (AudioSystem::getForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA) == AUDIO_POLICY_FORCE_SPEAKER)  // 4.0.0's, left behind
+    AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, AUDIO_POLICY_FORCE_NONE);
   if (on == speakerForced_) return;
-  android::AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, on ? AUDIO_POLICY_FORCE_SPEAKER : AUDIO_POLICY_FORCE_NONE);
+  AudioSystem::setForceUse(kForFmProprietary, on ? AUDIO_POLICY_FORCE_SPEAKER : AUDIO_POLICY_FORCE_NONE);
   speakerForced_ = on;
+}
+
+// The output music's volume is set on: the speaker while the radio is forced there. MediaTek's FM
+// force-use moves the output, but the policy still names the headphones as music's device, so the
+// wheel set theirs and the speaker stayed at its own step (silent, Nov 18).
+audio_devices_t Engine::volumeDevice() const {
+  using android::AudioSystem;
+  if (fmOnOutput_ && AudioSystem::getForceUse(kForFmProprietary) == AUDIO_POLICY_FORCE_SPEAKER) return AUDIO_DEVICE_OUT_SPEAKER;
+  return AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
 }
 
 // ---- decoding ----
@@ -1297,19 +1376,20 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
 
 void Engine::readVolume() {
   using android::AudioSystem;
-  audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
+  audio_devices_t device = volumeDevice();
   int index = 0;
   if (AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &index, device) == 0) volume_ = index;
 }
 
 void Engine::changeVolume(int delta) {
   using android::AudioSystem;
-  audio_devices_t device = AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC);
+  audio_devices_t device = volumeDevice();
   readVolume();
   int index = std::max(0, std::min(std::min(volumeMax_, volumeLimit_), volume_ + delta));
   if (AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, device) == 0) {
     volume_ = index;
-    if (!fmOnOutput_) saveVolume(device, index);  // the radio's own step is the UI's (prefs fmVolume)
+    if (!fmOnOutput_) saveVolume(device, index);
+    else fmStep(onSpeaker(device)) = index;  // the radio's own step is the UI's (prefs fmVolume, fmSpeakerVolume)
   }
 }
 
@@ -1362,6 +1442,7 @@ void Engine::setVolumeLimit(int limit) {
     }
   }
   if (fmVolume_ > volumeLimit_) fmVolume_ = volumeLimit_;
+  if (fmSpeakerVolume_ > volumeLimit_) fmSpeakerVolume_ = volumeLimit_;
   readVolume();
   std::string tmp = volumesFile_.substr(0, volumesFile_.rfind('/') + 1) + "volume-limit";
   if (FILE* f = fopen((tmp + ".part").c_str(), "w")) {
@@ -1419,9 +1500,16 @@ void Engine::recoverAudio() {
   }
   usleep(300000);  // its policy set up its outputs
   restoreVolumes();
-  if (fmOnOutput_ && fmVolume_ >= 0)  // the radio was sounding: its own step on the output, not music's
-    AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, fmVolume_, AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC));
-  fmSpeakerApply(fmOnOutput_ && fmSpeaker_);
+  if (fmOnOutput_) {  // the radio was sounding: the chip's path silent again, its own step on its output
+    fmSilenceChip();
+    fmSpeakerApply(fmSpeaker_);
+    if (fmSpeaker_) fm_.reopenRecording();
+    audio_devices_t device = volumeDevice();
+    int step = fmStep(onSpeaker(device));
+    if (step >= 0) AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, std::min(step, volumeLimit_), device);
+  } else {
+    fmSpeakerApply(false);
+  }
   readVolume();
   recovering_ = false;
   audioLost_ = false;

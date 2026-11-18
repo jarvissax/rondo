@@ -132,13 +132,14 @@ void PlayerHost::setVideoQuality(const std::vector<std::string>& picturePaths) {
   for (const auto& p : picturePaths) b += p, b += '\0';
   send(kVideoQuality, b.data(), uint32_t(b.size()));
 }
-void PlayerHost::fmStart(int frequency, int volume, bool speaker) {
-  uint8_t b[9];
-  int32_t f = frequency, v = volume;
+void PlayerHost::fmStart(int frequency, int volume, bool speaker, int speakerVolume) {
+  uint8_t b[13];
+  int32_t f = frequency, v = volume, sv = speakerVolume;
   memcpy(b, &f, 4);
   memcpy(b + 4, &v, 4);
   b[8] = speaker;
-  send(kFmStart, b, 9);
+  memcpy(b + 9, &sv, 4);
+  send(kFmStart, b, 13);
 }
 void PlayerHost::fmStop() { send(kFmStop); }
 void PlayerHost::fmTune(int frequency) {
