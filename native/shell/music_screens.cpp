@@ -227,9 +227,8 @@ class MusicDownloadsScreen : public MusicListScreen {
                                g_app->toast(v == "songs" ? "Deleted with its songs" : "Deleted: its songs stay on the card");
                            },
                            [](const std::string& v) {
-                             return std::string(v == "update" ? "Its new songs come; the order is YouTube's"
-                                                : v == "songs" ? "Not those another playlist has, or you downloaded by themselves"
-                                                               : "");
+                             // short: they sit right of the choice
+                             return std::string(v == "update" ? "Gets its new songs" : v == "songs" ? "Keeps ones used elsewhere" : "");
                            }));
   }
   std::string key_;
