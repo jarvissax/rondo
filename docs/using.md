@@ -246,7 +246,8 @@ Plug in **wired headphones** first: their cable is the antenna.
 - **Next / Previous:** find the next station up or down.
 - **Play/Pause:** mute.
 - **Hold center** for options: your saved stations, **Scan** (finds every station, about 20
-  seconds), save or remove this one, play through the **speaker**, and the **region**. "Most of
+  seconds), save or remove this one, play through the **speaker** (the headphones play too: the
+  Y1's speaker is fed from their amplifier, and they stay in as the antenna), and the **region**. "Most of
   the world" is 87.5–108 MHz; Japan is 76–95 MHz. In the stations list, hold center on a saved
   station to rename, move or remove it, or on a found one to save it.
 

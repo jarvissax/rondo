@@ -265,6 +265,17 @@ The 1.0.x firmware keeps Android's Java layer, with Rondo as its only app with a
   DAC over I2S, so AudioFlinger shows no track. `set ioctl FM_IOCTL_I2S_SETTING Fail
   !ret_FM(-1002)` appears for the stock player too and is harmless. The speaker is
   `AudioSystem.setForceUse(5, 1)`, and `(5, 0)` switches back. Wired headphones are the antenna.
+- **Native Rondo's radio** (2.0 on) records the chip's sound (audio source 99) and plays it like
+  music. `AudioSetFmDigitalEnable=1` also starts the chip's own path to the output, at stream 10's
+  level (1 of 13 untouched), so both sounded and the radio was doubled; 4.0.1 sets stream 10 to 0
+  (and `SetFmVolume=0`). Media's force-use is ignored while headphones are in: the speaker takes
+  `setForceUse(5, 1)`, and the volume has to be set on device 0x2 by hand (the policy still names
+  the headphones as music's device). On the speaker the HAL leaves its "direct" mode and takes down
+  the connections a recording opened on the headphones uses (it went flat at -61 dBFS): the
+  recording is opened again after the move.
+- **The speaker is fed from the headphone amplifier:** moving to the speaker opens
+  `DEVICE_OUT_SPEAKERR` and `DEVICE_OUT_HEADSETR` together, so plugged-in headphones play too, at the
+  speaker's level. With the radio (headphones in as the antenna) that can't be avoided.
 - **The FM sound switch is shared by the whole system.** Every `FMAudioPlayer` sends
   `AudioSetFmDigitalEnable=0` when it's reset or destroyed. The stock app starts its own
   `FmRadioService` from `Y1Application.onCreate` at every boot (and on media-button or SD card

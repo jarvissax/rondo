@@ -320,6 +320,9 @@ class FmOptionsScreen : public RadioList {
     Row output;
     output.title = "Output";
     output.trailing = g_config.radio.speaker ? "Speaker" : "Headphones";
+    // the Y1's speaker is fed from the headphone amplifier, and the headphones stay in as the
+    // antenna: they play too, at the speaker's level (MediaTek's HAL opens both, Nov 18)
+    if (g_config.radio.speaker) output.subtitle = "Headphones play too";
     output.onSelect = [this] {
       g_config.radio.speaker = !g_config.radio.speaker;
       saveRadio();

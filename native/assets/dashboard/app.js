@@ -2061,7 +2061,7 @@ function renderRadio() {
     <div class="group">${found}</div>
     <h2 class="gh">Output and region</h2>
     <div class="group">
-      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Output</div><div class="row-sub">The speaker plays out loud; the headphones stay plugged in as the antenna.</div></div>
+      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Output</div><div class="row-sub">The speaker plays out loud; the headphones stay plugged in as the antenna${r.speaker ? ', and they play too' : ''}.</div></div>
         <div class="row-control">${segs('speaker', [['0', 'Headphones'], ['1', 'Speaker']], r.speaker ? '1' : '0')}</div></div>
       <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Region</div><div class="row-sub">Japan uses 76–95 MHz; most of the world 87.5–108 MHz.</div></div>
         <div class="row-control">${segs('band', [['world', 'Most of the world'], ['japan', 'Japan']], r.band)}</div></div>
