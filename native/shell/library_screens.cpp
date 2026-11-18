@@ -468,7 +468,8 @@ class LibrarySearchScreen : public Screen {
       r.title = p.title();
       if (p.youtube) r.subtitle = "YouTube Music";
       r.trailing = std::to_string(p.paths.size());
-      r.tile = &tiles::playlists;
+      r.tile = p.cover.empty() ? &tiles::playlists : nullptr;
+      r.thumb = p.cover;
       r.chevron = true;
       std::string name = p.name;
       r.onSelect = [name] { g_app->push(makePlaylist(name)); };

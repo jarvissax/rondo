@@ -95,6 +95,7 @@ void Playlists::list(const std::string& folder, bool youtube, std::vector<Playli
     p.name = youtube ? youTubeKey(stem(name)) : stem(name);
     p.paths = read(path);
     p.youtube = youtube;
+    p.cover = coverOf(path);
     out.push_back(std::move(p));
   }
   closedir(d);
@@ -162,8 +163,20 @@ bool Playlists::writeYouTube(const std::string& fileName, const std::vector<std:
 bool Playlists::get(const std::string& name, Playlist& out) const {
   std::string f = fileOf(name);
   if (f.empty()) return false;
-  out = {stem(f), read(f)};
+  bool youtube = f.compare(0, youTubeFolder().size() + 1, youTubeFolder() + "/") == 0;
+  out = {youtube ? youTubeKey(stem(f)) : stem(f), read(f), youtube, coverOf(f)};
   return true;
+}
+
+std::string Playlists::coverOf(const std::string& file) {
+  size_t dot = file.rfind('.');
+  if (dot == std::string::npos || dot < file.rfind('/')) return "";
+  for (const char* ext : {".jpg", ".png", ".jpeg", ".JPG", ".PNG"}) {
+    std::string c = file.substr(0, dot) + ext;
+    struct stat st;
+    if (stat(c.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) return c;
+  }
+  return "";
 }
 
 std::string Playlists::resolve(const std::string& entry, const std::string& folder) const {

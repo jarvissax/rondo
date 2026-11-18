@@ -1529,6 +1529,7 @@ std::string playlistJson(const Playlist& p) {
     o.push_back({"youtube", "true"});
     o.push_back({"ytId", str(playlistDownloadOf(p.name))});
   }
+  if (!p.cover.empty()) o.push_back({"cover", str(p.cover)});  // its picture (GET /api/photo)
   return obj(o);
 }
 

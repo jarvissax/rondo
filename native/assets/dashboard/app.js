@@ -981,7 +981,8 @@ function loadArtInto(el, size, counted = false) {
       else loadArtInto(el, size);
     }, ART_RETRY_MS[tries - 1]);
   };
-  img.src = artUrl(el.dataset.art, size, el._artTries || 0);
+  // a picture on the card (a playlist's cover) comes as a photo; a song's or a video's art from it
+  img.src = el.dataset.photo ? withTry(photoUrl(el.dataset.art, size), el._artTries || 0) : artUrl(el.dataset.art, size, el._artTries || 0);
 }
 
 libList.addEventListener('click', (e) => {
@@ -1233,11 +1234,12 @@ function renderPlaylists() {
   const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.title || p.name).includes(w))) : all;
   $('#libSummary').textContent = all.length ? `${plural(all.length, 'playlist')}, made here or on your Rondo. They’re saved on the card.` : 'Playlists of songs on the card. They’re saved on the card, so they survive a reflash.';
   libList.innerHTML = `<div class="song pl-row pl-new" role="listitem" data-act="pl-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New playlist</span></span></div>` +
-    (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art">${icon('playlist')}</span>
+    (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art"${p.cover ? ` data-art="${esc(p.cover)}" data-photo="1"` : ''}>${icon('playlist')}</span>
       <span class="s-main"><span class="s-title">${esc(p.title || p.name)}</span><span class="s-sub">${esc((p.youtube ? 'YouTube Music · ' : '') + plSub(p))}</span></span>
       <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.title || p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.title || p.name)}">${icon('chevron')}</button></span></div>`).join('')
       : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '') +
     smartListHtml(q);
+  $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });  // the covers
 }
 function renderPlaylist() {
   const p = S.playlists.find((x) => x.name === S.openPlaylist);
@@ -2432,7 +2434,7 @@ function renderDownloads() {
       <span class="tile ${going ? 't-pause' : 't-resume'}">${icon(going ? 'pause' : 'play')}</span>
       <div class="row-main"><div class="row-title">${going ? 'Downloading' : 'Paused'}</div><div class="row-sub">${esc(d.held || (going ? 'One at a time, videos and songs' : 'Each goes on where it stopped'))}</div></div>
       <button class="btn btn-sm${going ? '' : ' btn-primary'}" type="button" data-dl-all="${going ? 'pause' : 'resume'}">${going ? 'Pause all' : 'Resume all'}</button></div></div>` : '';
-  const listRows = lists.map((p) => `<div class="row dl-row"><span class="tile t-playlists">${icon('playlist')}</span>
+  const listRows = lists.map((p) => `<div class="row dl-row">${p.cover ? `<span class="dl-cover"><img src="${photoUrl(p.cover, 96)}" alt="" loading="lazy"></span>` : `<span class="tile t-playlists">${icon('playlist')}</span>`}
       <div class="row-main"><div class="row-title">${esc(p.title)}</div><div class="row-sub">${esc(dlPlaylistSub(p))}</div>
         ${p.going && p.total ? `<div class="dl-bar"><span style="width:${Math.round((100 * p.onCard) / p.total)}%"></span></div>` : ''}</div>
       ${p.loading ? '' : `<button class="btn btn-sm" type="button" data-dl-update="${esc(p.id)}" aria-label="Update ${esc(p.title)}">${icon('refresh')}<span class="dl-lbl">Update</span></button>`}

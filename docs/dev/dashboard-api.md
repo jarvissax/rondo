@@ -138,7 +138,8 @@ Jellyfin, Plex and Kodi expect (`native/core/organize.h`).
 - `GET /api/downloads` → `{"dir", "held", "jobs": [{"id", "kind": "video" | "song", "title", "channel",
   "quality", "state": "waiting" | "running" | "paused" | "done" | "failed", "percent", "stage", "error",
   "file"}], "files": [video…], "songs": [{"file", "id", "title", "subtitle"}], "playlists": [{"id",
-  "title", "name", "mix", "loading", "total", "onCard", "going", "paused"}]}`. `held`: why nothing
+  "title", "name", "cover", "mix", "loading", "total", "onCard", "going", "paused"}]}` (`cover`: its
+  picture on the card, `""` none yet; `GET /api/photo?path=<cover>&size=96`). `held`: why nothing
   starts now ("" nothing holds them: "Waiting for Wi-Fi", "The card is on the computer", "The card is
   full"…). The queue is kept on the Y1 (`download-queue.json`) and a paused one keeps what it has.
 - `POST /api/downloads` `{"video": "<link or id>", "quality": 480, "song": false, "playlist": false}` →
@@ -181,7 +182,8 @@ Library › Playlists works on the same files.
   "durationSec": 2950}]}`; `missing` counts songs no longer on the card (kept in the file). A downloaded
   YouTube Music playlist (`Playlists/YouTube Music/<title>.m3u8`) has `"name": "YouTube Music/<title>"`,
   `"youtube": true` and `"ytId"` (its YouTube id, for `POST /api/downloads/playlist`); `title` is the
-  name without the folder.
+  name without the folder. `"cover"`: the picture beside its file with its name (`<title>.jpg` or
+  `.png`; a downloaded one's cover), when there is one (`GET /api/photo?path=<cover>`).
 - `POST /api/playlists` `{"name": "Road trip", "paths"?: […]}` → the playlist; `409` when the name is taken.
 - `PUT /api/playlists?name=<name>` `{"name"?: "new name", "paths"?: […]}` → the playlist: a rename and/or the
   whole new song list (reordered, added to, removed from). Only audio files on the card are kept.

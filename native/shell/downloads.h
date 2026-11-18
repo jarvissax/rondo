@@ -96,9 +96,11 @@ bool deleteSong(const std::string& file);  // and its entry; out of every playli
 // holding the songs on the card so far (each one that comes is put in its place). A song already on
 // the card is the same file, whatever playlists have it. Downloading it again brings it up to date:
 // its new songs come, the order is YouTube's; a song taken off it on YouTube leaves the playlist, not the card.
+// Its cover (YouTube's picture of it, or its first song's) is beside it, <Title>.jpg: Library shows it.
 struct PlaylistDownload {
   std::string id, title;
   std::string name;  // Library's (Playlists::youTubeKey)
+  std::string cover;  // its picture on the card, beside its file ("" none yet)
   bool mix = false;
   bool loading = false;  // its songs being asked for
   int total = 0, onCard = 0, going = 0, paused = 0;  // its songs; on the card; waiting, running or paused; paused

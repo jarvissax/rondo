@@ -4,6 +4,7 @@
 // The file name is the playlist's name.
 // YouTube Music playlists Rondo downloaded are in Playlists/YouTube Music (downloads.h): listed with
 // the others, their name "YouTube Music/<file name>"; they follow YouTube's, so the screens don't edit them.
+// A picture beside a playlist with its name (<name>.jpg or .png: a downloaded one's cover) is its artwork.
 #pragma once
 #include <functional>
 #include <string>
@@ -18,6 +19,7 @@ struct Playlist {
   std::string name;  // what the calls below take: the file's name ("YouTube Music/<file's>" for a downloaded one)
   std::vector<std::string> paths;
   bool youtube = false;  // a downloaded YouTube Music playlist
+  std::string cover;     // its picture's file ("" none)
   std::string title() const { return youtube ? name.substr(name.find('/') + 1) : name; }  // what a row shows
 };
 
@@ -35,6 +37,9 @@ class Playlists {
   std::string freeYouTubeName(const std::string& title, const std::function<bool(const std::string&)>& taken = nullptr) const;
   bool writeYouTube(const std::string& fileName, const std::vector<std::string>& paths);
   static std::string youTubeKey(const std::string& fileName) { return std::string(kYouTube) + "/" + fileName; }
+  std::string youTubeFolder() const { return dir_ + "/" + kYouTube; }
+  // the picture beside a playlist's file (Playlists/x.m3u8 -> Playlists/x.jpg or .png), "" none
+  static std::string coverOf(const std::string& file);
   // These return an empty string, or the problem to show (1.0.x's wording).
   std::string create(const std::string& name, const std::vector<std::string>& paths = {});
   std::string update(const std::string& name, const std::string* newName, const std::vector<std::string>* paths);

@@ -110,10 +110,10 @@ let playlists = EMPTY ? [] : [
   { name: 'Late night', paths: songs.filter((_, i) => i % 53 === 5).map((s) => s.path).concat(`${MUSIC}/Old/Gone song.flac`) },
 ];
 // a downloaded YouTube Music playlist (Playlists/YouTube Music on a real Rondo: name "YouTube Music/<title>")
-if (!EMPTY) playlists.push({ name: 'YouTube Music/Chill mornings', youtube: true, ytId: 'PLmockchill', paths: songs.filter((_, i) => i % 61 === 3).map((s) => s.path) });
+if (!EMPTY) playlists.push({ name: 'YouTube Music/Chill mornings', youtube: true, ytId: 'PLmockchill', cover: '/storage/sdcard0/Playlists/YouTube Music/Chill mornings.jpg', paths: songs.filter((_, i) => i % 61 === 3).map((s) => s.path) });
 function playlistJson(p) {
   const by = new Map(songs.map((s) => [s.path, s]));
-  return { name: p.name, title: p.name.replace(/^YouTube Music\//, ''), ...(p.youtube ? { youtube: true, ytId: p.ytId } : {}),
+  return { name: p.name, title: p.name.replace(/^YouTube Music\//, ''), ...(p.youtube ? { youtube: true, ytId: p.ytId } : {}), ...(p.cover ? { cover: p.cover } : {}),
     paths: p.paths, missing: p.paths.filter((x) => !by.has(x)).length, durationSec: p.paths.reduce((n, x) => n + (by.get(x)?.durationSec || 0), 0) };
 }
 
@@ -128,7 +128,7 @@ const dl = {
   ],
   playlists: EMPTY ? [] : [
     { id: 'PLmockroad', title: 'Road songs', name: 'YouTube Music/Road songs', mix: false, loading: false, total: 40, onCard: 12, going: 28 },
-    { id: 'PLmockchill', title: 'Chill mornings', name: 'YouTube Music/Chill mornings', mix: false, loading: false, total: 14, onCard: 14, going: 0 },
+    { id: 'PLmockchill', title: 'Chill mornings', name: 'YouTube Music/Chill mornings', cover: '/storage/sdcard0/Playlists/YouTube Music/Chill mornings.jpg', mix: false, loading: false, total: 14, onCard: 14, going: 0 },
   ],
   songs: EMPTY ? [] : [{ file: `${MUSIC}/YouTube Music/Glass Harbor/Tides (2024)/03 - Lanterns.m4a`, id: 'bbbbbbbbbb1', title: 'Lanterns', subtitle: 'Glass Harbor · Tides' }],
   files: [],
@@ -436,6 +436,11 @@ async function api(req, res, url) {
   }
   if (!authed(req)) return err(res, 401, 'pair');
 
+  if (pathname === '/api/photo') {  // a picture on the card: here, a playlist's cover (made up)
+    const key = url.searchParams.get('path') || '';
+    if (!key) return err(res, 404, 'not found');
+    return send(res, 200, artSvg(key, false), { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=86400' });
+  }
   if (pathname === '/api/art' || pathname === '/api/thumb') {
     const key = url.searchParams.get('path') || url.searchParams.get('u') || '';
     const song = songs.find((s) => s.path === key);

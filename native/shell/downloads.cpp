@@ -107,6 +107,7 @@ std::string songsPath() { return dataDir() + "/music-downloads.json"; }
 // the downloaded playlists (its "playlists"): YouTube id -> its file's name and its songs in order
 struct ListRec {
   std::string title, name;
+  std::string thumb;  // its picture's address (the server's or direct mode's /thumb), for its cover
   bool mix = false;
   std::vector<std::string> ids;
   int64_t at = 0;
@@ -114,7 +115,7 @@ struct ListRec {
 std::map<std::string, ListRec> g_lists;
 // a playlist whose songs are being asked for, page by page
 struct ListLoad {
-  std::string title;
+  std::string title, thumb;  // thumb: its picture (the server's or direct mode's /thumb)
   bool mix = false;
   std::vector<Item> items;
   int64_t at = 0;
@@ -273,7 +274,7 @@ void readSongs() {
       yyjson_val *pk, *pv;
       yyjson_obj_foreach(v, pi, pn, pk, pv) {
         ListRec r;
-        r.title = sval(pv, "title"), r.name = sval(pv, "name");
+        r.title = sval(pv, "title"), r.name = sval(pv, "name"), r.thumb = sval(pv, "thumb");
         r.mix = yyjson_get_bool(yyjson_obj_get(pv, "mix"));
         r.at = yyjson_get_sint(yyjson_obj_get(pv, "at"));
         size_t ii, in;
@@ -303,7 +304,8 @@ void writeSongs() {
   for (auto& [id, r] : g_lists) {
     std::string ids;
     for (const std::string& s : r.ids) ids += (ids.empty() ? "" : ",") + jstr(s);
-    j += std::string(p++ ? "," : "") + jstr(id) + ":{\"title\":" + jstr(r.title) + ",\"name\":" + jstr(r.name) + ",\"mix\":" + (r.mix ? "true" : "false") +
+    j += std::string(p++ ? "," : "") + jstr(id) + ":{\"title\":" + jstr(r.title) + ",\"name\":" + jstr(r.name) + ",\"thumb\":" + jstr(r.thumb) +
+         ",\"mix\":" + (r.mix ? "true" : "false") +
          ",\"at\":" + std::to_string(r.at) + ",\"ids\":[" + ids + "]}";
   }
   writeWhole(songsPath(), j + "}}\n");
@@ -912,6 +914,75 @@ void writeListFile(const std::string& pid) {
   if (!g_playlists.writeYouTube(r.name, paths)) fprintf(stderr, "rondo: downloads: playlist %s not written\n", r.name.c_str());
 }
 
+// a downloaded playlist's picture: <its file name>.jpg (or .png) in Playlists/YouTube Music
+std::string listCoverBase(const std::string& name) { return g_playlists.youTubeFolder() + "/" + name; }
+void removeListCover(const std::string& name) {
+  for (const char* ext : {".jpg", ".png"}) unlink((listCoverBase(name) + ext).c_str());
+}
+// asked for beside its other requests (not the queue's one download), into a hidden file, then put in
+// place as a .jpg or a .png, whichever it is (an error page is dropped)
+void saveListCover(const std::string& pid, const std::string& thumb) {
+  auto it = g_lists.find(pid);
+  if (thumb.empty() || it == g_lists.end() || g_cardAway) return;
+  std::string name = it->second.name, folder = g_playlists.youTubeFolder();
+  mkdirs(folder);
+  std::string tmp = folder + "/." + name + ".cover";
+  std::string path = thumb + (thumb.find('?') == std::string::npos ? "?" : "&") + "w=480&h=480";
+  g_core.save(path, tmp, [pid, name, tmp](int status, const std::string&) {
+    uint8_t m[4] = {0, 0, 0, 0};
+    if (FILE* f = fopen(tmp.c_str(), "rb")) {
+      if (fread(m, 1, 4, f) != 4) m[0] = 0;
+      fclose(f);
+    }
+    bool jpeg = m[0] == 0xff && m[1] == 0xd8, png = m[0] == 0x89 && m[1] == 'P' && m[2] == 'N' && m[3] == 'G';
+    auto still = g_lists.find(pid);  // deleted meanwhile: none
+    if (status != 200 || (!jpeg && !png) || still == g_lists.end() || still->second.name != name || g_cardAway) {
+      unlink(tmp.c_str());
+      return;
+    }
+    removeListCover(name);
+    if (rename(tmp.c_str(), (listCoverBase(name) + (jpeg ? ".jpg" : ".png")).c_str()) != 0) unlink(tmp.c_str());
+    g_changed = true;
+  });
+}
+
+// A downloaded playlist with no cover on the card (downloaded before covers were, or its picture didn't
+// come): asked for once a session, its picture's address first if it isn't known (its first page)
+std::set<std::string> g_coverTried;
+int64_t g_coverAt = 0;
+bool online();
+bool cardMounted();
+void fetchMissingCovers() {
+  if (g_cardAway || now_ns() - g_coverAt < 5 * kSec) return;
+  g_coverAt = now_ns();
+  for (auto& [pid, r] : g_lists) {
+    if (g_coverTried.count(pid) || g_loads.count(pid) || !Playlists::coverOf(listCoverBase(r.name) + ".m3u8").empty()) continue;
+    if (!online() || !cardMounted()) return;
+    g_coverTried.insert(pid);
+    if (!r.thumb.empty()) return saveListCover(pid, r.thumb);
+    std::string id = pid;
+    g_core.get("/music/playlist/" + Api::escape(pid), 120000, [id](int status, const std::string& body) {
+      auto it = g_lists.find(id);
+      if (status != 200 || it == g_lists.end()) return;
+      std::string thumb;
+      if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
+        thumb = sval(yyjson_doc_get_root(d), "thumb");
+        yyjson_doc_free(d);
+      }
+      if (thumb.empty()) {  // none: its first song's
+        ItemsPage page;
+        parseItems(body, page);
+        if (!page.items.empty()) thumb = page.items[0].thumb;
+      }
+      if (thumb.empty()) return;
+      it->second.thumb = thumb;
+      writeSongs();
+      saveListCover(id, thumb);
+    });
+    return;  // one at a time
+  }
+}
+
 void playlistLoaded(const std::string& pid, ListLoad& l) {
   readSongs();
   ListRec& r = g_lists[pid];
@@ -940,8 +1011,12 @@ void playlistLoaded(const std::string& pid, ListLoad& l) {
     if (k >= 0 && going(g_jobs[size_t(k)])) continue;  // on its way already
     if (downloadSong(*it, true, false)) queued++;
   }
+  // its cover beside it: YouTube's picture of the playlist, else its first song's (again at each update:
+  // a mix's changes)
+  r.thumb = !l.thumb.empty() ? l.thumb : songs.empty() ? "" : songs[0]->thumb;
   writeSongs();
   writeListFile(pid);
+  saveListCover(pid, r.thumb);
   g_changed = true;
   if (songs.empty()) g_app->toast("No songs in " + l.title);
   else if (queued) g_app->toast("Downloading " + std::to_string(queued) + (queued == 1 ? " song" : " songs") + " of " + l.title);
@@ -969,6 +1044,7 @@ void loadPage(const std::string& pid, const std::string& next) {
         if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
           std::string t = sval(yyjson_doc_get_root(d), "title");
           if (!t.empty()) l.title = t;
+          l.thumb = sval(yyjson_doc_get_root(d), "thumb");
           yyjson_doc_free(d);
         }
       for (const Item& i : page.items)
@@ -1224,6 +1300,8 @@ bool deleteDownload(const std::string& file) {
 
 bool downloadsTick() {
   ensureRead();
+  readSongs();
+  fetchMissingCovers();
   CoreState c = g_core.state();
   // what of the part the card surely has, as the core says (it flushes every 1 MB, and as it stops)
   if (g_markSeq >= 0 && c.downloadSeq == g_markSeq) {
@@ -1481,9 +1559,11 @@ std::vector<PlaylistDownload> playlistDownloads() {
       p.onCard += g_songs.count(id) ? 1 : 0, p.going += goingIds.count(id) ? 1 : 0, p.paused += pausedIds.count(id) ? 1 : 0;
     Playlist had;
     if (card && !p.loading && !p.going && !g_playlists.get(p.name, had)) {
+      removeListCover(r.name);
       it = g_lists.erase(it), pruned = true;
       continue;
     }
+    p.cover = Playlists::coverOf(listCoverBase(r.name) + ".m3u8");
     rows.push_back({r.at, p});
     ++it;
   }
@@ -1531,6 +1611,7 @@ bool deletePlaylistDownload(const std::string& pid, bool songsToo) {
     if (k >= 0 && !want.count(id) && going(g_jobs[size_t(k)])) dropJob(id);
   }
   g_playlists.remove(Playlists::youTubeKey(r.name));
+  removeListCover(r.name);
   writeSongs();
   int gone = 0;
   if (songsToo)
@@ -1547,7 +1628,11 @@ bool deletePlaylistDownload(const std::string& pid, bool songsToo) {
 bool deleteLibraryPlaylist(const std::string& name, bool songsToo) {
   std::string pid = playlistDownloadOf(name);
   if (!pid.empty()) return deletePlaylistDownload(pid, songsToo);
-  return g_playlists.remove(name).empty();
+  Playlist p;
+  std::string cover = g_playlists.get(name, p) && p.youtube ? p.cover : "";  // a downloaded one Rondo lost track of
+  if (!g_playlists.remove(name).empty()) return false;
+  if (!cover.empty()) unlink(cover.c_str());
+  return true;
 }
 
 std::string downloadsJson() {
@@ -1575,7 +1660,8 @@ std::string downloadsJson() {
   s += "],\"playlists\":[";
   n = 0;
   for (const PlaylistDownload& p : playlistDownloads())
-    s += std::string(n++ ? "," : "") + "{\"id\":" + jstr(p.id) + ",\"title\":" + jstr(p.title) + ",\"name\":" + jstr(p.name) + ",\"mix\":" + (p.mix ? "true" : "false") +
+    s += std::string(n++ ? "," : "") + "{\"id\":" + jstr(p.id) + ",\"title\":" + jstr(p.title) + ",\"name\":" + jstr(p.name) + ",\"cover\":" + jstr(p.cover) +
+         ",\"mix\":" + (p.mix ? "true" : "false") +
          ",\"loading\":" + (p.loading ? "true" : "false") + ",\"total\":" + std::to_string(p.total) + ",\"onCard\":" + std::to_string(p.onCard) +
          ",\"going\":" + std::to_string(p.going) + ",\"paused\":" + std::to_string(p.paused) + "}";
   return s + "]}";

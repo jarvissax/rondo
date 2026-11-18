@@ -54,6 +54,7 @@ void walk(const std::string& dir, int depth, std::vector<Photo>& out) {
     const char* n = e->d_name;
     if (n[0] == '.' || !strcmp(n, "Android") || !strcmp(n, "LOST.DIR") || !strcmp(n, "System Volume Information")) continue;
     if (depth == 0 && !strcasecmp(n, "Themes")) continue;  // the stock firmware's theme pictures, on the card's top
+    if (depth == 0 && !strcasecmp(n, "Playlists")) continue;  // playlists' covers (core/playlists.h), not photos
     std::string p = dir + "/" + n;
     struct stat st;
     if (stat(p.c_str(), &st) != 0) continue;

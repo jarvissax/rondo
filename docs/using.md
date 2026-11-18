@@ -66,7 +66,9 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
   **Add to playlist**). Hold center on a song in a playlist to move it or take it out, and on a
   playlist to rename or delete it. Playlists are `.m3u8` files in the card's `Playlists` folder,
   so music players on a computer open them too. Downloaded YouTube Music playlists are with them
-  (in `Playlists/YouTube Music`), marked YouTube Music. **Smart playlists**, made on the
+  (in `Playlists/YouTube Music`), marked YouTube Music and with their cover. A picture beside a
+  playlist with its name (`Road trip.jpg` beside `Road trip.m3u8`) is its artwork; Photos leaves the
+  `Playlists` folder out. **Smart playlists**, made on the
   [dashboard](dashboard.md#library) from rules (a genre, a year, what you play and rate), are listed
   below them and pick their songs anew each time you open one.
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
@@ -127,9 +129,9 @@ with the wheel.
   the song playing. An album has **Download all** at its top.
 - **A playlist** has **Download playlist** at its top: all its songs (a mix, which never ends:
   the ones it shows when you open it), and a playlist of them in Library › Playlists, in the order
-  YouTube has, under its name and marked YouTube Music. It's a file in the card's
-  `Playlists/YouTube Music` folder, and has the songs on the card so far, so it plays from the
-  first one. A song you have already is the same file, whatever playlists it's in. **Update
+  YouTube has, under its name and marked YouTube Music, with its cover (YouTube's picture of it).
+  It's a file in the card's `Playlists/YouTube Music` folder, its cover a `.jpg` beside it, and has
+  the songs on the card so far, so it plays from the first one. A song you have already is the same file, whatever playlists it's in. **Update
   download** (there, or holding center on it in Library) gets its new songs and takes YouTube's
   order; a song taken off it on YouTube leaves the playlist but stays on the card. Library plays,
   shuffles and deletes it, and doesn't edit it: deleting it asks whether its songs go too (not

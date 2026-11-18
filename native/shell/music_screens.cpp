@@ -121,7 +121,7 @@ class MusicDownloadsScreen : public MusicListScreen {
     for (const DownloadJob& j : downloadJobs())
       if (j.song) k += j.id + char('0' + j.state) + "|";
     for (const PlaylistDownload& p : playlistDownloads())
-      k += p.id + (p.loading ? "l" : "") + std::to_string(p.total) + "/" + std::to_string(p.onCard) + "/" + std::to_string(p.going) + "/" + std::to_string(p.paused) + "|";
+      k += p.id + (p.loading ? "l" : "") + std::to_string(p.total) + "/" + std::to_string(p.onCard) + "/" + std::to_string(p.going) + "/" + std::to_string(p.paused) + (p.cover.empty() ? "" : "c") + "|";
     return k;
   }
   void render() {
@@ -150,7 +150,8 @@ class MusicDownloadsScreen : public MusicListScreen {
       for (const PlaylistDownload& p : lists) {
         Row r;
         r.title = p.title;
-        r.tile = &tiles::playlists;
+        r.tile = p.cover.empty() ? &tiles::playlists : nullptr;  // its cover once it's on the card
+        r.thumb = p.cover;
         std::string n = std::to_string(p.total) + (p.total == 1 ? " song" : " songs");
         r.subtitle = p.loading     ? std::string("Getting its songs\xe2\x80\xa6")
                      : p.going && p.paused == p.going ? "Paused \xc2\xb7 " + std::to_string(p.onCard) + " of " + n

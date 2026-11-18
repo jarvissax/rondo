@@ -197,7 +197,8 @@ class AddToPlaylistScreen : public ShellListScreen {
       Row r;
       r.title = p.name;
       r.trailing = has ? "Added" : std::to_string(p.paths.size());
-      r.tile = &tiles::playlists;
+      r.tile = p.cover.empty() ? &tiles::playlists : nullptr;
+      r.thumb = p.cover;
       r.enabled = !has;
       std::string name = p.name;
       r.onSelect = [name, paths2] {
@@ -498,7 +499,8 @@ class PlaylistsScreen : public RenderedList {
       r.title = p.title();
       if (p.youtube) r.subtitle = "YouTube Music";
       r.trailing = std::to_string(p.paths.size());
-      r.tile = &tiles::playlists;
+      r.tile = p.cover.empty() ? &tiles::playlists : nullptr;  // its picture when it has one (a downloaded one's cover)
+      r.thumb = p.cover;
       r.chevron = true;
       std::string name = p.name;
       r.onSelect = [name] { g_app->push(makePlaylist(name)); };
