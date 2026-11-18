@@ -20,6 +20,7 @@
 #include <mutex>
 
 #include "../ui/image.h"
+#include "../ui/emoji.h"
 #include "../ui/keyboard.h"
 #include "../ui/list.h"
 #include "app.h"
@@ -264,7 +265,6 @@ std::map<std::string, std::string> g_drafts;  // what was typed and not sent, pe
 
 std::unique_ptr<Screen> makeChat(const std::string& jid, const std::string& name, bool group);
 std::unique_ptr<Screen> makeSearch(bool contactsOnly);  // chats and contacts by name or number
-std::unique_ptr<Screen> makeReact(const std::string& jid, const std::string& id, const std::string& mine);
 std::unique_ptr<Screen> makeProfile(const std::string& jid, const std::string& name, bool group, bool offerChat);
 
 // ===================================================================================================
@@ -626,34 +626,21 @@ class ProfileScreen : public Screen {
 class ComposeScreen : public Screen {
  public:
   ComposeScreen(std::string jid, std::string name, WaQuote quote)
-      : jid_(std::move(jid)), name_(std::move(name)), quote_(std::move(quote)), kb_("Send", false, true) {
+      : jid_(std::move(jid)), name_(std::move(name)), quote_(std::move(quote)), kb_("Send", Keyboard::Style::WhatsApp) {
     kb_.setTyped(g_drafts[jid_]);
   }
   ~ComposeScreen() override { g_drafts[jid_] = kb_.typed(); }
   std::string title() const override { return name_; }
   bool statusBar() const override { return false; }
-  bool onAction(Action a, int) override {
-    switch (a) {  // TvKeyboard.handle(): it takes every control; Menu on its top row leaves
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Typed) kb_.keepAtMost(4000);
-        if (r == Keyboard::Result::Action) send();
-        return true;
-      }
-      default: return false;
-    }
+  bool onAction(Action a, int steps) override {
+    Keyboard::Result r;  // TvKeyboard.handle(): it takes every control; Menu on its top row leaves
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Typed) kb_.keepAtMost(4000);
+    if (r == Keyboard::Result::Action) send();
+    return true;
   }
   bool step(float dt) override { return kb_.step(dt); }
   void draw(Env& e, float w, float h) override {
-    const Palette& p = e.p;
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
     waHeader(e, w, name_, quote_.id.empty() ? "New message" : "Reply");
@@ -678,7 +665,7 @@ class ComposeScreen : public Screen {
     Label one = label(e, " ", 13, false);
     float fh = float(2 * one.h + e.dp(8));
     e.c.layer(2);
-    e.c.shape({bx, y, bw, fh}, e.dpf(10), p.raised);
+    e.c.shape({bx, y, bw, fh}, e.dpf(10), kSel);  // WhatsApp's input field
     e.c.layer(4);
     float ly = y + e.dp(4);
     if (kb_.typed().empty()) {
@@ -692,13 +679,8 @@ class ComposeScreen : public Screen {
       }
     }
     float area = y + fh + e.dp(4);
-    Label hint = label(e, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type", 9,
-                       false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), kMuted);
+    drawKeyboard(e, kb_, area, w, h, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type",
+                 kMuted, kText);
     e.c.layer(0);
   }
 
@@ -1058,7 +1040,11 @@ class PickScreen : public Screen {
 };
 
 // ===================================================================================================
-// A message's menu (held center, or center on a text): Reply, open what it holds, the sender's profile
+// A message's menu (held center, or center on a text): WhatsApp's reaction bar on top (👍 ❤️ 😂 😮 😢 🙏
+// and + for any other), then Reply, open what it holds, the sender's profile. The wheel walks the bar
+// and then the menu; Play jumps between them. Mine has WhatsApp's gray circle, and center on it takes
+// it back. + slides up the keyboard's emoji (Recent first, the tabs, Find) as a sheet over the menu:
+// center reacts with one, Menu on its tabs closes it.
 
 class MessageMenu : public Screen {
  public:
@@ -1067,14 +1053,46 @@ class MessageMenu : public Screen {
     Icon icon;
     std::function<void()> run;
   };
-  MessageMenu(std::string title, std::vector<Entry> entries) : title_(std::move(title)), entries_(std::move(entries)) {}
+  // what is reacted to (a message that can take a reaction): its chat, its id and my reaction ("": none)
+  struct Reacting {
+    std::string jid, id, mine;
+  };
+  MessageMenu(std::string title, std::vector<Entry> entries, std::unique_ptr<Reacting> reacting = nullptr)
+      : title_(std::move(title)), entries_(std::move(entries)), reacting_(std::move(reacting)) {
+    onBar_ = reacting_ != nullptr;
+  }
   std::string title() const override { return title_; }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
+    if (sheetOpen_) return sheetAction(a, steps);
+    int n = int(entries_.size());
     switch (a) {
-      case Action::Down: return list_.move(steps), true;
-      case Action::Up: return list_.move(-steps), true;
+      case Action::Down:
+        if (!onBar_) return list_.move(steps), true;
+        if (cell_ < kCells - 1) cell_ = std::min(kCells - 1, cell_ + steps);
+        else if (n) onBar_ = false, list_.select(0);
+        return true;
+      case Action::Up:
+        if (onBar_) return cell_ = std::max(0, cell_ - steps), true;
+        if (list_.selected() == 0 && reacting_) onBar_ = true, cell_ = kCells - 1;
+        else list_.move(-steps);
+        return true;
+      case Action::Next:
+      case Action::Prev:
+        if (onBar_) cell_ = std::max(0, std::min(kCells - 1, cell_ + (a == Action::Next ? 1 : -1)));
+        return true;
+      case Action::PlayPause:  // between the bar and the menu
+        if (!reacting_ || !n) return true;
+        onBar_ = !onBar_;
+        if (!onBar_) list_.select(0);
+        return true;
       case Action::Select: {
+        if (onBar_) {
+          if (cell_ == kCells - 1) return openSheet(), true;
+          react(kQuick[cell_]);
+          return true;
+        }
+        if (!n) return true;
         auto run = entries_[size_t(list_.selected())].run;
         g_app->pop();
         run();
@@ -1083,134 +1101,151 @@ class MessageMenu : public Screen {
       default: return false;
     }
   }
-  bool step(float dt) override { return list_.step(dt); }
+  bool step(float dt) override {
+    bool a = list_.step(dt), b = cellX_.step(float(cell_), dt, 43);
+    if (!placed_) cellX_.snap(float(cell_));
+    bool c = sheetT_.step(sheetOpen_ ? 1.f : 0.f, dt, 30), d = sheet_ && sheet_->step(dt);
+    if (!sheetOpen_ && sheetT_.x < 0.002f && sheet_) sheet_.reset();  // gone: forgotten
+    return a || b || c || d;
+  }
   void draw(Env& e, float w, float h) override {
+    float t = sheetT_.x, sheetTop = float(e.dp(26)), top = sheetTop + (1 - t) * (h - sheetTop);
+    bool sheet = sheet_ && t > 0.002f;
+    if (sheet) e.c.pushClip({0, 0, w, top});  // the menu above the sheet only: nothing of it shows through
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
     waHeader(e, w, title_);
-    float top = float(e.dp(31) + e.dp(4)), rowH = float(e.dp(36));
-    if (!placed_) list_.configure(int(entries_.size()), rowH, h - top), placed_ = true;
+    float y = float(e.dp(31) + e.dp(4));
+    if (reacting_) y = drawBar(e, w, y);
+    float rowH = float(e.dp(36));
+    if (!placed_) list_.configure(int(entries_.size()), rowH, h - y), placed_ = true;
     for (int i = 0; i < int(entries_.size()); i++) {
-      float y = top + i * rowH - list_.scroll();
-      if (i == list_.selected()) {
+      float ry = y + i * rowH - list_.scroll();
+      if (i == list_.selected() && !onBar_) {
         e.c.layer(1);
-        e.c.shape({float(e.dp(4)), y + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
+        e.c.shape({float(e.dp(4)), ry + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
       }
       int g = e.dp(16);
       e.c.layer(4);
-      e.icons.draw(e.c, entries_[size_t(i)].icon, {float(e.dp(14)), y + float((int(rowH) - g) / 2), float(g), float(g)}, kGreen);
+      e.icons.draw(e.c, entries_[size_t(i)].icon, {float(e.dp(14)), ry + float((int(rowH) - g) / 2), float(g), float(g)}, kGreen);
       Label l = label(e, entries_[size_t(i)].label, 13, false, w - e.dp(50));
-      drawLabel(e, l, float(e.dp(40)), y + float((int(rowH) - l.h) / 2), kText);
+      drawLabel(e, l, float(e.dp(40)), ry + float((int(rowH) - l.h) / 2), kText);
+    }
+    if (sheet) {  // the menu dimmed behind it
+      e.c.layer(5);
+      e.c.fill({0, 0, w, top}, Color(uint32_t(lroundf(t * 150)) << 24));
+      e.c.popClip();
+      drawSheet(e, w, h, top);
     }
     e.c.layer(0);
   }
 
  private:
+  static constexpr int kCells = 7;  // the six and +
+  // the same emoji, with its emoji-form selector or without (❤️ and ❤)
+  static bool same(const std::string& a, const std::string& b) {
+    auto bare = [](std::string s) {
+      for (size_t at; (at = s.find("\xef\xb8\x8f")) != std::string::npos;) s.erase(at, 3);
+      return s;
+    };
+    return !a.empty() && bare(a) == bare(b);
+  }
+  static constexpr const char* kQuick[6] = {"\xf0\x9f\x91\x8d", "\xe2\x9d\xa4\xef\xb8\x8f", "\xf0\x9f\x98\x82",
+                                            "\xf0\x9f\x98\xae", "\xf0\x9f\x98\xa2", "\xf0\x9f\x99\x8f"};
+
+  // The bar: a pill of seven circles, the highlight a green one gliding between them; returns where
+  // the menu starts under it
+  float drawBar(Env& e, float w, float y) {
+    float bx = float(e.dp(8)), bw = w - 2 * bx, bh = float(e.dp(36));
+    e.c.layer(1);
+    e.c.shape({bx, y, bw, bh}, bh / 2, kIn);
+    float cw = (bw - 2 * e.dp(5)) / kCells, d = float(e.dp(28));
+    auto center = [&](float i) { return bx + e.dp(5) + cw * i + cw / 2; };
+    float cy = y + bh / 2;
+    for (int i = 0; i < kCells; i++) {
+      bool mine = i < 6 && same(reacting_->mine, kQuick[i]);
+      if (mine || i == kCells - 1) {
+        e.c.layer(2);
+        e.c.shape({roundf(center(float(i)) - d / 2), roundf(cy - d / 2), d, d}, d / 2, mine ? rgb(0x3b4a54) : kSel);
+      }
+    }
+    if (onBar_) {
+      e.c.layer(3);
+      e.c.shape({roundf(center(cellX_.x) - d / 2), roundf(cy - d / 2), d, d}, d / 2, kGreen);
+    }
+    e.c.layer(4);
+    for (int i = 0; i < kCells; i++) {
+      float on = onBar_ ? fmaxf(0, 1 - fabsf(cellX_.x - i)) : 0;
+      if (i == kCells - 1) {  // +: drawn, not a character (the font's is thin)
+        float s = float(e.dp(10)), th = fmaxf(2, float(e.dp(1.6f))), cx = roundf(center(float(i)));
+        Color c = mix(kMuted, rgb(0x0b141a), on);
+        e.c.fill({cx - s / 2, roundf(cy - th / 2), s, th}, c);
+        e.c.fill({roundf(cx - th / 2), roundf(cy - s / 2), th, s}, c);
+        continue;
+      }
+      Label l = label(e, kQuick[i], 17, false);
+      drawLabel(e, l, roundf(center(float(i)) - l.w / 2.f), roundf(cy - l.h / 2.f), kText);
+    }
+    float ly = y + bh + e.dp(3);
+    const std::string& mine = reacting_->mine;
+    Label hint = label(e, mine.empty() ? "Center reacts \xc2\xb7 + any emoji \xc2\xb7 Play: the menu below"
+                                       : "Yours: " + mine + " \xc2\xb7 center on it takes it back \xc2\xb7 Play: the menu below",
+                       9, false, w - 2 * bx);
+    drawLabel(e, hint, centerText(0, w, hint.w), ly, kMuted);
+    return ly + hint.h + e.dp(4);
+  }
+
+  // The sheet: the keyboard's emoji only, from `top` down, rounded on top
+  void drawSheet(Env& e, float w, float h, float top) {
+    float r = float(e.dp(12));
+    e.c.layer(0);
+    e.c.fill({0, top, w, r}, mix(kBg, 0xff000000, 0.59f * sheetT_.x));  // behind its corners: the dimmed menu
+    e.c.shape({0, top, w, h - top + r}, r, kBar);
+    e.c.layer(4);
+    float gw = float(e.dp(22)), gh = float(e.dp(3));
+    e.c.shape({roundf((w - gw) / 2), top + e.dp(5), gw, gh}, gh / 2, rgb(0x3b4a54));
+    Label t = label(e, "React with any emoji", 13, true, w - 2 * e.dp(12));
+    drawLabel(e, t, float(e.dp(12)), top + e.dp(10), kText);
+    drawKeyboard(e, *sheet_, top + e.dp(10) + t.h + e.dp(4), w, h, "Menu on the tabs closes this", kMuted, kText);
+  }
+
+  void openSheet() {
+    const std::string& mine = reacting_->mine;
+    sheet_ = std::make_unique<Keyboard>(Keyboard::picker(Keyboard::Style::WhatsApp, mine.empty() ? "" : "Take back " + mine));
+    sheetOpen_ = true;
+  }
+
+  bool sheetAction(Action a, int steps) {
+    Keyboard::Result r;
+    if (!keyboardAction(*sheet_, a, steps, &r)) {
+      if (a == Action::Back) sheetOpen_ = false;  // Menu on its tabs: closed, back on +
+      return a == Action::Back;
+    }
+    if (r == Keyboard::Result::Picked) react(sheet_->typed());
+    else if (r == Keyboard::Result::Action) react("");  // Take back
+    return true;
+  }
+
+  // reacts (mine again, or "": taken back) and closes the menu
+  void react(std::string chosen) {
+    if (same(chosen, reacting_->mine)) chosen.clear();
+    if (!chosen.empty()) ui::emoji::used(chosen);
+    waClient().react(reacting_->jid, reacting_->id, chosen);
+    g_app->pop();
+  }
+
   std::string title_;
   std::vector<Entry> entries_;
+  std::unique_ptr<Reacting> reacting_;
   WheelList list_;
   bool placed_ = false;
+  bool onBar_ = false;
+  int cell_ = 0;
+  Spring cellX_;
+  std::unique_ptr<Keyboard> sheet_;
+  bool sheetOpen_ = false;
+  Spring sheetT_;
 };
-
-// ===================================================================================================
-// Reacting: any emoji, the usual ones first; mine outlined, and taking it back on top
-
-class ReactScreen : public Screen {
- public:
-  ReactScreen(std::string jid, std::string id, std::string mine) : jid_(std::move(jid)), id_(std::move(id)), mine_(std::move(mine)) {
-    static const char* kQuick[] = {"\xf0\x9f\x91\x8d", "\xe2\x9d\xa4\xef\xb8\x8f", "\xf0\x9f\x98\x82", "\xf0\x9f\x98\xae",
-                                   "\xf0\x9f\x98\xa2", "\xf0\x9f\x99\x8f", "\xf0\x9f\x94\xa5", "\xf0\x9f\x91\x8f"};
-    for (const char* q : kQuick) emoji_.push_back(q);
-    for (const std::string& e : Keyboard::emojiList())
-      if (std::find(emoji_.begin(), emoji_.end(), e) == emoji_.end()) emoji_.push_back(e);
-    // on mine to start with, else on the first
-    if (!mine_.empty()) {
-      auto at = std::find(emoji_.begin(), emoji_.end(), mine_);
-      sel_ = at == emoji_.end() ? 0 : int(at - emoji_.begin()) + 1;
-    }
-  }
-  std::string title() const override { return "React"; }
-  bool statusBar() const override { return false; }
-  bool onAction(Action a, int steps) override {
-    int n = int(emoji_.size()) + (mine_.empty() ? 0 : 1);
-    switch (a) {
-      case Action::Down: sel_ = std::min(n - 1, sel_ + steps); return true;
-      case Action::Up: sel_ = std::max(0, sel_ - steps); return true;
-      case Action::Next:
-      case Action::LongNext: sel_ = std::min(n - 1, sel_ + kCols); return true;
-      case Action::Prev:
-      case Action::LongPrev: sel_ = std::max(0, sel_ - kCols); return true;
-      case Action::Select: {
-        bool back = !mine_.empty() && sel_ == 0;
-        std::string e = back ? "" : emoji_[size_t(sel_ - (mine_.empty() ? 0 : 1))];
-        if (e == mine_) e = "";  // mine again: taken back
-        waClient().react(jid_, id_, e);
-        g_app->pop();
-        return true;
-      }
-      default: return false;
-    }
-  }
-  bool step(float dt) override { return scroll_.step(scrollTo_, dt, 30); }
-  void draw(Env& e, float w, float h) override {
-    e.c.layer(0);
-    e.c.fill({0, 0, w, h}, kBg);
-    waHeader(e, w, "React", mine_.empty() ? "Pick an emoji" : "Center on yours takes it back");
-    float top = float(e.dp(31)), pad = float(e.dp(6));
-    float cell = floorf((w - 2 * pad) / kCols), rowH = cell;
-    float y0 = top + pad;
-    float headH = mine_.empty() ? 0 : float(e.dp(30)) + pad;
-    // the selected row whole in view
-    int row = !mine_.empty() && sel_ == 0 ? -1 : (sel_ - (mine_.empty() ? 0 : 1)) / kCols;
-    float viewH = h - y0 - pad;
-    float selTop = row < 0 ? 0 : headH + row * rowH, selBottom = row < 0 ? headH : selTop + rowH;
-    if (selTop < scrollTo_) scrollTo_ = selTop;
-    if (selBottom > scrollTo_ + viewH) scrollTo_ = selBottom - viewH;
-    if (!placed_) scroll_.snap(scrollTo_), placed_ = true;
-    e.c.pushClip({0, y0, w, viewH});
-    float base = y0 - scroll_.x;
-    if (!mine_.empty()) {  // taking mine back
-      Rect r{pad, base, w - 2 * pad, float(e.dp(30))};
-      e.c.layer(1);
-      e.c.shape(r, r.h / 2, sel_ == 0 ? kGreen : kSel);
-      e.c.layer(4);
-      Label l = label(e, "Take back " + mine_, 12, true);
-      drawLabel(e, l, centerText(r.x, r.w, l.w), r.y + float((int(r.h) - l.h) / 2), sel_ == 0 ? rgb(0x0b141a) : kText);
-    }
-    for (int i = 0; i < int(emoji_.size()); i++) {
-      float x = pad + (i % kCols) * cell, y = base + headH + (i / kCols) * rowH;
-      if (y + rowH < y0 || y > y0 + viewH) continue;
-      int at = i + (mine_.empty() ? 0 : 1);
-      Rect r{x + 2, y + 2, cell - 4, rowH - 4};
-      if (at == sel_) {
-        e.c.layer(1);
-        e.c.shape(r, e.dpf(8), 0xff3b4a54);
-      }
-      if (emoji_[size_t(i)] == mine_) {
-        e.c.layer(2);
-        e.c.shape({r.x + 3, r.y + 3, r.w - 6, r.h - 6}, e.dpf(7), 0x5525d366);
-      }
-      e.c.layer(4);
-      Label l = label(e, emoji_[size_t(i)], 20, false);
-      drawLabel(e, l, centerText(r.x, r.w, l.w), r.y + float((int(r.h) - l.h) / 2), kText);
-    }
-    e.c.popClip();
-    e.c.layer(0);
-  }
-
- private:
-  static constexpr int kCols = 8;
-  std::string jid_, id_, mine_;
-  std::vector<std::string> emoji_;
-  int sel_ = 0;
-  Spring scroll_;
-  float scrollTo_ = 0;
-  bool placed_ = false;
-};
-
-std::unique_ptr<Screen> makeReact(const std::string& jid, const std::string& id, const std::string& mine) {
-  return std::unique_ptr<Screen>(new ReactScreen(jid, id, mine));
-}
 
 // ===================================================================================================
 // Search: chats and contacts by name (any case, any accents) or by the digits of a number; not
@@ -1218,7 +1253,7 @@ std::unique_ptr<Screen> makeReact(const std::string& jid, const std::string& id,
 
 class SearchScreen : public Screen {
  public:
-  explicit SearchScreen(bool contactsOnly) : contactsOnly_(contactsOnly), kb_("Search") {
+  explicit SearchScreen(bool contactsOnly) : contactsOnly_(contactsOnly), kb_("Search", Keyboard::Style::WhatsApp) {
     waClient().hold();
     waClient().loadContacts([] {});
   }
@@ -1242,23 +1277,11 @@ class SearchScreen : public Screen {
         default: return false;
       }
     }
-    switch (a) {  // the keyboard takes every control; Menu on its top row leaves
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);
-        if (r == Keyboard::Result::Action) search();
-        return true;
-      }
-      default: return false;
-    }
+    Keyboard::Result r;  // the keyboard takes every control; Menu on its top row leaves
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);
+    if (r == Keyboard::Result::Action) search();
+    return true;
   }
   bool step(float dt) override { return showing_ ? list_.step(dt) : kb_.step(dt); }
   bool tick(int64_t) override {
@@ -1269,13 +1292,12 @@ class SearchScreen : public Screen {
     return true;
   }
   void draw(Env& e, float w, float h) override {
-    const Palette& p = e.p;
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
     waHeader(e, w, title());
     float bx = float(e.dp(8)), by = float(e.dp(31) + e.dp(4)), bw = w - 2 * bx, bh = float(e.dp(28));
     e.c.layer(2);
-    e.c.shape({bx, by, bw, bh}, e.dpf(14), p.raised);
+    e.c.shape({bx, by, bw, bh}, e.dpf(14), kIn);
     e.c.layer(4);
     int icon = e.dp(12);
     float ix = bx + e.dp(10);
@@ -1314,13 +1336,8 @@ class SearchScreen : public Screen {
       e.c.layer(0);
       return;
     }
-    Label hint = label(e, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type", 9,
-                       false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), kMuted);
+    drawKeyboard(e, kb_, area, w, h, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type",
+                 kMuted, kText);
     e.c.layer(0);
   }
 
@@ -1803,11 +1820,8 @@ void ChatScreen::activate(bool menu) {
   if (!menu && media) return openMedia(m);
   // the menu
   std::vector<MessageMenu::Entry> entries;
-  if (!m.sending && !m.failed && m.kind != "deleted") {
-    std::string id = m.id, mine = m.mine;
-    entries.push_back({mine.empty() ? "React" : "React (yours: " + mine + ")", Icon::Smile,
-                       [jid, id, mine] { g_app->push(makeReact(jid, id, mine)); }});
-  }
+  std::unique_ptr<MessageMenu::Reacting> reacting;  // the reaction bar on top
+  if (!m.sending && !m.failed && m.kind != "deleted") reacting.reset(new MessageMenu::Reacting{jid, m.id, m.mine});
   if (!m.sending && !m.failed) {
     WaQuote q{m.id, m.sender, m.fromMe ? "You" : m.name.empty() ? name : m.name, m.kind, m.kind == "text" ? m.text : WaClient::summary(m)};
     entries.push_back({"Reply", Icon::Chat, [jid, name, q] { g_app->push(std::unique_ptr<Screen>(new ComposeScreen(jid, name, q))); }});
@@ -1826,7 +1840,7 @@ void ChatScreen::activate(bool menu) {
   bool group = group_;
   entries.push_back({group_ ? "Group info" : "Profile", group_ ? Icon::People : Icon::Person,
                      [jid, name, group] { g_app->push(makeProfile(jid, name, group, false)); }});
-  g_app->push(std::unique_ptr<Screen>(new MessageMenu(WaClient::summary(m).substr(0, 60), std::move(entries))));
+  g_app->push(std::unique_ptr<Screen>(new MessageMenu(WaClient::summary(m).substr(0, 60), std::move(entries), std::move(reacting))));
 }
 
 void ChatScreen::openMedia(const WaMessage& m) {

@@ -12,9 +12,11 @@
 #include "../ui/covers.h"
 #include "../ui/gfx.h"
 #include "../ui/icons.h"
+#include "../ui/keyboard.h"
 #include "../ui/motion.h"
 #include "../ui/text.h"
 #include "../ui/theme.h"
+#include "dispatch.h"
 
 namespace rondo::shell {
 using namespace rondo::ui;
@@ -47,6 +49,16 @@ void drawLabel(Env& e, const Label& l, float x, float top, Color c);
 inline float centerText(float left, float width, int textW) {
   return float((int(left) * 2 + int(width) - (textW & ~1)) >> 1);
 }
+
+// The on-screen keyboard takes every control (TvKeyboard.handle()): the wheel the next key (on the emoji,
+// a fast spin a row at a time), Next/Prev right and left, held the next or previous emoji group, Play
+// down, Menu up. False for Menu on its top row (the screen closes it) and what it doesn't use; what
+// Center did is in *pressed.
+bool keyboardAction(Keyboard& kb, Action a, int steps, Keyboard::Result* pressed);
+// The keyboard drawn from `top` to the bottom of the screen, 5 units in from the sides, with the line
+// under it: the highlighted emoji's name (in `strong`) and its group, or `hint` (how to move on the
+// letters), in `muted`.
+void drawKeyboard(Env& e, Keyboard& kb, float top, float w, float h, const std::string& hint, Color muted, Color strong);
 
 // Word wrap as StaticLayout does it for plain text: the lines of up to maxLines (the last one takes the
 // rest and is ellipsized), as text.

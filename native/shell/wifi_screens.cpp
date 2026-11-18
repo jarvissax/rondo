@@ -103,58 +103,47 @@ class WifiNetworkScreen : public WifiList {
 // of a 2.4" screen, and typos are hard to spot otherwise).
 class WifiPasswordScreen : public Screen {
  public:
-  WifiPasswordScreen(std::string ssid, WifiSecurity security) : ssid_(std::move(ssid)), security_(security), kb_("Join") {}
+  // Rondo's own keyboard, without emoji: a Wi-Fi password is letters, digits and symbols only
+  WifiPasswordScreen(std::string ssid, WifiSecurity security)
+      : ssid_(std::move(ssid)), security_(security), kb_("Join", Keyboard::Style::Shell, false) {}
   std::string title() const override { return "Password for " + ssid_; }
-  bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
-    switch (a) {  // TvKeyboard.handle()
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Action) {
-          size_t minimum = security_ == WifiSecurity::Psk ? 8 : 1;
-          if (Keyboard::characters(kb_.typed()) < minimum) {
-            note_ = "At least " + std::to_string(minimum) + " characters";
-            return true;
-          }
-          g_core.wifiJoin(ssid_, security_, kb_.typed());
-          g_app->pop();
-          return true;
-        }
-        if (r == Keyboard::Result::Typed) kb_.keepAtMost(63);  // WPA's longest passphrase
-        note_.clear();
+    Keyboard::Result r;  // TvKeyboard.handle()
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Action) {
+      size_t minimum = security_ == WifiSecurity::Psk ? 8 : 1;
+      if (Keyboard::characters(kb_.typed()) < minimum) {
+        note_ = "At least " + std::to_string(minimum) + " characters";
         return true;
       }
-      default: return false;
+      g_core.wifiJoin(ssid_, security_, kb_.typed());
+      g_app->pop();
+      return true;
     }
+    if (r == Keyboard::Result::Typed) kb_.keepAtMost(63);  // WPA's longest passphrase
+    if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) note_.clear();
+    return true;
   }
   bool step(float dt) override { return kb_.step(dt); }
+  // as the shell's other text entries (TextEntryScreen): the field, a line under it (what's wrong, in the
+  // accent color), the keyboard
   void draw(Env& e, float w, float h) override {
     const Palette& p = e.p;
     e.c.layer(0);
-    e.c.fill({0, 0, w, h}, p.dark);
-    darkHeader(e, w, title(), HeaderLogo::Wifi, p.white, 28);
-    // the field: 28 units tall, 8 in from the sides, 2 below the header and 5 above the keyboard
-    float bx = float(e.dp(8)), by = float(e.dp(28) + e.dp(2)), bw = w - 2 * bx, bh = float(e.dp(28));
-    e.c.layer(2);
-    e.c.shape({bx, by, bw, bh}, e.dpf(14), p.raised);
-    e.c.layer(4);
-    Label field = label(e, note_.empty() ? kb_.typed() + "|" : note_, 14, false, bw - 2 * e.dp(10));
-    drawLabel(e, field, bx + e.dp(10), by + float((int(bh) - field.h) / 2), p.white);
-    float area = by + bh + e.dp(5);
-    Label hint = label(e, "ABC: capitals \xc2\xb7 #+=: symbols \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", 9, false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), p.darkMuted);
+    e.c.fill({0, 0, w, h}, p.shellBg);
+    // the field: 26 units tall, 8 in from the sides and 5 from the top, rounded 8 with a 1 px edge
+    float bx = float(e.dp(8)), by = float(e.dp(5)), bw = w - 2 * bx, bh = float(e.dp(26));
+    e.c.shape({bx, by, bw, bh}, e.dpf(8), p.rowLine);
+    e.c.shape({bx + 1, by + 1, bw - 2, bh - 2}, e.dpf(8) - 1, p.header);
+    e.c.layer(3);
+    Label field = label(e, kb_.typed() + "|", 14, false, bw - 2 * e.dp(10));
+    drawLabel(e, field, bx + e.dp(10), by + float((int(bh) - field.h) / 2), p.text);
+    float sy = by + bh + e.dp(3);
+    std::string line = !note_.empty() ? note_ : security_ == WifiSecurity::Psk ? "Shown as you type it" : "";
+    Label msg = label(e, line.empty() ? " " : line, 10, false, w - 2 * e.dp(8));
+    drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, note_.empty() ? p.muted : p.accent);
+    drawKeyboard(e, kb_, sy + msg.h + e.dp(3), w, h,
+                 "ABC: capitals \xc2\xb7 #+=: symbols \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", p.muted, p.text);
     e.c.layer(0);
   }
 

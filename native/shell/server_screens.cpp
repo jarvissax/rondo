@@ -168,7 +168,7 @@ class ServerScreen : public ShellListScreen {
           std::string url = typed;
           while (!url.empty() && url.back() == '/') url.pop_back();
           askCode(url);
-        }));
+        }, false));
   }
 
   void askCode(const std::string& url) {
@@ -206,7 +206,7 @@ class ServerScreen : public ShellListScreen {
             answer("");
           });
         },
-        nullptr));
+        nullptr, false));
   }
 
   void askToken() {
@@ -219,7 +219,7 @@ class ServerScreen : public ShellListScreen {
           if (*alive) test_ = {entry("Token saved", "Run the test to check it")};
           answer("");
         },
-        nullptr));
+        nullptr, false));
   }
 
   std::vector<Row> test_;  // the last connection test's answer

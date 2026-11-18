@@ -56,6 +56,10 @@ class Text {
   // stays valid until the next call that misses the cache.
   const TextRun& run(int font, std::string_view utf8, float maxWidth = 0);
   float measure(int font, std::string_view utf8) { return run(font, utf8).width; }
+  // The glyph the color emoji font draws `utf8` with when it draws it whole, as one picture (an emoji
+  // with its joiners, skin tone and selectors); 0 when there is no color font or it falls apart (into
+  // pieces, or a glyph the font hasn't). The keyboard offers only what this draws.
+  uint32_t emojiGlyph(std::string_view utf8);
   // Draws a run with its origin (left end of the baseline) at x, baseline. New glyphs are rasterized
   // here and reach the GPU in flush().
   void draw(Canvas& c, const TextRun& run, float x, float baseline, Color color);
@@ -68,6 +72,12 @@ class Text {
   // Rasterizes the glyphs of `chars` for each font in `fonts`, for at most budgetNs; true when all are
   // done. Run while idle, so a screen's first frame does not pay for its glyphs.
   bool warm(const std::vector<int>& fonts, std::string_view chars, int64_t budgetNs);
+  // Lines to have ready before they are drawn (the keyboard's next emoji: Apple's take a millisecond
+  // each, a PNG to decode): shaped and rasterized by prepare() while idle, for at most budgetNs a call;
+  // true when none are left
+  void prefetch(int font, std::string_view utf8) { prefetch_.push_back({font, std::string(utf8)}); }
+  bool prepare(int64_t budgetNs);
+  bool preparing() const { return prefetchAt_ < prefetch_.size(); }
   int atlasRows() const { return shelfY_ + shelfH_; }
   void resetWarm() { warmFont_ = 0, warmChar_ = 0; }
   // The advance table measured from Android 4.2 on the Y1 (tools/parity/advances). Without it, advances
@@ -176,7 +186,7 @@ class Text {
   int shelfX_ = 0, shelfY_ = 0, shelfH_ = 0;
   int dirtyY0_ = kAtlasH, dirtyY1_ = 0;
   // color glyphs (emoji), premultiplied RGBA, packed the same way
-  static constexpr int kColorW = 512, kColorH = 512;
+  static constexpr int kColorW = 1024, kColorH = 1024;  // 4 MB: about a thousand of the keyboard's emoji at their size
   Texture colorAtlases_[2];
   std::vector<uint8_t> colorPixels_;
   int cShelfX_ = 0, cShelfY_ = 0, cShelfH_ = 0;
@@ -187,6 +197,8 @@ class Text {
   int64_t shapeNsFrame_ = 0, rasterNsFrame_ = 0;
   bool resetInFrame_ = false;
   size_t warmFont_ = 0, warmChar_ = 0;
+  std::vector<std::pair<int, std::string>> prefetch_;  // prefetch()'s, done up to prefetchAt_
+  size_t prefetchAt_ = 0;
   struct Advances {
     std::vector<float> sizes;
     std::vector<std::pair<uint32_t, uint32_t>> ranges;

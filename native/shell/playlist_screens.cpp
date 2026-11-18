@@ -65,8 +65,8 @@ class TextEntryScreen : public Screen {
  public:
   TextEntryScreen(std::string title, std::string initial, std::string action, std::string note, size_t maxLength,
                   std::function<std::string(const std::string&)> shown, TextAnswer onDone,
-                  std::function<void(const std::string&)> then)
-      : title_(std::move(title)), note_(std::move(note)), max_(maxLength), kb_(std::move(action), true),
+                  std::function<void(const std::string&)> then, bool emoji)
+      : title_(std::move(title)), note_(std::move(note)), max_(maxLength), kb_(std::move(action), Keyboard::Style::Shell, emoji),
         shown_(std::move(shown)), onDone_(std::move(onDone)), then_(std::move(then)) {
     kb_.setTyped(std::move(initial));
     line_ = note_;
@@ -75,27 +75,15 @@ class TextEntryScreen : public Screen {
   std::string title() const override { return title_; }
   bool onAction(Action a, int steps) override {
     if (working_) return true;
-    switch (a) {  // TvKeyboard.handle()
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Action) {
-          finish();
-        } else if (r == Keyboard::Result::Typed) {
-          kb_.keepAtMost(size_t(max_));
-        }
-        if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) line_ = note_, problem_ = false;
-        return true;
-      }
-      default: return false;
+    Keyboard::Result r;  // TvKeyboard.handle()
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Action) {
+      finish();
+    } else if (r == Keyboard::Result::Typed) {
+      kb_.keepAtMost(size_t(max_));
     }
+    if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) line_ = note_, problem_ = false;
+    return true;
   }
   bool step(float dt) override { return kb_.step(dt); }
   void draw(Env& e, float w, float h) override {
@@ -116,13 +104,8 @@ class TextEntryScreen : public Screen {
     if (msg.h == 0 || line_.empty()) msg.h = label(e, " ", 10, false).h;
     drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, problem_ && !working_ ? p.accent : p.muted);
     float area = sy + msg.h + e.dp(3);
-    Label hint = label(e, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", 9,
-                       false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), p.muted);
+    drawKeyboard(e, kb_, area, w, h, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right",
+                 p.muted, p.text);
   }
 
  private:
@@ -157,17 +140,17 @@ class TextEntryScreen : public Screen {
 
 std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, size_t maxLength,
                                       std::function<std::string(const std::string&)> onDone,
-                                      std::function<void(const std::string&)> then) {
+                                      std::function<void(const std::string&)> then, bool emoji) {
   auto now = [onDone](const std::string& text, std::function<void(const std::string&)> answer) { answer(onDone(text)); };
   return std::unique_ptr<Screen>(new TextEntryScreen(std::move(title), std::move(initial), std::move(action), "", maxLength,
-                                                     nullptr, now, std::move(then)));
+                                                     nullptr, now, std::move(then), emoji));
 }
 
 std::unique_ptr<Screen> makeTextEntry(std::string title, std::string initial, std::string action, std::string note,
                                       size_t maxLength, std::function<std::string(const std::string&)> shown,
-                                      TextAnswer onDone, std::function<void(const std::string&)> then) {
+                                      TextAnswer onDone, std::function<void(const std::string&)> then, bool emoji) {
   return std::unique_ptr<Screen>(new TextEntryScreen(std::move(title), std::move(initial), std::move(action), std::move(note),
-                                                     maxLength, std::move(shown), std::move(onDone), std::move(then)));
+                                                     maxLength, std::move(shown), std::move(onDone), std::move(then), emoji));
 }
 
 namespace {

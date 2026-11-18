@@ -21,6 +21,45 @@ void drawLabel(Env& e, const Label& l, float x, float top, Color c) {
   if (l.run) e.text.draw(e.c, *l.run, x, top + e.text.ascentInt(l.font), c);
 }
 
+bool keyboardAction(Keyboard& kb, Action a, int steps, Keyboard::Result* pressed) {
+  *pressed = Keyboard::Result::None;
+  switch (a) {
+    case Action::Down: kb.wheel(steps); return true;
+    case Action::Up: kb.wheel(-steps); return true;
+    case Action::Next: kb.right(); return true;
+    case Action::Prev: kb.left(); return true;
+    case Action::LongNext: kb.nextGroup(1); return true;
+    case Action::LongPrev: kb.nextGroup(-1); return true;
+    case Action::PlayPause: kb.down(); return true;
+    case Action::Back: return kb.up();
+    case Action::Select: *pressed = kb.press(); return true;
+    default: return false;
+  }
+}
+
+void drawKeyboard(Env& e, Keyboard& kb, float top, float w, float h, const std::string& hint, Color muted, Color strong) {
+  int lineH = label(e, hint, 9, false, w).h;
+  float kh = h - top - (e.dp(3) + lineH + e.dp(4));
+  e.c.layer(1);
+  kb.draw(e.c, e.text, e.p, {float(e.dp(5)), top, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12), &e.icons);
+  e.c.layer(4);
+  float y = top + kh + e.dp(3);
+  Keyboard::Caption cap = kb.caption();
+  if (cap.empty()) {
+    Label l = label(e, hint, 9, false, w);
+    drawLabel(e, l, centerText(0, w, l.w), y, muted);
+    return;
+  }
+  // the emoji's name, then its group
+  float room = w - 2 * e.dp(8);
+  Label name = label(e, cap.strong, 9, true, room);
+  Label rest = label(e, cap.soft.empty() ? std::string() : "  \xc2\xb7  " + cap.soft, 9, false, room - name.w);
+  float x = centerText(0, w, name.w + rest.w);
+  name = label(e, cap.strong, 9, true, room);  // again: the second label may have pushed it out of the cache
+  drawLabel(e, name, x, y, strong);
+  drawLabel(e, rest, x + name.w, y, muted);
+}
+
 namespace tiles {
 // the brands
 // the services: their own colors with their marks in white (brandMark), like every other tile

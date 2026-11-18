@@ -255,7 +255,7 @@ std::vector<const Track*> recent() {
 // center adds the song (or a whole artist or album).
 class LibrarySearchScreen : public Screen {
  public:
-  explicit LibrarySearchScreen(Scope scope, std::string addTo = "") : scope_(scope), addTo_(std::move(addTo)), kb_("Show", true) {
+  explicit LibrarySearchScreen(Scope scope, std::string addTo = "") : scope_(scope), addTo_(std::move(addTo)), kb_("Show", Keyboard::Style::Shell) {
     onShow();
   }
   std::string title() const override { return addTo_.empty() ? scopeTitle(scope_) : "Add to " + addTo_; }
@@ -281,30 +281,18 @@ class LibrarySearchScreen : public Screen {
         default: return false;
       }
     }
-    switch (a) {  // TvKeyboard.handle()
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Action) {
-          if (!nothingFound()) {
-            showing_ = true;
-            results_.setRows(rows(), true);
-          }
-        } else if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) {
-          if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);  // 1.0.x keeps 40
-          search();
-        }
-        return true;
+    Keyboard::Result r;  // TvKeyboard.handle()
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Action) {
+      if (!nothingFound()) {
+        showing_ = true;
+        results_.setRows(rows(), true);
       }
-      default: return false;
+    } else if (r == Keyboard::Result::Typed || r == Keyboard::Result::Delete) {
+      if (r == Keyboard::Result::Typed) kb_.keepAtMost(40);  // 1.0.x keeps 40
+      search();
     }
+    return true;
   }
   bool step(float dt) override { return showing_ ? results_.step(dt) : kb_.step(dt); }
   void draw(Env& e, float w, float h) override {
@@ -332,13 +320,8 @@ class LibrarySearchScreen : public Screen {
       results_.draw(e, 0, area);
       return;
     }
-    Label hint = label(e, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", 9,
-                       false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), p.muted);
+    drawKeyboard(e, kb_, area, w, h, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right",
+                 p.muted, p.text);
   }
 
  private:

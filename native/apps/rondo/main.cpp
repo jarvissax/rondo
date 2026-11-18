@@ -52,6 +52,7 @@
 #include "../../shell/app.h"
 #include "../../shell/screens.h"
 #include "../../ui/frame_log.h"
+#include "../../ui/emoji.h"
 #include "../../ui/keyboard.h"
 
 using namespace rondo;
@@ -267,6 +268,13 @@ int main(int argc, char** argv) {
   g_config = loadConfig(configPath);
   g_configPath = configPath, g_prefsPath = prefsPath;
   g_prefs = loadPrefs(prefsPath);
+  // the keyboard's recent emoji and skin tone, kept with the prefs
+  emoji::restore(g_prefs.emojiRecent, g_prefs.emojiTone);
+  emoji::onChange = [] {
+    g_prefs.emojiRecent = emoji::recentList();
+    g_prefs.emojiTone = emoji::tone();
+    savePrefsNow();
+  };
   // the screen at its brightness whatever the last owner left (Android's 0, or a dimmed screen)
   applyBrightness(g_prefs.brightness);
   // the server's answers kept for two minutes, on disk too: beside the prefs
@@ -560,11 +568,20 @@ int main(int argc, char** argv) {
           text.flush(true);
           canvas.end();
           glFinish();
+        } else if (warmStage == 4) {
+          // the keyboard's emoji: what the font draws of them (some 50 ms), their first page queued
+          warmStage = 5;
+          Keyboard::warm(text, int(floorf(15 * pal.scale + 0.5f)), int(floorf(12 * pal.scale + 0.5f)));
         }
-        warmed = warmStage == 4;
+        warmed = warmStage == 5;
         text.flush(true);  // to the GPU now (both atlas textures), not in a moving frame
         pollfd q[1] = {{input->waitFd(), POLLIN, 0}};
         if (poll(q, 1, 0) == 0) continue;
+      }
+      if (warmed && text.preparing()) {  // glyphs asked for ahead (the keyboard's next emoji), a slice at a time
+        text.prepare(4 * kMs);
+        text.flush(true);
+        if (poll(p, 6, 0) == 0) continue;
       }
       bool prefetching = covers.sendPrefetches() | covers.topUp();
       int64_t deadline = dispatch.nextDeadline();

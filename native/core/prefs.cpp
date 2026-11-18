@@ -115,7 +115,9 @@ Prefs loadPrefs(const std::string& path) {
   pick("subBack", p.subBack, 0, 7);
   pick("subBackOpacity", p.subBackOpacity, 0, 100);
   pick("subEdge", p.subEdge, 0, 4);
+  pick("emojiTone", p.emojiTone, 0, 5);
   if (yyjson_val* v = yyjson_obj_get(root, "subLang"); yyjson_is_str(v)) p.subLang = cleanLang(yyjson_get_str(v));
+  if (yyjson_val* v = yyjson_obj_get(root, "emojiRecent"); yyjson_is_str(v)) p.emojiRecent = yyjson_get_str(v);
   auto flag = [&](const char* k, bool& out) {
     yyjson_val* v = yyjson_obj_get(root, k);
     if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -137,18 +139,31 @@ Prefs loadPrefs(const std::string& path) {
   return p;
 }
 
+// text as a JSON string's inside can hold it: no quotes, backslashes or controls, at most 2000 bytes (cut
+// at a space: the recent emoji are separated by them)
+static std::string jsonSafe(const std::string& s) {
+  std::string out;
+  for (char c : s)
+    if (c != '"' && c != '\\' && uint8_t(c) >= 0x20) out += c;
+  if (out.size() > 2000) {
+    size_t cut = out.rfind(' ', 2000);
+    out.resize(cut == std::string::npos ? 0 : cut);
+  }
+  return out;
+}
+
 bool savePrefs(const std::string& path, const Prefs& p) {
-  char json[1024];
+  char json[4096];
   auto b = [](bool v) { return v ? "true" : "false"; };
   int n = snprintf(json, sizeof(json),
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
                    "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"fmSpeakerVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
                    "\"clock24\":%s,\"subtitles\":%s,\"subLang\":\"%s\",\"subSize\":%d,\"subColor\":%d,\"subOpacity\":%d,"
-                   "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d}\n",
+                   "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d,\"emojiTone\":%d,\"emojiRecent\":\"%s\"}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
                    b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, p.fmSpeakerVolume, b(p.autoTime), b(p.autoZone), b(p.clock24),
                    b(p.subtitles), cleanLang(p.subLang).c_str(), p.subSize, p.subColor, p.subOpacity, p.subBack, p.subBackOpacity,
-                   p.subEdge);
+                   p.subEdge, p.emojiTone, jsonSafe(p.emojiRecent).c_str());
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

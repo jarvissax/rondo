@@ -373,7 +373,7 @@ class HeadphoneMatchScreen : public ShellListScreen {
           [](const std::string& q, std::function<void(const std::string&)> answer) { answer(q.empty() ? "Type a model" : ""); },
           [this, alive](const std::string& q) {
             if (*alive) lookUp(q);
-          }));
+          }, false));
     };
     rows.push_back(search);
     list_.setRows(std::move(rows), !fresh_);

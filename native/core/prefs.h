@@ -28,6 +28,10 @@ struct Prefs {
   bool subtitles = false;
   std::string subLang;
   int subSize = 1, subColor = 0, subOpacity = 100, subBack = 7, subBackOpacity = 75, subEdge = 0;
+  // the keyboard's emoji: the skin tone (0 none, 1-5 light to dark) and the recent ones, most recent first,
+  // separated by spaces (ui/emoji.h)
+  int emojiTone = 0;
+  std::string emojiRecent;
 };
 
 // a language code kept as it can be written (letters, digits, - and _)

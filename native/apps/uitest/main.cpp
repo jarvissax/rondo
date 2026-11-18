@@ -700,7 +700,7 @@ std::unique_ptr<Screen> songsScreen(App& app, int) {
 // action key opens the songs found.
 class SearchScreen : public Screen {
  public:
-  SearchScreen() : kb_("Search", true) {}
+  SearchScreen() : kb_("Search", Keyboard::Style::Shell, false) {}
   std::string title() const override { return "Search"; }
   bool ownsMenu() const override { return true; }
   void key(Key k, App& app) override {

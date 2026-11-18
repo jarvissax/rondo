@@ -22,6 +22,27 @@ going dark by itself, a press wakes it and does what it does (after Power, a pre
 wakes it). A **wired headset's buttons** (play/pause, next, previous, volume) work with the screen
 on or off, like Bluetooth headphones' buttons.
 
+### The keyboard
+
+Wherever you type (a search, a message, a playlist's name), the keyboard works like a TV remote:
+the wheel walks the keys, Next and Previous move right and left, Play moves down, Menu moves up
+(on the top row it closes the keyboard) and center types. **ABC** and **#+=** switch to capitals
+and symbols. It takes the look of where it opens: YouTube's and YouTube Music's round keys,
+WhatsApp's greens, Rondo's own everywhere else.
+
+The **😊** key (on every keyboard but a Wi-Fi password's and the server's address, code and token)
+opens the emoji: every emoji your Y1's font draws, in ten tabs along the top, **Recent** (your
+last 30) and then smileys, people, animals, food, travel, activities, objects, symbols and flags.
+
+- The wheel goes through the whole list, a fast spin a row at a time; **hold Next or Previous** to
+  jump to the next or previous tab. Menu on the top row goes up to the tabs, where the wheel picks
+  a tab; Menu there goes back to the letters.
+- The line under the keyboard names the emoji you're on.
+- **Tone** sets the skin tone for every emoji that has one (center: the next tone).
+- **🔍** finds an emoji by its name: type part of it (heart, cat, flag, fruit) and what matches is
+  the row on top; Menu goes up to it.
+- **Del** takes off a whole emoji.
+
 ## Main menu
 
 **Now Playing**, **Library**, **YouTube**, **YouTube Music**, **WhatsApp**, **FM Radio** and
@@ -197,15 +218,17 @@ server's admin page: **WhatsApp › Get a code**, and type the code on your phon
   them are three buttons: **Message**, **Voice** and **Photo**.
 - **Center on a message** opens what it holds: a photo full screen, a video in the player, a voice
   message played (the music pauses and comes back after; center again stops it). On a text, or
-  holding center on any message: **React**, **Reply**, open or play it, the sender's profile (in a
-  group) and the chat's profile. A message that couldn't be sent says so: center sends it again.
-- **React** shows 👍 ❤️ 😂 😮 😢 🙏 🔥 👏 first, then every emoji of the keyboard: center on one
-  reacts with it (in place of your earlier one). Once you've reacted, **Take back** sits on top,
-  and center on your own emoji takes it back too.
-- **Message** opens the keyboard: letters, digits, symbols and emoji. The 😊 key opens four pages of
-  faces, hands and hearts, and things (‹ and › turn them, **abc** goes back to letters), and
-  **Del** takes off a whole emoji. What you typed and didn't send is still there next time.
-  **Send** sends it; from a message's **Reply**, it goes as a reply.
+  holding center on any message: the reactions on top, then **Reply**, open or play it, the
+  sender's profile (in a group) and the chat's profile. A message that couldn't be sent says so:
+  center sends it again.
+- **Reacting:** the top row is WhatsApp's 👍 ❤️ 😂 😮 😢 🙏 and **+**. The wheel goes along it and
+  then down the menu (Play jumps between them); center reacts, in place of your earlier one. Yours
+  has a gray circle, and center on it takes it back. **+** slides up every emoji, as the keyboard
+  has them (Recent first, the tabs, Tone, Find): center on one reacts with it, Menu on the tabs
+  closes it. Once you've reacted, **Take back** is there too.
+- **Message** opens the keyboard (see [The keyboard](#the-keyboard)), in WhatsApp's colors. What you
+  typed and didn't send is still there next time. **Send** (the paper plane) sends it; from a
+  message's **Reply**, it goes as a reply.
 - **Voice** records with the Y1's built-in microphone at once (what's playing pauses): center
   sends it, Menu throws it away. Up to 15 minutes.
 - **Photo** lists the photos and videos on the card, the newest first: center shows the one you
@@ -349,7 +372,8 @@ Rondo, this repository or its releases: each Mac makes its own.
 
 Rondo takes `emoji.ttf` in its data folder over its own emoji, draws them at the same size and in the
 same place, and keeps it through updates. To go back: `adb shell rm /data/rondo/emoji.ttf` and restart.
-About a hundred emoji of people facing right don't draw with it.
+About a hundred emoji of people facing right don't draw with it, and the newest emoji only come with
+a newer macOS: the keyboard offers only the emoji the font draws.
 
 ## The dashboard
 

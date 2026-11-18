@@ -505,6 +505,19 @@ void Text::shapeInto(TextRun& out, int font, std::string_view s) {
   out.width = pen / 64.0f;
 }
 
+uint32_t Text::emojiGlyph(std::string_view utf8) {
+  if (emoji_ < 0 || utf8.empty()) return 0;
+  static hb_buffer_t* b = hb_buffer_create();  // its own: the selectors and joiners left out
+  hb_buffer_clear_contents(b);
+  hb_buffer_set_flags(b, HB_BUFFER_FLAG_REMOVE_DEFAULT_IGNORABLES);
+  hb_buffer_add_utf8(b, utf8.data(), int(utf8.size()), 0, int(utf8.size()));
+  hb_buffer_guess_segment_properties(b);
+  hb_shape(hbFont(font(Weight::Regular, 20), emoji_), b, nullptr, 0);
+  unsigned n = 0;
+  hb_glyph_info_t* g = hb_buffer_get_glyph_infos(b, &n);
+  return n == 1 ? g[0].codepoint : 0;
+}
+
 const TextRun& Text::run(int font, std::string_view utf8, float maxWidth) {
   uint64_t key = fnv(utf8, uint64_t(font) * 0x9e3779b97f4a7c15ULL ^ uint64_t(lroundf(maxWidth * 4)));
   auto it = runs_.find(key);
@@ -712,6 +725,31 @@ Text::Mask Text::addMask(int w, int h, const uint8_t* a8) {
   m.u0 = float(x) / kAtlasW, m.v0 = float(y) / kAtlasH, m.u1 = float(x + w) / kAtlasW, m.v1 = float(y + h) / kAtlasH;
   m.ok = true;
   return m;
+}
+
+}  // namespace rondo::ui
+
+namespace rondo::ui {
+
+bool Text::prepare(int64_t budgetNs) {
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  int64_t until = int64_t(t.tv_sec) * 1000000000LL + t.tv_nsec + budgetNs;
+  int done = rasterizedFrame_;
+  while (prefetchAt_ < prefetch_.size()) {
+    const auto& [font, s] = prefetch_[prefetchAt_++];
+    const TextRun& r = run(font, s);
+    for (const TextRun::Glyph& g : r.glyphs)
+      if (!slots_[g.slot].ready) rasterize(slots_[g.slot]);
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    if (int64_t(t.tv_sec) * 1000000000LL + t.tv_nsec > until) break;
+  }
+  rasterizedFrame_ = done;  // idle work: not a frame's cost
+  resetInFrame_ = false;    // nothing drawn from what a full atlas cleared
+  if (prefetchAt_ < prefetch_.size()) return false;
+  prefetch_.clear();
+  prefetchAt_ = 0;
+  return true;
 }
 
 }  // namespace rondo::ui

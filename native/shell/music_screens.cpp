@@ -394,7 +394,7 @@ class ArtistScreen : public MusicListScreen {
 // Menu goes back to the keyboard.
 class MusicSearchScreen : public Screen {
  public:
-  explicit MusicSearchScreen(bool video) : video_(video), kb_("Search") {
+  explicit MusicSearchScreen(bool video) : video_(video), kb_("Search", Keyboard::Style::YouTube) {
     results_.style = video ? RowStyle::Video : RowStyle::Music;
     results_.onNearEnd = [this] { more(); };
   }
@@ -414,23 +414,11 @@ class MusicSearchScreen : public Screen {
         default: return false;
       }
     }
-    switch (a) {  // TvKeyboard.handle(): it takes every control; Menu on its top row leaves
-      case Action::Down: kb_.nextKey(); return true;
-      case Action::Up: kb_.prevKey(); return true;
-      case Action::Next:
-      case Action::LongNext: kb_.right(); return true;
-      case Action::Prev:
-      case Action::LongPrev: kb_.left(); return true;
-      case Action::PlayPause: kb_.down(); return true;
-      case Action::Back: return kb_.up();
-      case Action::Select: {
-        Keyboard::Result r = kb_.press();
-        if (r == Keyboard::Result::Action) search();
-        else if (r == Keyboard::Result::Typed) kb_.keepAtMost(60);
-        return true;
-      }
-      default: return false;
-    }
+    Keyboard::Result r;  // TvKeyboard.handle(): it takes every control; Menu on its top row leaves
+    if (!keyboardAction(kb_, a, steps, &r)) return false;
+    if (r == Keyboard::Result::Action) search();
+    else if (r == Keyboard::Result::Typed) kb_.keepAtMost(60);
+    return true;
   }
   bool step(float dt) override { return showing_ ? results_.step(dt) : kb_.step(dt); }
   void draw(Env& e, float w, float h) override {
@@ -441,7 +429,7 @@ class MusicSearchScreen : public Screen {
     // the bar: 28 units, 8 in from the sides, 2 under the header, 5 above what follows, radius 14
     float bx = float(e.dp(8)), by = float(e.dp(28) + e.dp(2)), bw = w - 2 * bx, bh = float(e.dp(28));
     e.c.layer(2);
-    e.c.shape({bx, by, bw, bh}, e.dpf(14), p.raised);
+    e.c.shape({bx, by, bw, bh}, e.dpf(14), rgb(0x272727));  // YouTube's chips' gray, as the keys
     e.c.layer(4);
     int icon = e.dp(12);
     float ix = bx + e.dp(10);
@@ -457,13 +445,8 @@ class MusicSearchScreen : public Screen {
       return;
     }
     // words, not arrow glyphs (1.0.x: Android 4.2's font may not have them)
-    Label hint = label(e, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type", 9,
-                       false, w);
-    float kh = h - area - (e.dp(3) + hint.h + e.dp(4));
-    e.c.layer(1);
-    kb_.draw(e.c, e.text, p, {float(e.dp(5)), area, w - 2 * e.dp(5), kh}, e.dp(15), e.dp(12));
-    e.c.layer(4);
-    drawLabel(e, hint, centerText(0, w, hint.w), area + kh + e.dp(3), p.darkMuted);
+    drawKeyboard(e, kb_, area, w, h, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type",
+                 p.darkMuted, white);
     e.c.layer(0);
   }
 

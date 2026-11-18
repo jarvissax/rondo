@@ -47,7 +47,7 @@ add_executable(libtest apps/libtest/main.cpp)
 target_link_libraries(libtest PRIVATE rondo_core)
 
 # The UI engine (N1): portable C++ over GLES2
-add_library(rondo_ui STATIC ui/gfx.cpp ui/text.cpp ui/image.cpp ui/frame_log.cpp ui/theme.cpp ui/keyboard.cpp ui/icons.cpp ui/covers.cpp ui/qr.cpp core/cover.cpp)
+add_library(rondo_ui STATIC ui/gfx.cpp ui/text.cpp ui/image.cpp ui/frame_log.cpp ui/theme.cpp ui/keyboard.cpp ui/emoji.cpp ui/emoji_data.cpp ui/icons.cpp ui/covers.cpp ui/qr.cpp core/cover.cpp)
 target_include_directories(rondo_ui SYSTEM PUBLIC ${TP}/include ${TP}/include/freetype2 ${TP}/include/harfbuzz)
 target_link_libraries(rondo_ui PUBLIC rondo_core tp_harfbuzz tp_freetype tp_png16 tp_turbojpeg z GLESv2 m)
 
