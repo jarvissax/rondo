@@ -352,6 +352,9 @@ int Api::post(const std::string& to, const std::string& json, std::string& body)
     usleep(250000);
   }
   curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
+  // the body's pointer goes with `json`: none left on the handle (an upload after it read through it)
+  curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, nullptr);
+  curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, -1L);
   curl_slist_free_all(headers);
   return int(status);
 }
@@ -380,6 +383,12 @@ int Api::upload(const std::string& path, const std::string& file, const std::str
     curl_easy_setopt(curl_, CURLOPT_LOW_SPEED_TIME, 60L);  // the server converts a voice message before it answers
     curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(curl_, CURLOPT_POST, 1L);
+    // The file's bytes come from the read function, but curl takes POSTFIELDS first when one is set
+    // (http.c's set_reader), and post() used to leave its JSON's pointer on the handle: an upload
+    // after a post (a voice message after marking a chat read) copied the file's size from where that
+    // JSON had been. It sent garbage, or ran off the worker's stack and took rondo-core down
+    // (tombstones of Nov 15-18: WhatsApp closed, the voice message lost).
+    curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, nullptr);
     curl_easy_setopt(curl_, CURLOPT_READDATA, f);
     curl_easy_setopt(curl_, CURLOPT_READFUNCTION, fread);
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE_LARGE, curl_off_t(size));
@@ -399,6 +408,7 @@ int Api::upload(const std::string& path, const std::string& file, const std::str
   }
   curl_easy_setopt(curl_, CURLOPT_READFUNCTION, nullptr);
   curl_easy_setopt(curl_, CURLOPT_READDATA, nullptr);
+  curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE_LARGE, curl_off_t(-1));
   curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
   curl_slist_free_all(headers);
   fclose(f);

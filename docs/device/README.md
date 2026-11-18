@@ -244,6 +244,14 @@ The 1.0.x firmware keeps Android's Java layer, with Rondo as its only app with a
 - **Volume is per output.** Music on the speaker goes 0–13; wired headphones keep their own
   level. `input keyevent KEYCODE_VOLUME_DOWN` changes only the active output.
 - **The video decoder's audio partner** is `OMX.MTK.AUDIO.DECODER.AAC`.
+- **Microphones:** the built-in one (inside, beside the jack) records fine. A headset's microphone
+  never reaches the Y1: with a headset with a mic in (`/sys/class/switch/h2w/state` 1), Android's MIC
+  source records the headset input (device `0x80000010`), and that is only a steady 973 Hz pulse train
+  with its harmonics at -25 dB, nothing of the voice. The headset-detection driver's call state
+  (`/sys/bus/platform/drivers/Accdet_Driver/accdet_call_state`, 2 = active) and the backlight change
+  nothing (measured Nov 18). The camcorder source (5) stays on the built-in mic (`0x80000004`) with a
+  headset in, at about the MIC source's level: Rondo's recorder takes it then. `native/tools/mictest`
+  records with any source.
 
 ### FM radio
 

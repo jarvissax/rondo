@@ -36,9 +36,19 @@ void header(uint8_t h[44], uint32_t bytes) {
   put32(h + 40, bytes);
 }
 
+// 1 in h2w: a headset with a microphone (2: headphones without one, 0: nothing)
+bool headsetMicIn() {
+  int state = 0;
+  if (FILE* f = fopen("/sys/class/switch/h2w/state", "r")) {
+    if (fscanf(f, "%d", &state) != 1) state = 0;
+    fclose(f);
+  }
+  return state == 1;
+}
+
 }  // namespace
 
-bool Recorder::start(const std::string& path) {
+bool Recorder::start(const std::string& path, int source) {
   stop(false);
   error_ = 0;
   frames_ = 0;
@@ -53,8 +63,9 @@ bool Recorder::start(const std::string& path) {
   header(h, 0);
   fwrite(h, 1, sizeof(h), file_);
   path_ = path;
+  if (source < 0) source = headsetMicIn() ? 5 /* AUDIO_SOURCE_CAMCORDER */ : 1 /* AUDIO_SOURCE_MIC */;
   auto* rec = new (::operator new(sizeof(android::AudioRecord) + 256))
-      android::AudioRecord(AUDIO_SOURCE_MIC, kRate, AUDIO_FORMAT_PCM_16_BIT, AUDIO_CHANNEL_IN_MONO, 0);
+      android::AudioRecord(audio_source_t(source), kRate, AUDIO_FORMAT_PCM_16_BIT, AUDIO_CHANNEL_IN_MONO, 0);
   rec->incStrong(this);
   int check = rec->initCheck();
   if (check != 0 || rec->start() != 0) {
