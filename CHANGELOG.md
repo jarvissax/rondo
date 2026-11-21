@@ -5,6 +5,26 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 4.0.2 (November 21, 2026)
+
+An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+4.0.1 does.
+
+### Fixed
+
+- **Bluetooth headphones that paired but didn't connect:** right after pairing, or when you chose
+  paired headphones, the Bluetooth screen started looking for devices again while they connected,
+  and the connection gave up after a few seconds ("not connected"). Nothing is searched for now
+  while headphones pair or connect, so they connect right after pairing.
+- **Headphones that didn't come back by themselves:** after a search, the Y1 stopped accepting
+  connections until Bluetooth was turned off and on, so headphones taken out of their case or
+  switched on again couldn't reconnect to it. The Y1 now stays open to them, and it no longer shows
+  itself to every phone around while Bluetooth is on.
+- **Headphones that started loud:** each time headphones connected, they took the volume of the
+  speaker or the wired headphones, and earbuds taken out of their case start playing at once. They
+  now keep a volume of their own: the one you last set while they were connected.
+
 ## 4.0.1 (November 18, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
