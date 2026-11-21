@@ -125,6 +125,10 @@ int Api::get(const std::string& path, std::string& body) {
   for (int attempt = 0; attempt < 20; attempt++) {
     body.clear();
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    // a GET whatever the handle did last: a POST's method stays on the handle (4.0.1's post() left
+    // it there, and every GET after a chat was marked read went out as a POST the server didn't know:
+    // "Unreachable", WhatsApp's "server too old", YouTube's "not found", Nov 18-21)
+    curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
     curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl_, CURLOPT_USERAGENT, net::userAgent());
     net::trust(curl_, wide);
@@ -351,10 +355,12 @@ int Api::post(const std::string& to, const std::string& json, std::string& body)
     if (!net::retryable(rc)) break;
     usleep(250000);
   }
-  curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
-  // the body's pointer goes with `json`: none left on the handle (an upload after it read through it)
+  // the body's pointer goes with `json`: none left on the handle (an upload after it read through it).
+  // Before HTTPGET: setting POSTFIELDS, even to nothing, makes the handle's method POST again (curl's
+  // setopt.c), so in the other order every GET after this went out as a POST.
   curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, nullptr);
   curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, -1L);
+  curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);  // the handle's next requests are GETs again
   curl_slist_free_all(headers);
   return int(status);
 }
