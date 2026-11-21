@@ -258,9 +258,28 @@ how the firmware is put together is in [Building Rondo](../building.md#the-firmw
   - own address 0x6f, answered by 0x9d;
   - discovery 0x67, with results as 0x93 and the end as 0x95; cancel 0x68, answered by 0x96;
   - bond 0x7e, ending in 0xab with result 0;
-  - PIN request 0xa3, answered with 0x75; SSP confirmation request 0xa4, answered with 0x76.
+  - PIN request 0xa3, answered with 0x75; SSP confirmation request 0xa4, answered with 0x76;
+  - scan mode 0x6d (+0x20: bit 1 page scan, bit 0 inquiry scan; payload 8), answered by 0x9b with
+    result 0.
 - **Where they come from:** the layouts are read from `libandroid_runtime.so`, which holds MediaTek's
-  Bluetooth service and event loop in C.
+  Bluetooth service and event loop in C. Its `enableNative` sets the local name (0x69: length +0x20,
+  name +0x21, payload 0xfe, answered by 0x97) and the scan mode right after every power on; Android
+  asked for connectable only (2).
+- **The scan mode must be set** (Nov 21): left to itself, mtkbt turned page and inquiry scan both on
+  at power on (the Y1 discoverable to everyone), or, with a connection going out at once, both off,
+  and a search turned them off without turning them back on. Without page scan, paired headphones
+  that come on can't connect to the Y1. Rondo sends 0x6d with 2 after 0x91; mtkbt applies it once
+  its own connection attempt is done, and keeps it after searches.
+- **A search stalls connecting:** with an inquiry running, A2DP's stream open ends in
+  `BT_A2DP_RESULT_TIMEOUT` after 6 s. A search runs back to back 5.12 s inquiries (general inquiry
+  access code, extended inquiry results, inquiry transmit power +6 dBm from `libbtcusttable.so`'s
+  `InquiryTxPwr`), with page and inquiry scan off meanwhile.
+- **Looking at the HCI traffic:** `setprop persist.bt.virtualsniff 1` and a restart of mtkbt make it
+  write a btsnoop file (H4) to `/data/@btmtk/hci_sniffer_log*.log`; set it back to 0 and delete the
+  files afterwards. With mtkbt stopped, `/dev/stpbt` takes H4 packets directly: opening it powers
+  Bluetooth on through WMT and closing it powers the connectivity subsystem off (the kernel logs a
+  WARNING from `spm_mtcmos_ctrl_general_locked` each time, without consequence so far).
+  `btlogmask` sets mtkbt's trace mask, but its traces don't reach logcat.
 
 ## FM radio
 

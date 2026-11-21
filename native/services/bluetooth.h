@@ -57,8 +57,9 @@ class Bluetooth {
   void onAvrcp(uint8_t* m, ssize_t n);
   void a2dpState(int state);
   void route(bool on, const std::string& address);
-  void startSearch();
+  void startSearch();  // not while pairing or connecting (busy())
   void stopSearch();
+  bool busy() const;
   void readPaired();
   Dev* find(const uint8_t* addr);
   Dev& add(const uint8_t* addr);

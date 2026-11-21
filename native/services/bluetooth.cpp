@@ -8,6 +8,7 @@
 //   pair 0x7e (address +0x20) -> a PIN request 0xa3, answered 0000 (0x75), or an SSP confirmation
 //     0xa4, accepted (0x76), as 1.0.x did; the result as 0xab (result +0x20, address +0x24)
 //   forget 0x7f (address +0x20) -> 0xad; a device's name 0xc2 (address +0x20, length +0x28, name +0x29)
+//   scan mode 0x6d (+0x20: bit 1 page scan, bit 0 inquiry scan) -> 0x9b (result +0x20, 0 done)
 #include "bluetooth.h"
 
 #include <errno.h>
@@ -412,9 +413,16 @@ void Bluetooth::onGap(uint8_t* m, ssize_t n) {
   uint32_t id = u32(m, 4);
   if (kBtLog) fprintf(stderr, "bt: gap 0x%x (%zd bytes) +0x20=%u\n", id, n, m[0x20]);
   switch (id) {
-    case 0x91:  // powered on: the profiles, the paired devices, the headphones last used
+    case 0x91:  // powered on: the scan mode, the profiles, the paired devices, the headphones last used
       if (m[0x20]) {
         power_ = 2;
+        // connectable, not discoverable, as Android asked for after every power on (MediaTek's
+        // enableNative): left to itself mtkbt had page and inquiry scan both on, or, with a
+        // connection going out at once, both off, until Bluetooth went off again (Nov 21), so
+        // paired headphones that came on couldn't connect
+        memset(r, 0, kIlm);
+        r[0x20] = 2;  // bit 1 page scan (connectable), bit 0 inquiry scan (discoverable)
+        sendGap(0x6d, r, 8);
         if (!a2dpActive_ && a2dp_ >= 0 && a2dpApi_ >= 0) btmtk_a2dp_send_activate_req(a2dp_, a2dpApi_), a2dpActive_ = true;
         if (!avrcpActive_ && avrcpApi_ >= 0) {
           memset(r, 0, kIlm);
@@ -613,8 +621,16 @@ void Bluetooth::onAvrcp(uint8_t* m, ssize_t n) {
   }
 }
 
+// Pairing or connecting: a search would stall it. With one running, A2DP's stream open timed out
+// after 6 s, twice in a row (Nov 21): connect() cancels the search, but the Bluetooth screen, or
+// its return from a device's screen, started one again at once.
+bool Bluetooth::busy() const {
+  if (connectSince_ || !pendingConnect_.empty() || !pendingPair_.empty()) return true;
+  return std::any_of(devs_.begin(), devs_.end(), [](const Dev& d) { return d.pairing || d.a2dp == 1; });
+}
+
 void Bluetooth::startSearch() {
-  if (power_ != 2 || searching_) return;
+  if (power_ != 2 || searching_ || busy()) return;
   // with the fields btmtk_gap_discovery sets: every class, its inquiry length and number of answers
   static uint8_t m[kIlm];
   memset(m, 0, kIlm);

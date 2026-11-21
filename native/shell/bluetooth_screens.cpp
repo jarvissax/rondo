@@ -178,11 +178,12 @@ class BluetoothScreen : public BluetoothList {
     }
     list_.setRows(std::move(rows), true);
   }
-  // a fresh search every 20 s while nothing is being paired
+  // a fresh search every 20 s while nothing is being paired or connected (a search stalls both:
+  // rondo-core doesn't start one meanwhile either)
   bool poll(const CoreState& s, int64_t now) override {
-    bool pairing = false;
-    for (int i = 0; i < s.btCount; i++) pairing |= s.bt[i].pairing != 0;
-    if (s.btPower == 2 && !s.btSearching && !pairing && now - lastSearch_ > 20000 * kMs) {
+    bool busy = false;
+    for (int i = 0; i < s.btCount; i++) busy |= s.bt[i].pairing != 0 || s.bt[i].a2dp == 1;
+    if (s.btPower == 2 && !s.btSearching && !busy && now - lastSearch_ > 20000 * kMs) {
       g_core.btSearch(true);
       lastSearch_ = now;
     }
