@@ -57,6 +57,7 @@ class Bluetooth {
   void onAvrcp(uint8_t* m, ssize_t n);
   void a2dpState(int state);
   void route(bool on, const std::string& address);
+  int savedVolume() const;  // the headphones' own level, -1 if none
   void startSearch();  // not while pairing or connecting (busy())
   void stopSearch();
   bool busy() const;

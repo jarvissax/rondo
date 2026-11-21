@@ -571,16 +571,40 @@ void Bluetooth::a2dpState(int state) {
   }
 }
 
+// The headphones' own music level: the A2DP line rondo-player keeps in volumes.txt ("<device, hex>
+// <level>", the one turned saved as it turns), within the volume limit; -1 if they never had one.
+int Bluetooth::savedVolume() const {
+  std::string dir = stateFile_.substr(0, stateFile_.rfind('/') + 1);
+  int level = -1;
+  if (FILE* f = fopen((dir + "volumes.txt").c_str(), "r")) {
+    unsigned device;
+    int index;
+    while (fscanf(f, "%x %d", &device, &index) == 2)
+      if (device == AUDIO_DEVICE_OUT_BLUETOOTH_A2DP && index >= 0) level = index;
+    fclose(f);
+  }
+  if (FILE* f = fopen((dir + "volume-limit").c_str(), "r")) {
+    int limit;
+    if (level > 0 && fscanf(f, "%d", &limit) == 1 && limit >= 0) level = std::min(level, limit);
+    fclose(f);
+  }
+  return level;
+}
+
 // The music to the headphones, as Android's audio service did on every A2DP connection: the output made
 // available to the audio policy, and "force use for media" none (an old no-A2DP kept music on the jack).
-// The headphones start at the volume music had (Android kept one per output; without its audio service
-// the A2DP output would take mediaserver's default, which can be loud).
+// The headphones keep a level of their own, as Android kept one per output: until Nov 21 they took
+// the level of the output in use on every connection (the speaker's 10 of 13), and earbuds out of
+// their case send Play. Only headphones that never had one start at the level music had (without
+// Android's audio service the A2DP output would take mediaserver's default, which can be loud).
 void Bluetooth::route(bool on, const std::string& address) {
   using android::AudioSystem;
   if (kBtLog) fprintf(stderr, "bt: route %s %s\n", on ? "on" : "off", address.c_str());
   if (on) {
-    int index = 0;
-    AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &index, AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC));
+    int index = savedVolume();
+    if (index < 0)
+      AudioSystem::getStreamVolumeIndex(AUDIO_STREAM_MUSIC, &index, AudioSystem::getDevicesForStream(AUDIO_STREAM_MUSIC));
+    if (kBtLog) fprintf(stderr, "bt: the headphones at %d\n", index);
     AudioSystem::setStreamVolumeIndex(AUDIO_STREAM_MUSIC, index, AUDIO_DEVICE_OUT_BLUETOOTH_A2DP);
     AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_BLUETOOTH_A2DP, AUDIO_POLICY_DEVICE_STATE_AVAILABLE, address.c_str());
     AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_MEDIA, AUDIO_POLICY_FORCE_NONE);
