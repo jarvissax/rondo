@@ -5,6 +5,20 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 4.0.3 (November 21, 2026)
+
+An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+4.0.2 does.
+
+### Fixed
+
+- **The Rondo server that kept going "Unreachable":** since 4.0.1, once a WhatsApp chat was marked
+  read or a message or reaction was sent, some of the Y1's requests to the server after it went out
+  wrong and the server turned them down. Settings › Server said "Unreachable", WhatsApp said the
+  server was too old for it, and YouTube and YouTube Music said "not found", on and off. Every
+  request now goes out as it should.
+
 ## 4.0.2 (November 21, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
