@@ -19,6 +19,7 @@ the same paths either way.
   so its titles, shelf names, view counts and dates come in it, and the few words the server puts in
   itself (`"49 songs"`, `"Liked Music"`, `"2.3B views"`) come from `lang/<code>.json`'s `device`
   section (`feed.*`; server/src/lang.ts `say()`). The answers kept for a while are kept per language.
+  `/music/search` and `/video/search` stay in English (YouTube ranks results by the language asked).
 - **First run:** no admin password yet. The server prints a one-time **setup code** in its log
   (`docker logs rondo`): `Rondo setup: open <base>/admin and enter 482-913`. The page asks for that
   code and a new admin password (at least 10 characters). The code changes on every restart until

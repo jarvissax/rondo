@@ -11,7 +11,7 @@ import type { Config } from "./config.js";
 import type { LyricLine } from "./lyrics.js";
 import { type Chunk, type Page, Pager } from "./paging.js";
 import { DEFAULT_THUMB_PX, isThumbHost, sizedThumbUrl, thumbPx } from "./thumb.js";
-import { currentLang, langFetch, say } from "./lang.js";
+import { currentLang, langFetch, say, withLang } from "./lang.js";
 import { TtlCache } from "./ttl.js";
 import { type TvAccount, type TvItem, tvChunk, tvItems, tvShorts } from "./tv.js";
 import { dispatcher } from "./upstream.js";
@@ -994,22 +994,28 @@ export function registerBrowseRoutes(
       return run(reply, () => (opts.stale ? browse.cachedStale(scope, first) : opts.cache ? browse.cached(scope, first) : first()));
     });
 
-  app.get<{ Querystring: { q?: string; type?: string; next?: string } }>("/music/search", async (req, reply) => {
-    const next = nextOf(req.query);
-    if (next) return later(reply, "music/search", next);
-    const q = (req.query.q ?? "").trim();
-    const type = req.query.type ?? "song";
-    if (!q || !MUSIC_TYPES.has(type)) return reply.code(400).send({ error: "query" });
-    return run(reply, () => browse.cached(`music/search/${type}/${q.toLowerCase()}`, () => browse.musicSearch(q, type)));
-  });
+  // Search stays in English whatever the Rondo speaks: YouTube ranks results by the language it's asked
+  // in, and a search should find what it always found
+  app.get<{ Querystring: { q?: string; type?: string; next?: string } }>("/music/search", async (req, reply) =>
+    withLang("en", async () => {
+      const next = nextOf(req.query);
+      if (next) return later(reply, "music/search", next);
+      const q = (req.query.q ?? "").trim();
+      const type = req.query.type ?? "song";
+      if (!q || !MUSIC_TYPES.has(type)) return reply.code(400).send({ error: "query" });
+      return run(reply, () => browse.cached(`music/search/${type}/${q.toLowerCase()}`, () => browse.musicSearch(q, type)));
+    }),
+  );
 
-  app.get<{ Querystring: { q?: string; next?: string } }>("/video/search", async (req, reply) => {
-    const next = nextOf(req.query);
-    if (next) return later(reply, "video/search", next);
-    const q = (req.query.q ?? "").trim();
-    if (!q) return reply.code(400).send({ error: "query" });
-    return run(reply, () => browse.cached(`video/search/${q.toLowerCase()}`, () => browse.videoSearch(q)));
-  });
+  app.get<{ Querystring: { q?: string; next?: string } }>("/video/search", async (req, reply) =>
+    withLang("en", async () => {
+      const next = nextOf(req.query);
+      if (next) return later(reply, "video/search", next);
+      const q = (req.query.q ?? "").trim();
+      if (!q) return reply.code(400).send({ error: "query" });
+      return run(reply, () => browse.cached(`video/search/${q.toLowerCase()}`, () => browse.videoSearch(q)));
+    }),
+  );
 
   list("/music/home", "music/home", () => browse.musicHome(), { stale: true, shape: homePage });
 

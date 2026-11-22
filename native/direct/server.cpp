@@ -121,7 +121,10 @@ void connection(int fd) {
       bool code = first.size() >= 2 && first.size() <= 12;
       for (char ch : first)
         if (!isalnum((unsigned char)ch) && ch != '-') code = false;
-      setRequestLanguage(code ? first : "en");
+      // search stays in English whatever the Rondo speaks: YouTube ranks results by the language it's
+      // asked in, and a search should find what it always found (its next pages too: the same path)
+      bool search = req.path == "/music/search" || req.path == "/video/search";
+      setRequestLanguage(code && !search ? first : "en");
     }
     Response res;
     timeval t0, t1;
