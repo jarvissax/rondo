@@ -78,7 +78,9 @@ Api::Api() {
 
 Api::~Api() { curl_easy_cleanup(curl_); }
 
-void Api::configure(const std::string& baseUrl, const std::string& token, const std::string& server, const std::string& serverToken) {
+void Api::configure(const std::string& baseUrl, const std::string& token, const std::string& server, const std::string& serverToken,
+                    const std::string& language) {
+  language_ = "Accept-Language: " + (language.empty() ? std::string("en") : language);
   base_ = baseUrl;
   while (!base_.empty() && base_.back() == '/') base_.pop_back();
   auth_ = "Authorization: Bearer " + token;
@@ -118,7 +120,7 @@ std::string Api::urlFor(const std::string& path, std::string& auth) const {
 int Api::get(const std::string& path, std::string& body) {
   std::string auth, url = urlFor(path, auth);
   if (!configured() && url == base_ + path) return 0;
-  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
+  curl_slist* headers = curl_slist_append(curl_slist_append(nullptr, auth.c_str()), language_.c_str());
   bool wide = false;  // the system's roots too, once the bundled two didn't verify the server
   long status = 0;
   int64_t t0 = now_ns();
@@ -260,7 +262,7 @@ int Api::download(const std::string& path, const std::string& file, const std::f
     if (fflush(f) != 0 || fseek(f, have, SEEK_SET) != 0) break;
     sink.base = sink.reportedAt = have;
     sink.checked = sink.refused = false;
-    curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
+    curl_slist* headers = curl_slist_append(curl_slist_append(nullptr, auth.c_str()), language_.c_str());
     if (have > 0) headers = curl_slist_append(headers, ("Range: bytes=" + std::to_string(have) + "-").c_str());
     curl_easy_reset(curl_);
     curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
@@ -315,7 +317,7 @@ int Api::download(const std::string& path, const std::string& file, const std::f
 }
 
 int Api::post(const std::string& to, const std::string& json, std::string& body) {
-  curl_slist* headers = curl_slist_append(nullptr, "Content-Type: application/json");
+  curl_slist* headers = curl_slist_append(curl_slist_append(nullptr, "Content-Type: application/json"), language_.c_str());
   std::string url = to;
   if (!to.empty() && to[0] == '/') {  // the server's route: its address and the token
     std::string auth;
@@ -372,7 +374,7 @@ int Api::upload(const std::string& path, const std::string& file, const std::str
   if (!f) return 0;
   fseek(f, 0, SEEK_END);
   long size = ftell(f);
-  curl_slist* headers = curl_slist_append(nullptr, auth.c_str());
+  curl_slist* headers = curl_slist_append(curl_slist_append(nullptr, auth.c_str()), language_.c_str());
   headers = curl_slist_append(headers, ("Content-Type: " + contentType).c_str());
   bool wide = false;
   long status = 0;

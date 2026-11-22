@@ -17,6 +17,12 @@
 #include "tv_auth.h"
 #ifdef __ANDROID__
 #include "../core/net.h"
+#else
+// the Mac's dcli (tools/native/direct-host.sh): core/net.cpp is the Y1's; a refused or reset
+// connection is tried again there too
+namespace rondo::net {
+inline bool retryable(CURLcode rc) { return rc == CURLE_COULDNT_CONNECT || rc == CURLE_RECV_ERROR || rc == CURLE_SEND_ERROR; }
+}  // namespace rondo::net
 #endif
 
 namespace rondo::direct {
@@ -386,6 +392,42 @@ const Rules& rules() {
   return g_rules;
 }
 
+namespace {
+// plain bytes (no destructor to run at a thread's end: Android 4.2 has no __cxa_thread_atexit)
+thread_local char t_language[20] = "en";
+}
+
+void setRequestLanguage(const std::string& code) {
+  snprintf(t_language, sizeof(t_language), "%s", code.empty() || code.size() >= sizeof(t_language) ? "en" : code.c_str());
+}
+std::string requestLanguage() { return t_language; }
+
+std::string say(const char* key, lang::Args args) { return lang::trIn(t_language, key, args); }
+
+std::string compactCount(int64_t n) {
+  char b[32];
+  auto one = [&](double v, const char* unit) {
+    snprintf(b, sizeof(b), "%.1f", v);
+    std::string s = b;
+    if (s.size() > 2 && s.compare(s.size() - 2, 2, ".0") == 0) s.resize(s.size() - 2);
+    return s + unit;
+  };
+  if (!strcmp(t_language, "en") || !strncmp(t_language, "en-", 3)) {
+    if (n >= 1000000000) return one(n / 1e9, "B");
+    if (n >= 1000000) return one(n / 1e6, "M");
+    if (n >= 1000) return std::to_string((n + 500) / 1000) + "K";
+    return std::to_string(n);
+  }
+  // another language: thousands and millions (as Intl's compact numbers write them), its own decimal mark
+  std::string unit = n >= 1000000 ? "feed.compact.millions" : n >= 1000 ? "feed.compact.thousands" : "";
+  if (unit.empty()) return std::to_string(n);
+  std::string v = one(n >= 1000000 ? n / 1e6 : n / 1e3, "");
+  if (v.find('.') != std::string::npos && v.size() > 4) v.resize(v.find('.'));  // 2304.8 stays, 12345.6 doesn't
+  size_t dot = v.find('.');
+  if (dot != std::string::npos) v.replace(dot, 1, say("feed.decimalMark"));
+  return say(unit.c_str(), {{"n", v}});
+}
+
 int innertube(const Client& c, const char* endpointName, const std::string& fields, Doc& out) {
   // signed in with a code: the TV client carries its token (asked first: a refresh uses this thread's handle)
   std::string bearer = c.name == "TVHTML5" ? tv::bearer() : "";
@@ -394,7 +436,7 @@ int innertube(const Client& c, const char* endpointName, const std::string& fiel
     std::lock_guard<std::mutex> l(g_mu);
     visitor = g_visitor;
   }
-  std::string client = "\"clientName\":" + quote(c.name) + ",\"clientVersion\":" + quote(c.version) + ",\"hl\":\"en\"";
+  std::string client = "\"clientName\":" + quote(c.name) + ",\"clientVersion\":" + quote(c.version) + ",\"hl\":" + quote(t_language);
   if (!visitor.empty()) client += ",\"visitorData\":" + quote(visitor);
   for (auto& [k, v] : c.extra) {
     // strings all, but the SDK level ("osVersion": "14" sent as a number is a 400)

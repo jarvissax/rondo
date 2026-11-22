@@ -24,6 +24,7 @@
 
 #include "../core/api.h"
 #include "../core/clock.h"
+#include "../core/lang.h"
 #include "../direct/innertube.h"
 #include "../direct/server.h"
 
@@ -91,17 +92,20 @@ class ApiWorkers {
       while (starting_ >= 0) usleep(1000);  // each thread takes its handle first
     }
   }
+  // language: the Rondo's, sent with every request (YouTube's words come in it); another one starts the
+  // answers kept afresh, as another server does
   void configure(const std::string& base, const std::string& token, const std::string& diskDir, const std::string& server = "",
-                 const std::string& serverToken = "") {
+                 const std::string& serverToken = "", const std::string& language = "en") {
     pthread_mutex_lock(&mu_);
-    base_ = base, token_ = token, server_ = server, serverToken_ = serverToken, generation_++;
+    base_ = base, token_ = token, server_ = server, serverToken_ = serverToken, language_ = language, generation_++;
     cache_.clear();
     disk_ = diskDir;
     if (!disk_.empty()) {
       // the answers on disk are this server's and this token's: another pairing starts it empty
       mkdir(disk_.c_str(), 0700);
       char owner[24];
-      snprintf(owner, sizeof(owner), "%016llx", (unsigned long long)fnv(base + '\n' + token));
+      // English's mark as before 4.0.4 (its answers stay); another language's its own
+      snprintf(owner, sizeof(owner), "%016llx", (unsigned long long)fnv(base + '\n' + token + (language == "en" ? "" : "\n" + language)));
       std::string mark = disk_ + "/server", had;
       if (FILE* f = fopen(mark.c_str(), "r")) {
         char b[32] = {0};
@@ -137,20 +141,20 @@ class ApiWorkers {
       s.downloadSynced = resumeFrom > 0 ? resumeFrom : 0;
     });
     pthread_mutex_lock(&mu_);
-    std::string base = base_, token = token_, server = server_, serverToken = serverToken_;
+    std::string base = base_, token = token_, server = server_, serverToken = serverToken_, language = language_;
     pthread_mutex_unlock(&mu_);
     struct Job {
       ApiWorkers* self;
-      std::string base, token, server, serverToken, path, file;
+      std::string base, token, server, serverToken, language, path, file;
       int64_t resumeFrom;
     };
-    Job* j = new Job{this, base, token, server, serverToken, std::move(path), std::move(file), resumeFrom};
+    Job* j = new Job{this, base, token, server, serverToken, language, std::move(path), std::move(file), resumeFrom};
     pthread_t t;
     pthread_create(&t, nullptr, [](void* p) -> void* {
       std::unique_ptr<Job> job(static_cast<Job*>(p));
       prctl(PR_SET_NAME, "rondo-download");
       Api& api = *job->self->download_;
-      api.configure(job->base, job->token, job->server, job->serverToken);
+      api.configure(job->base, job->token, job->server, job->serverToken, job->language);
       std::function<void(int64_t)> synced = [](int64_t bytes) { publish([&](CoreState& s) { s.downloadSynced = bytes; }); };
       int status = api.download(job->path, job->file, [](int64_t done, int64_t total) {
         publish([&](CoreState& s) { s.downloadDone = done, s.downloadTotal = total; });
@@ -213,7 +217,7 @@ class ApiWorkers {
       while (jobs_.empty()) pthread_cond_wait(&cv_, &mu_);
       Job j = jobs_.front();
       jobs_.pop_front();
-      if (generation != generation_) generation = generation_, api.configure(base_, token_, server_, serverToken_);
+      if (generation != generation_) generation = generation_, api.configure(base_, token_, server_, serverToken_, language_);
       if (j.post) {
         pthread_mutex_unlock(&mu_);
         std::string body;
@@ -397,6 +401,7 @@ class ApiWorkers {
   int sock_;
   static constexpr int kWorkers = 4;
   std::string server_, serverToken_;  // the Rondo server, whatever YouTube's source (Api::configure)
+  std::string language_ = "en";       // the Rondo's (Accept-Language)
   std::unique_ptr<Api> apis_[kWorkers], download_;
   std::atomic<int> starting_{-1};
   pthread_mutex_t mu_ = PTHREAD_MUTEX_INITIALIZER, writeMu_ = PTHREAD_MUTEX_INITIALIZER;
@@ -529,9 +534,12 @@ void runCore(int sock, CoreState* shm) {
           if (z == std::string::npos) break;
           at = z + 1;
         }
-        f.resize(5);
-        std::string token = f[1], cacheDir = f[2];
-        api.configure(f[0], token, cacheDir, f[3], f[4]);
+        f.resize(7);
+        std::string token = f[1], cacheDir = f[2], language = f[5].empty() ? "en" : f[5];
+        // lang/ (beside the binary): direct mode's own words, in each request's language (innertube.h)
+        static std::string langDir;
+        if (!f[6].empty() && f[6] != langDir) langDir = f[6], lang::init(langDir, "device", "en");
+        api.configure(f[0], token, cacheDir, f[3], f[4], language);
         // direct mode keeps its visitor id and rules beside the prefs (the cache's folder's folder)
         static std::string directData;
         std::string data = cacheDir.empty() ? "" : cacheDir.substr(0, cacheDir.rfind('/'));

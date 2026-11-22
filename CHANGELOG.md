@@ -14,6 +14,10 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
   firmware does; Settings › Language changes it at any time, at once, without a restart. A Rondo
   updated from an earlier version asks once too. The dashboard speaks the Y1's language and can
   change it from its Settings page. English stays the default.
+- **YouTube and YouTube Music in your language too:** what YouTube itself writes (home and shelf
+  names, view counts, "2 days ago", playlist names) comes in the language Rondo speaks. Directly from
+  the Y1 at once; through your Rondo server once it runs the next server release (an older one keeps
+  answering in English).
 - **Every text in one file per language** (`lang/en.json`, `lang/es.json`): fixing a translation
   or adding a language is one file, and needs no Y1. [Translating Rondo](docs/translating.md) says
   how, including how to see the dashboard in your language on your own computer.

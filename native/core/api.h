@@ -43,7 +43,10 @@ class Api {
   // baseUrl: where YouTube's routes go (the Rondo server, or direct mode's local one); server: the
   // Rondo server connected, whatever YouTube's source (WhatsApp's /wa/ routes, and /@server/<path>
   // for the server's own /<path>); "" none (they go to baseUrl)
-  void configure(const std::string& baseUrl, const std::string& token, const std::string& server = "", const std::string& serverToken = "");
+  // language: the Rondo's ("es"), sent as Accept-Language so YouTube's own words come in it (the Rondo
+  // server and direct mode's local one read it; an older server ignores it: English, as before)
+  void configure(const std::string& baseUrl, const std::string& token, const std::string& server = "", const std::string& serverToken = "",
+                 const std::string& language = "en");
   bool configured() const { return !base_.empty(); }
 
   // The Y1's own direct-mode server (direct/server.h's kBase): a path starting with it is asked there,
@@ -81,7 +84,7 @@ class Api {
 
  private:
   CURL* curl_;
-  std::string base_, auth_, server_, serverAuth_;
+  std::string base_, auth_, server_, serverAuth_, language_ = "Accept-Language: en";
   // the URL for a path, and the Authorization header to send with it
   std::string urlFor(const std::string& path, std::string& auth) const;
   int lastMs_ = 0;

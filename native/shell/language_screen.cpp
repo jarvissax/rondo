@@ -54,6 +54,8 @@ void setLanguage(const std::string& code, LanguageFrom from) {
   if (code != lang::current() && !lang::use(code)) return;
   g_prefs.language = code;
   savePrefsNow();
+  // YouTube's own words in it too: the requests from now on say it (and what was kept is fetched again)
+  if (g_onServerChanged) g_onServerChanged();
   // after the action that asked (the picker's row runs this, and goes with its screen)
   postToMain([from] {
     std::vector<std::unique_ptr<Screen>> fresh;

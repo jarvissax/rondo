@@ -150,8 +150,12 @@ Item fromLockup(J l) {
   // related videos give a bare "1.6B" for the views
   if (parts.size() == 2) {
     const std::string& v = parts[1];
-    bool bare = !v.empty() && isdigit((unsigned char)v[0]) && v.find(' ') == std::string::npos;
-    if (bare) parts[1] = v + " views";
+    // a bare count: digits and at most a short unit ("1.6B" in English, "1,6 M" or "16 mil" in Spanish)
+    bool bare = !v.empty() && isdigit((unsigned char)v[0]);
+    int letters = 0;
+    for (unsigned char ch : v)
+      if (!isdigit(ch) && ch != '.' && ch != ',' && ch != ' ' && ++letters > 3) bare = false;
+    if (bare) parts[1] = say("feed.views", {{"views", v}});
   }
   i.kind = "video", i.id = id, i.title = title, i.subtitle = joinDot(parts), i.durationSec = seconds, i.thumb = thumb;
   return i;
@@ -378,20 +382,6 @@ bool chain(const std::string& id, Chunk<Item>& c) {
   return true;
 }
 
-std::string compact(int64_t n) {
-  char b[32];
-  auto one = [&](double v, const char* unit) {
-    snprintf(b, sizeof(b), "%.1f", v);
-    std::string s = b;
-    if (s.size() > 2 && s.compare(s.size() - 2, 2, ".0") == 0) s.resize(s.size() - 2);
-    return s + unit;
-  };
-  if (n >= 1000000000) return one(n / 1e9, "B");
-  if (n >= 1000000) return one(n / 1e6, "M");
-  if (n >= 1000) return std::to_string(int64_t(n / 1000.0 + 0.5)) + "K";
-  return std::to_string(n);
-}
-
 }  // namespace
 
 std::string home() {
@@ -399,8 +389,10 @@ std::string home() {
   static const char* kTopics[] = {"FEtopics_music", "FEtopics_gaming", "FEtopics_news", "FEtopics_sports"};
   std::vector<std::vector<Item>> lists(4);
   std::vector<std::thread> ts;
+  std::string language = requestLanguage();  // each thread asks in the request's language
   for (int k = 0; k < 4; k++)
     ts.emplace_back([&, k] {
+      setRequestLanguage(language);
       Doc d;
       if (innertube(rules().tv, "browse", std::string("\"browseId\":\"") + kTopics[k] + "\"", d) != 200) return;
       std::vector<Item> all;
@@ -441,7 +433,7 @@ std::string tvLibrary() {
   Chunk<Item> c;
   if (!tvChunk("\"browseId\":\"FEplaylist_aggregation\"", "playlist", c)) return "";
   Item liked;
-  liked.kind = "playlist", liked.id = "LM", liked.title = "Liked Music", liked.subtitle = "Auto playlist";
+  liked.kind = "playlist", liked.id = "LM", liked.title = say("feed.likedMusic"), liked.subtitle = say("feed.autoPlaylist");
   std::vector<Item> out{liked};
   for (Item& i : c.items)
     if (i.id != "LM" && i.id != "LL" && i.id != "WL") out.push_back(i);
@@ -449,12 +441,12 @@ std::string tvLibrary() {
 }
 
 std::string tvPlaylist(const std::string& id) {
-  std::string fields = "\"browseId\":" + quote("VL" + id), title = id == "LM" ? "Liked Music" : "Playlist";
+  std::string fields = "\"browseId\":" + quote("VL" + id), title = say(id == "LM" ? "feed.likedMusic" : "feed.playlist");
   return page<Item>(
       "music/playlist/" + id, [fields](Chunk<Item>& c) { return tvChunk(fields, "song", c); }, 20, byId(),
       [title](const Page<Item>& p) {
         std::string s = "{\"title\":" + quote(title) + ",\"subtitle\":" +
-                        quote(p.items.empty() ? "" : std::to_string(p.items.size()) + (p.next.empty() ? "" : "+") + " songs") +
+                        quote(p.items.empty() ? "" : say(p.next.empty() ? "feed.songCount" : "feed.songCountMore", {{"count", p.items.size()}})) +
                         ",\"items\":" + json(p.items);
         if (!p.next.empty()) s += ",\"next\":" + quote(p.next);
         return s + "}";
@@ -508,7 +500,7 @@ std::string shorts() {
 std::string shortInfo(const std::string& id) {
   VideoDetails v;
   if (!details(id, v)) return "";
-  std::string views = v.views >= 0 ? compact(v.views) + " views" : "";
+  std::string views = v.views >= 0 ? say("feed.views", {{"views", compactCount(v.views)}}) : "";
   std::string s = "{\"id\":" + quote(id) + ",\"title\":" + quote(v.title) + ",\"channel\":" + quote(v.author) +
                   ",\"subtitle\":" + quote(joinDot({v.author, views}));
   if (v.seconds > 0) s += ",\"durationSec\":" + std::to_string(v.seconds);

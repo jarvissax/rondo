@@ -118,8 +118,8 @@ void CoreHost::btDisconnect(const std::string& a) { send(kBtDisconnect, a.data()
 void CoreHost::btForget(const std::string& a) { send(kBtForget, a.data(), uint32_t(a.size())); }
 
 void CoreHost::apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir, const std::string& server,
-                            const std::string& serverToken) {
-  std::string b = baseUrl + '\0' + token + '\0' + cacheDir + '\0' + server + '\0' + serverToken;
+                            const std::string& serverToken, const std::string& language, const std::string& langDir) {
+  std::string b = baseUrl + '\0' + token + '\0' + cacheDir + '\0' + server + '\0' + serverToken + '\0' + language + '\0' + langDir;
   send(kApiConfigure, b.data(), uint32_t(b.size()));
 }
 

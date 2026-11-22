@@ -2,6 +2,7 @@
 # Builds direct mode's code for the Mac (native/direct, with the Mac's own libcurl) into
 # native/build/host/dcli: one route answered and printed, or the local server with --serve <port>.
 #   tools/native/direct-host.sh && native/build/host/dcli '/music/search?q=tarkan&type=song'
+#   DCLI_LANG=es native/build/host/dcli /music/home     YouTube asked in Spanish (lang/ from the repo)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ROOT/native/build/host
@@ -13,5 +14,5 @@ SSL=$(brew --prefix openssl 2>/dev/null || true)
 SSLFLAGS=()
 [[ -n $SSL && -d $SSL/include ]] && SSLFLAGS=(-I"$SSL/include" -L"$SSL/lib")
 clang++ -std=c++17 -O1 -g -fno-exceptions -fno-rtti -Wall -Wextra -Wno-unused-parameter -I"$YY" "${SSLFLAGS[@]+"${SSLFLAGS[@]}"}" \
-  "$ROOT"/native/direct/*.cpp "$ROOT/native/core/fold.cpp" "$ROOT/native/direct/host/dcli.cpp" "$OUT/yyjson.o" -lcurl -lcrypto -o "$OUT/dcli"
+  "$ROOT"/native/direct/*.cpp "$ROOT/native/core/fold.cpp" "$ROOT/native/core/lang.cpp" "$ROOT/native/direct/host/dcli.cpp" "$OUT/yyjson.o" -lcurl -lcrypto -o "$OUT/dcli"
 echo "$OUT/dcli"

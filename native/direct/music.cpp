@@ -82,6 +82,9 @@ Node twoRow(J r) {
   else if (ep.pageType == "MUSIC_PAGE_TYPE_PLAYLIST") n.type = "playlist";
   else if (ep.pageType == "MUSIC_PAGE_TYPE_ALBUM") n.type = "album";
   else if (ep.name == "watchPlaylistEndpoint") n.type = "endpoint";
+  // a song or a video by YouTube Music's own mark (ATV: a song); without one, by the first word, which
+  // is English's "Song" only when asked in English
+  else if (!ep.musicVideoType.empty()) n.type = ep.musicVideoType == "MUSIC_VIDEO_TYPE_ATV" ? "song" : "video";
   else if (!rs.empty()) n.type = rs[0].text != "Song" ? "video" : "song";
   else n.type = ep.name.empty() ? "unknown" : "endpoint";
   if (n.type == "album" || n.type == "song") {
@@ -330,6 +333,19 @@ Header header(J h) {
     if (b == std::string::npos) break;
     a = b + 3;
   }
+  // in another language: the count before the length ("49 canciones • 3 horas y 8 minutos")
+  if (count.empty() && requestLanguage() != "en") {
+    std::vector<std::string> parts;
+    for (size_t x = 0;;) {
+      size_t y = second.find("\xe2\x80\xa2", x);
+      std::string part = trim(second.substr(x, y == std::string::npos ? std::string::npos : y - x));
+      if (!part.empty()) parts.push_back(part);
+      if (y == std::string::npos) break;
+      x = y + 3;
+    }
+    std::string c = parts.empty() ? "" : parts.size() > 1 ? parts[parts.size() - 2] : parts[0];
+    if (!c.empty() && isdigit((unsigned char)c[0])) count = c;
+  }
   out.subtitle = joinDot({out.by, bullets(text(key(r, "subtitle"))), count});
   std::string t = widest(path(r, "thumbnail", "musicThumbnailRenderer", "thumbnail"));
   if (t.empty()) t = widest(path(r, "thumbnail", "croppedSquareThumbnailRenderer", "thumbnail"));
@@ -367,7 +383,7 @@ Header derived(const std::vector<J>& rows, const std::vector<Item>& items, const
   for (auto& n : names)
     if (!n.empty() && std::find(artists.begin(), artists.end(), n) == artists.end() && artists.size() < 3) artists.push_back(n);
   h.title = albums.size() == 1 ? *albums.begin() : fallback;
-  h.subtitle = joinDot({joinNames(artists), items.empty() ? "" : std::to_string(items.size()) + " songs"});
+  h.subtitle = joinDot({joinNames(artists), items.empty() ? "" : say("feed.songCount", {{"count", items.size()}})});
   if (!items.empty()) h.thumb = items[0].thumb;
   return h;
 }
@@ -448,7 +464,7 @@ std::string mix(const std::string& id) {
   std::vector<J> nodes;
   each(key(pr, "contents"), [&](J e) { nodes.push_back(e); });
   std::string title = text(key(pr, "title"));
-  if (title.empty()) title = "Mix";
+  if (title.empty()) title = say("feed.mix");
   auto docShared = std::make_shared<Doc>(std::move(d));
   return page<Item>("music/playlist/" + id, [id, pr, docShared](Chunk<Item>& c) { mixChunk(id, pr, c); return true; }, kPageItems, byId(),
                     [nodes, title](const Page<Item>& p) {
@@ -559,7 +575,7 @@ std::string playlist(const std::string& rawId) {
   return page<Item>("music/playlist/" + id, [rows, token, keep](Chunk<Item>& c) { playlistChunk(rows, token, c); return true; }, kPageItems,
                     byId(),
                     [h, rows](const Page<Item>& p) {
-                      Header info = h.title.empty() ? derived(rows, p.items, "Playlist") : h;
+                      Header info = h.title.empty() ? derived(rows, p.items, say("feed.playlist")) : h;
                       return collectionJson(info, p);
                     },
                     laterRows);

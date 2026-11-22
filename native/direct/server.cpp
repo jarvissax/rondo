@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 
+#include "innertube.h"
 #include "routes.h"
 
 namespace rondo::direct {
@@ -81,7 +82,7 @@ void connection(int fd) {
     if (s1 == std::string::npos || s2 == s1) return;
     std::string method = line.substr(0, s1), target = line.substr(s1 + 1, s2 - s1 - 1), version = line.substr(s2 + 1);
     bool keep = version != "HTTP/1.0";
-    std::string range;
+    std::string range, language;
     int64_t bodyLen = 0;
     size_t at = eol == std::string::npos ? head.size() : eol + 2;
     while (at < head.size()) {
@@ -93,6 +94,7 @@ void connection(int fd) {
       std::string name = h.substr(0, colon), value = h.substr(colon + 1);
       while (!value.empty() && value[0] == ' ') value.erase(0, 1);
       if (!strcasecmp(name.c_str(), "range")) range = value;
+      else if (!strcasecmp(name.c_str(), "accept-language")) language = value;
       else if (!strcasecmp(name.c_str(), "connection") && !strcasecmp(value.c_str(), "close")) keep = false;
       else if (!strcasecmp(name.c_str(), "content-length")) bodyLen = atoll(value.c_str());
     }
@@ -111,6 +113,16 @@ void connection(int fd) {
     }
     Request req = parseTarget(method, target);
     req.range = range;
+    // YouTube asked in the Rondo's language, and direct mode's own words in it (innertube.h): the first
+    // one the header names, if it looks like a language code
+    {
+      std::string first = language.substr(0, language.find_first_of(",;"));
+      while (!first.empty() && first.back() == ' ') first.pop_back();
+      bool code = first.size() >= 2 && first.size() <= 12;
+      for (char ch : first)
+        if (!isalnum((unsigned char)ch) && ch != '-') code = false;
+      setRequestLanguage(code ? first : "en");
+    }
     Response res;
     timeval t0, t1;
     gettimeofday(&t0, nullptr);

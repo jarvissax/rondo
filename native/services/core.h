@@ -100,8 +100,10 @@ class CoreHost {
   using Reply = std::function<void(int status, const std::string& body)>;
   // cacheDir: where the answers kept for a while are on disk too ("": memory only)
   // server, serverToken: the Rondo server connected, whatever YouTube's source (WhatsApp's routes go there)
+  // language, langDir: the Rondo's language (sent with each request, so YouTube's words come in it) and
+  // lang/ (direct mode's own words)
   void apiConfigure(const std::string& baseUrl, const std::string& token, const std::string& cacheDir = "", const std::string& server = "",
-                    const std::string& serverToken = "");
+                    const std::string& serverToken = "", const std::string& language = "en", const std::string& langDir = "");
   uint32_t get(const std::string& path, int cacheMs, Reply done);
   // a JSON body: to a full URL without the token (pairing), or to a server path ("/wa/link") with it
   uint32_t post(const std::string& url, const std::string& json, Reply done);

@@ -16,6 +16,10 @@ int main(int argc, char** argv) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
   signal(SIGPIPE, SIG_IGN);
   rondo::direct::setDataDir(getenv("DCLI_DATA") ? getenv("DCLI_DATA") : "");
+  // direct mode's own words from the repo's lang/; DCLI_LANG=es asks YouTube in Spanish (one route; --serve
+  // takes each request's Accept-Language, as on the Y1)
+  rondo::lang::init(getenv("DCLI_LANG_DIR") ? getenv("DCLI_LANG_DIR") : "lang", "device", "en");
+  if (getenv("DCLI_LANG")) rondo::direct::setRequestLanguage(getenv("DCLI_LANG"));
   if (argc >= 3 && !strcmp(argv[1], "--serve")) {
     if (!rondo::direct::serve(atoi(argv[2]))) return 1;
     fprintf(stderr, "dcli: serving on 127.0.0.1:%s\n", argv[2]);

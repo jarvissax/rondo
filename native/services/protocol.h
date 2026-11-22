@@ -18,7 +18,7 @@ enum CoreCommand : uint32_t {
   kBtConnect,         // the address
   kBtDisconnect,      // the address
   kBtForget,          // the address
-  kApiConfigure = 20,  // the server's base URL, a zero byte, the token
+  kApiConfigure = 20,  // the server's base URL, the token, the cache's folder, the Rondo server, its token, the language, lang/ (zero bytes between)
   kApiGet,             // u32 request id, u32 cache ms, the path
   kApiPost,            // u32 request id, the full URL, a zero byte, the JSON body (no token: pairing)
   kDownload,           // the server's path, a zero byte, the file to write, a zero byte, where to go on from (-1: anew)

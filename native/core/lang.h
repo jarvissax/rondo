@@ -60,9 +60,9 @@ const std::string& folder();                  // the lang/ folder init() read
 // The plural form `n` takes in a language: "one", "few", "many", "other" (CLDR's rules, for the
 // languages that have a file and those likely to)
 const char* pluralForm(const std::string& code, long long n);
-// A text in a language other than the one spoken (the picker's title in the highlighted language);
-// English's where that one has none
-std::string trIn(const std::string& code, std::string_view key);
+// A text in a language other than the one spoken (the picker's title in the highlighted language; direct
+// mode's own words in the language its request asked for), blanks filled; English's where it has none
+std::string trIn(const std::string& code, std::string_view key, Args args = {});
 // Fills a text's blanks with args ("{name}" -> its value); a blank without an arg stays as it is.
 std::string fill(std::string_view text, Args args);
 // The whole section of a language with English's texts where it has none, as JSON

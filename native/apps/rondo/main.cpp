@@ -285,7 +285,7 @@ int main(int argc, char** argv) {
   applyBrightness(g_prefs.brightness);
   // the server's answers kept for two minutes, on disk too: beside the prefs
   const std::string apiCache = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "api-cache";
-  g_core.apiConfigure(apiBase(), apiToken(), apiCache, serverUrl(), serverToken());
+  g_core.apiConfigure(apiBase(), apiToken(), apiCache, serverUrl(), serverToken(), lang::current(), lang::folder());
   // Bluetooth's device names and last headphones next to the prefs; on if it was on (Android's setting)
   g_core.btConfigure(g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "bluetooth.json");
   if (g_prefs.bluetoothOn) g_core.btPower(true);
@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
   resumeRestore();  // the queue as Rondo left it (a restart, a crash)
   // Settings › Server connected to another server or took a token: everything that talks to it
   g_onServerChanged = [&] {
-    g_core.apiConfigure(apiBase(), apiToken(), apiCache, serverUrl(), serverToken());
+    g_core.apiConfigure(apiBase(), apiToken(), apiCache, serverUrl(), serverToken(), lang::current(), lang::folder());
     loader.configure(apiBase(), apiToken(), serverUrl(), serverToken());
     g_player.configure(apiBase(), apiToken());
     checkAccounts();  // the new source's account, for YouTube's and YouTube Music's tabs

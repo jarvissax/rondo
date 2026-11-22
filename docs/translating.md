@@ -118,7 +118,9 @@ Every text goes through the catalog; none is written in the code.
   {"total", m}})`, `tr("library.songCount", {{"count", n}})` (`native/core/lang.h`). Call it where
   the text is shown, never in a static initializer. `native/services`, `native/player` and
   `native/direct` run in processes of their own and don't translate: their texts are translated
-  where the shell shows them.
+  where the shell shows them. The few words direct mode and the Rondo server put into YouTube's
+  answers themselves (`feed.*`: "49 songs", "Liked Music") are in the `device` section too, said in
+  the language each request names (`say()` in `native/direct/innertube.h` and `server/src/lang.ts`).
 - **The dashboard and the admin page** (JavaScript): `t('key', {count: n})` for text,
   `te('key')` inside HTML templates (escaped), `th('key')` for a text with its own markup, and
   `data-i18n="key"`, `data-i18n-html="key"`, `data-i18n-attr="aria-label:key"` in the HTML (keep the

@@ -281,17 +281,19 @@ const char* pluralForm(const std::string& code, long long n) {
   return a == 1 ? "one" : "other";
 }
 
-std::string trIn(const std::string& code, std::string_view key) {
+std::string trIn(const std::string& code, std::string_view key, Args args) {
   const Catalog* c = nullptr;
   {
     std::lock_guard<std::mutex> l(g_lock);
+    // a region without a file of its own speaks its language's (es-MX: es)
     c = loaded(code);
+    if (!c && code.find_first_of("-_") != std::string::npos) c = loaded(code.substr(0, code.find_first_of("-_")));
   }
   const Catalog* en = g_english.load(std::memory_order_acquire);
   for (const Catalog* k : {c, en}) {
     if (!k) continue;
     auto it = k->entries.find(key);
-    if (it != k->entries.end()) return std::string(pick(it->second, k->code, {}));
+    if (it != k->entries.end()) return fill(pick(it->second, k->code, args), args);
   }
   return std::string(key);
 }

@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <yyjson.h>
 
+#include "../core/lang.h"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -29,6 +31,16 @@ struct Rules {
   Client player;        // VISIONOS: stream links without JavaScript or a PO token (Nov 9, 2026)
   Client androidMusic;  // ANDROID_MUSIC: timed lyrics
 };
+
+// The language YouTube is asked in (the context's hl) and direct mode's own words are in: the one the
+// request being answered names (Accept-Language, the Rondo's), "en" when none. Per thread: the local
+// server sets it for each request, and a route's helper threads take it along.
+void setRequestLanguage(const std::string& code);
+std::string requestLanguage();
+// A text direct mode puts in itself (a count, Liked Music), in the request's language (lang/, "feed.*")
+std::string say(const char* key, lang::Args args = {});
+// A view count as YouTube writes it in the request's language: "2.3B", "2304,8 M"
+std::string compactCount(int64_t n);
 
 // Where direct mode keeps its state (the visitor id, the rules); "" keeps nothing.
 void setDataDir(const std::string& dir);
