@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Innertube } from "youtubei.js";
+import { langFetch } from "./lang.js";
 import type { Chunk } from "./paging.js";
 
 export interface TvItem {
@@ -211,7 +212,7 @@ export class TvAccount {
   constructor(
     private readonly file: string,
     private readonly log: Log,
-    private readonly create: () => Promise<Innertube> = () => Innertube.create({ retrieve_player: false, generate_session_locally: true, lang: "en" }),
+    private readonly create: () => Promise<Innertube> = () => Innertube.create({ retrieve_player: false, generate_session_locally: true, lang: "en", fetch: langFetch }),
   ) {}
 
   get signedIn(): boolean {

@@ -2,7 +2,8 @@
 //   - every language has every English key, and none English doesn't have;
 //   - each text has the same blanks ({count}, {name}) and the same markup (<b>, </b>) as English;
 //   - plural texts have their "other" form (and English its "one");
-//   - every key the code asks for is in English: tr("…") on the Y1 (native/), t('…') / te('…') /
+//   - every key the code asks for is in English: tr("…") on the Y1 (native/) and say("…") in what the
+//     server tells a Rondo (server/src/: its "device" section), t('…') / te('…') /
 //     th('…') and data-i18n* in the dashboard (native/assets/dashboard/) and the admin page (server/admin/);
 //   - the English written in those pages' HTML is the English in lang/en.json.
 // Node 22, no dependencies. Exits 1 on any error.
@@ -81,6 +82,13 @@ function usedKeys(root) {
       if ((line.slice(0, i).match(/(?<!\\)"/g) || []).length % 2 === 0) return line.slice(0, i);
     return line;
   }).join('\n');
+  // the server's own words to a Rondo (server/src/lang.ts say()): the device's section too
+  const serverFiles = [];
+  walk(path.join(root, 'server/src'), ['.ts'], serverFiles);
+  for (const f of serverFiles) {
+    const text = uncomment(fs.readFileSync(f, 'utf8'));
+    for (const m of text.matchAll(/\bsay\(\s*"([^"]+)"(?!\s*\+)/g)) note('device', m[1], `${path.relative(root, f)}:${lineOf(text, m.index)}`);
+  }
   for (const f of files) {
     const text = uncomment(fs.readFileSync(f, 'utf8'));
     for (const m of text.matchAll(/\btr\(\s*"((?:[^"\\]|\\.)+)"(?!\s*\+)/g)) note('device', m[1], `${path.relative(root, f)}:${lineOf(text, m.index)}`);

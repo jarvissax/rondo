@@ -11,6 +11,7 @@ import type { Config } from "./config.js";
 import type { LyricLine } from "./lyrics.js";
 import { type Chunk, type Page, Pager } from "./paging.js";
 import { DEFAULT_THUMB_PX, isThumbHost, sizedThumbUrl, thumbPx } from "./thumb.js";
+import { currentLang, langFetch, say } from "./lang.js";
 import { TtlCache } from "./ttl.js";
 import { type TvAccount, type TvItem, tvChunk, tvItems, tvShorts } from "./tv.js";
 import { dispatcher } from "./upstream.js";
@@ -141,8 +142,15 @@ function uniqueById(items: Array<Item | undefined>): Item[] {
   return items.filter((i): i is Item => !!i && !seen.has(i.id) && !!seen.add(i.id));
 }
 
+// what a watch link plays, by YouTube Music's own mark (any language): ATV a song, the rest videos
+const musicVideoType = (n: Node): string | undefined =>
+  n.endpoint?.payload?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType;
+
 export function musicItem(n: Node): Item | undefined {
-  const kind = n.item_type === "non_music_track" ? "song" : n.item_type;
+  let kind = n.item_type === "non_music_track" ? "song" : n.item_type;
+  // a card youtubei.js tells by its first word ("Song"), which is another word in another language
+  if (n.type === "MusicTwoRowItem" && (kind === "song" || kind === "video") && musicVideoType(n))
+    kind = musicVideoType(n) === "MUSIC_VIDEO_TYPE_ATV" ? "song" : "video";
   const rawId = n.id ?? n.endpoint?.payload?.videoId ?? n.endpoint?.payload?.browseId;
   if (!MUSIC_TYPES.has(kind) || typeof rawId !== "string" || !rawId) return undefined;
   const id = kind === "playlist" ? playlistId(rawId) : rawId;
@@ -210,7 +218,7 @@ export function lockupItem(n: Node): Item | undefined {
     id: n.content_id,
     title: text(n.metadata?.title),
     // channel, views; related videos give a bare "1.6B"
-    subtitle: join(parts.slice(0, 2).map((p, i) => (i === 1 && /^\d[\d.,]*[KMB]?$/.test(p) ? `${p} views` : p))),
+    subtitle: join(parts.slice(0, 2).map((p, i) => (i === 1 && /^\d[\d.,]*\s?[KMB]?$/.test(p) ? say("feed.views", { views: p }) : p))),
     durationSec,
     thumb: thumbLink(pickThumb(image)),
   };
@@ -242,10 +250,14 @@ function headerBy(h: Node | undefined): string {
 export function headerInfo(h: Node | undefined): { title: string; subtitle: string; thumb?: string } {
   const hh: Node | undefined = h?.type === "MusicEditablePlaylistDetailHeader" ? h.header : h;
   const by = headerBy(h);
-  const count = text(hh?.second_subtitle)
+  const parts = text(hh?.second_subtitle)
     .split("•")
     .map((s) => s.trim())
-    .find((s) => /\b(songs?|tracks?|episodes?|videos?)\b/.test(s));
+    .filter(Boolean);
+  // English's words; in another language the count, a number before the length ("49 canciones • 3 horas")
+  const count =
+    parts.find((s) => /\b(songs?|tracks?|episodes?|videos?)\b/.test(s)) ??
+    (currentLang() === "en" ? undefined : [parts.length > 1 ? parts[parts.length - 2] : parts[0]].find((s) => s && /^\d/.test(s)));
   return {
     title: text(hh?.title),
     subtitle: join([by, bullets(text(hh?.subtitle)), count]),
@@ -323,7 +335,7 @@ function derivedHeader(nodes: Node[], items: Item[], fallbackTitle: string): { t
   const artists = [...new Set(names.filter(Boolean))].slice(0, 3);
   return {
     title: albums.size === 1 ? String([...albums][0]) : fallbackTitle,
-    subtitle: join([artists.join(", "), items.length ? `${items.length} songs` : undefined]),
+    subtitle: join([artists.join(", "), items.length ? say("feed.songCount", { count: items.length }) : undefined]),
     thumb: first ? nodeThumb(first.primary ?? first) : undefined,
   };
 }
@@ -406,8 +418,9 @@ export function chainFrom(yt: { getShortsVideoInfo(id: string): Promise<unknown>
   };
 }
 
+// English as YouTube writes it (2.3B); another language as it writes numbers (2300 M)
 const compact = (n: number): string =>
-  n >= 1e9 ? `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
+  currentLang() !== "en" ? new Intl.NumberFormat(currentLang(), { notation: "compact", maximumFractionDigits: 1 }).format(n) : n >= 1e9 ? `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
 
 export const homeChunk = (page: any): Chunk<Section> => ({
   items: (page.sections ?? []).map((s: Node) => shelfSection(s)),
@@ -583,7 +596,7 @@ export class Browse {
 
   private async popularChunk(): Promise<Chunk<Item>> {
     if (!this.anonTv) {
-      const created = Innertube.create({ retrieve_player: false, generate_session_locally: true, lang: "en" });
+      const created = Innertube.create({ retrieve_player: false, generate_session_locally: true, lang: "en", fetch: langFetch });
       this.anonTv = created;
       created.catch(() => {
         if (this.anonTv === created) this.anonTv = undefined;
@@ -607,15 +620,15 @@ export class Browse {
     const own = tvItems(data)
       .filter((t) => t.kind === "playlist" && !["LM", "LL", "WL"].includes(t.id))
       .map((t) => tvItem(t));
-    return { playlists: uniqueById([{ kind: "playlist", id: "LM", title: "Liked Music", subtitle: "Auto playlist" }, ...own]) };
+    return { playlists: uniqueById([{ kind: "playlist", id: "LM", title: say("feed.likedMusic"), subtitle: say("feed.autoPlaylist") }, ...own]) };
   }
 
   // a playlist through the TV app (Liked Music, or a private one without cookies); every row a song
   private async tvPlaylist(id: string, title?: string): Promise<Collection & { next?: string }> {
     const first = await this.tvBrowse({ browseId: `VL${id}` });
     const page = await this.pager.page(`music/playlist/${id}`, async () => asItems(tvChunk(this.tvBrowse, first), "song"), byId);
-    const named = title ?? tvTitle(first) ?? "Playlist";
-    return { title: named, subtitle: page.items.length ? `${page.items.length}${page.next ? "+" : ""} songs` : "", items: page.items, ...withNext(page) };
+    const named = title ?? tvTitle(first) ?? say("feed.playlist");
+    return { title: named, subtitle: page.items.length ? say(page.next ? "feed.songCountMore" : "feed.songCount", { count: page.items.length }) : "", items: page.items, ...withNext(page) };
   }
 
   // YouTube answers a signed-out session with sign-in promos instead of an error
@@ -668,6 +681,7 @@ export class Browse {
       retrieve_player: false,
       generate_session_locally: true,
       lang: "en",
+      fetch: langFetch, // each request in its Rondo's language (lang.ts)
     });
   }
 
@@ -676,14 +690,14 @@ export class Browse {
   // served from here always carries a token with at least 28 min left.
   async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
     await this.yt();
-    return (await this.cache.get(key, load)) as T;
+    return (await this.cache.get(`${key}|${currentLang()}`, load)) as T;
   }
 
   // As cached(), but a page past its 2 minutes is still served (for up to 15 more) while a fresh one
   // loads in the background, so a home screen opens at once. Its `next` token still has 13 min left.
   async cachedStale<T>(key: string, load: () => Promise<T>): Promise<T> {
     await this.yt();
-    return (await this.cache.getStale(key, load, STALE_MS)) as T;
+    return (await this.cache.getStale(`${key}|${currentLang()}`, load, STALE_MS)) as T;
   }
 
   // the loader of a later page; undefined when the token is unknown, expired or from another list
@@ -735,7 +749,7 @@ export class Browse {
       .filter((i): i is Item => i?.kind === "playlist" && i.id !== "LM" && i.id !== "SE");
     return {
       playlists: uniqueById([
-        { kind: "playlist", id: "LM", title: "Liked Music", subtitle: "Auto playlist", ...(liked?.thumb ? { thumb: liked.thumb } : {}) },
+        { kind: "playlist", id: "LM", title: say("feed.likedMusic"), subtitle: say("feed.autoPlaylist"), ...(liked?.thumb ? { thumb: liked.thumb } : {}) },
         ...own,
       ]),
     };
@@ -745,7 +759,7 @@ export class Browse {
   async musicPlaylist(id: string): Promise<Collection & { next?: string }> {
     if (isMix(id)) return this.musicMix(id);
     const viaTv = !!this.tv?.signedIn && !(await this.hasCookies());
-    if (viaTv && id === "LM") return this.tvPlaylist(id, "Liked Music");
+    if (viaTv && id === "LM") return this.tvPlaylist(id, say("feed.likedMusic"));
     const first: any = await (await this.yt()).music.getPlaylist(id).catch((err) => {
       if (viaTv) return null; // private: only the signed-in TV app can list it
       throw err;
@@ -753,7 +767,7 @@ export class Browse {
     if (!first) return this.tvPlaylist(id);
     const page = await this.pager.page(`music/playlist/${id}`, async () => playlistChunk(first), byId);
     const head = headerInfo(first.header);
-    const info = head.title ? head : derivedHeader(playlistRows(first), page.items, "Playlist");
+    const info = head.title ? head : derivedHeader(playlistRows(first), page.items, say("feed.playlist"));
     return { title: info.title, subtitle: info.subtitle, ...(info.thumb ? { thumb: info.thumb } : {}), items: page.items, ...withNext(page) };
   }
 
@@ -764,8 +778,8 @@ export class Browse {
     const panel: Node | undefined = res.contents_memo?.get("PlaylistPanel")?.[0];
     const nodes: Node[] = panel?.contents ?? [];
     const page = await this.pager.page(`music/playlist/${id}`, async () => mixChunk(yt.actions, id, panel), byId);
-    const info = derivedHeader(nodes, page.items, text(panel?.title) || "Mix");
-    return { title: text(panel?.title) || "Mix", subtitle: info.subtitle, ...(info.thumb ? { thumb: info.thumb } : {}), items: page.items, ...withNext(page) };
+    const info = derivedHeader(nodes, page.items, text(panel?.title) || say("feed.mix"));
+    return { title: text(panel?.title) || say("feed.mix"), subtitle: info.subtitle, ...(info.thumb ? { thumb: info.thumb } : {}), items: page.items, ...withNext(page) };
   }
 
   async musicAlbum(id: string): Promise<Collection> {
@@ -894,7 +908,7 @@ export class Browse {
     const yt = await this.yt();
     const b = (await yt.getShortsVideoInfo(id)).basic_info;
     const channel = b.author ?? b.channel?.name ?? "";
-    const views = typeof b.view_count === "number" ? `${compact(b.view_count)} views` : "";
+    const views = typeof b.view_count === "number" ? say("feed.views", { views: compact(b.view_count) }) : "";
     return { id, title: b.title ?? "", channel, subtitle: join([channel, views]), durationSec: seconds(b.duration) };
   }
 

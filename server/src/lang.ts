@@ -1,6 +1,8 @@
-// The admin page's languages: lang/*.json at the repo's root (beside dist/ in the image), one file per
-// language with a section per surface; this page reads "admin" (docs/translating.md). English fills in
-// what a language lacks, so a page always has every text.
+// Rondo's languages on the server: lang/*.json at the repo's root (beside dist/ in the image), one file
+// per language with a section per surface (docs/translating.md). The admin page reads "admin"; what the
+// server says to a Rondo in words of its own (say()) comes from "device". English fills in what a
+// language lacks.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,3 +79,59 @@ export function pageStrings(section: string, wanted: string, dir = LANG_DIR) {
   for (const [k, v] of Object.entries(enTexts)) strings[k] = texts[k] ?? v;
   return { code, name: other?._name ?? "English", languages: languages(dir), strings };
 }
+
+// --- YouTube's own words in the Rondo's language ---------------------------------------------
+// A Rondo says its language in Accept-Language ("es"); older ones say nothing (English). Its
+// requests run with it here, so YouTube is asked in it (langFetch) and the few words the server
+// puts in itself (say()) come from lang/<code>.json's "device" section, English where it has none.
+
+const requestLang = new AsyncLocalStorage<string>();
+
+// "es", "pt-BR": the first language a header names, if it looks like a language code
+export function langFromHeader(header: string | undefined): string {
+  const first = (header ?? "").split(",")[0]!.split(";")[0]!.trim();
+  return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(first) ? first : "en";
+}
+
+export function withLang<T>(lang: string, run: () => T): T {
+  return requestLang.run(lang, run);
+}
+
+export function currentLang(): string {
+  return requestLang.getStore() ?? "en";
+}
+
+// a text the server makes up for a Rondo (a count, a playlist's name), blanks filled
+export function say(key: string, params: Record<string, string | number> = {}, dir = LANG_DIR): string {
+  const lang = currentLang();
+  const pick = (file: File | null): Text | undefined => (file?.device as Record<string, Text> | undefined)?.[key];
+  const base = lang.split("-")[0]!;
+  const t = pick(read(lang, dir)) ?? (base !== lang ? pick(read(base, dir)) : undefined) ?? pick(read("en", dir));
+  if (t === undefined) return key;
+  let s: string;
+  if (typeof t === "string") s = t;
+  else {
+    const n = params.count;
+    const form = typeof n === "number" ? new Intl.PluralRules(lang).select(n) : "other";
+    s = t[form] ?? t.other ?? "";
+  }
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m));
+}
+
+// youtubei.js's fetch: YouTube asked in the language of the request it serves (its sessions are
+// created in English and shared by every Rondo; the context's hl is per request)
+export const langFetch: typeof fetch = async (input, init) => {
+  const lang = currentLang();
+  if (lang !== "en" && init && typeof init.body === "string" && init.body.startsWith("{")) {
+    try {
+      const body = JSON.parse(init.body) as { context?: { client?: { hl?: string } } };
+      if (body.context?.client) {
+        body.context.client.hl = lang;
+        init = { ...init, body: JSON.stringify(body) };
+      }
+    } catch {
+      /* not JSON: as it is */
+    }
+  }
+  return fetch(input, init);
+};

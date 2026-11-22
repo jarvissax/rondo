@@ -10,6 +10,7 @@ import type { Config } from "./config.js";
 import { registerCors } from "./cors.js";
 import { EqService, registerEqRoutes } from "./eq.js";
 import { Health } from "./health.js";
+import { langFromHeader, withLang } from "./lang.js";
 import { type LyricsDeps, LyricsService, lrclibGet, registerLyricsRoutes } from "./lyrics.js";
 import { execRunner, Resolver, type YtdlpRunner } from "./resolver.js";
 import type { ServerUpdate } from "./serverUpdate.js";
@@ -88,6 +89,9 @@ export async function buildApp(
     serverUpdate: opts.serverUpdate,
     whatsapp,
   });
+  // each request in the language its Rondo speaks (Accept-Language; English when it says none):
+  // YouTube is asked in it and the server's own words follow it (lang.ts)
+  app.addHook("onRequest", (req, _reply, done) => withLang(langFromHeader(req.headers["accept-language"]), done));
   // account: which account feeds exist (the Rondo hides the others and runs signed out)
   app.get("/healthz", async () => ({ ...health.state(), version: VERSION, account: admin.accountFeatures() }));
   registerAdminRoutes(app, admin);

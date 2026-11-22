@@ -14,6 +14,11 @@ the same paths either way.
 
 ## How it fits together
 
+- **The Rondo's language:** each request from a Rondo says it in `Accept-Language` (`es`; a Rondo
+  before 4.0.4 says none: English). YouTube is asked in it (youtubei.js's context `hl`, per request),
+  so its titles, shelf names, view counts and dates come in it, and the few words the server puts in
+  itself (`"49 songs"`, `"Liked Music"`, `"2.3B views"`) come from `lang/<code>.json`'s `device`
+  section (`feed.*`; server/src/lang.ts `say()`). The answers kept for a while are kept per language.
 - **First run:** no admin password yet. The server prints a one-time **setup code** in its log
   (`docker logs rondo`): `Rondo setup: open <base>/admin and enter 482-913`. The page asks for that
   code and a new admin password (at least 10 characters). The code changes on every restart until
