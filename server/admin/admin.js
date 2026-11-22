@@ -11,6 +11,69 @@ const markTile = '<svg class="i" aria-hidden="true"><use href="#mark"/></svg>';
 const MIN_PASSWORD = 10;
 const CODE_MS = 10 * 60 * 1000; // connect codes last 10 minutes
 
+// ---------- language (lang/*.json, one file per language: docs/translating.md) ----------
+// t(key, {name: …, count: n}) is a text in the page's language with its blanks filled ("count"
+// also picks the plural form); te() is the same escaped for HTML, th() keeps the text's own <b>, <i>,
+// <code> and <br> (its blanks escaped). Elements with data-i18n (text), data-i18n-html and
+// data-i18n-attr="aria-label:key;title:key" get theirs from applyLang().
+const L = { code: 'en', name: 'English', languages: [], strings: {} };
+const plurals = () => (L._pr && L._pr.code === L.code ? L._pr.rules : (L._pr = { code: L.code, rules: new Intl.PluralRules(L.code) }).rules);
+const numbers = () => (L._nf && L._nf.code === L.code ? L._nf.format : (L._nf = { code: L.code, format: new Intl.NumberFormat(L.code) }).format);
+function t(key, params) {
+  let v = L.strings[key];
+  if (v == null) return key;
+  if (typeof v === 'object') {
+    const n = params?.count;
+    const form = typeof n === 'number' ? (n === 0 && v.zero != null ? 'zero' : plurals().select(n)) : 'other';
+    v = v[form] ?? v.other;
+  }
+  return params ? v.replace(/\{(\w+)\}/g, (m, k) => (k in params ? (typeof params[k] === 'number' ? numbers().format(params[k]) : String(params[k])) : m)) : v;
+}
+const te = (key, params) => esc(t(key, params));
+// HTML from a text: escaped, then its simple markup back; a blank given as html(…) goes in as it is
+const html = (s) => ({ html: String(s) });
+function th(key, params) {
+  const marks = [];
+  const safe = params && Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v && typeof v === 'object' && 'html' in v ? (marks.push(v.html), `\u0001${marks.length - 1}\u0001`) : v]));
+  return esc(t(key, safe)).replace(/&lt;(\/?)(b|i|em|strong|code|br)&gt;/g, '<$1$2>').replace(/\u0001(\d+)\u0001/g, (m, i) => marks[+i]);
+}
+function applyLang(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = th(el.dataset.i18nHtml);
+  for (const el of root.querySelectorAll('[data-i18n-attr]'))
+    for (const pair of el.dataset.i18nAttr.split(';')) {
+      const [a, k] = pair.split(':').map((s) => s.trim());
+      if (a && k) el.setAttribute(a, t(k));
+    }
+}
+
+// the page's language: the one picked here before (this browser), else the browser's own when Rondo
+// has it, else English; the server answers with the nearest it has
+const LANG_KEY = 'rondo_admin_lang';
+function wantedLang() {
+  try { const v = localStorage.getItem(LANG_KEY); if (v) return v; } catch { /* private mode */ }
+  return (navigator.languages || [navigator.language || 'en']).join(',');
+}
+function setLang(code) {
+  try { localStorage.setItem(LANG_KEY, code); } catch { /* private mode */ }
+  location.reload();
+}
+async function loadLang() {
+  for (;;) {
+    try {
+      const res = await fetch(`/admin/lang/${encodeURIComponent(wantedLang())}.json`, { cache: 'no-cache' });
+      if (res.ok) {
+        Object.assign(L, await res.json());
+        document.documentElement.lang = L.code;
+        applyLang();
+        return;
+      }
+    } catch { /* not reachable now */ }
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+}
+await loadLang();
+
 const S = {
   state: null,       // GET /state
   status: null,      // GET /status
@@ -30,35 +93,35 @@ const S = {
 const now = () => Date.now() + S.skew;
 
 // ---------- formatting ----------
-const dfDay = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-const dfDayYear = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-const dfTime = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
-const dfWeekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-const dfFull = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'medium' });
-const day = (t) => (new Date(t).getFullYear() === new Date().getFullYear() ? dfDay : dfDayYear).format(t);
-const when = (t) => `${day(t)} at ${dfTime.format(t)}`;
-function ago(t) {
-  const s = Math.round((now() - t) / 1000);
-  if (s < 45) return 'just now';
+const dfDay = new Intl.DateTimeFormat(L.code, { month: 'short', day: 'numeric' });
+const dfDayYear = new Intl.DateTimeFormat(L.code, { month: 'short', day: 'numeric', year: 'numeric' });
+const dfTime = new Intl.DateTimeFormat(L.code, { hour: 'numeric', minute: '2-digit' });
+const dfWeekday = new Intl.DateTimeFormat(L.code, { weekday: 'long', month: 'short', day: 'numeric' });
+const dfFull = new Intl.DateTimeFormat(L.code, { dateStyle: 'medium', timeStyle: 'medium' });
+const day = (ms) => (new Date(ms).getFullYear() === new Date().getFullYear() ? dfDay : dfDayYear).format(ms);
+const when = (ms) => t('time.dateAt', { date: day(ms), time: dfTime.format(ms) });
+function ago(ms) {
+  const s = Math.round((now() - ms) / 1000);
+  if (s < 45) return t('time.justNow');
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
+  if (m < 60) return t('time.minutesAgo', { count: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
+  if (h < 24) return t('time.hoursAgo', { count: h });
   const d = Math.round(h / 24);
-  if (d === 1) return 'yesterday';
-  if (d < 7) return `${d} days ago`;
-  return day(t);
+  if (d === 1) return t('time.yesterday');
+  if (d < 7) return t('time.daysAgo', { count: d });
+  return day(ms);
 }
 function uptime(sec) {
   const m = Math.floor(sec / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
-  if (d) return `${d} ${d === 1 ? 'day' : 'days'}${h % 24 ? ` ${h % 24} h` : ''}`;
-  if (h) return `${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
-  if (m) return `${m} min`;
-  return 'less than a minute';
+  if (d) return h % 24 ? t('time.upDaysHours', { count: d, hours: h % 24 }) : t('time.upDays', { count: d });
+  if (h) return m % 60 ? t('time.upHoursMinutes', { count: h, minutes: m % 60 }) : t('time.upHours', { count: h });
+  if (m) return t('time.upMinutes', { count: m });
+  return t('time.upLessThanMinute');
 }
 const clock = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-const timeAttr = (t) => `datetime="${new Date(t).toISOString()}" title="${esc(dfFull.format(t))}"`;
-const signedInAs = (a) => (a?.name ? `Signed in as ${a.name}${a.handle ? ` (${a.handle})` : ''}` : 'Signed in');
+const timeAttr = (ms) => `datetime="${new Date(ms).toISOString()}" title="${esc(dfFull.format(ms))}"`;
+const signedInAs = (a) => (a?.name ? (a.handle ? t('account.signedInAsHandle', { name: a.name, handle: a.handle }) : t('account.signedInAs', { name: a.name })) : t('shared.signedIn'));
 const ORIGIN = location.origin;
 const LOCAL = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
 // the server guide's update steps (a server updates with git pull and docker compose, not from here)
@@ -96,9 +159,11 @@ async function api(method, path, body, { timeout = 20000, text = false, auth = t
   if (!res.ok) throw new ApiError(res.status, data?.error, data);
   return data;
 }
-const reason = (e) => (e?.code === 'timeout' ? 'The server took too long to answer.'
-  : e?.status === 0 ? 'Can’t reach the server.'
-  : e?.code ? `The server said “${e.code}”.` : `Something went wrong (${e?.status ?? 'error'}).`);
+// the server answers with codes ("not_found", "google"…), the same for every browser: shown as they are
+const reason = (e) => (e?.code === 'timeout' ? t('error.timeout')
+  : e?.status === 0 ? t('error.unreachable')
+  : e?.code ? t('error.serverSaid', { code: String(e.code) })
+  : e?.status != null ? t('error.somethingWrong', { status: String(e.status) }) : t('error.somethingWrongPlain'));
 
 // ---------- screens ----------
 const screens = { splash: $('#splash'), offline: $('#offline'), setup: $('#setup'), signin: $('#signin'), app: $('#app') };
@@ -108,17 +173,33 @@ function showScreen(name) {
 }
 function markInsecure(https) { $$('[data-insecure]').forEach((el) => { el.hidden = !!https; }); }
 
+// the page's language: under the sign-in, setup and offline screens, and in Admin account › This
+// browser; each language in its own name, this browser keeps the choice (setLang reloads the page)
+function renderLangPickers() {
+  const many = L.languages.length > 1;
+  for (const box of $$('[data-lang-pick]')) {
+    const gate = !!box.closest('.gate');
+    box.innerHTML = many ? `<div class="select">${gate ? icon('globe', 'i lang-globe') : ''}<select aria-label="${te('language.label')}">${L.languages.map((l) => `<option value="${esc(l.code)}" lang="${esc(l.code)}"${l.code === L.code ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select>${icon('down')}</div>` : '';
+    if (gate) box.hidden = !many;
+  }
+  $('#langRow').hidden = !many;
+}
+document.addEventListener('change', (e) => {
+  if (e.target.matches('[data-lang-pick] select') && e.target.value !== L.code) setLang(e.target.value);
+});
+renderLangPickers();
+
 let offlineTimer = 0;
 function showOffline(e) {
   showScreen('offline');
   $('#offlineText').textContent = e?.status
-    ? `The server answered with an error (${e.code || e.status}). Check its log with docker logs y1.`
-    : 'Check that the Rondo server is running and that this address is right.';
-  $('#offlineNote').textContent = 'Trying again every few seconds.';
+    ? t('offline.serverError', { code: String(e.code || e.status) })
+    : t('offline.checkAddress');
+  $('#offlineNote').textContent = t('offline.retrying');
   clearTimeout(offlineTimer);
   offlineTimer = setTimeout(() => { if (!document.hidden) boot(); }, 5000);
 }
-$('#offlineRetry').addEventListener('click', () => { $('#offlineNote').textContent = 'Trying…'; boot(); });
+$('#offlineRetry').addEventListener('click', () => { $('#offlineNote').textContent = t('offline.trying'); boot(); });
 
 function connectionLost() {
   if (!S.booted || screens.app.hidden) return;
@@ -156,21 +237,21 @@ function enterApp() {
 // ---------- passwords ----------
 function strength(pw) {
   const n = [...pw].length;
-  if (!n) return { level: 0, text: `At least ${MIN_PASSWORD} characters` };
-  if (n < MIN_PASSWORD) { const left = MIN_PASSWORD - n; return { level: 1, text: `Too short: ${left} more ${left === 1 ? 'character' : 'characters'}` }; }
+  if (!n) return { level: 0, text: t('password.atLeast', { count: MIN_PASSWORD }) };
+  if (n < MIN_PASSWORD) return { level: 1, text: t('password.tooShort', { count: MIN_PASSWORD - n }) };
   const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
   const unique = new Set(pw.toLowerCase()).size;
   const guessable = unique <= 4 || /^\d+$/.test(pw) || /^(?:password|qwerty|letmein|admin|welcome|rondo|123456|abcdef)/i.test(pw)
     || /(?:0123|1234|2345|3456|4567|5678|6789|abcd|bcde|cdef)/i.test(pw) && unique < 8;
-  if (guessable) return { level: 2, text: 'Easy to guess: try a few random words' };
+  if (guessable) return { level: 2, text: t('password.guessable') };
   let score = Math.max(0, classes - 1);
   if (n >= 14) score++;
   if (n >= 18) score++;
   if (n >= 24) score++;
   if (unique < n / 3) score = Math.min(score, 1);
-  if (score <= 1) return { level: 2, text: 'Okay: a longer phrase is safer' };
-  if (score <= 3) return { level: 3, text: 'Good' };
-  return { level: 4, text: 'Strong' };
+  if (score <= 1) return { level: 2, text: t('password.okay') };
+  if (score <= 3) return { level: 3, text: t('password.good') };
+  return { level: 4, text: t('password.strong') };
 }
 function bindStrength(input, out) {
   const update = () => {
@@ -188,7 +269,7 @@ document.addEventListener('click', (e) => {
   const show = input.type === 'password';
   input.type = show ? 'text' : 'password';
   eye.setAttribute('aria-pressed', String(show));
-  eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  eye.setAttribute('aria-label', show ? t('password.hide') : t('password.show'));
   $('use', eye).setAttribute('href', show ? '#i-eye-off' : '#i-eye');
   input.focus();
 });
@@ -197,6 +278,8 @@ const clearInvalid = (e) => { if (e.target.matches('input')) e.target.classList.
 // ---------- setup ----------
 const setupForm = $('#setupForm'), setupCode = $('#setupCode'), setupBox = $('#setupCodeBox');
 const setupPw = $('#setupPw'), setupPw2 = $('#setupPw2'), setupErr = $('#setupErr'), setupBtn = $('#setupBtn');
+// its example code keeps its tabular digits (a blank: texts carry only plain <b>, <code>…)
+$('#setupCodeHelp').innerHTML = th('setup.codeHelp', { example: html('<b class="num">482-913</b>') });
 bindStrength(setupPw, $('#setupStrength'));
 setupForm.addEventListener('input', clearInvalid);
 function showSetup() {
@@ -232,28 +315,28 @@ setupForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (setupBtn.disabled) return;
   const code = setupCode.value, pw = setupPw.value;
-  if (code.length !== 6) return setupFail('Enter all 6 digits of the setup code.', 'code');
-  if ([...pw].length < MIN_PASSWORD) return setupFail(`The password needs at least ${MIN_PASSWORD} characters.`, setupPw);
-  if (pw !== setupPw2.value) return setupFail('The passwords don’t match.', setupPw2);
+  if (code.length !== 6) return setupFail(t('setup.allDigits'), 'code');
+  if ([...pw].length < MIN_PASSWORD) return setupFail(t('password.needsAtLeast', { count: MIN_PASSWORD }), setupPw);
+  if (pw !== setupPw2.value) return setupFail(t('setup.noMatch'), setupPw2);
   setupErr.textContent = '';
   setupBtn.disabled = true;
-  setupBtn.textContent = 'Setting up…';
+  setupBtn.textContent = t('setup.settingUp');
   $('#setupMark').classList.add('is-turning');
   try {
     await api('POST', '/setup', { code, password: pw }, { auth: false });
     setupForm.reset();
     setupCode.dataset.len = 0;
     await boot();
-    toast('Your server is set up');
+    toast(t('setup.done'));
   } catch (err) {
-    if (err.status === 403) { setupCode.value = ''; setupCode.dataset.len = 0; renderSetupCode(); setupFail('That code didn’t match. Use the code from the newest “Rondo setup” line: it changes when the server restarts.', 'code'); }
-    else if (err.status === 400) setupFail(`The password needs at least ${MIN_PASSWORD} characters.`, setupPw);
-    else if (err.status === 409) { setupFail('This server is already set up. Sign in with its admin password.'); setTimeout(boot, 1600); }
-    else if (err.status === 429) setupFail(`Too many tries. Wait ${err.data?.retryAfterSec ?? 60} seconds and try again.`);
-    else setupFail(err.status === 0 ? 'Can’t reach the server. Try again.' : `Setup didn’t work. ${reason(err)}`);
+    if (err.status === 403) { setupCode.value = ''; setupCode.dataset.len = 0; renderSetupCode(); setupFail(t('setup.wrongCode'), 'code'); }
+    else if (err.status === 400) setupFail(t('password.needsAtLeast', { count: MIN_PASSWORD }), setupPw);
+    else if (err.status === 409) { setupFail(t('setup.already')); setTimeout(boot, 1600); }
+    else if (err.status === 429) setupFail(t('setup.tooManyTries', { count: Number(err.data?.retryAfterSec ?? 60) }));
+    else setupFail(err.status === 0 ? t('error.unreachableRetry') : t('setup.failed', { reason: reason(err) }));
   } finally {
     setupBtn.disabled = false;
-    setupBtn.textContent = 'Set up and sign in';
+    setupBtn.textContent = t('setup.button');
     $('#setupMark').classList.remove('is-turning');
   }
 });
@@ -271,7 +354,7 @@ function showSignIn(note) {
 }
 function needSignIn() {
   if (!screens.signin.hidden || !screens.setup.hidden) return;
-  showSignIn(S.booted ? 'Your session ended. Sign in again.' : '');
+  showSignIn(S.booted ? t('signin.sessionEnded') : '');
   // a server that lost its config wants setup again
   api('GET', '/state', undefined, { auth: false }).then((st) => { S.state = st; markInsecure(st.https); if (st.setup) showSetup(); }).catch(() => {});
 }
@@ -279,19 +362,19 @@ function startWait(sec) {
   waitUntil = Date.now() + sec * 1000;
   signinBtn.disabled = true;
   signinErr.className = 'form-err';
-  signinErr.textContent = 'Too many wrong passwords. Wait a moment, then try again.';
+  signinErr.textContent = t('signin.tooMany');
   const tickWait = () => {
     const left = Math.ceil((waitUntil - Date.now()) / 1000);
     if (left <= 0) {
       clearInterval(waitTimer);
       waitUntil = 0;
       signinBtn.disabled = false;
-      signinBtn.textContent = 'Sign in';
+      signinBtn.textContent = t('signin.signIn');
       signinErr.className = 'form-err is-quiet';
-      signinErr.textContent = 'You can try again now.';
+      signinErr.textContent = t('signin.canRetry');
       return;
     }
-    signinBtn.textContent = `Try again in ${clock(left)}`;
+    signinBtn.textContent = t('signin.retryIn', { time: clock(left) });
   };
   clearInterval(waitTimer);
   tickWait();
@@ -301,9 +384,9 @@ signinForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (signinBtn.disabled) return;
   const pw = signinPw.value;
-  if (!pw) { signinErr.className = 'form-err'; signinErr.textContent = 'Enter the admin password.'; return signinPw.focus(); }
+  if (!pw) { signinErr.className = 'form-err'; signinErr.textContent = t('signin.enterPassword'); return signinPw.focus(); }
   signinBtn.disabled = true;
-  signinBtn.textContent = 'Signing in…';
+  signinBtn.textContent = t('signin.signingIn');
   $('#signinMark').classList.add('is-turning');
   let wait = 0;
   try {
@@ -313,26 +396,27 @@ signinForm.addEventListener('submit', async (e) => {
     await boot();
   } catch (err) {
     signinErr.className = 'form-err';
-    if (err.status === 403) { signinErr.textContent = 'That password isn’t right.'; signinPw.classList.add('is-invalid'); signinPw.select(); }
+    if (err.status === 403) { signinErr.textContent = t('signin.wrongPassword'); signinPw.classList.add('is-invalid'); signinPw.select(); }
     else if (err.status === 429) wait = Math.max(1, Number(err.data?.retryAfterSec) || 60);
-    else signinErr.textContent = err.status === 0 ? 'Can’t reach the server. Try again.' : `Sign-in didn’t work. ${reason(err)}`;
+    else signinErr.textContent = err.status === 0 ? t('error.unreachableRetry') : t('signin.failed', { reason: reason(err) });
   } finally {
     $('#signinMark').classList.remove('is-turning');
     signinBtn.disabled = false;
-    signinBtn.textContent = 'Sign in';
+    signinBtn.textContent = t('signin.signIn');
     if (wait) startWait(wait);
   }
 });
 
 // ---------- navigation ----------
+// (the page's language is loaded before this runs, and changing it reloads the page)
 const NAV = [
-  { id: 'overview', label: 'Overview', short: 'Overview', tile: 'rondo' },
+  { id: 'overview', label: t('nav.overview'), short: t('nav.overview'), tile: 'rondo' },
   { id: 'youtube', label: 'YouTube', short: 'YouTube', tile: 'youtube' },
   { id: 'whatsapp', label: 'WhatsApp', short: 'WhatsApp', tile: 'whatsapp' },
-  { id: 'device', label: 'Device', short: 'Device', tile: 'device', glyph: 'player' },
-  { id: 'resolver', label: 'Resolver', short: 'Resolver', tile: 'resolver', glyph: 'bolt' },
-  { id: 'activity', label: 'Activity', short: 'Activity', tile: 'activity', glyph: 'pulse' },
-  { id: 'admin', label: 'Admin account', short: 'Admin', tile: 'settings', glyph: 'lock' },
+  { id: 'device', label: t('nav.device'), short: t('nav.device'), tile: 'device', glyph: 'player' },
+  { id: 'resolver', label: t('nav.resolver'), short: t('nav.resolver'), tile: 'resolver', glyph: 'bolt' },
+  { id: 'activity', label: t('nav.activity'), short: t('nav.activity'), tile: 'activity', glyph: 'pulse' },
+  { id: 'admin', label: t('nav.admin'), short: t('nav.adminShort'), tile: 'settings', glyph: 'lock' },
 ];
 // YouTube and WhatsApp show their own logos on white tiles, as on the Rondo
 const tileHtml = (tile, glyph, extra = '') => tile === 'youtube' ? ytTile(extra) : tile === 'whatsapp' ? waTile(extra)
@@ -342,8 +426,8 @@ const waTile = (extra = '') => `<span class="tile t-whatsapp${extra}"><svg class
 // play mark cut out in its tile's red)
 const ytTile = (extra = '') => `<span class="tile t-youtube${extra}"><svg class="brand-glyph yt" viewBox="0 0 28.57 20" aria-hidden="true"><path fill="currentColor" d="M27.9727 3.12324C27.6435 1.89323 26.6768 .926623 25.4468 .597366C23.2197 0 14.285 0 14.285 0C14.285 0 5.35042 0 3.12323 .597366C1.89323 .926623 .926623 1.89323 .597366 3.12324C0 5.35042 0 10 0 10C0 10 0 14.6496 .597366 16.8768C.926623 18.1068 1.89323 19.0734 3.12323 19.4026C5.35042 20 14.285 20 14.285 20C14.285 20 23.2197 20 25.4468 19.4026C26.6768 19.0734 27.6435 18.1068 27.9727 16.8768C28.5701 14.6496 28.5701 10 28.5701 10C28.5701 10 28.5677 5.35042 27.9727 3.12324Z"/><path class="cut" d="M11.4253 14.2854L18.8477 10.0004L11.4253 5.71533Z"/></svg></span>`;
 function buildNav() {
-  $('#nav').innerHTML = NAV.map((n) => `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
-  $('#tabs').innerHTML = NAV.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${n.short}</span></a>`).join('');
+  $('#nav').innerHTML = NAV.map((n) => `<a href="#${n.id}" data-id="${n.id}">${tileHtml(n.tile, n.glyph)}<span>${esc(n.label)}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
+  $('#tabs').innerHTML = NAV.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${tileHtml(n.tile, n.glyph)}<span class="nav-badge"></span></span><span>${esc(n.short)}</span></a>`).join('');
 }
 function route(force = false) {
   const id = location.hash.slice(1);
@@ -352,7 +436,7 @@ function route(force = false) {
   S.route = next;
   for (const n of NAV) $(`#view-${n.id}`).hidden = n.id !== next;
   $$('#nav a, #tabs a').forEach((a) => (a.dataset.id === next ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-  document.title = next === 'overview' ? 'Rondo server' : `${NAV.find((n) => n.id === next).label} · Rondo server`;
+  document.title = next === 'overview' ? t('shared.rondoServer') : `${NAV.find((n) => n.id === next).label} · ${t('shared.rondoServer')}`;
   if (changed) window.scrollTo(0, 0);
   if (changed || force) enterView(next);
 }
@@ -407,8 +491,8 @@ document.addEventListener('visibilitychange', () => {
 
 function applyStatus(st, render = true) {
   if (st.updates?.server && Date.now() - (S.serverUpdateAt || 0) > 60000) loadServerUpdate();
-  if (S.status?.tv?.pending && st.tv?.signedIn && !S.status.tv.signedIn) toast('Signed in to YouTube');
-  if (S.status?.whatsapp && S.status.whatsapp.state !== 'open' && st.whatsapp?.state === 'open') toast('WhatsApp is linked');
+  if (S.status?.tv?.pending && st.tv?.signedIn && !S.status.tv.signedIn) toast(t('tv.signedInToast'));
+  if (S.status?.whatsapp && S.status.whatsapp.state !== 'open' && st.whatsapp?.state === 'open') toast(t('whatsapp.linkedToast'));
   S.status = st;
   S.statusAt = Date.now();
   const d = st.device || {};
@@ -417,7 +501,7 @@ function applyStatus(st, render = true) {
     if (pairedAt && pairedAt !== S.pair.base) {
       S.pair = null;
       S.celebrate = true;
-      if (S.route !== 'device') toast('Your Rondo is connected');
+      if (S.route !== 'device') toast(t('pair.connected'));
     } else if (!st.pairing) {
       // gone: expired, or canceled from another tab
       if (now() >= S.pair.expiresAt - 3000) S.pair.expired = true;
@@ -437,7 +521,7 @@ function tick() {
   const cd = $('[data-countdown]');
   if (cd && S.pair) {
     const left = Math.max(0, Math.ceil((S.pair.expiresAt - now()) / 1000));
-    cd.textContent = S.pair.expired ? 'This code expired. Get a new one.' : `Expires in ${clock(left)}`;
+    cd.textContent = S.pair.expired ? t('shared.codeExpired') : t('shared.expiresIn', { time: clock(left) });
     cd.classList.toggle('is-low', !S.pair.expired && left <= 60);
     const drain = $('[data-drain]');
     if (drain) drain.style.setProperty('--p', S.pair.expired ? 0 : Math.min(1, (left * 1000) / Math.max(S.pair.total || CODE_MS, left * 1000)).toFixed(4));
@@ -454,38 +538,40 @@ function areas(st) {
   const https = s.https ?? S.state?.https ?? false;
   const cookiesOk = c.present && c.signedIn !== false;
   const yt = tv.signedIn
-    ? { level: c.present && c.signedIn === false ? 'warn' : 'ok', pill: 'Signed in', node: 'Signed in', title: signedInAs(tv.account), sub: c.present && c.signedIn === false ? 'With a code. cookies.txt is signed out: YouTube Music home and history are generic.' : 'With a code' }
+    ? { level: c.present && c.signedIn === false ? 'warn' : 'ok', pill: t('shared.signedIn'), node: t('shared.signedIn'), title: signedInAs(tv.account), sub: c.present && c.signedIn === false ? t('youtube.withCodeCookiesOut') : t('youtube.withCode') }
     : !c.present
-    ? { level: 'off', pill: 'Signed out', node: 'Signed out', title: 'Not signed in', sub: 'Search and playback still work.' }
+    ? { level: 'off', pill: t('shared.signedOut'), node: t('shared.signedOut'), title: t('shared.notSignedIn'), sub: t('youtube.stillWorks') }
     : !c.present
-    ? { level: 'warn', pill: 'No cookies', node: 'No cookies', title: 'No cookies', sub: 'YouTube Music home, library and history need them.' }
+    ? { level: 'warn', pill: t('cookies.none'), node: t('cookies.none'), title: t('cookies.none'), sub: t('cookies.needThem') }
     : c.signedIn === false
-      ? { level: 'bad', pill: 'Signed out', node: 'Signed out', title: 'Signed out: upload new cookies', sub: c.checkedAt ? `Checked ${ago(c.checkedAt)}` : 'Google ended the session these cookies belong to.' }
+      ? { level: 'bad', pill: t('shared.signedOut'), node: t('shared.signedOut'), title: t('cookies.signedOutUpload'), sub: c.checkedAt ? t('cookies.checkedAgo', { ago: ago(c.checkedAt) }) : t('cookies.sessionEnded') }
       : c.signedIn === true
-        ? { level: 'ok', pill: 'Signed in', node: 'Signed in', title: signedInAs(c.account), sub: c.checkedAt ? `Checked ${ago(c.checkedAt)}` : '' }
-        : { level: 'off', pill: 'Not checked', node: 'Checking', title: 'Cookies uploaded', sub: 'Not checked yet. The server checks every 15 minutes.' };
-  yt.detail = tv.signedIn ? `${signedInAs(tv.account)} · with a code`
-    : !c.present ? 'Not signed in. Search and playback still work.'
-    : c.signedIn === false ? 'Signed out: upload new cookies.'
-    : c.signedIn === true ? `${signedInAs(c.account)}${c.checkedAt ? ` · checked ${ago(c.checkedAt)}` : ''}`
-    : 'Cookies uploaded, not checked yet.';
-  const seen = d.lastSeenAt ? `Last seen ${ago(d.lastSeenAt)}` : 'Not seen yet';
+        ? { level: 'ok', pill: t('shared.signedIn'), node: t('shared.signedIn'), title: signedInAs(c.account), sub: c.checkedAt ? t('cookies.checkedAgo', { ago: ago(c.checkedAt) }) : '' }
+        : { level: 'off', pill: t('shared.notChecked'), node: t('cookies.checking'), title: t('cookies.uploaded'), sub: t('cookies.notCheckedYet') };
+  yt.detail = tv.signedIn ? t('youtube.detailWithCode', { account: signedInAs(tv.account) })
+    : !c.present ? t('youtube.detailNotSignedIn')
+    : c.signedIn === false ? t('youtube.detailSignedOut')
+    : c.signedIn === true ? (c.checkedAt ? t('youtube.detailChecked', { account: signedInAs(c.account), ago: ago(c.checkedAt) }) : signedInAs(c.account))
+    : t('youtube.detailNotChecked');
+  const seen = d.lastSeenAt ? t('device.lastSeen', { ago: ago(d.lastSeenAt) }) : t('device.notSeen');
+  // the same in the middle of a line (an old date is lowercased too, as before: "last seen nov 3")
+  const seenLower = d.lastSeenAt ? t('device.lastSeenLower', { ago: ago(d.lastSeenAt).toLowerCase() }) : t('device.notSeenLower');
   const dev = d.source === 'paired'
-    ? { level: 'ok', pill: 'Connected', node: d.lastSeenAt ? `Seen ${ago(d.lastSeenAt)}` : 'Connected', title: 'Rondo connected', sub: seen }
+    ? { level: 'ok', pill: t('device.connected'), node: d.lastSeenAt ? t('device.seen', { ago: ago(d.lastSeenAt) }) : t('device.connected'), title: t('device.rondoConnected'), sub: seen }
     : d.source === 'env'
-      ? { level: 'info', pill: 'API_TOKEN', node: d.lastSeenAt ? `Seen ${ago(d.lastSeenAt)}` : 'API_TOKEN', title: 'Rondo uses API_TOKEN', sub: `${seen} · Connect it here to give it its own token.` }
-      : { level: 'warn', pill: 'Not connected', node: 'Not connected', title: 'No Rondo connected', sub: 'Connect one with a code from the Device page.' };
-  dev.detail = d.source === 'paired' ? `Rondo connected · ${seen.toLowerCase()}`
-    : d.source === 'env' ? `Uses API_TOKEN from the environment · ${seen.toLowerCase()}`
-    : 'No Rondo connected.';
+      ? { level: 'info', pill: 'API_TOKEN', node: d.lastSeenAt ? t('device.seen', { ago: ago(d.lastSeenAt) }) : 'API_TOKEN', title: t('device.usesApiToken'), sub: `${seen} · ${t('device.connectForToken')}` }
+      : { level: 'warn', pill: t('device.notConnected'), node: t('device.notConnected'), title: t('device.noRondo'), sub: t('device.connectFromDevicePage') };
+  dev.detail = d.source === 'paired' ? `${t('device.rondoConnected')} · ${seenLower}`
+    : d.source === 'env' ? `${t('device.usesApiTokenEnv')} · ${seenLower}`
+    : t('device.noRondoSentence');
   const rz = y.lastResolveOk === true
-    ? { level: 'ok', pill: 'Working', sub: 'The last playback check worked.' }
+    ? { level: 'ok', pill: t('resolver.working'), sub: t('resolver.lastCheckWorked') }
     : y.lastResolveOk === false
-      ? { level: 'bad', pill: 'Failing', sub: 'The last playback check failed. Update yt-dlp.' }
-      : { level: 'off', pill: 'Not checked', sub: 'Nothing has played since the server started.' };
+      ? { level: 'bad', pill: t('resolver.failing'), sub: t('resolver.lastCheckFailed') }
+      : { level: 'off', pill: t('shared.notChecked'), sub: t('resolver.nothingPlayed') };
   const conn = https
-    ? { level: 'ok', pill: 'HTTPS', sub: 'Encrypted: passwords, tokens and music travel over HTTPS.' }
-    : { level: 'warn', pill: 'Not encrypted', sub: 'Plain HTTP: use it only on your home network.' };
+    ? { level: 'ok', pill: 'HTTPS', sub: t('overview.encrypted') }
+    : { level: 'warn', pill: t('shared.notEncrypted'), sub: t('overview.plainHttp') };
   return { yt, dev, rz, conn, https, c, d, y, s };
 }
 const pill = (level, text) => `<span class="pill ${level === 'info' ? 'off' : level}">${esc(text)}</span>`;
@@ -494,20 +580,20 @@ const pill = (level, text) => `<span class="pill ${level === 'info' ? 'off' : le
 function connHtml(https) {
   return https
     ? `<span class="conn">${icon('lock')}<span>HTTPS</span></span>`
-    : `<span class="conn is-plain">${icon('unlock')}<span>Not encrypted</span></span>`;
+    : `<span class="conn is-plain">${icon('unlock')}<span>${te('shared.notEncrypted')}</span></span>`;
 }
 function renderChrome() {
   if (!S.status) return;
   const a = areas(S.status);
   setHtml($('#topStatus'), connHtml(a.https));
   const up = (a.s.uptimeSec ?? 0) + Math.floor((Date.now() - S.statusAt) / 1000);
-  setHtml($('#sideFoot'), `${connHtml(a.https)}<small>Rondo server ${esc(a.s.version || '')} · up ${uptime(up)}</small>`);
+  setHtml($('#sideFoot'), `${connHtml(a.https)}<small>${te('chrome.serverUp', { version: a.s.version || '', uptime: uptime(up) })}</small>`);
   const badges = { youtube: a.yt.level, device: a.dev.level, resolver: a.rz.level };
   $$('.nav-badge').forEach((b) => {
     const level = badges[b.closest('[data-id]').dataset.id];
-    const html = level === 'bad' || level === 'warn'
-      ? `<span class="dot-badge ${level}" role="img" aria-label="${level === 'bad' ? 'Problem' : 'Needs attention'}"></span>` : '';
-    setHtml(b, html);
+    const badge = level === 'bad' || level === 'warn'
+      ? `<span class="dot-badge ${level}" role="img" aria-label="${level === 'bad' ? te('nav.problem') : te('nav.attention')}"></span>` : '';
+    setHtml(b, badge);
   });
 }
 
@@ -518,19 +604,19 @@ function renderOverview() {
   // choice) and WhatsApp have their own rows under Status, which say when they need something
   const level = a.dev.level === 'info' ? 'ok' : a.dev.level;
   const todo = [];
-  if (a.dev.level === 'warn') todo.push(['warn', S.pair && !S.pair.expired ? 'A connect code is waiting for your Rondo.' : 'Connect your Rondo so it can stream from this server.', '#device', S.pair && !S.pair.expired ? 'Show code' : 'Connect']);
-  if (a.dev.level === 'info') todo.push(['info', 'Your Rondo uses API_TOKEN from the server’s environment. Connect it here to give it its own token.', '#device', 'Connect']);
+  if (a.dev.level === 'warn') todo.push(['warn', S.pair && !S.pair.expired ? t('overview.codeWaiting') : t('overview.connectToStream'), '#device', S.pair && !S.pair.expired ? t('overview.showCode') : t('overview.connect')]);
+  if (a.dev.level === 'info') todo.push(['info', t('overview.usesApiToken'), '#device', t('overview.connect')]);
   // newer releases (updates.ts on the server, asked of GitHub every 6 hours)
   const news = st0().updates || {};
-  if (news.ytdlp) todo.push(['info', `yt-dlp ${news.ytdlp.version} is out. Updating keeps playback working when YouTube changes.`, '#resolver', 'Update']);
+  if (news.ytdlp) todo.push(['info', t('overview.ytdlpOut', { version: String(news.ytdlp.version) }), '#resolver', t('overview.update')]);
   if (news.server) {
-    const text = `Rondo server ${news.server.version} is out. This server runs ${a.s.version}.`;
-    todo.push(S.serverUpdate?.available ? ['info', text, '#server-update', 'Update'] : ['info', text, UPDATE_HELP, 'How to update']);
+    const text = t('overview.serverOut', { version: String(news.server.version), current: String(a.s.version) });
+    todo.push(S.serverUpdate?.available ? ['info', text, '#server-update', t('overview.update')] : ['info', text, UPDATE_HELP, t('overview.howToUpdate')]);
   }
-  const title = level === 'ok' ? 'Everything works' : 'Connect your Rondo';
+  const title = level === 'ok' ? t('overview.allWorks') : t('overview.connectRondo');
   const sub = level === 'ok'
-    ? 'Your Rondo is connected to this server.'
-    : 'Then it can use this server for YouTube and WhatsApp.';
+    ? t('overview.connectedHere')
+    : t('overview.thenItCan');
 
   const link = (lv) => {
     const dot = lv === 'ok' ? icon('check') : lv === 'bad' || lv === 'warn' ? icon('alert') : '';
@@ -538,20 +624,21 @@ function renderOverview() {
   };
   // the Rondo and this server: what they serve (YouTube, WhatsApp) has its own row under Status
   const devLevel = a.d.source ? 'ok' : 'off';
+  const chainLabel = t('overview.chainLabel', { rondo: a.d.source ? t('overview.chainConnected') : t('overview.chainNotConnected'), server: a.https ? 'HTTPS' : t('overview.chainNotEncrypted') });
   const chain = `
-    <div class="chain" role="img" aria-label="Rondo: ${esc(a.d.source ? 'connected' : 'not connected')}. This server: ${a.https ? 'HTTPS' : 'not encrypted'}.">
+    <div class="chain" role="img" aria-label="${esc(chainLabel)}">
       <div class="node">${tileHtml(a.d.source ? 'device' : 'off', 'player')}<span class="node-name">Rondo</span><span class="node-state ${a.d.source ? '' : 'warn'}">${esc(a.dev.node)}</span></div>
       ${link(devLevel)}
-      <div class="node">${tileHtml('rondo')}<span class="node-name">This server</span><span class="node-state ${a.https ? '' : 'warn'}">${a.https ? 'HTTPS' : 'Not encrypted'}</span></div>
+      <div class="node">${tileHtml('rondo')}<span class="node-name">${te('overview.thisServer')}</span><span class="node-state ${a.https ? '' : 'warn'}">${a.https ? 'HTTPS' : te('shared.notEncrypted')}</span></div>
     </div>`;
   const sum = $('#sum');
   sum.className = `sum ${level === 'ok' ? '' : level}`;
   setHtml(sum, `
     <div class="sum-text">
-      <h2 class="sum-title">${title}</h2>
-      <p class="sum-sub">${sub}</p>
+      <h2 class="sum-title">${esc(title)}</h2>
+      <p class="sum-sub">${esc(sub)}</p>
     </div>
-    ${todo.length ? `<ul class="todo">${todo.map(([lv, text, href, label]) => `<li class="${lv}">${icon(lv === 'info' ? 'info' : 'alert')}<span>${esc(text)}</span><a class="btn btn-sm" href="${href}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}>${label}</a></li>`).join('')}</ul>` : ''}
+    ${todo.length ? `<ul class="todo">${todo.map(([lv, text, href, label]) => `<li class="${lv}">${icon(lv === 'info' ? 'info' : 'alert')}<span>${esc(text)}</span><a class="btn btn-sm" href="${href}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}>${esc(label)}</a></li>`).join('')}</ul>` : ''}
     ${chain}`);
 
   const up = (a.s.uptimeSec ?? 0) + Math.floor((Date.now() - S.statusAt) / 1000);
@@ -561,27 +648,27 @@ function renderOverview() {
       <div class="row-main"><div class="row-title">${esc(title)}</div>${sub ? `<div class="row-sub">${esc(sub)}</div>` : ''}</div>
       <div class="row-end">${pill(level, pillText)}${href ? icon('chevron', 'row-chev') : ''}</div></${tag}>`;
   };
+  const serverSub = t('chrome.serverUp', { version: a.s.version || '', uptime: uptime(up) })
+    + (st0().updates?.server ? ` · ${t('overview.versionOut', { version: String(st0().updates.server.version) })}` : '');
   setHtml($('#statusRows'), [
-    row({ tile: 'rondo', title: 'Server', sub: `Rondo server ${a.s.version || ''} · up ${uptime(up)}${st0().updates?.server ? ` · ${st0().updates.server.version} is out` : ''}`, level: st0().updates?.server ? 'info' : 'ok', pillText: st0().updates?.server ? 'Update' : 'Running' }),
-    row({ tile: a.https ? 'ok' : 'warn', glyph: a.https ? 'lock' : 'unlock', title: 'Connection', sub: a.conn.sub, level: a.conn.level, pillText: a.conn.pill }),
-    row({ href: '#resolver', tile: 'resolver', glyph: 'bolt', title: 'Resolver', sub: `yt-dlp ${a.y.version || '(version unknown)'}. ${a.rz.sub}`, level: a.rz.level, pillText: a.rz.pill }),
+    row({ tile: 'rondo', title: t('overview.server'), sub: serverSub, level: st0().updates?.server ? 'info' : 'ok', pillText: st0().updates?.server ? t('overview.updatePill') : t('overview.running') }),
+    row({ tile: a.https ? 'ok' : 'warn', glyph: a.https ? 'lock' : 'unlock', title: t('overview.connection'), sub: a.conn.sub, level: a.conn.level, pillText: a.conn.pill }),
+    row({ href: '#resolver', tile: 'resolver', glyph: 'bolt', title: t('nav.resolver'), sub: t('overview.ytdlpLine', { version: a.y.version || t('overview.versionUnknown'), status: a.rz.sub }), level: a.rz.level, pillText: a.rz.pill }),
     row({ href: '#youtube', tile: 'youtube', title: 'YouTube', sub: a.yt.detail, level: a.yt.level, pillText: a.yt.pill }),
-    row({ href: '#device', tile: 'device', glyph: 'player', title: 'Device', sub: a.dev.detail, level: a.dev.level, pillText: a.dev.pill }),
+    row({ href: '#device', tile: 'device', glyph: 'player', title: t('nav.device'), sub: a.dev.detail, level: a.dev.level, pillText: a.dev.pill }),
     st0().whatsapp ? row({ href: '#whatsapp', tile: 'whatsapp', title: 'WhatsApp', ...waRow(st0().whatsapp) }) : '',
   ].join(''));
 }
 
 // ---------- YouTube account ----------
-const FORMAT_MSG = 'That isn’t a cookies.txt file with youtube.com cookies. Export it again while youtube.com is open.';
 const st0 = () => S.status || {};
 
 // ---------- sign in with a code (tv.ts on the server) ----------
-const TV_ERRORS = {
-  denied: 'Access wasn’t allowed. Get a new code to try again.',
-  expired: 'That code expired. Get a new one.',
-  revoked: 'The sign-in stopped working (it was removed from the Google account). Sign in again.',
-  failed: 'Signing in didn’t work. Get a new code to try again.',
-};
+// the server's codes for why the last sign-in ended
+const tvError = (code) => (code === 'denied' ? t('tv.errorDenied')
+  : code === 'expired' ? t('tv.errorExpired')
+  : code === 'revoked' ? t('tv.errorRevoked')
+  : code === 'failed' ? t('tv.errorFailed') : '');
 function renderTv() {
   const tv = st0().tv;
   const body = $('#tvBody');
@@ -590,22 +677,22 @@ function renderTv() {
     const groups = String(tv.pending.code).split('-');
     setHtml(body, `<section class="pairing" aria-labelledby="tvLabel">
       <div class="pc-code">
-        <p class="pc-label" id="tvLabel">Sign-in code</p>
+        <p class="pc-label" id="tvLabel">${te('tv.codeLabel')}</p>
         <div class="big-code is-letters" aria-label="${esc(tv.pending.code.split('').join(' '))}">${groups.map((g) => `<span>${esc(g)}</span>`).join('')}</div>
         <p class="expiry" data-tv-countdown role="timer" aria-live="off"></p>
         <div class="pc-actions">
-          <button class="btn btn-sm" type="button" data-act="tvCopy">${icon('copy')}<span>Copy code</span></button>
-          <button class="btn btn-sm btn-quiet" type="button" data-act="tvCancel">Cancel</button>
+          <button class="btn btn-sm" type="button" data-act="tvCopy">${icon('copy')}<span>${te('shared.copyCode')}</span></button>
+          <button class="btn btn-sm btn-quiet" type="button" data-act="tvCancel">${te('shared.cancel')}</button>
         </div>
       </div>
       <div class="pc-steps">
         <ol class="steps">
-          <li>On your phone or computer, open <a href="${esc(tv.pending.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(tv.pending.url.replace(/^https?:\/\//, ''))}</b></a>.</li>
-          <li>Enter the code and pick the Google account for this server.</li>
-          <li>Allow access. This page updates by itself.</li>
+          <li>${th('tv.step1', { link: html(`<a href="${esc(tv.pending.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(tv.pending.url.replace(/^https?:\/\//, ''))}</b></a>`) })}</li>
+          <li>${te('tv.step2')}</li>
+          <li>${te('tv.step3')}</li>
         </ol>
-        <p class="waiting">${spinner()}<span>Waiting for Google…</span></p>
-        <div class="note info">${icon('info')}<span>Like signing in a smart TV. A separate Google account for the server is safest.</span></div>
+        <p class="waiting">${spinner()}<span>${te('tv.waiting')}</span></p>
+        <div class="note info">${icon('info')}<span>${te('tv.likeTv')}</span></div>
       </div>
     </section>`);
     tickTv();
@@ -615,23 +702,24 @@ function renderTv() {
     const name = tv.account?.name;
     const lead = name ? `<span class="avatar" aria-hidden="true">${esc([...name.trim()][0]?.toUpperCase() || '?')}</span>` : tileHtml('youtube', 'account');
     setHtml(body, `<div class="group"><div class="row acct">${lead}
-        <div class="row-main"><div class="row-title">${esc(signedInAs(tv.account))}</div><div class="row-sub">YouTube home, subscriptions and history; YouTube Music playlists and liked songs.</div></div>
-        ${pill('ok', 'Signed in')}
+        <div class="row-main"><div class="row-title">${esc(signedInAs(tv.account))}</div><div class="row-sub">${te('tv.whatYouGet')}</div></div>
+        ${pill('ok', t('shared.signedIn'))}
       </div>
-      <div class="row-actions"><button class="btn btn-red-text push" type="button" data-act="tvSignOut">${icon('close')}<span>Sign out</span></button></div></div>`);
+      <div class="row-actions"><button class="btn btn-red-text push" type="button" data-act="tvSignOut">${icon('close')}<span>${te('shared.signOut')}</span></button></div></div>`);
     return;
   }
-  const err = tv.error && TV_ERRORS[tv.error] ? `<div class="note err">${icon('alert')}<span>${TV_ERRORS[tv.error]}</span></div>` : '';
+  const why = tv.error ? tvError(tv.error) : '';
+  const err = why ? `<div class="note err">${icon('alert')}<span>${esc(why)}</span></div>` : '';
   setHtml(body, `${err}<div class="group"><div class="row row-wrap">${ytTile()}
-      <div class="row-main"><div class="row-title">Not signed in</div><div class="row-sub">Get a code, enter it at google.com/device, and the server uses that account for your home, subscriptions, history and playlists.</div></div>
-      <button class="btn btn-primary${S.tvBusy ? ' is-busy' : ''}" type="button" data-act="tvStart"${S.tvBusy ? ' disabled' : ''}>${S.tvBusy ? spinner() : icon('account')}<span>Get a code</span></button>
+      <div class="row-main"><div class="row-title">${te('shared.notSignedIn')}</div><div class="row-sub">${te('tv.getCodeText')}</div></div>
+      <button class="btn btn-primary${S.tvBusy ? ' is-busy' : ''}" type="button" data-act="tvStart"${S.tvBusy ? ' disabled' : ''}>${S.tvBusy ? spinner() : icon('account')}<span>${te('shared.getCode')}</span></button>
     </div></div>`);
 }
 function tickTv() {
   const cd = $('[data-tv-countdown]'), p = st0().tv?.pending;
   if (!cd || !p) return;
   const left = Math.max(0, Math.ceil((p.expiresAt - now()) / 1000));
-  cd.textContent = left ? `Expires in ${clock(left)}` : 'This code expired. Get a new one.';
+  cd.textContent = left ? t('shared.expiresIn', { time: clock(left) }) : t('shared.codeExpired');
   cd.classList.toggle('is-low', left <= 60);
 }
 async function tvStart() {
@@ -641,7 +729,7 @@ async function tvStart() {
     const pending = await api('POST', '/tv', undefined, { timeout: 30000 });
     if (S.status) S.status.tv = { ...(S.status.tv || {}), signedIn: false, pending, error: null };
   } catch (err) {
-    if (err.status !== 401) toast(`No code from Google. ${reason(err)}`, 'err');
+    if (err.status !== 401) toast(t('tv.noCode', { reason: reason(err) }), 'err');
   } finally {
     S.tvBusy = false;
     renderTv();
@@ -655,16 +743,16 @@ async function tvCancel() {
 }
 async function tvSignOut() {
   const ok = await confirmSheet({
-    title: 'Sign out of YouTube?',
-    text: 'Your home, subscriptions, history and playlists go away on your Rondo. Search and playback keep working without an account.',
-    action: 'Sign out', danger: true,
+    title: t('tv.signOutTitle'),
+    text: t('tv.signOutText'),
+    action: t('shared.signOut'), danger: true,
   });
   if (!ok) return;
   try {
     await api('DELETE', '/tv');
-    toast('Signed out');
+    toast(t('shared.signedOut'));
   } catch (err) {
-    if (err.status !== 401) toast(`Not signed out. ${reason(err)}`, 'err');
+    if (err.status !== 401) toast(t('tv.notSignedOut', { reason: reason(err) }), 'err');
   }
   poll();
 }
@@ -676,27 +764,27 @@ function renderYouTube() {
   if (c.present && c.signedIn === true && c.account?.name) {
     lead = `<span class="avatar" aria-hidden="true">${esc([...c.account.name.trim()][0]?.toUpperCase() || '?')}</span>`;
   } else {
-    const t = !c.present ? 'off' : c.signedIn === false ? 'bad' : c.signedIn === true ? 'youtube' : 'off';
-    lead = tileHtml(t, c.signedIn === false ? 'alert' : 'account');
+    const tile = !c.present ? 'off' : c.signedIn === false ? 'bad' : c.signedIn === true ? 'youtube' : 'off';
+    lead = tileHtml(tile, c.signedIn === false ? 'alert' : 'account');
   }
-  const title = !c.present ? 'No cookies.txt' : c.signedIn === false ? 'cookies.txt is signed out' : c.signedIn === true ? signedInAs(c.account) : 'Cookies uploaded';
-  const sub = !c.present ? 'YouTube Music home and history are generic until you upload one.'
-    : c.signedIn === false ? `Google ended the session these cookies belong to.${c.checkedAt ? ` Checked ${ago(c.checkedAt)}.` : ''}`
-    : c.signedIn === true ? (c.checkedAt ? `Checked ${ago(c.checkedAt)}` : '')
-    : 'Not checked yet. The server checks every 15 minutes.';
+  const title = !c.present ? t('cookies.noFile') : c.signedIn === false ? t('cookies.fileSignedOut') : c.signedIn === true ? signedInAs(c.account) : t('cookies.uploaded');
+  const sub = !c.present ? t('cookies.genericUntil')
+    : c.signedIn === false ? (c.checkedAt ? `${t('cookies.sessionEnded')} ${t('cookies.checkedAgoSentence', { ago: ago(c.checkedAt) })}` : t('cookies.sessionEnded'))
+    : c.signedIn === true ? (c.checkedAt ? t('cookies.checkedAgo', { ago: ago(c.checkedAt) }) : '')
+    : t('cookies.notCheckedYet');
   // this group is about cookies.txt only (the code sign-in has its own above)
-  const [level, pillText] = !c.present ? ['off', 'No cookies'] : c.signedIn === false ? ['bad', 'Signed out'] : c.signedIn === true ? ['ok', 'Signed in'] : ['off', 'Not checked'];
+  const [level, pillText] = !c.present ? ['off', t('cookies.none')] : c.signedIn === false ? ['bad', t('shared.signedOut')] : c.signedIn === true ? ['ok', t('shared.signedIn')] : ['off', t('shared.notChecked')];
   const actions = c.present ? `
     <div class="row-actions">
-      <button class="btn${S.checking ? ' is-busy' : ''}" type="button" data-act="checkCookies"${S.checking ? ' disabled' : ''}>${icon('refresh')}<span>${S.checking ? 'Checking…' : c.signedIn == null ? 'Check now' : 'Check again'}</span></button>
-      <button class="btn btn-red-text push" type="button" data-act="removeCookies">${icon('trash')}<span>Remove cookies</span></button>
+      <button class="btn${S.checking ? ' is-busy' : ''}" type="button" data-act="checkCookies"${S.checking ? ' disabled' : ''}>${icon('refresh')}<span>${S.checking ? te('cookies.checkingBusy') : c.signedIn == null ? te('cookies.checkNow') : te('cookies.checkAgain')}</span></button>
+      <button class="btn btn-red-text push" type="button" data-act="removeCookies">${icon('trash')}<span>${te('cookies.remove')}</span></button>
     </div>` : '';
   setHtml($('#ytState'), `
     <div class="row acct">${lead}
       <div class="row-main"><div class="row-title">${esc(title)}</div>${sub ? `<div class="row-sub">${esc(sub)}</div>` : ''}</div>
       ${pill(level, pillText)}
     </div>${actions}`);
-  $('#h-upload').textContent = c.present ? 'Replace cookies.txt' : 'Upload cookies.txt';
+  $('#h-upload').textContent = c.present ? t('cookies.replace') : t('cookies.upload');
   renderDropzone();
 }
 function renderDropzone() {
@@ -704,9 +792,9 @@ function renderDropzone() {
   dz.classList.toggle('is-busy', S.cookieBusy);
   $('.dz-ico', dz).innerHTML = S.cookieBusy ? spinner() : icon('file');
   const touch = matchMedia('(hover: none)').matches;
-  $('#dzTitle').textContent = S.cookieBusy ? 'Checking the cookies with YouTube…' : touch ? 'Choose cookies.txt' : 'Drop cookies.txt here';
-  $('#dzSub').innerHTML = S.cookieBusy ? 'This takes a few seconds.'
-    : `${touch ? 'Tap to pick the file you exported.' : 'or <u>choose a file</u>.'} It goes straight to your server; this page never shows what’s inside.`;
+  $('#dzTitle').textContent = S.cookieBusy ? t('cookies.checkingWithYoutube') : touch ? t('cookies.choose') : t('cookies.dropHere');
+  $('#dzSub').innerHTML = S.cookieBusy ? te('cookies.takesSeconds')
+    : touch ? te('cookies.subTouch') : th('cookies.subMouse', { choose: html(`<u>${te('cookies.chooseFile')}</u>`) });
   $('#cookieFile').disabled = S.cookieBusy;
 }
 function cookieError(msg, kind = 'err') {
@@ -719,24 +807,24 @@ function cookieError(msg, kind = 'err') {
 async function uploadCookies(file) {
   cookieError('');
   if (!file || S.cookieBusy) return;
-  if (file.size > 1024 * 1024) return cookieError('That file is larger than 1 MB, so it isn’t a cookies.txt file. Export it again.');
-  if (!file.size) return cookieError('That file is empty. Export the cookies again.');
+  if (file.size > 1024 * 1024) return cookieError(t('cookies.tooLarge'));
+  if (!file.size) return cookieError(t('cookies.empty'));
   let text;
-  try { text = await file.text(); } catch { return cookieError('Couldn’t read that file. Try choosing it again.'); }
-  if (!/youtube\.com/i.test(text)) return cookieError(FORMAT_MSG);
+  try { text = await file.text(); } catch { return cookieError(t('cookies.unreadable')); }
+  if (!/youtube\.com/i.test(text)) return cookieError(t('cookies.badFormat'));
   S.cookieBusy = true;
   renderDropzone();
   try {
     const r = await api('POST', '/cookies', text, { text: true, timeout: 60000 });
     text = null;
     S.status.cookies = { ...S.status.cookies, present: true, signedIn: r.signedIn ?? null, account: r.account ?? null, checkedAt: now() };
-    if (r.signedIn) toast(r.account?.name ? `Cookies saved. Signed in as ${r.account.name}.` : 'Cookies saved. Signed in.');
-    else if (r.signedIn === false) cookieError('Saved, but YouTube says these cookies are signed out. Export them again from a new private window.');
+    if (r.signedIn) toast(r.account?.name ? t('cookies.savedAs', { name: r.account.name }) : t('cookies.saved'));
+    else if (r.signedIn === false) cookieError(t('cookies.savedSignedOut'));
   } catch (e) {
     if (e.status === 401) return;
-    if (e.code === 'format') cookieError(FORMAT_MSG);
-    else if (e.status === 413) cookieError('That file is larger than 1 MB, so it isn’t a cookies.txt file. Export it again.');
-    else cookieError(`Not uploaded. ${reason(e)}`);
+    if (e.code === 'format') cookieError(t('cookies.badFormat'));
+    else if (e.status === 413) cookieError(t('cookies.tooLarge'));
+    else cookieError(t('cookies.notUploaded', { reason: reason(e) }));
   } finally {
     S.cookieBusy = false;
     $('#cookieFile').value = '';
@@ -752,10 +840,10 @@ async function checkCookies() {
   try {
     const r = await api('POST', '/cookies/check', undefined, { timeout: 60000 });
     S.status.cookies = { ...S.status.cookies, signedIn: r.signedIn ?? null, account: r.account ?? null, checkedAt: now() };
-    if (r.signedIn) toast(r.account?.name ? `Still signed in as ${r.account.name}` : 'Still signed in');
-    else toast('YouTube says these cookies are signed out', 'err');
+    if (r.signedIn) toast(r.account?.name ? t('cookies.stillSignedInAs', { name: r.account.name }) : t('cookies.stillSignedIn'));
+    else toast(t('cookies.saysSignedOut'), 'err');
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t check. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('cookies.couldntCheck', { reason: reason(e) }), 'err');
   } finally {
     S.checking = false;
     renderChrome();
@@ -764,19 +852,19 @@ async function checkCookies() {
 }
 async function removeCookies() {
   const ok = await confirmSheet({
-    title: 'Remove the YouTube cookies?',
-    text: 'YouTube Music home, library and history stop working on your Rondo until you upload new cookies.',
-    action: 'Remove',
+    title: t('cookies.removeTitle'),
+    text: t('cookies.removeText'),
+    action: t('cookies.removeAction'),
   });
   if (!ok) return;
   try {
     await api('DELETE', '/cookies');
     S.status.cookies = { present: false, signedIn: null, account: null, checkedAt: null };
     cookieError('');
-    toast('Cookies removed');
+    toast(t('cookies.removed'));
     renderChrome();
     renderYouTube();
-  } catch (e) { if (e.status !== 401) toast(`Not removed. ${reason(e)}`, 'err'); }
+  } catch (e) { if (e.status !== 401) toast(t('cookies.notRemoved', { reason: reason(e) }), 'err'); }
 }
 
 // drag and drop: anywhere on the YouTube page
@@ -808,7 +896,7 @@ window.addEventListener('drop', (e) => {
   drop.hidden = true;
   if (!canDrop()) return;
   const files = [...e.dataTransfer.files];
-  if (files.length > 1) return cookieError('Drop one file: the cookies.txt you exported.');
+  if (files.length > 1) return cookieError(t('cookies.dropOne'));
   uploadCookies(files[0]);
 });
 dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#cookieFile').click(); } });
@@ -816,36 +904,44 @@ dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key ===
 // ---------- WhatsApp ----------
 // the overview's row: what the link is now
 function waRow(w) {
-  if (w.state === 'open') return { sub: `Linked${w.me?.name ? ` as ${w.me.name}` : ''}${w.syncing ? ' · bringing over your recent chats' : ` · ${w.chats} ${w.chats === 1 ? 'chat' : 'chats'}`}`, level: 'ok', pillText: 'Linked' };
-  if (w.state === 'linking') return { sub: 'A code waits to be typed on your phone', level: 'warn', pillText: 'Linking' };
-  if (w.state === 'connecting' || w.state === 'closed') return { sub: 'Connecting to WhatsApp', level: 'warn', pillText: 'Connecting' };
-  return { sub: 'Not linked', level: 'off', pillText: 'Off' };
+  if (w.state === 'open') {
+    const linked = w.me?.name ? t('whatsapp.linkedAs', { name: w.me.name }) : t('whatsapp.linked');
+    return { sub: `${linked} · ${w.syncing ? t('whatsapp.syncingLower') : t('whatsapp.chatCount', { count: Number(w.chats) || 0 })}`, level: 'ok', pillText: t('whatsapp.linked') };
+  }
+  if (w.state === 'linking') return { sub: t('whatsapp.codeWaits'), level: 'warn', pillText: t('whatsapp.linking') };
+  if (w.state === 'connecting' || w.state === 'closed') return { sub: t('whatsapp.connectingTo'), level: 'warn', pillText: t('whatsapp.connecting') };
+  return { sub: t('whatsapp.notLinked'), level: 'off', pillText: t('whatsapp.off') };
 }
-const WA_ERRORS = { number: 'Type the number with its country code, like +1 555 010 0000.', linked: 'WhatsApp is linked already. Unlink it first.', whatsapp: 'WhatsApp gave no code. Try again in a minute.' };
+// the server's codes for a link that didn't start
+const waError = (code) => (code === 'number' ? t('whatsapp.errorNumber')
+  : code === 'linked' ? t('whatsapp.errorLinked')
+  : code === 'whatsapp' ? t('whatsapp.errorNoCode') : '');
+// why the link ended: the server says it in English (whatsapp.ts), the same for every browser
+const waStatusError = (msg) => (msg === 'Unlinked from the phone' ? t('whatsapp.unlinkedFromPhone') : msg);
 function renderWhatsApp() {
   if (S.waBusy) return;
   const w = st0().whatsapp, body = $('#waBody');
-  if (!w) { setHtml(body, `<div class="note">${icon('alert')}<span>This server runs without WhatsApp.</span></div>`); return; }
-  const err = w.error && w.state !== 'open' ? `<div class="note err">${icon('alert')}<span>${esc(w.error)}</span></div>` : '';
+  if (!w) { setHtml(body, `<div class="note">${icon('alert')}<span>${te('whatsapp.none')}</span></div>`); return; }
+  const err = w.error && w.state !== 'open' ? `<div class="note err">${icon('alert')}<span>${esc(waStatusError(w.error))}</span></div>` : '';
   if (w.state === 'linking' && w.code) {
     const c = String(w.code.code), groups = c.length === 8 ? [c.slice(0, 4), c.slice(4)] : [c];
     setHtml(body, `<section class="pairing wa-pairing" aria-labelledby="waLabel">
       <div class="pc-code">
-        <p class="pc-label" id="waLabel">Pairing code</p>
+        <p class="pc-label" id="waLabel">${te('whatsapp.codeLabel')}</p>
         <div class="big-code is-letters" aria-label="${esc(c.split('').join(' '))}">${groups.map((g) => `<span>${esc(g)}</span>`).join('')}</div>
         <p class="expiry" data-wa-countdown role="timer" aria-live="off"></p>
         <div class="pc-actions">
-          <button class="btn btn-sm" type="button" data-act="waCopy">${icon('copy')}<span>Copy code</span></button>
-          <button class="btn btn-sm btn-quiet" type="button" data-act="waCancel">Cancel</button>
+          <button class="btn btn-sm" type="button" data-act="waCopy">${icon('copy')}<span>${te('shared.copyCode')}</span></button>
+          <button class="btn btn-sm btn-quiet" type="button" data-act="waCancel">${te('shared.cancel')}</button>
         </div>
       </div>
       <div class="pc-steps">
         <ol class="steps">
-          <li>On your phone, open WhatsApp › <b class="nowrap">Settings › Linked devices</b>.</li>
-          <li>Tap <b>Link a device</b>, then <b>Link with phone number instead</b>.</li>
-          <li>Type this code. This page updates by itself.</li>
+          <li>${th('whatsapp.step1', { path: html(`<b class="nowrap">${te('whatsapp.linkedDevicesPath')}</b>`) })}</li>
+          <li>${th('whatsapp.step2')}</li>
+          <li>${te('whatsapp.step3')}</li>
         </ol>
-        <p class="waiting">${spinner()}<span>Waiting for your phone…</span></p>
+        <p class="waiting">${spinner()}<span>${te('whatsapp.waiting')}</span></p>
       </div>
     </section>${err}`);
     tickWa();
@@ -854,35 +950,35 @@ function renderWhatsApp() {
   if (w.state === 'open' || w.state === 'connecting' || w.state === 'closed' || w.state === 'linking') {
     const open = w.state === 'open';
     const facts = [
-      w.me?.number ? ['Number', esc(w.me.number)] : null,
-      open ? ['Chats', w.syncing ? 'Bringing over your recent chats…' : String(w.chats)] : null,
+      w.me?.number ? [t('whatsapp.number'), esc(w.me.number)] : null,
+      open ? [t('whatsapp.chats'), w.syncing ? te('whatsapp.syncing') : esc(String(w.chats))] : null,
     ].filter(Boolean);
     setHtml(body, `${err}<div class="group">
       <div class="row dev-head">${waTile()}
-        <div class="row-main"><div class="row-title">${open ? `Linked${w.me?.name ? ` as ${esc(w.me.name)}` : ''}` : 'Connecting to WhatsApp…'}</div>
-          <div class="row-sub">${open ? 'Your Rondo’s WhatsApp shows your chats from here.' : 'The server is reaching WhatsApp.'}</div></div>
-        ${pill(open ? 'ok' : 'warn', open ? 'Linked' : 'Connecting')}
+        <div class="row-main"><div class="row-title">${open ? (w.me?.name ? te('whatsapp.linkedAs', { name: w.me.name }) : te('whatsapp.linked')) : te('whatsapp.connectingToBusy')}</div>
+          <div class="row-sub">${open ? te('whatsapp.linkedText') : te('whatsapp.reaching')}</div></div>
+        ${pill(open ? 'ok' : 'warn', open ? t('whatsapp.linked') : t('whatsapp.connecting'))}
       </div>
-      ${facts.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('')}
-      <div class="row-actions"><button class="btn btn-red-text push" type="button" data-act="waUnlink">${icon('close')}<span>Unlink</span></button></div>
+      ${facts.map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}
+      <div class="row-actions"><button class="btn btn-red-text push" type="button" data-act="waUnlink">${icon('close')}<span>${te('whatsapp.unlink')}</span></button></div>
     </div>`);
     return;
   }
   setHtml(body, `${err}<form class="group form-card" id="waForm" novalidate>
       <div class="field">
-        <label class="field-label" for="waPhone">Your WhatsApp number, with its country code</label>
+        <label class="field-label" for="waPhone">${te('whatsapp.numberLabel')}</label>
         <input type="tel" id="waPhone" autocomplete="tel" inputmode="tel" placeholder="+1 555 010 0000" spellcheck="false">
-        <p class="field-help">The server asks WhatsApp for a code to type on your phone. Nothing is sent to anyone.</p>
+        <p class="field-help">${te('whatsapp.numberHelp')}</p>
       </div>
       <p class="form-err" id="waErr" role="alert"></p>
-      <div class="form-actions"><button class="btn btn-primary" type="submit" id="waBtn">${icon('chat')}<span>Get a code</span></button></div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" id="waBtn">${icon('chat')}<span>${te('shared.getCode')}</span></button></div>
     </form>`);
 }
 function tickWa() {
   const cd = $('[data-wa-countdown]'), c = st0().whatsapp?.code;
   if (!cd || !c) return;
   const left = Math.max(0, Math.ceil((c.expiresAt - now()) / 1000));
-  cd.textContent = left ? `Good for ${clock(left)}` : 'This code expired. Cancel and get a new one.';
+  cd.textContent = left ? t('whatsapp.goodFor', { time: clock(left) }) : t('whatsapp.codeExpired');
   cd.classList.toggle('is-low', left <= 30);
 }
 $('#waBody').addEventListener('input', clearInvalid);
@@ -893,14 +989,14 @@ $('#waBody').addEventListener('submit', async (e) => {
   const digits = input.value.replace(/\D/g, '');
   if (digits.length < 8 || digits.length > 15) {
     input.classList.add('is-invalid');
-    err.textContent = WA_ERRORS.number;
+    err.textContent = waError('number');
     return input.focus();
   }
   const btn = $('#waBtn'), was = btn.innerHTML;
   S.waBusy = true;
   btn.disabled = true;
   input.readOnly = true;
-  btn.innerHTML = `${spinner()}<span>Getting a code…</span>`;
+  btn.innerHTML = `${spinner()}<span>${te('shared.gettingCode')}</span>`;
   err.textContent = '';
   try {
     await api('POST', '/whatsapp/link', { phone: digits }, { timeout: 45000 });
@@ -912,23 +1008,23 @@ $('#waBody').addEventListener('submit', async (e) => {
     btn.disabled = false;
     input.readOnly = false;
     btn.innerHTML = was;
-    err.textContent = WA_ERRORS[x.code] || `Couldn’t get a code. ${reason(x)}`;
+    err.textContent = waError(x.code) || t('shared.couldntGetCode', { reason: reason(x) });
   }
 });
 async function waUnlink(_b, _e, cancel = false) {
   if (!cancel) {
     const ok = await confirmSheet({
-      title: 'Unlink WhatsApp?',
-      text: 'The server leaves your linked devices, and the chats and media it kept are deleted from it. Your phone keeps everything; your Rondo shows nothing new until you link again.',
-      action: 'Unlink',
+      title: t('whatsapp.unlinkTitle'),
+      text: t('whatsapp.unlinkText'),
+      action: t('whatsapp.unlink'),
     });
     if (!ok) return;
   }
   try {
     await api('POST', '/whatsapp/unlink', {}, { timeout: 30000 });
-    if (!cancel) toast('WhatsApp unlinked');
+    if (!cancel) toast(t('whatsapp.unlinked'));
     await poll();
-  } catch (x) { if (x.status !== 401) toast(`Not unlinked. ${reason(x)}`, 'err'); }
+  } catch (x) { if (x.status !== 401) toast(t('whatsapp.notUnlinked', { reason: reason(x) }), 'err'); }
 }
 
 // ---------- device ----------
@@ -937,7 +1033,7 @@ function renderDevice() {
   const parts = [];
   if (S.celebrate) parts.push(doneHtml());
   else if (S.pair) parts.push(pairHtml(d));
-  if (d.source === 'env' && !S.celebrate) parts.push(`<div class="note info device-note">${icon('info')}<span>Your Rondo uses the token from the server’s environment (<code>API_TOKEN</code>) until a Rondo is connected here. Connecting gives it its own token; after that, <code>API_TOKEN</code> isn’t used.</span></div>`);
+  if (d.source === 'env' && !S.celebrate) parts.push(`<div class="note info device-note">${icon('info')}<span>${th('device.envNote')}</span></div>`);
   if (d.source || !S.pair) parts.push(deviceCard(d));
   setHtml($('#deviceBody'), parts.join(''));
   tick();
@@ -945,56 +1041,56 @@ function renderDevice() {
 function deviceCard(d) {
   if (!d.source) {
     return `<div class="group empty">${tileHtml('off', 'player')}
-      <h3>No Rondo connected</h3>
-      <p>Connect your Rondo so it can stream from this server. You’ll get a code to enter in the Rondo’s dashboard.</p>
-      <button class="btn btn-primary" type="button" data-act="connect"${S.codeBusy ? ' disabled' : ''}>${icon('plus')}<span>Connect a Rondo</span></button></div>`;
+      <h3>${te('device.noRondo')}</h3>
+      <p>${te('device.connectText')}</p>
+      <button class="btn btn-primary" type="button" data-act="connect"${S.codeBusy ? ' disabled' : ''}>${icon('plus')}<span>${te('device.connectRondo')}</span></button></div>`;
   }
   const paired = d.source === 'paired';
   const facts = [
-    ['Last seen', d.lastSeenAt ? `<time ${timeAttr(d.lastSeenAt)}>${esc(ago(d.lastSeenAt))}</time>` : 'Not yet'],
-    d.lastIp ? ['IP address', esc(d.lastIp)] : null,
-    d.userAgent ? ['User agent', esc(d.userAgent)] : null,
+    [t('device.lastSeenLabel'), d.lastSeenAt ? `<time ${timeAttr(d.lastSeenAt)}>${esc(ago(d.lastSeenAt))}</time>` : te('device.notYet')],
+    d.lastIp ? [t('device.ipAddress'), esc(d.lastIp)] : null,
+    d.userAgent ? [t('device.userAgent'), esc(d.userAgent)] : null,
   ].filter(Boolean);
   const actions = paired
-    ? `${S.pair ? '' : `<button class="btn" type="button" data-act="connect">${icon('plus')}<span>Connect a different Rondo</span></button>`}
-       <button class="btn btn-red-text push" type="button" data-act="disconnect">${icon('close')}<span>Disconnect</span></button>`
-    : S.pair ? '' : `<button class="btn btn-primary" type="button" data-act="connect">${icon('plus')}<span>Connect a Rondo</span></button>`;
+    ? `${S.pair ? '' : `<button class="btn" type="button" data-act="connect">${icon('plus')}<span>${te('device.connectDifferent')}</span></button>`}
+       <button class="btn btn-red-text push" type="button" data-act="disconnect">${icon('close')}<span>${te('device.disconnect')}</span></button>`
+    : S.pair ? '' : `<button class="btn btn-primary" type="button" data-act="connect">${icon('plus')}<span>${te('device.connectRondo')}</span></button>`;
   return `<div class="group">
     <div class="row dev-head">${tileHtml('device', 'player')}
       <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')}</div>
-        <div class="row-sub">${paired ? (d.pairedAt ? `Connected ${esc(when(d.pairedAt))}` : 'Connected') : 'Uses API_TOKEN from the server’s environment'}</div></div>
-      ${pill(paired ? 'ok' : 'off', paired ? 'Connected' : 'API_TOKEN')}
+        <div class="row-sub">${paired ? (d.pairedAt ? te('device.connectedWhen', { when: when(d.pairedAt) }) : te('device.connected')) : te('device.usesApiTokenServer')}</div></div>
+      ${pill(paired ? 'ok' : 'off', paired ? t('device.connected') : 'API_TOKEN')}
     </div>
-    ${facts.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('')}
+    ${facts.map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}
     ${actions.trim() ? `<div class="row-actions">${actions}</div>` : ''}
   </div>`;
 }
 function pairHtml(d) {
   const p = S.pair, code = String(p.code).padStart(6, '0');
   const notes = [];
-  if (d.source === 'paired') notes.push(`<div class="note">${icon('alert')}<span>Connecting a new Rondo disconnects the current one.</span></div>`);
-  if (LOCAL) notes.push(`<div class="note">${icon('alert')}<span>This page is open as <b>${esc(location.hostname)}</b>, which your Rondo can’t reach. Use the server’s network address instead, like <b>http://192.168.1.10:3000</b>.</span></div>`);
-  else if (!(S.status.server?.https ?? S.state?.https)) notes.push(`<div class="note">${icon('unlock')}<span>Not encrypted: use it only on your home network.</span></div>`);
+  if (d.source === 'paired') notes.push(`<div class="note">${icon('alert')}<span>${te('pair.replaces')}</span></div>`);
+  if (LOCAL) notes.push(`<div class="note">${icon('alert')}<span>${th('pair.localhost', { host: location.hostname })}</span></div>`);
+  else if (!(S.status.server?.https ?? S.state?.https)) notes.push(`<div class="note">${icon('unlock')}<span>${te('shared.insecure')}</span></div>`);
   return `<section class="pairing" aria-labelledby="pcLabel">
     <div class="pc-code">
-      <p class="pc-label" id="pcLabel">Connect code</p>
+      <p class="pc-label" id="pcLabel">${te('pair.codeLabel')}</p>
       <div class="big-code${p.expired ? ' is-expired' : ''}" aria-label="${code.split('').join(' ')}"><span>${code.slice(0, 3)}</span><span>${code.slice(3)}</span></div>
       <p class="expiry" data-countdown role="timer" aria-live="off"></p>
       <div class="drain" aria-hidden="true"><span data-drain></span></div>
       <div class="pc-actions">
-        ${p.expired ? '' : `<button class="btn btn-sm" type="button" data-act="copyCode">${icon('copy')}<span>Copy code</span></button>`}
-        <button class="btn ${p.expired ? 'btn-primary' : 'btn-sm'}" type="button" data-act="newCode"${S.codeBusy ? ' disabled' : ''}>${icon('refresh')}<span>New code</span></button>
-        <button class="btn btn-sm btn-quiet" type="button" data-act="cancelCode">${p.expired ? 'Close' : 'Cancel'}</button>
+        ${p.expired ? '' : `<button class="btn btn-sm" type="button" data-act="copyCode">${icon('copy')}<span>${te('shared.copyCode')}</span></button>`}
+        <button class="btn ${p.expired ? 'btn-primary' : 'btn-sm'}" type="button" data-act="newCode"${S.codeBusy ? ' disabled' : ''}>${icon('refresh')}<span>${te('pair.newCode')}</span></button>
+        <button class="btn btn-sm btn-quiet" type="button" data-act="cancelCode">${p.expired ? te('pair.close') : te('shared.cancel')}</button>
       </div>
     </div>
     <div class="pc-steps">
       <ol class="steps">
-        <li>On your Rondo, open <b class="nowrap">Settings › Server › Connect to a server</b>, or the <b>Server</b> page of its dashboard (<b class="nowrap">Settings › Dashboard</b>).</li>
-        <li>Enter this server’s address:
-          <div class="addr"><span>${esc(ORIGIN)}</span><button class="ib ib-sm" type="button" data-act="copy" aria-label="Copy the address">${icon('copy')}</button></div></li>
-        <li>Then enter the code. Your Rondo connects right away.</li>
+        <li>${th('pair.step1', { menu: html(`<b class="nowrap">${te('pair.menuPath')}</b>`), dashboard: html(`<b class="nowrap">${te('pair.dashboardPath')}</b>`) })}</li>
+        <li>${te('pair.step2')}
+          <div class="addr"><span>${esc(ORIGIN)}</span><button class="ib ib-sm" type="button" data-act="copy" aria-label="${te('pair.copyAddress')}">${icon('copy')}</button></div></li>
+        <li>${te('pair.step3')}</li>
       </ol>
-      ${p.expired ? '' : `<p class="waiting">${spinner()}<span>Waiting for your Rondo…</span></p>`}
+      ${p.expired ? '' : `<p class="waiting">${spinner()}<span>${te('pair.waiting')}</span></p>`}
       ${notes.join('')}
     </div>
   </section>`;
@@ -1002,9 +1098,9 @@ function pairHtml(d) {
 function doneHtml() {
   return `<section class="pairing is-done" role="status">
     <div class="done-mark"><svg class="mk" viewBox="-66 -66 132 132" aria-hidden="true">${MARK_INNER}</svg><span class="done-check">${icon('check')}</span></div>
-    <h2 class="done-title">Your Rondo is connected</h2>
-    <p class="done-text">It streams from this server now, with its own token.</p>
-    <button class="btn btn-primary" type="button" data-act="doneOk">Done</button>
+    <h2 class="done-title">${te('pair.connected')}</h2>
+    <p class="done-text">${te('pair.connectedText')}</p>
+    <button class="btn btn-primary" type="button" data-act="doneOk">${te('pair.done')}</button>
   </section>`;
 }
 async function newCode(confirmReplace) {
@@ -1012,9 +1108,9 @@ async function newCode(confirmReplace) {
   const d = S.status.device || {};
   if (confirmReplace && d.source === 'paired') {
     const ok = await confirmSheet({
-      title: 'Connect a different Rondo?',
-      text: 'The Rondo connected now stops working with this server as soon as the new one connects.',
-      action: 'Get a code', danger: false,
+      title: t('pair.differentTitle'),
+      text: t('pair.differentText'),
+      action: t('shared.getCode'), danger: false,
     });
     if (!ok) return;
   }
@@ -1026,7 +1122,7 @@ async function newCode(confirmReplace) {
     if (S.route !== 'device') location.hash = '#device';
     schedulePoll(3000);
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t get a code. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('shared.couldntGetCode', { reason: reason(e) }), 'err');
   } finally {
     S.codeBusy = false;
     renderView();
@@ -1038,21 +1134,21 @@ async function cancelCode() {
   S.pair = null;
   renderDevice();
   if (!p || p.expired) return;
-  try { await api('DELETE', '/device/code'); } catch (e) { if (e.status !== 401) toast(`Couldn’t cancel the code. ${reason(e)}`, 'err'); }
+  try { await api('DELETE', '/device/code'); } catch (e) { if (e.status !== 401) toast(t('pair.couldntCancel', { reason: reason(e) }), 'err'); }
   schedulePoll();
 }
 async function disconnect() {
   const ok = await confirmSheet({
-    title: 'Disconnect your Rondo?',
-    text: 'It stops streaming from this server right away. You can connect it again with a new code.',
-    action: 'Disconnect',
+    title: t('device.disconnectTitle'),
+    text: t('device.disconnectText'),
+    action: t('device.disconnect'),
   });
   if (!ok) return;
   try {
     await api('DELETE', '/device');
-    toast('Rondo disconnected');
+    toast(t('device.disconnected'));
     await poll();
-  } catch (e) { if (e.status !== 401) toast(`Not disconnected. ${reason(e)}`, 'err'); }
+  } catch (e) { if (e.status !== 401) toast(t('device.notDisconnected', { reason: reason(e) }), 'err'); }
 }
 // to the clipboard; plain http on a LAN address has no Clipboard API, so the old way there
 async function copyText(text) {
@@ -1071,44 +1167,48 @@ async function copyText(text) {
     return ok;
   }
 }
+// what: 'address' (this server's) or 'code'
 async function copyWith(btn, text, what) {
-  if (!(await copyText(text))) return toast(`Couldn’t copy. Select the ${what.toLowerCase()} and copy it.`, 'err');
+  if (!(await copyText(text))) return toast(what === 'address' ? t('copy.addressFailed') : t('copy.codeFailed'), 'err');
   const use = $('use', btn);
   if (use) {
     use.setAttribute('href', '#i-check');
     setTimeout(() => $('use', btn)?.setAttribute('href', '#i-copy'), 1600);
   }
-  toast(`${what} copied`);
+  toast(what === 'address' ? t('copy.addressDone') : t('copy.codeDone'));
 }
 // a connect code the way it's shown and typed: 123 456
 const spacedCode = (code) => { const c = String(code).padStart(6, '0'); return `${c.slice(0, 3)} ${c.slice(3)}`; };
 
 // ---------- resolver ----------
+// the server's own words for a failed test ("no formats"); yt-dlp's errors are shown as they are
+const rzError = (msg) => (msg === 'no formats' ? t('resolver.noFormats') : msg);
 function renderResolver() {
   const a = areas(S.status), R = S.rz;
   let upd = '';
-  if (R.updating) upd = `<div class="rz-line wait">${spinner()}<span>Updating… <span data-elapsed>${clock(Math.floor((Date.now() - R.updateStart) / 1000))}</span></span></div><div class="progress" aria-hidden="true"></div>`;
+  if (R.updating) upd = `<div class="rz-line wait">${spinner()}<span>${th('resolver.updatingElapsed', { time: html(`<span data-elapsed>${clock(Math.floor((Date.now() - R.updateStart) / 1000))}</span>`) })}</span></div><div class="progress" aria-hidden="true"></div>`;
   else if (R.update?.ok) upd = R.update.before && R.update.before === R.update.after
-    ? `<div class="rz-line ok">${icon('check')}<span>Already up to date: <b>${esc(R.update.after)}</b></span></div>`
-    : `<div class="rz-line ok">${icon('check')}<span>Updated <b>${esc(R.update.before || 'unknown')}</b><span class="arrow"> → </span><b>${esc(R.update.after || 'unknown')}</b></span></div>`;
-  else if (R.update) upd = `<div class="rz-line bad">${icon('alert')}<span>The update failed${R.update.error ? `: <b>${esc(R.update.error)}</b>` : '.'}</span></div>`;
+    ? `<div class="rz-line ok">${icon('check')}<span>${th('resolver.upToDate', { version: String(R.update.after) })}</span></div>`
+    : `<div class="rz-line ok">${icon('check')}<span>${th('resolver.updated', { before: String(R.update.before || t('resolver.unknown')), after: String(R.update.after || t('resolver.unknown')) }).replace(' → ', '<span class="arrow"> → </span>')}</span></div>`;
+  else if (R.update) upd = `<div class="rz-line bad">${icon('alert')}<span>${R.update.error ? th('resolver.updateFailedWhy', { error: String(R.update.error) }) : te('resolver.updateFailed')}</span></div>`;
   let test = '';
-  if (R.testing) test = `<div class="rz-line wait">${spinner()}<span>Resolving a test video…</span></div>`;
-  else if (R.test?.ok) test = `<div class="rz-line ok">${icon('check')}<span>Playback works. Resolved in <b>${Number(R.test.ms || 0).toLocaleString('en-US')} ms</b>.</span></div>`;
-  else if (R.test) test = `<div class="rz-line bad">${icon('alert')}<span>Playback failed${R.test.error ? `: <b>${esc(R.test.error)}</b>` : '.'}</span></div>`;
+  if (R.testing) test = `<div class="rz-line wait">${spinner()}<span>${te('resolver.resolvingTest')}</span></div>`;
+  else if (R.test?.ok) test = `<div class="rz-line ok">${icon('check')}<span>${th('resolver.testWorks', { ms: Number(R.test.ms || 0) })}</span></div>`;
+  else if (R.test) test = `<div class="rz-line bad">${icon('alert')}<span>${R.test.error ? th('resolver.testFailedWhy', { error: rzError(String(R.test.error)) }) : te('resolver.testFailed')}</span></div>`;
+  const out = st0().updates?.ytdlp ? ` · ${th('resolver.versionOut', { version: String(st0().updates.ytdlp.version) })}` : '';
   setHtml($('#resolverRows'), `
     <div class="row">${tileHtml('resolver', 'bolt')}
-      <div class="row-main"><div class="row-title">yt-dlp</div><div class="row-sub ver">Version ${esc(a.y.version || 'unknown')}${st0().updates?.ytdlp ? ` · <b>${esc(st0().updates.ytdlp.version)}</b> is out` : ''}</div></div>
+      <div class="row-main"><div class="row-title">yt-dlp</div><div class="row-sub ver">${te('resolver.version', { version: a.y.version || t('resolver.unknown') })}${out}</div></div>
       ${pill(a.rz.level, a.rz.pill)}
     </div>
     <div class="row rz">${tileHtml('settings', 'refresh')}
-      <div class="row-main"><div class="row-title">Update yt-dlp</div><div class="row-sub">Downloads the latest yt-dlp. It can take up to 2 minutes.</div></div>
-      <button class="btn${R.updating ? ' is-busy' : ''}" type="button" data-act="updateYtdlp"${R.updating ? ' disabled' : ''}>${R.updating ? 'Updating…' : 'Update now'}</button>
+      <div class="row-main"><div class="row-title">${te('resolver.updateTitle')}</div><div class="row-sub">${te('resolver.updateText')}</div></div>
+      <button class="btn${R.updating ? ' is-busy' : ''}" type="button" data-act="updateYtdlp"${R.updating ? ' disabled' : ''}>${R.updating ? te('resolver.updating') : te('resolver.updateNow')}</button>
       ${upd ? `<div class="rz-res" aria-live="polite">${upd}</div>` : ''}
     </div>
     <div class="row rz">${tileHtml('ok', 'play')}
-      <div class="row-main"><div class="row-title">Test playback</div><div class="row-sub">Resolves a known video the way your Rondo does before it plays.</div></div>
-      <button class="btn${R.testing ? ' is-busy' : ''}" type="button" data-act="testYtdlp"${R.testing ? ' disabled' : ''}>${R.testing ? 'Testing…' : R.test ? 'Test again' : 'Test playback'}</button>
+      <div class="row-main"><div class="row-title">${te('resolver.testTitle')}</div><div class="row-sub">${te('resolver.testText')}</div></div>
+      <button class="btn${R.testing ? ' is-busy' : ''}" type="button" data-act="testYtdlp"${R.testing ? ' disabled' : ''}>${R.testing ? te('resolver.testing') : R.test ? te('resolver.testAgain') : te('resolver.testButton')}</button>
       ${test ? `<div class="rz-res" aria-live="polite">${test}</div>` : ''}
     </div>`);
 }
@@ -1124,11 +1224,11 @@ async function updateYtdlp() {
     if (R.update?.ok) {
       const changed = R.update.before !== R.update.after;
       if (changed) R.test = null; // an old test result says nothing about the new version
-      toast(changed ? 'yt-dlp updated' : 'yt-dlp is up to date');
+      toast(changed ? t('resolver.updatedToast') : t('resolver.upToDateToast'));
     }
   } catch (e) {
     if (e.status === 401) { R.updating = false; return; }
-    R.update = { ok: false, error: e.code === 'timeout' ? 'no answer after 3 minutes. Check the version again in a moment' : reason(e).replace(/\.$/, '') };
+    R.update = { ok: false, error: e.code === 'timeout' ? t('resolver.noAnswer') : reason(e).replace(/\.$/, '') };
   }
   R.updating = false;
   await poll();
@@ -1161,37 +1261,38 @@ async function loadLogs() {
     S.logs = Array.isArray(r?.lines) ? r.lines : [];
     renderLogs();
   } catch (e) {
-    if (e.status !== 401 && !S.logs) setHtml(logList, `<div class="row-empty">Couldn’t load the activity. ${esc(reason(e))}</div>`);
-    else if (e.status !== 401) toast(`Couldn’t refresh. ${reason(e)}`, 'err');
+    if (e.status !== 401 && !S.logs) setHtml(logList, `<div class="row-empty">${te('activity.couldntLoad', { reason: reason(e) })}</div>`);
+    else if (e.status !== 401) toast(t('activity.couldntRefresh', { reason: reason(e) }), 'err');
   } finally {
     btn.disabled = false;
     btn.classList.remove('is-busy');
   }
 }
 $('#logsRefresh').addEventListener('click', loadLogs);
-function dayLabel(t) {
-  const d = new Date(t), today = new Date(now());
+function dayLabel(ms) {
+  const d = new Date(ms), today = new Date(now());
   const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((start(today) - start(d)) / 86400000);
-  return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : dfWeekday.format(t);
+  return diff === 0 ? t('activity.today') : diff === 1 ? t('activity.yesterday') : dfWeekday.format(ms);
 }
 function renderLogs() {
   const lines = S.logs;
   if (!lines.length) {
-    setHtml(logList, `<div class="empty">${tileHtml('ok', 'check')}<h3>No warnings</h3><p>When the server runs into a problem, such as a video that won’t resolve or cookies that stopped working, it shows up here.</p></div>`);
+    setHtml(logList, `<div class="empty">${tileHtml('ok', 'check')}<h3>${te('activity.none')}</h3><p>${te('activity.noneText')}</p></div>`);
     return;
   }
-  let html = '', last = '';
+  // the lines are the server's log, in English as it wrote them
+  let out = '', last = '';
   for (const l of lines) {
     const label = dayLabel(l.time);
-    if (label !== last) { html += `<div class="lhdr">${esc(label)}</div>`; last = label; }
+    if (label !== last) { out += `<div class="lhdr">${esc(label)}</div>`; last = label; }
     const recent = now() - l.time < 3600000;
     const level = l.level === 'error' ? 'error' : 'warn';
-    html += `<div class="log ${level}">${icon('alert')}
-      <div class="log-msg"><span class="sr-only">${level === 'error' ? 'Error' : 'Warning'}: </span>${esc(l.msg)}</div>
+    out += `<div class="log ${level}">${icon('alert')}
+      <div class="log-msg"><span class="sr-only">${level === 'error' ? te('activity.error') : te('activity.warning')} </span>${esc(l.msg)}</div>
       <time class="log-time" ${timeAttr(l.time)}>${esc(recent ? ago(l.time) : dfTime.format(l.time))}</time></div>`;
   }
-  setHtml(logList, html);
+  setHtml(logList, out);
 }
 
 // ---------- admin account ----------
@@ -1206,30 +1307,30 @@ pwForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (pwBtn.disabled) return;
   const cur = $('#pwCurrent'), next = $('#pwNext'), next2 = $('#pwNext2');
-  if (!cur.value) return pwFail('Enter your current password.', cur);
-  if ([...next.value].length < MIN_PASSWORD) return pwFail(`The new password needs at least ${MIN_PASSWORD} characters.`, next);
-  if (next.value !== next2.value) return pwFail('The new passwords don’t match.', next2);
+  if (!cur.value) return pwFail(t('account.enterCurrent'), cur);
+  if ([...next.value].length < MIN_PASSWORD) return pwFail(t('account.newNeedsAtLeast', { count: MIN_PASSWORD }), next);
+  if (next.value !== next2.value) return pwFail(t('account.noMatch'), next2);
   pwBtn.disabled = true;
-  pwBtn.textContent = 'Changing…';
+  pwBtn.textContent = t('account.changing');
   try {
     await api('POST', '/password', { current: cur.value, next: next.value });
     pwForm.reset();
     next.dispatchEvent(new Event('input'));
-    toast('Password changed · other browsers are signed out');
+    toast(t('account.changed'));
   } catch (err) {
-    if (err.status === 403) pwFail('The current password isn’t right.', cur);
-    else if (err.status === 400) pwFail(`The new password needs at least ${MIN_PASSWORD} characters.`, next);
-    else if (err.status === 429) pwFail(`Too many wrong passwords. Try again in ${err.data?.retryAfterSec ?? 60} seconds.`, cur);
-    else if (err.status !== 401) pwFail(`Not changed. ${reason(err)}`);
+    if (err.status === 403) pwFail(t('account.wrongCurrent'), cur);
+    else if (err.status === 400) pwFail(t('account.newNeedsAtLeast', { count: MIN_PASSWORD }), next);
+    else if (err.status === 429) pwFail(t('account.tooMany', { count: Number(err.data?.retryAfterSec ?? 60) }), cur);
+    else if (err.status !== 401) pwFail(t('account.notChanged', { reason: reason(err) }));
   } finally {
     pwBtn.disabled = false;
-    pwBtn.textContent = 'Change password';
+    pwBtn.textContent = t('account.changePassword');
   }
 });
 $('#signOut').addEventListener('click', async () => {
   try { await api('POST', '/logout', undefined, { auth: false }); } catch { /* signed out locally anyway */ }
   S.logs = null;
-  showSignIn('You’re signed out.');
+  showSignIn(t('signin.signedOut'));
 });
 
 // ---------- actions ----------
@@ -1238,8 +1339,8 @@ const ACTIONS = {
   newCode: () => newCode(false),
   cancelCode,
   disconnect,
-  copy: (b) => copyWith(b, ORIGIN, 'Address'),
-  copyCode: (b) => S.pair && copyWith(b, spacedCode(S.pair.code), 'Code'),
+  copy: (b) => copyWith(b, ORIGIN, 'address'),
+  copyCode: (b) => S.pair && copyWith(b, spacedCode(S.pair.code), 'code'),
   doneOk: () => { S.celebrate = false; renderDevice(); renderChrome(); },
   checkCookies,
   removeCookies,
@@ -1248,8 +1349,8 @@ const ACTIONS = {
   tvStart,
   tvCancel,
   tvSignOut,
-  tvCopy: (b) => copyWith(b, st0().tv?.pending?.code || '', 'Code'),
-  waCopy: (b) => copyWith(b, st0().whatsapp?.code?.code || '', 'Code'),
+  tvCopy: (b) => copyWith(b, st0().tv?.pending?.code || '', 'code'),
+  waCopy: (b) => copyWith(b, st0().whatsapp?.code?.code || '', 'code'),
   waCancel: (b, e) => waUnlink(b, e, true),
   waUnlink,
 };
@@ -1264,7 +1365,7 @@ sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); 
 function confirmSheet({ title, text, action, danger = true }) {
   return new Promise((resolve) => {
     sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>${esc(title)}</h2><p>${esc(text)}</p>
-      <div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" type="button" data-r="1">${esc(action)}</button></div></div>`;
+      <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('shared.cancel')}</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" type="button" data-r="1">${esc(action)}</button></div></div>`;
     if (!sheet.open) sheet.showModal();
     $('[data-r="0"]', sheet).focus();
     const onClick = (e) => { const b = e.target.closest('[data-r]'); if (b) finish(b.dataset.r === '1'); };
@@ -1295,26 +1396,26 @@ async function startServerUpdate() {
   const before = st0().server?.version;
   if (!next) return;
   const ok = await confirmSheet({
-    title: `Update the server to Rondo ${next}?`,
-    text: 'The server downloads the new version and restarts on it, which takes a minute or two. Your Rondo can’t stream until it’s back. Your settings, YouTube account and connected Rondo stay; you sign in here again afterwards.',
-    action: 'Update',
+    title: t('update.title', { version: String(next) }),
+    text: t('update.text'),
+    action: t('overview.update'),
     danger: false,
   });
   if (!ok) return;
   try { await api('POST', '/server/update', undefined, { auth: false }); } catch (e) {
-    return toast(e.status === 409 ? 'An update is already running.' : `Couldn’t start the update. ${reason(e)}`, 'err');
+    return toast(e.status === 409 ? t('update.busy') : t('update.couldntStart', { reason: reason(e) }), 'err');
   }
   S.updatingServer = true;
   clearTimeout(pollTimer);
-  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>Updating to Rondo ${esc(next)}</h2>
-    <p id="suText">Downloading the new version…</p><p class="muted">This page carries on by itself. On a Raspberry Pi it can take a few minutes.</p></div>`;
+  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>${te('update.updating', { version: String(next) })}</h2>
+    <p id="suText">${te('update.downloading')}</p><p class="muted">${te('update.carriesOn')}</p></div>`;
   if (!sheet.open) sheet.showModal();
   const started = Date.now();
   const finish = (ok, msg) => {
     S.updatingServer = false;
-    if (ok) { if (sheet.open) sheet.close(); toast(`The server runs Rondo ${next}`); setTimeout(() => location.reload(), 1200); return; }
-    sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>The update didn’t finish</h2><p>${esc(msg)}</p>
-      <p class="muted">The server keeps running the version it had.</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">OK</button></div></div>`;
+    if (ok) { if (sheet.open) sheet.close(); toast(t('update.done', { version: String(next) })); setTimeout(() => location.reload(), 1200); return; }
+    sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div><h2>${te('update.failedTitle')}</h2><p>${esc(msg)}</p>
+      <p class="muted">${te('update.keepsOld')}</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">${te('update.ok')}</button></div></div>`;
     $('[data-r="ok"]', sheet).addEventListener('click', () => sheet.close(), { once: true });
     poll();
   };
@@ -1322,17 +1423,17 @@ async function startServerUpdate() {
     const line = $('#suText', sheet);
     try {
       const su = await api('GET', '/server/update', undefined, { auth: false, timeout: 5000 });
-      if (su.state === 'failed') return finish(false, su.message || 'The updater gave up.');
-      if (su.state === 'current') return finish(false, 'The server already runs the newest image. Try again in a few minutes: the new one may still be on its way.');
-      if (line) line.textContent = su.state === 'restarting' ? 'Restarting the server…' : 'Downloading the new version…';
+      if (su.state === 'failed') return finish(false, su.message || t('update.gaveUp')); // the updater's own words, as they came
+      if (su.state === 'current') return finish(false, t('update.alreadyNewest'));
+      if (line) line.textContent = su.state === 'restarting' ? t('update.restarting') : t('update.downloading');
     } catch {
-      if (line) line.textContent = 'Restarting the server…';
+      if (line) line.textContent = t('update.restarting');
     }
     try {
       const st = await api('GET', '/state', undefined, { auth: false, timeout: 5000 });
       if (st.version && st.version !== before) return finish(true);
     } catch { /* still restarting */ }
-    if (Date.now() - started > 10 * 60000) return finish(false, 'It’s taking much longer than it should. On the server, docker logs rondo-updater says why.');
+    if (Date.now() - started > 10 * 60000) return finish(false, t('update.tooLong'));
     setTimeout(tick, 3000);
   };
   setTimeout(tick, 3000);

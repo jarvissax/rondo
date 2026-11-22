@@ -4,6 +4,14 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## Unreleased
+
+- **The admin page speaks Spanish**, and any language in `lang/`: it starts in the browser's
+  language when Rondo has it (English otherwise), and a language picker on the sign-in screen and
+  under Admin account changes it for that browser. Its texts come from the same files as the Y1's
+  and the dashboard's ([Translating Rondo](../docs/translating.md)); `GET /admin/lang/<code>` serves
+  them. Nothing the server answers to a Rondo changes.
+
 ## 3.5.1 (November 16, 2026)
 
 - **Fixed: a chat with two new messages showed one unread.** WhatsApp's chat updates give the unread

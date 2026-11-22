@@ -1,4 +1,4 @@
-# build context is the repo root (the compose files use context ..); only server/, infra/entrypoint.sh
+# build context is the repo root (the compose files use context ..); only server/, lang/, infra/entrypoint.sh
 # and the admin page's font from native/assets/fonts are used
 .git
 **/node_modules

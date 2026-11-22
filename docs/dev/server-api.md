@@ -67,6 +67,9 @@ the same paths either way.
 Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the admin session
 (`401 {"error": "signin"}` otherwise → the page shows sign-in).
 
+- `GET /admin/lang/<codes>` (no sign-in) → `{"code", "name", "languages": [{"code", "name"}], "strings":
+  {key: text}}`: the page's texts (`lang/*.json`'s `admin` section, English's where a language has none)
+  in the nearest language to `<codes>`, a browser's list (`es-MX,es,en`); English when none is near.
 - `GET /admin/api/state` → `{"setup": true | false, "signedIn": true | false, "https": bool, "version": "1.0.2"}`
   (no sign-in needed; the page watches `version` change while the server updates itself)
   (`setup: true` = no admin password yet).

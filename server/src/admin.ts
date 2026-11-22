@@ -19,6 +19,7 @@ import type { WhatsApp } from "./whatsapp.js";
 import { hashPassword, sha256, type Store, verifyPassword } from "./store.js";
 import type { ServerUpdate } from "./serverUpdate.js";
 import { isNewer, type Updates } from "./updates.js";
+import { pageStrings } from "./lang.js";
 
 const run = promisify(execFile);
 // the container's yt-dlp installer (infra/ytdlp-install.sh, copied into the image)
@@ -476,6 +477,11 @@ export function registerAdminRoutes(app: FastifyInstance, admin: Admin): void {
       return reply.code(404).send({ error: "not_found" });
     }
   });
+  // its texts in a language (no sign-in: the sign-in screen has them too); code may be the browser's
+  // list ("es-MX,es,en"): the nearest Rondo has
+  app.get<{ Params: { code: string } }>("/admin/lang/:code", async (req, reply) =>
+    reply.header("cache-control", "no-cache").send(pageStrings("admin", req.params.code.replace(/\.json$/, ""))),
+  );
   app.get("/admin/fonts/Roboto-Regular.ttf", async (_req, reply) => sendFile(reply, FONT_PATHS.find((p) => existsSync(p)) ?? FONT_PATHS[0]!));
   app.get<{ Params: { file: string } }>("/admin/:file", async (req, reply) => {
     const file = normalize(req.params.file);

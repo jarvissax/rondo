@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { pageStrings } from '../lang/page.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // the server's version, as the real admin page shows it (tools/set-version.sh)
@@ -337,6 +338,9 @@ http.createServer(async (req, res) => {
     }
     if (url.pathname === '/' || url.pathname === '/admin') return send(res, 302, '', { Location: '/admin/' });
     if (url.pathname === '/admin/fonts/Roboto-Regular.ttf') return serveFile(res, FONT);
+    // the page's texts (lang/*.json's "admin"), read on every load: edit and reload (docs/translating.md)
+    const lm = /^\/admin\/lang\/([^/]+)$/.exec(url.pathname);
+    if (lm) return send(res, 200, pageStrings('admin', decodeURIComponent(lm[1]).replace(/\.json$/, '')));
     if (url.pathname === '/admin/') return serveFile(res, path.join(WEB, 'index.html'));
     const m = /^\/admin\/([\w.-]+)$/.exec(url.pathname);
     if (m && !m[1].startsWith('.')) return serveFile(res, path.join(WEB, m[1]));

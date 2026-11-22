@@ -19,6 +19,8 @@ COPY --from=build /app/package.json ./
 # the admin page (docs/dev/server-api.md) and its font, the same Roboto the device and its dashboard use
 COPY --from=build /app/admin ./admin
 COPY native/assets/fonts/Roboto-Regular.ttf ./admin/fonts/Roboto-Regular.ttf
+# its texts in every language (lang/*.json, docs/translating.md)
+COPY lang/ ./lang/
 COPY infra/entrypoint.sh /entrypoint.sh
 COPY infra/ytdlp-install.sh /ytdlp-install.sh
 RUN chmod +x /entrypoint.sh /ytdlp-install.sh
