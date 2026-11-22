@@ -107,6 +107,9 @@ matches the Y1's **Settings › Display › Theme**, and video quality is on the
 size, text color and opacity, background color and opacity, and edges, with a preview that changes as
 you pick; **Use YouTube's look** goes back to YouTube's own.
 
+**Language**, as the Y1's Settings › Language: the dashboard speaks the Y1's language, and changing it
+here changes both (the page loads again in it).
+
 **Date & time**, as on the Y1: the time and the time zone each set automatically or by hand, and
 24-hour time. By hand, set the date and the time (or take your computer's) and pick the time zone.
 

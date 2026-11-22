@@ -113,7 +113,7 @@
 <!-- First load: the boot animation's circling playhead -->
 <div class="splash" id="splash">
   <svg class="lockup-mark is-turning is-intro" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
-  <p class="sr-only" role="status">Connecting to your Rondo</p>
+  <p class="sr-only" role="status" data-i18n="pair.connecting">Connecting to your Rondo</p>
 </div>
 
 <!-- Pairing: shown whenever the device answers 401 -->
@@ -121,15 +121,15 @@
   <div class="pair-inner">
     <svg class="lockup-mark" id="pairMark" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
     <svg class="lockup-word" aria-label="rondo" role="img"><use href="#wordmark"/></svg>
-    <h1 class="pair-title">Pair this browser</h1>
-    <p class="pair-text">Open <b>Settings › Dashboard</b> on your Rondo and type the 6-digit code.</p>
+    <h1 class="pair-title" data-i18n="pair.title">Pair this browser</h1>
+    <p class="pair-text" data-i18n-html="pair.text">Open <b>Settings › Dashboard</b> on your Rondo and type the 6-digit code.</p>
     <form class="code" id="codeForm" autocomplete="off" novalidate>
-      <label for="codeInput" class="sr-only">Pairing code</label>
+      <label for="codeInput" class="sr-only" data-i18n="pair.codeLabel">Pairing code</label>
       <input id="codeInput" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" spellcheck="false" aria-describedby="codeMsg">
       <div class="code-boxes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </form>
     <p class="code-msg" id="codeMsg" role="alert"></p>
-    <p class="pair-foot">The code is new each time the dashboard starts. Keep that screen open while you use this page.</p>
+    <p class="pair-foot" data-i18n="pair.foot">The code is new each time the dashboard starts. Keep that screen open while you use this page.</p>
   </div>
 </main>
 
@@ -137,20 +137,20 @@
 <main class="pair" id="offline" hidden>
   <div class="pair-inner">
     <svg class="lockup-mark is-dim" viewBox="-66 -66 132 132" aria-hidden="true"><g class="mark-ring" fill="none" stroke-width="13" stroke-linecap="round"><path d="M57.965 2.024A58 58 0 1 1 12.059-56.733" stroke="#f5f5f7"/><path d="M29-50.229A58 58 0 0 1 55.753-15.987" stroke="#ff3b4f"/></g><path d="M-9-15v30L16 0z" fill="#ff3b4f" stroke="#ff3b4f" stroke-width="3" stroke-linejoin="round"/></svg>
-    <h1 class="pair-title">Can’t reach your Rondo</h1>
-    <p class="pair-text">Open <b>Settings › Dashboard</b> on your Rondo and keep it open. This phone or computer has to be on the same Wi-Fi.</p>
-    <button class="btn btn-primary" id="offlineRetry" type="button">Try again</button>
-    <p class="pair-foot" id="offlineNote">Trying again every few seconds.</p>
+    <h1 class="pair-title" data-i18n="offline.title">Can’t reach your Rondo</h1>
+    <p class="pair-text" data-i18n-html="offline.text">Open <b>Settings › Dashboard</b> on your Rondo and keep it open. This phone or computer has to be on the same Wi-Fi.</p>
+    <button class="btn btn-primary" id="offlineRetry" type="button" data-i18n="common.tryAgain">Try again</button>
+    <p class="pair-foot" id="offlineNote" data-i18n="offline.note">Trying again every few seconds.</p>
   </div>
 </main>
 
 <div class="app" id="app" hidden>
   <aside class="side">
-    <a class="brand" href="#overview" aria-label="Rondo, overview">
+    <a class="brand" href="#overview" aria-label="Rondo, overview" data-i18n-attr="aria-label:nav.brand">
       <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
       <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
     </a>
-    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <nav class="nav" id="nav" aria-label="Sections" data-i18n-attr="aria-label:nav.sections"></nav>
     <div class="side-foot">
       <div class="mini" id="mini" hidden></div>
       <div class="side-status" id="sideStatus"></div>
@@ -158,7 +158,7 @@
   </aside>
 
   <header class="top">
-    <a class="brand" href="#overview" aria-label="Rondo, overview">
+    <a class="brand" href="#overview" aria-label="Rondo, overview" data-i18n-attr="aria-label:nav.brand">
       <svg class="brand-mark" aria-hidden="true"><use href="#mark"/></svg>
       <svg class="brand-word" aria-hidden="true"><use href="#wordmark"/></svg>
     </a>
@@ -167,44 +167,44 @@
 
   <div class="banner" id="banner" role="status" hidden>
     <svg class="i"><use href="#i-alert"/></svg>
-    <span id="bannerText">Lost the connection to your Rondo. Trying again…</span>
+    <span id="bannerText" data-i18n="banner.lost">Lost the connection to your Rondo. Trying again…</span>
   </div>
 
   <main class="main" id="main">
 
     <section class="view" id="view-more" aria-labelledby="h-more" hidden>
-      <header class="vh"><h1 id="h-more">Settings</h1></header>
+      <header class="vh"><h1 id="h-more" data-i18n="common.settings">Settings</h1></header>
       <div id="moreRows"></div>
     </section>
 
     <section class="view" id="view-overview" aria-labelledby="h-overview" hidden>
-      <header class="vh"><h1 id="h-overview">Overview</h1></header>
-      <article class="np is-empty" id="np" aria-label="Now playing">
+      <header class="vh"><h1 id="h-overview" data-i18n="nav.overview">Overview</h1></header>
+      <article class="np is-empty" id="np" aria-label="Now playing" data-i18n-attr="aria-label:overview.nowPlaying">
         <div class="np-field" aria-hidden="true"></div>
         <div class="np-art"><svg class="i np-art-glyph"><use href="#i-note"/></svg></div>
         <div class="np-info">
           <p class="np-src" id="npSrc"></p>
-          <h2 class="np-title" id="npTitle">Nothing playing</h2>
-          <p class="np-sub" id="npSub">Choose a song in Library and play it on your Rondo, or start something on the Rondo itself.</p>
-          <a class="btn np-empty-btn" href="#library">Open library</a>
+          <h2 class="np-title" id="npTitle" data-i18n="overview.nothingPlaying">Nothing playing</h2>
+          <p class="np-sub" id="npSub" data-i18n="overview.empty">Choose a song in Library and play it on your Rondo, or start something on the Rondo itself.</p>
+          <a class="btn np-empty-btn" href="#library" data-i18n="overview.openLibrary">Open library</a>
         </div>
         <div class="np-progress">
-          <input type="range" class="seek" id="npSeek" min="0" max="1000" value="0" step="1" aria-label="Position">
+          <input type="range" class="seek" id="npSeek" min="0" max="1000" value="0" step="1" aria-label="Position" data-i18n-attr="aria-label:overview.position">
           <div class="np-times"><span id="npPos">0:00</span><span id="npRem">0:00</span></div>
         </div>
         <div class="np-controls">
-          <button class="ctl" type="button" data-act="previous" aria-label="Previous"><svg class="i"><use href="#i-prev"/></svg></button>
-          <button class="ctl ctl-main" type="button" data-act="toggle" id="npToggle" aria-label="Play"><svg class="i"><use href="#i-play"/></svg></button>
-          <button class="ctl" type="button" data-act="next" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button>
+          <button class="ctl" type="button" data-act="previous" aria-label="Previous" data-i18n-attr="aria-label:overview.previous"><svg class="i"><use href="#i-prev"/></svg></button>
+          <button class="ctl ctl-main" type="button" data-act="toggle" id="npToggle" aria-label="Play" data-i18n-attr="aria-label:common.play"><svg class="i"><use href="#i-play"/></svg></button>
+          <button class="ctl" type="button" data-act="next" aria-label="Next" data-i18n-attr="aria-label:overview.next"><svg class="i"><use href="#i-next"/></svg></button>
         </div>
         <div class="np-volume">
           <svg class="i"><use href="#i-volume"/></svg>
-          <input type="range" class="vol" id="npVol" min="0" max="15" value="0" step="1" aria-label="Volume">
+          <input type="range" class="vol" id="npVol" min="0" max="15" value="0" step="1" aria-label="Volume" data-i18n-attr="aria-label:overview.volume">
           <output id="npVolOut">0</output>
         </div>
       </article>
 
-      <h2 class="gh">Device</h2>
+      <h2 class="gh" data-i18n="overview.device">Device</h2>
       <div class="group" id="deviceRows"></div>
       <input type="file" id="updateFile" hidden accept=".apk,.rondo,application/vnd.android.package-archive">
     </section>
@@ -212,14 +212,14 @@
     <section class="view" id="view-library" aria-labelledby="h-library" hidden>
       <header class="vh">
         <div class="vh-text">
-          <h1 id="h-library">Library</h1>
-          <p id="libSummary">Music and videos on the card. They play without the internet.</p>
+          <h1 id="h-library" data-i18n="common.library">Library</h1>
+          <p id="libSummary" data-i18n="library.summary">Music and videos on the card. They play without the internet.</p>
         </div>
         <div class="vh-actions">
-          <button class="btn" type="button" id="rescanBtn"><svg class="i"><use href="#i-refresh"/></svg><span>Rescan</span></button>
-          <button class="btn" type="button" id="organizeBtn"><svg class="i"><use href="#i-folder"/></svg><span>Organize</span></button>
-          <button class="btn" type="button" id="fillBtn"><svg class="i"><use href="#i-wand"/></svg><span>Fill in</span></button>
-          <button class="btn btn-primary" type="button" id="uploadBtn"><svg class="i"><use href="#i-upload"/></svg><span>Upload</span></button>
+          <button class="btn" type="button" id="rescanBtn"><svg class="i"><use href="#i-refresh"/></svg><span data-i18n="library.rescan">Rescan</span></button>
+          <button class="btn" type="button" id="organizeBtn"><svg class="i"><use href="#i-folder"/></svg><span data-i18n="library.organize">Organize</span></button>
+          <button class="btn" type="button" id="fillBtn"><svg class="i"><use href="#i-wand"/></svg><span data-i18n="library.fillIn">Fill in</span></button>
+          <button class="btn btn-primary" type="button" id="uploadBtn"><svg class="i"><use href="#i-upload"/></svg><span data-i18n="library.upload">Upload</span></button>
           <input type="file" id="fileInput" multiple hidden accept="audio/*,.flac,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.w64,.aif,.aiff,.aifc,.wma,.ape,.wv,.ac3,.eac3,.ec3,.dts,.mka,.dsf,.dff,.tta,.tak,.mpc,.amr,.awb,.mp2,.caf,.au,.mp4,.m4v,.mkv,.3gp,.webm,.jpg,.jpeg,.png,.webp,.gif,.bmp,.lrc">
         </div>
       </header>
@@ -227,51 +227,51 @@
       <div class="uploads" id="uploads" hidden></div>
 
       <div class="lib-bar">
-        <div class="seg seg-sections" role="radiogroup" aria-label="Library" id="libSection">
-          <button type="button" role="radio" data-section="music" aria-checked="true"><svg class="i"><use href="#i-headphones"/></svg><span>Music</span></button>
-          <button type="button" role="radio" data-section="videos" aria-checked="false"><svg class="i"><use href="#i-film"/></svg><span>Videos</span></button>
-          <button type="button" role="radio" data-section="photos" aria-checked="false"><svg class="i"><use href="#i-photo"/></svg><span>Photos</span></button>
-          <button type="button" role="radio" data-section="files" aria-checked="false"><svg class="i"><use href="#i-file"/></svg><span>Files</span></button>
+        <div class="seg seg-sections" role="radiogroup" aria-label="Library" data-i18n-attr="aria-label:common.library" id="libSection">
+          <button type="button" role="radio" data-section="music" aria-checked="true"><svg class="i"><use href="#i-headphones"/></svg><span data-i18n="library.music">Music</span></button>
+          <button type="button" role="radio" data-section="videos" aria-checked="false"><svg class="i"><use href="#i-film"/></svg><span data-i18n="library.videos">Videos</span></button>
+          <button type="button" role="radio" data-section="photos" aria-checked="false"><svg class="i"><use href="#i-photo"/></svg><span data-i18n="library.photos">Photos</span></button>
+          <button type="button" role="radio" data-section="files" aria-checked="false"><svg class="i"><use href="#i-file"/></svg><span data-i18n="library.files">Files</span></button>
         </div>
-        <div class="seg seg-sub" role="radiogroup" aria-label="Music" id="libKind">
-          <button type="button" role="radio" data-kind="songs" aria-checked="true"><svg class="i"><use href="#i-note"/></svg><span>Songs</span></button>
-          <button type="button" role="radio" data-kind="albums" aria-checked="false"><svg class="i"><use href="#i-disc"/></svg><span>Albums</span></button>
-          <button type="button" role="radio" data-kind="playlists" aria-checked="false"><svg class="i"><use href="#i-playlist"/></svg><span>Playlists</span></button>
+        <div class="seg seg-sub" role="radiogroup" aria-label="Music" data-i18n-attr="aria-label:library.music" id="libKind">
+          <button type="button" role="radio" data-kind="songs" aria-checked="true"><svg class="i"><use href="#i-note"/></svg><span data-i18n="library.songs">Songs</span></button>
+          <button type="button" role="radio" data-kind="albums" aria-checked="false"><svg class="i"><use href="#i-disc"/></svg><span data-i18n="library.albums">Albums</span></button>
+          <button type="button" role="radio" data-kind="playlists" aria-checked="false"><svg class="i"><use href="#i-playlist"/></svg><span data-i18n="common.playlists">Playlists</span></button>
         </div>
         <label class="search">
           <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
-          <span class="sr-only">Search the library</span>
-          <input type="search" id="libSearch" placeholder="Search songs" autocomplete="off" enterkeyhint="search">
+          <span class="sr-only" data-i18n="library.searchLabel">Search the library</span>
+          <input type="search" id="libSearch" placeholder="Search songs" data-i18n-attr="placeholder:library.searchSongs" autocomplete="off" enterkeyhint="search">
         </label>
         <label class="select" id="libSortWrap">
-          <span class="sr-only">Sort by</span>
+          <span class="sr-only" data-i18n="library.sortBy">Sort by</span>
           <select id="libSort">
-            <option value="title">Title</option>
-            <option value="artist">Artist</option>
-            <option value="album">Album</option>
-            <option value="albumArtist">Album artist</option>
-            <option value="genre">Genre</option>
-            <option value="year">Year</option>
-            <option value="added">Recently added</option>
-            <option value="plays">Most played</option>
-            <option value="played">Recently played</option>
-            <option value="rating">Rating</option>
+            <option value="title" data-i18n="library.sort.title">Title</option>
+            <option value="artist" data-i18n="library.sort.artist">Artist</option>
+            <option value="album" data-i18n="library.sort.album">Album</option>
+            <option value="albumArtist" data-i18n="library.sort.albumArtist">Album artist</option>
+            <option value="genre" data-i18n="library.sort.genre">Genre</option>
+            <option value="year" data-i18n="library.sort.year">Year</option>
+            <option value="added" data-i18n="library.sort.added">Recently added</option>
+            <option value="plays" data-i18n="library.sort.plays">Most played</option>
+            <option value="played" data-i18n="library.sort.played">Recently played</option>
+            <option value="rating" data-i18n="library.sort.rating">Rating</option>
           </select>
           <svg class="i" aria-hidden="true"><use href="#i-down"/></svg>
         </label>
-        <button class="btn" type="button" id="shuffleBtn"><svg class="i"><use href="#i-shuffle"/></svg><span>Shuffle</span></button>
+        <button class="btn" type="button" id="shuffleBtn"><svg class="i"><use href="#i-shuffle"/></svg><span data-i18n="library.shuffle">Shuffle</span></button>
       </div>
 
       <div class="lib" id="lib">
         <div class="lib-head" id="libHead" role="presentation">
           <span></span>
-          <button type="button" data-sort="title">Title</button>
-          <button type="button" data-sort="artist">Artist</button>
-          <button type="button" data-sort="album">Album</button>
-          <span class="t-time">Time</span>
+          <button type="button" data-sort="title" data-i18n="library.sort.title">Title</button>
+          <button type="button" data-sort="artist" data-i18n="library.sort.artist">Artist</button>
+          <button type="button" data-sort="album" data-i18n="library.sort.album">Album</button>
+          <span class="t-time" data-i18n="library.time">Time</span>
           <span></span>
         </div>
-        <div class="lib-list" id="libList" role="list" aria-label="Songs"></div>
+        <div class="lib-list" id="libList" role="list" aria-label="Songs" data-i18n-attr="aria-label:library.songs"></div>
         <div class="lib-sentinel" id="libSentinel" aria-hidden="true"></div>
       </div>
       <div class="drop-hint" id="dropHint">
@@ -281,36 +281,36 @@
     </section>
 
     <section class="view" id="view-theme" aria-labelledby="h-theme" hidden>
-      <header class="vh"><div class="vh-text"><h1 id="h-theme">Theme</h1><p>Your Rondo redraws as you change things here.</p></div></header>
+      <header class="vh"><div class="vh-text"><h1 id="h-theme" data-i18n="nav.theme">Theme</h1><p data-i18n="theme.intro">Your Rondo redraws as you change things here.</p></div></header>
       <div class="theme">
         <div class="theme-preview">
-          <div class="bezel"><div class="screen" id="preview" aria-label="Preview of your Rondo’s main menu" role="img"></div></div>
+          <div class="bezel"><div class="screen" id="preview" aria-label="Preview of your Rondo’s main menu" data-i18n-attr="aria-label:theme.previewLabel" role="img"></div></div>
           <p class="applied" id="applied" role="status" aria-live="polite"></p>
         </div>
         <div class="theme-controls">
           <section class="ctl-block" aria-labelledby="h-accent">
-            <h2 class="gh" id="h-accent">Accent</h2>
-            <p class="help">Colors the selection bar on the menus.</p>
+            <h2 class="gh" id="h-accent" data-i18n="theme.accent">Accent</h2>
+            <p class="help" data-i18n="theme.accentHelp">Colors the selection bar on the menus.</p>
             <div class="swatches" id="swatches" role="radiogroup" aria-labelledby="h-accent"></div>
           </section>
           <section class="ctl-block" aria-labelledby="h-appearance">
-            <h2 class="gh" id="h-appearance">Appearance</h2>
+            <h2 class="gh" id="h-appearance" data-i18n="theme.appearance">Appearance</h2>
             <div class="seg seg-wide" id="appearance" role="radiogroup" aria-labelledby="h-appearance">
-              <button type="button" role="radio" data-v="light">Light</button>
-              <button type="button" role="radio" data-v="dark">Dark</button>
+              <button type="button" role="radio" data-v="light" data-i18n="theme.light">Light</button>
+              <button type="button" role="radio" data-v="dark" data-i18n="theme.dark">Dark</button>
             </div>
           </section>
           <section class="ctl-block" aria-labelledby="h-text">
-            <h2 class="gh" id="h-text">Text size</h2>
+            <h2 class="gh" id="h-text" data-i18n="theme.textSize">Text size</h2>
             <div class="seg seg-wide" id="textScale" role="radiogroup" aria-labelledby="h-text">
-              <button type="button" role="radio" data-v="1.25"><span class="aa aa-s">Aa</span> Small</button>
-              <button type="button" role="radio" data-v="1.4"><span class="aa aa-m">Aa</span> Medium</button>
-              <button type="button" role="radio" data-v="1.55"><span class="aa aa-l">Aa</span> Large</button>
+              <button type="button" role="radio" data-v="1.25"><span class="aa aa-s">Aa</span> <span data-i18n="theme.small">Small</span></button>
+              <button type="button" role="radio" data-v="1.4"><span class="aa aa-m">Aa</span> <span data-i18n="theme.medium">Medium</span></button>
+              <button type="button" role="radio" data-v="1.55"><span class="aa aa-l">Aa</span> <span data-i18n="theme.large">Large</span></button>
             </div>
           </section>
           <section class="ctl-block" aria-labelledby="h-menu">
-            <h2 class="gh" id="h-menu">Main menu</h2>
-            <p class="help">Show, hide and reorder the entries. Settings always stays.</p>
+            <h2 class="gh" id="h-menu" data-i18n="theme.mainMenu">Main menu</h2>
+            <p class="help" data-i18n="theme.menuHelp">Show, hide and reorder the entries. Settings always stays.</p>
             <div class="group" id="menuItems"></div>
           </section>
         </div>
@@ -318,69 +318,70 @@
     </section>
 
     <section class="view" id="view-settings" aria-labelledby="h-settings" hidden>
-      <header class="vh"><div class="vh-text"><h1 id="h-settings">General</h1><p>The screen, the wheel and the clock of your Rondo.</p></div></header>
-      <h2 class="gh">Display</h2>
+      <header class="vh"><div class="vh-text"><h1 id="h-settings" data-i18n="nav.general">General</h1><p data-i18n="settings.intro">The screen, the wheel and the clock of your Rondo.</p></div></header>
+      <div class="group" id="langRows"></div>
+      <h2 class="gh" data-i18n="settings.display">Display</h2>
       <div class="group" id="settingsRows"></div>
-      <h2 class="gh">Subtitles</h2>
-      <p class="help">On YouTube videos and on the videos on the card, as Settings › Display › Subtitles has them on your Rondo. Hold center while a video plays to pick its track.</p>
+      <h2 class="gh" data-i18n="settings.subtitles">Subtitles</h2>
+      <p class="help" data-i18n="settings.subtitlesHelp">On YouTube videos and on the videos on the card, as Settings › Display › Subtitles has them on your Rondo. Hold center while a video plays to pick its track.</p>
       <div class="group" id="subtitleRows"></div>
-      <h2 class="gh">Controls</h2>
+      <h2 class="gh" data-i18n="settings.controls">Controls</h2>
       <div class="group" id="controlRows"></div>
-      <h2 class="gh">Date &amp; time</h2>
+      <h2 class="gh" data-i18n="settings.dateTime">Date &amp; time</h2>
       <div class="group" id="dateRows"></div>
     </section>
 
     <section class="view" id="view-sound" aria-labelledby="h-sound" hidden>
-      <header class="vh"><div class="vh-text"><h1 id="h-sound">Sound</h1>
-        <p>Each output keeps its own sound: the speaker, wired headphones and every Bluetooth device.</p></div></header>
+      <header class="vh"><div class="vh-text"><h1 id="h-sound" data-i18n="nav.sound">Sound</h1>
+        <p data-i18n="sound.intro">Each output keeps its own sound: the speaker, wired headphones and every Bluetooth device.</p></div></header>
       <div id="soundBody"></div>
     </section>
 
     <section class="view" id="view-wifi" aria-labelledby="h-wifi" hidden>
       <header class="vh">
         <div class="vh-text"><h1 id="h-wifi">Wi-Fi</h1></div>
-        <div class="vh-actions"><button class="btn" type="button" id="wifiRefresh"><svg class="i"><use href="#i-refresh"/></svg><span>Refresh</span></button></div>
+        <div class="vh-actions"><button class="btn" type="button" id="wifiRefresh"><svg class="i"><use href="#i-refresh"/></svg><span data-i18n="wifi.refresh">Refresh</span></button></div>
       </header>
       <div id="wifiBody"></div>
     </section>
 
     <section class="view" id="view-bluetooth" aria-labelledby="h-bluetooth" hidden>
       <header class="vh">
-        <div class="vh-text"><h1 id="h-bluetooth">Bluetooth</h1><p>Headphones and speakers for your Rondo.</p></div>
-        <div class="vh-actions"><button class="btn" type="button" id="btSearch"><svg class="i"><use href="#i-refresh"/></svg><span>Search again</span></button></div>
+        <div class="vh-text"><h1 id="h-bluetooth">Bluetooth</h1><p data-i18n="bluetooth.intro">Headphones and speakers for your Rondo.</p></div>
+        <div class="vh-actions"><button class="btn" type="button" id="btSearch"><svg class="i"><use href="#i-refresh"/></svg><span data-i18n="bluetooth.searchAgain">Search again</span></button></div>
       </header>
       <div id="btBody"></div>
     </section>
 
     <section class="view" id="view-radio" aria-labelledby="h-radio" hidden>
-      <header class="vh"><div class="vh-text"><h1 id="h-radio">FM Radio</h1><p>Your Rondo's radio. Wired headphones are its antenna.</p></div></header>
+      <header class="vh"><div class="vh-text"><h1 id="h-radio" data-i18n="nav.fmRadio">FM Radio</h1><p data-i18n="radio.intro">Your Rondo's radio. Wired headphones are its antenna.</p></div></header>
       <div id="radioBody"></div>
     </section>
 
     <section class="view" id="view-youtube" aria-labelledby="h-youtube" hidden>
       <header class="vh"><div class="vh-text"><h1 id="h-youtube">YouTube</h1>
-        <p>Rondo gets YouTube Music and YouTube straight from YouTube, or through your Rondo server. The library on the card works without either.</p></div></header>
+        <p data-i18n="youtube.intro">Rondo gets YouTube Music and YouTube straight from YouTube, or through your Rondo server. The library on the card works without either.</p></div></header>
       <div id="ytBody"></div>
-      <h2 class="gh">Downloads</h2>
-      <p class="help">Saved to the card, to play with no connection. A video goes in Videos/YouTube with its subtitles; a YouTube Music song in Music/YouTube Music; a YouTube Music playlist brings all its songs and is in Library › Playlists, in its order. Pause one, or all, and it goes on where it stopped, after a restart too.</p>
+      <h2 class="gh" data-i18n="downloads.title">Downloads</h2>
+      <p class="help" data-i18n="downloads.help">Saved to the card, to play with no connection. A video goes in Videos/YouTube with its subtitles; a YouTube Music song in Music/YouTube Music; a YouTube Music playlist brings all its songs and is in Library › Playlists, in its order. Pause one, or all, and it goes on where it stopped, after a restart too.</p>
       <div id="dlBody"></div>
     </section>
 
     <section class="view" id="view-server" aria-labelledby="h-server" hidden>
-      <header class="vh"><div class="vh-text"><h1 id="h-server">Server</h1>
-        <p>Your own Rondo server, on a computer at home or a VPS. YouTube can come through it, and WhatsApp works only through it.</p></div></header>
+      <header class="vh"><div class="vh-text"><h1 id="h-server" data-i18n="nav.server">Server</h1>
+        <p data-i18n="server.intro">Your own Rondo server, on a computer at home or a VPS. YouTube can come through it, and WhatsApp works only through it.</p></div></header>
       <div id="serverBody"></div>
     </section>
 
   </main>
 
-  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+  <nav class="tabs" id="tabs" aria-label="Sections" data-i18n-attr="aria-label:nav.sections"></nav>
 </div>
 
 <div class="drop" id="drop" hidden>
   <div class="drop-card">
     <svg class="i"><use href="#i-upload"/></svg>
-    <p>Drop to copy to your Rondo’s card</p>
+    <p data-i18n="library.dropCard">Drop to copy to your Rondo’s card</p>
   </div>
 </div>
 

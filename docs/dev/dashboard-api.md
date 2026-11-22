@@ -15,6 +15,11 @@ scripting the Y1.
 - The web files are in `native/assets/dashboard/` (served at `/`; `index.html` stamps `app.js` and
   `app.css` with the build so a browser fetches new ones), and the bundled font at
   `/fonts/Roboto-Regular.ttf`. `tools/native/bundle.sh` puts them in Rondo's bundle.
+- The page speaks the Rondo's language: `index.html` comes with `<html lang="<code>">`, and
+  `GET /lang/<code>.json` (no session needed) → `{"code", "name", "languages": [{"code", "name"}],
+  "strings": {key: text}}`, the `dashboard` section of `lang/<code>.json` with English's text where it
+  has none (an unknown code: English). The human sentences in `{"error": …}` answers come in that
+  language too ([Translating Rondo](../translating.md)).
 - Changes apply on the device immediately (theme changes redraw the screens).
 
 ## Auth
@@ -215,9 +220,12 @@ Songs picked by rules, worked out whenever they're opened (`native/core/smart.h`
     "wheelVibration": "off" | "light" | "normal" | "strong", "clickSound": true,
     "subtitles": true, "subLang": "" | "en" | …, "subSize": 1, "subColor": 0, "subOpacity": 100,
     "subBack": 7, "subBackOpacity": 75, "subEdge": 0,
-    "subChoices": {"sizes": […], "colors": [{"name", "hex"}], "edges": […], "languages": [{"code", "name"}]}}`
+    "subChoices": {"sizes": […], "colors": [{"name", "hex"}], "edges": […], "languages": [{"code", "name"}]},
+    "language": "en" | "es" | …}`
   The subtitle settings are indexes into `subChoices`, as Settings › Display › Subtitles has them.
-- `PUT /api/settings` with any subset → the full settings.
+- `PUT /api/settings` with any subset → the full settings. `"language"` (a code from the languages
+  `/lang/<code>.json` lists) changes the Rondo's language at once, as Settings › Language does; the
+  page loads again to follow it.
 - `"wheelVibration"`: a buzz on every wheel step, 15 / 25 / 40 ms plus Rockbox's fading boost;
   "normal" matches Rockbox's intensity 5.
 

@@ -7,11 +7,14 @@
 //   node tools/dashboard-mock/server.mjs --slow     answers like a busy MT6572 (200-700 ms)
 //   PORT=9000 node tools/dashboard-mock/server.mjs
 //   SIGNED_IN=1 node tools/dashboard-mock/server.mjs  every visit paired (screenshots with headless Chrome)
+//   node tools/dashboard-mock/server.mjs --lang es   the Rondo set to Spanish (lang/es.json, read on
+//                                                    every load: edit it and reload; docs/translating.md)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { pageStrings, pickLanguage } from '../lang/page.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // Rondo's version, as the real dashboard reports it (tools/set-version.sh)
@@ -181,7 +184,9 @@ const songItem = (s) => ({
 });
 
 // ---------- settings, theme, Wi-Fi, server ----------
-let settings = { videoQuality: null, brightness: 60, screenTimeoutSec: 60, lyricsOnOpen: false, wheelAcceleration: 'normal', wheelVibration: 'normal', clickSound: true };
+const langArg = process.argv.indexOf('--lang');
+let settings = { videoQuality: null, brightness: 60, screenTimeoutSec: 60, lyricsOnOpen: false, wheelAcceleration: 'normal', wheelVibration: 'normal', clickSound: true,
+  language: langArg > 0 ? pickLanguage(process.argv[langArg + 1] || 'en') : 'en' };
 
 // ---------- FM radio and Bluetooth (docs/dev/dashboard-api.md) ----------
 const radio = {
@@ -616,6 +621,7 @@ async function api(req, res, url) {
       if ('wheelAcceleration' in b) { if (!['off', 'normal', 'fast'].includes(b.wheelAcceleration)) return err(res, 400, 'wheelAcceleration'); next.wheelAcceleration = b.wheelAcceleration; }
       if ('wheelVibration' in b) { if (!['off', 'light', 'normal', 'strong'].includes(b.wheelVibration)) return err(res, 400, 'wheelVibration'); next.wheelVibration = b.wheelVibration; }
       if ('clickSound' in b) next.clickSound = !!b.clickSound;
+      if ('language' in b) { if (pickLanguage(b.language) !== b.language) return err(res, 400, 'language'); next.language = b.language; }
       settings = next;
       return send(res, 200, settings);
     }
@@ -781,6 +787,14 @@ http.createServer(async (req, res) => {
       return await api(req, res, url);
     }
     if (url.pathname.startsWith('/fonts/')) return serveFile(res, path.join(FONTS, path.basename(url.pathname)));
+    // the page's texts (lang/*.json's "dashboard"), and the page in the Rondo's language, as the Y1 serves them
+    const lm = /^\/lang\/([\w-]+)\.json$/.exec(url.pathname);
+    if (lm) return send(res, 200, pageStrings('dashboard', lm[1]));
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8').replace('<html lang="en">', `<html lang="${settings.language}">`);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(html);
+    }
     const rel = url.pathname === '/' ? 'index.html' : path.normalize(url.pathname).replace(/^[/\\]+/, '');
     if (rel.includes('..')) return send(res, 400, 'Bad path', { 'Content-Type': 'text/plain' });
     return serveFile(res, path.join(WEB, rel));

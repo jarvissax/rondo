@@ -11,10 +11,72 @@ const MARK_INNER = '<g class="mark-ring" fill="none" stroke-width="13" stroke-li
 const spinner = (cls = 'spin') => `<svg class="${cls}" viewBox="-66 -66 132 132" aria-hidden="true">${MARK_INNER}</svg>`;
 const markTile = '<svg class="i" aria-hidden="true"><use href="#mark"/></svg>';
 
+// ---------- language (lang/*.json, one file per language: docs/translating.md) ----------
+// t(key, {name: …, count: n}) is a text in the Rondo's language with its blanks filled ("count"
+// also picks the plural form); te() is the same escaped for HTML, th() keeps the text's own <b>, <i>,
+// <code> and <br> (its blanks escaped). Elements with data-i18n (text), data-i18n-html and
+// data-i18n-attr="aria-label:key;title:key" get theirs from applyLang().
+const L = { code: 'en', name: 'English', languages: [], strings: {} };
+const plurals = () => (L._pr && L._pr.code === L.code ? L._pr.rules : (L._pr = { code: L.code, rules: new Intl.PluralRules(L.code) }).rules);
+const numbers = () => (L._nf && L._nf.code === L.code ? L._nf.format : (L._nf = { code: L.code, format: new Intl.NumberFormat(L.code) }).format);
+function t(key, params) {
+  let v = L.strings[key];
+  if (v == null) return key;
+  if (typeof v === 'object') {
+    const n = params?.count;
+    const form = typeof n === 'number' ? (n === 0 && v.zero != null ? 'zero' : plurals().select(n)) : 'other';
+    v = v[form] ?? v.other;
+  }
+  return params ? v.replace(/\{(\w+)\}/g, (m, k) => (k in params ? (typeof params[k] === 'number' ? numbers().format(params[k]) : String(params[k])) : m)) : v;
+}
+const te = (key, params) => esc(t(key, params));
+// HTML from a text: escaped, then its simple markup back; a blank given as html(…) goes in as it is
+const html = (s) => ({ html: String(s) });
+function th(key, params) {
+  const marks = [];
+  const safe = params && Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v && typeof v === 'object' && 'html' in v ? (marks.push(v.html), `\u0001${marks.length - 1}\u0001`) : v]));
+  return esc(t(key, safe)).replace(/&lt;(\/?)(b|i|em|strong|code|br)&gt;/g, '<$1$2>').replace(/\u0001(\d+)\u0001/g, (m, i) => marks[+i]);
+}
+function applyLang(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of root.querySelectorAll('[data-i18n-html]')) el.innerHTML = th(el.dataset.i18nHtml);
+  for (const el of root.querySelectorAll('[data-i18n-attr]'))
+    for (const pair of el.dataset.i18nAttr.split(';')) {
+      const [a, k] = pair.split(':').map((s) => s.trim());
+      if (a && k) el.setAttribute(a, t(k));
+    }
+}
+
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } },
 };
+
+// the Rondo's language (its page says it: <html lang>), with English where it has no text; tried again
+// every few seconds while the Rondo can't be reached (the page's own English shows meanwhile)
+async function loadLang() {
+  for (;;) {
+    try {
+      const want = document.documentElement.lang || 'en';
+      const res = await fetch(`/lang/${encodeURIComponent(want)}.json`, { cache: 'no-cache' });
+      if (res.ok) {
+        Object.assign(L, await res.json());
+        document.documentElement.lang = L.code;
+        applyLang();
+        return;
+      }
+    } catch { /* not reachable now */ }
+    $('#splash')?.setAttribute('hidden', '');
+    $('#offline')?.removeAttribute('hidden');
+    // the rest of the page isn't running yet: its Try again tries this again
+    await new Promise((r) => {
+      const again = () => { clearTimeout(timer); r(); };
+      const timer = setTimeout(() => { $('#offlineRetry')?.removeEventListener('click', again); r(); }, 4000);
+      $('#offlineRetry')?.addEventListener('click', again, { once: true });
+    });
+  }
+}
+await loadLang();
 
 const S = {
   session: store.get('rondo_session'),
@@ -44,7 +106,8 @@ function fmtBytes(b) {
   if (b >= 1e6) return `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1)} MB`;
   return `${Math.max(1, Math.round(b / 1e3))} KB`;
 }
-const plural = (n, one, many = one + 's') => `${n.toLocaleString('en')} ${n === 1 ? one : many}`;
+// dates in the page's language (English: the browser's own format, as before)
+const dateLocale = () => (L.code === 'en' ? undefined : L.code);
 const fileName = (p) => (p || '').split('/').pop();
 const fold = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/ə/g, 'e');
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
@@ -161,7 +224,7 @@ async function api(method, path, body, { timeout = 15000 } = {}) {
   if (!res.ok) throw new ApiError(res.status, data?.error);
   return data;
 }
-const reason = (e) => (e?.status === 0 ? 'Your Rondo didn’t answer.' : e?.code && e.code !== 'pair' ? `It said “${e.code}”.` : 'Something went wrong.');
+const reason = (e) => (e?.status === 0 ? t('common.rondoNoAnswer') : e?.code && e.code !== 'pair' ? t('common.itSaid', { code: e.code }) : t('common.somethingWrong'));
 
 // ---------- screens ----------
 const screens = { splash: $('#splash'), pair: $('#pair'), offline: $('#offline'), app: $('#app') };
@@ -180,9 +243,7 @@ function connectionLost() {
   }
   if (S.online) {
     S.online = false;
-    $('#bannerText').textContent = S.joining
-      ? `Your Rondo is joining “${S.joining.ssid}”. If this device isn’t on that network, open the new address shown under Settings › Dashboard.`
-      : 'Lost the connection to your Rondo. Is Settings › Dashboard still open? Trying again…';
+    $('#bannerText').textContent = S.joining ? t('banner.joining', { name: S.joining.ssid }) : t('banner.lostOpen');
     $('#banner').hidden = false;
   }
 }
@@ -228,7 +289,7 @@ async function submitCode(code) {
   codeInput.readOnly = true;
   $('#pairMark').classList.add('is-turning');
   codeMsg.className = 'code-msg is-quiet';
-  codeMsg.textContent = 'Checking…';
+  codeMsg.textContent = t('common.checking');
   let res, data = null;
   try {
     res = await fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }), credentials: 'same-origin' });
@@ -257,14 +318,14 @@ async function submitCode(code) {
   codeInput.value = '';
   renderCode();
   codeForm.classList.add('is-error');
-  if (!res) codeMsg.textContent = 'Can’t reach your Rondo. Is Settings › Dashboard still open?';
+  if (!res) codeMsg.textContent = t('pair.cantReach');
   else if (res.status === 429) {
     wrongCodes = 0;
-    codeMsg.textContent = `Too many wrong codes, so your Rondo picked a new one. Wait ${data?.retryAfterSec ?? 30} seconds, then type the code it shows now.`;
+    codeMsg.textContent = t('pair.tooMany', { seconds: data?.retryAfterSec ?? 30 });
   } else if (res.status === 403) {
     wrongCodes++;
-    codeMsg.textContent = 'That code didn’t match. Check the code on your Rondo and try again.';
-  } else codeMsg.textContent = 'Pairing didn’t work. Try again.';
+    codeMsg.textContent = t('pair.wrong');
+  } else codeMsg.textContent = t('pair.failed');
   codeInput.focus();
 }
 
@@ -277,7 +338,7 @@ async function boot() {
   } catch (e) {
     if (e.status && e.status !== 401) {
       showScreen('offline');
-      $('#offlineNote').textContent = `Your Rondo answered with an error (${e.code || e.status}). Trying again every few seconds.`;
+      $('#offlineNote').textContent = t('offline.error', { code: String(e.code || e.status) });
       offlineTimer = setTimeout(() => { if (!document.hidden) boot(); }, 5000);
     }
     return;
@@ -296,38 +357,38 @@ async function boot() {
   checkForUpdate();
 }
 $('#offlineRetry').addEventListener('click', () => {
-  $('#offlineNote').textContent = 'Trying…';
+  $('#offlineNote').textContent = t('offline.trying');
   boot();
 });
 
 // ---------- navigation ----------
 // the sidebar in groups, as on the Rondo: what's on it, how it connects, how it behaves
 const NAV = [
-  { id: 'overview', label: 'Overview', tile: 'rondo', tab: true },
-  { id: 'library', label: 'Library', tile: 'device', glyph: 'library', tab: true },
-  { id: 'radio', label: 'FM Radio', short: 'Radio', tile: 'radio', glyph: 'radio', tab: true },
+  { id: 'overview', label: t('nav.overview'), tile: 'rondo', tab: true },
+  { id: 'library', label: t('common.library'), tile: 'device', glyph: 'library', tab: true },
+  { id: 'radio', label: t('nav.fmRadio'), short: t('common.radio'), tile: 'radio', glyph: 'radio', tab: true },
   { id: 'youtube', label: 'YouTube', brand: 'video', tab: true },
-  { group: 'Connections' },
+  { group: t('nav.connections') },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
-  { id: 'server', label: 'Server', tile: 'server', glyph: 'cloud' },
-  { group: 'Settings' },
-  { id: 'sound', label: 'Sound', tile: 'sound', glyph: 'sliders' },
-  { id: 'theme', label: 'Theme', tile: 'theme', glyph: 'theme' },
-  { id: 'settings', label: 'General', tile: 'settings', glyph: 'gear' },
+  { id: 'server', label: t('nav.server'), tile: 'server', glyph: 'cloud' },
+  { group: t('common.settings') },
+  { id: 'sound', label: t('nav.sound'), tile: 'sound', glyph: 'sliders' },
+  { id: 'theme', label: t('nav.theme'), tile: 'theme', glyph: 'theme' },
+  { id: 'settings', label: t('nav.general'), tile: 'settings', glyph: 'gear' },
 ];
 // the phone's fifth tab: the pages without a tab of their own, in the sidebar's groups
-const MORE = { id: 'more', label: 'Settings', tile: 'settings', glyph: 'gear' };
+const MORE = { id: 'more', label: t('common.settings'), tile: 'settings', glyph: 'gear' };
 const PAGES = [...NAV.filter((n) => n.id), MORE];
 const TABS = [...NAV.filter((n) => n.tab), MORE];
-const inMore = (id) => !TABS.some((t) => t.id === id && t !== MORE);
+const inMore = (id) => !TABS.some((n) => n.id === id && n !== MORE);
 const tileHtml = (tile, glyph) => `<span class="tile t-${tile}">${glyph ? icon(glyph) : markTile}</span>`;
 const navTile = (n) => (n.brand ? brandTile(n.brand) : tileHtml(n.tile, n.glyph));  // YouTube's logo for its page
 function buildNav() {
-  $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${n.group}</div>` : `<a href="#${n.id}" data-id="${n.id}">${navTile(n)}<span>${n.label}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
-  $('#moreRows').innerHTML = NAV.filter((n) => !n.tab).map((n) => n.group ? `</div><h2 class="gh">${n.group}</h2><div class="group">`
-    : `<a class="row more-row" href="#${n.id}">${navTile(n)}<div class="row-main"><div class="row-title">${n.label}</div></div>${icon('chevron', 'chev')}</a>`).join('').replace(/^<\/div>/, '') + '</div>';
-  $('#tabs').innerHTML = TABS.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${navTile(n)}<span class="nav-badge"></span></span><span>${n.short || n.label}</span></a>`).join('');
+  $('#nav').innerHTML = NAV.map((n) => n.group ? `<div class="nav-group">${esc(n.group)}</div>` : `<a href="#${n.id}" data-id="${n.id}">${navTile(n)}<span>${esc(n.label)}</span><span class="nav-badge"></span>${icon('chevron', 'chev')}</a>`).join('');
+  $('#moreRows').innerHTML = NAV.filter((n) => !n.tab).map((n) => n.group ? `</div><h2 class="gh">${esc(n.group)}</h2><div class="group">`
+    : `<a class="row more-row" href="#${n.id}">${navTile(n)}<div class="row-main"><div class="row-title">${esc(n.label)}</div></div>${icon('chevron', 'chev')}</a>`).join('').replace(/^<\/div>/, '') + '</div>';
+  $('#tabs').innerHTML = TABS.map((n) => `<a class="tab" href="#${n.id}" data-id="${n.id}"><span class="tab-wrap">${navTile(n)}<span class="nav-badge"></span></span><span>${esc(n.short || n.label)}</span></a>`).join('');
 }
 function route() {
   const id = location.hash.slice(1);
@@ -407,7 +468,7 @@ function renderChrome() {
   const st = S.status;
   if (!st) return;
   const b = st.battery || {};
-  const batt = `<span class="stat" title="Battery${b.charging ? ', charging' : ''}">${battSvg(b.level ?? 0, 'i', b.charging)}<span>${b.level ?? '–'}%</span></span>`;
+  const batt = `<span class="stat" title="${b.charging ? te('overview.batteryCharging') : te('overview.battery')}">${battSvg(b.level ?? 0, 'i', b.charging)}<span>${b.level ?? '–'}%</span></span>`;
   const wifi = st.wifi
     ? `<span class="stat" title="Wi-Fi: ${esc(st.wifi.ssid)}">${sigSvg(st.wifi.signal ?? 0, 'i')}<span class="side-only">${esc(st.wifi.ssid)}</span></span>`
     : '';
@@ -427,7 +488,7 @@ function renderMini() {
   }
   const btn = $('button', mini);
   btn.innerHTML = icon(p.playing ? 'pause' : 'play');
-  btn.setAttribute('aria-label', p.playing ? 'Pause' : 'Play');
+  btn.setAttribute('aria-label', p.playing ? t('common.pause') : t('common.play'));
 }
 $('#mini').addEventListener('click', (e) => { if (e.target.closest('[data-act="toggle"]')) playerAction('toggle'); });
 
@@ -447,18 +508,18 @@ function renderPlayer() {
   np.classList.toggle('is-empty', !p);
   if (!p) {
     $('#npSrc').innerHTML = '';
-    $('#npTitle').textContent = 'Nothing playing';
-    $('#npSub').textContent = 'Choose a song in Library and play it on your Rondo, or start something on the Rondo itself.';
+    $('#npTitle').textContent = t('overview.nothingPlaying');
+    $('#npSub').textContent = t('overview.empty');
     setNpArt(null);
     return;
   }
-  $('#npSrc').innerHTML = p.source === 'youtube' ? `${icon('play')}<span>YouTube</span>` : `${icon('folder')}<span>Library</span>`;
-  $('#npTitle').textContent = p.title || 'Untitled';
+  $('#npSrc').innerHTML = p.source === 'youtube' ? `${icon('play')}<span>YouTube</span>` : `${icon('folder')}<span>${te('common.library')}</span>`;
+  $('#npTitle').textContent = p.title || t('common.untitled');
   $('#npSub').textContent = p.subtitle || '';
-  const t = $('#npToggle');
-  t.innerHTML = icon(p.playing ? 'pause' : 'play');
-  t.setAttribute('aria-label', p.playing ? 'Pause' : 'Play');
-  t.classList.toggle('is-paused', !p.playing);
+  const tg = $('#npToggle');
+  tg.innerHTML = icon(p.playing ? 'pause' : 'play');
+  tg.setAttribute('aria-label', p.playing ? t('common.pause') : t('common.play'));
+  tg.classList.toggle('is-paused', !p.playing);
   if (!volDragging && Date.now() > volHold) {
     npVol.max = p.maxVolume || 15;
     npVol.value = p.volume ?? 0;
@@ -477,7 +538,7 @@ function renderProgress() {
     setFill(npSeek);
     $('#npPos').textContent = fmtTime(pos);
     $('#npRem').textContent = dur ? `−${fmtTime(remainMs(dur, pos))}` : '';
-    npSeek.setAttribute('aria-valuetext', `${fmtTime(pos)} of ${fmtTime(dur)}`);
+    npSeek.setAttribute('aria-valuetext', t('common.nOfTotal', { n: fmtTime(pos), total: fmtTime(dur) }));
   }
   const bar = $('.pv-prog span');
   if (bar) bar.style.setProperty('--p', `${dur ? (pos / dur) * 100 : 0}%`);
@@ -527,7 +588,7 @@ async function playerAction(action, extra = {}) {
     renderPlayer(); renderMini(); markPlayingRows();
     if (S.route === 'theme') renderPreview();
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t control playback. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('overview.couldntControl', { reason: reason(e) }), 'err');
     poll();
   }
 }
@@ -560,7 +621,7 @@ async function sendVolume(v) {
   try {
     const res = await api('POST', '/api/player', { action: 'volume', volume: v });
     if (S.status) S.status.player = res;
-  } catch (e) { if (e.status !== 401) toast(`Couldn’t change the volume. ${reason(e)}`, 'err'); }
+  } catch (e) { if (e.status !== 401) toast(t('overview.couldntVolume', { reason: reason(e) }), 'err'); }
 }
 
 function renderDevice() {
@@ -574,36 +635,36 @@ function renderDevice() {
   $('#deviceRows').innerHTML = `
     <div class="row">
       <span class="tile ${level <= 15 && !b.charging ? 't-low' : 't-battery'}">${b.charging ? icon('bolt') : battSvg(level, 'i', false, false)}</span>
-      <div class="row-main"><div class="row-title">Battery</div>${b.charging ? '<div class="row-sub">Charging</div>' : level <= 15 ? '<div class="row-sub">Low. Charge your Rondo soon.</div>' : ''}</div>
+      <div class="row-main"><div class="row-title">${te('overview.battery')}</div>${b.charging ? `<div class="row-sub">${te('overview.charging')}</div>` : level <= 15 ? `<div class="row-sub">${te('overview.low')}</div>` : ''}</div>
       <div class="row-value strong">${level}%</div>
     </div>
     <div class="row">
       <span class="tile t-storage">${icon('folder')}</span>
       <div class="row-main">
-        <div class="row-title">Storage</div>
-        <div class="meter ${freePct < 3 ? 'full' : freePct < 10 ? 'low' : ''}" role="img" aria-label="${Math.round(pct)}% used"><span style="--p:${pct.toFixed(1)}%"></span></div>
-        <div class="row-sub">${fmtBytes(used)} used of ${fmtBytes(s.totalBytes)}</div>
+        <div class="row-title">${te('overview.storage')}</div>
+        <div class="meter ${freePct < 3 ? 'full' : freePct < 10 ? 'low' : ''}" role="img" aria-label="${te('overview.usedPct', { percent: Math.round(pct) })}"><span style="--p:${pct.toFixed(1)}%"></span></div>
+        <div class="row-sub">${te('overview.usedOf', { used: fmtBytes(used), total: fmtBytes(s.totalBytes) })}</div>
       </div>
-      <div class="row-value strong">${fmtBytes(s.freeBytes)} free</div>
+      <div class="row-value strong">${te('overview.free', { size: fmtBytes(s.freeBytes) })}</div>
     </div>
     <div class="row">
       <span class="tile t-wifi">${icon('wifi')}</span>
-      <div class="row-main"><div class="row-title">${w ? esc(w.ssid) : 'Wi-Fi'}</div><div class="row-sub">${w ? `Wi-Fi · ${esc(w.ip || '')}` : 'Not connected'}${ab.mac ? ` · MAC ${esc(ab.mac)}` : ''}</div></div>
-      ${w ? `<span class="row-value" aria-label="Signal ${w.signal} of 4">${sigSvg(w.signal ?? 0)}</span>` : ''}
+      <div class="row-main"><div class="row-title">${w ? esc(w.ssid) : 'Wi-Fi'}</div><div class="row-sub">${w ? `Wi-Fi · ${esc(w.ip || '')}` : te('common.notConnected')}${ab.mac ? ` · MAC ${esc(ab.mac)}` : ''}</div></div>
+      ${w ? `<span class="row-value" aria-label="${te('common.signal', { signal: w.signal })}">${sigSvg(w.signal ?? 0)}</span>` : ''}
     </div>
     <div class="row">
       ${brandTile('video')}
-      <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${esc(ab.connectTo || '')}${ab.timeZone ? ` · Time zone ${esc(ab.timeZone)}` : ''}</div></div>
+      <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${esc(ab.connectTo || '')}${ab.timeZone ? ` · ${te('overview.timeZone', { zone: ab.timeZone })}` : ''}</div></div>
     </div>
     <div class="row">
       <span class="tile t-rondo">${markTile}</span>
-      <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}${d.canUpdate ? ` · <button class="link" type="button" data-update="file">Update from a file</button>` : ''}</div></div>
-      ${d.power ? `<div class="bt-actions"><button class="btn btn-sm" type="button" data-power="restart">Restart</button><button class="btn btn-sm btn-red-text" type="button" data-power="shutdown">${icon('power')}<span>Shut down</span></button></div>` : ''}
+      <div class="row-main"><div class="row-title">${esc(d.name || 'Rondo')} ${esc(d.version || '')}</div><div class="row-sub">${esc(d.model || 'Innioasis Y1')}${d.canUpdate ? ` · <button class="link" type="button" data-update="file">${te('update.fromFile')}</button>` : ''}</div></div>
+      ${d.power ? `<div class="bt-actions"><button class="btn btn-sm" type="button" data-power="restart">${te('power.restart')}</button><button class="btn btn-sm btn-red-text" type="button" data-power="shutdown">${icon('power')}<span>${te('power.shutDown')}</span></button></div>` : ''}
     </div>${newest && isNewer(newest.version, d.version) ? `
     <div class="row update-row">
       <span class="tile t-rondo">${icon('upload')}</span>
-      <div class="row-main"><div class="row-title">Rondo ${esc(newest.version)} is out</div><div class="row-sub">${needsFirmware(d) ? `It needs a new firmware: install it with <a href="${UPDATER_GUIDE}" target="_blank" rel="noopener">Innioasis Updater CE</a>.` : `You have ${esc(d.version || '')}.`} <a href="${esc(newest.url)}" target="_blank" rel="noopener">What’s new</a></div></div>
-      ${d.canUpdate && !needsFirmware(d) ? `<button class="btn btn-sm btn-primary" type="button" data-update="install">Install</button>` : ''}
+      <div class="row-main"><div class="row-title">${te('update.isOut', { version: newest.version })}</div><div class="row-sub">${needsFirmware(d) ? th('update.needsFirmware', { link: html(`<a href="${UPDATER_GUIDE}" target="_blank" rel="noopener">Innioasis Updater CE</a>`) }) : te('update.youHave', { version: d.version || '' })} <a href="${esc(newest.url)}" target="_blank" rel="noopener">${te('update.whatsNew')}</a></div></div>
+      ${d.canUpdate && !needsFirmware(d) ? `<button class="btn btn-sm btn-primary" type="button" data-update="install">${te('update.install')}</button>` : ''}
     </div>` : ''}`;
 }
 // ---------- installing an update (SoftwareUpdate.kt on the Rondo) ----------
@@ -623,23 +684,23 @@ $('#deviceRows').addEventListener('click', (e) => {
 $('#updateFile').addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
-  if (file) sendUpdate(file, null).catch((err) => toast(`Couldn’t update. ${err.message}`, 'err'));
+  if (file) sendUpdate(file, null).catch((err) => toast(t('update.couldnt', { reason: err.message }), 'err'));
 });
 async function installUpdate(btn) {
   const label = btn.textContent;
   btn.disabled = true;
   try {
-    btn.textContent = 'Downloading…';
+    btn.textContent = t('update.downloading');
     const info = await (await fetch(UPDATE_SITE + 'latest.json', { cache: 'no-store' })).json();
-    if (newest && info.version !== newest.version) throw new Error(`The download page still has Rondo ${info.version}. Try again in a few minutes.`);
-    if ((Number(info.firmware) || 1) > (S.status?.device?.firmware ?? 1)) throw new Error(`Rondo ${info.version} needs a new firmware: install it with Innioasis Updater CE.`);
+    if (newest && info.version !== newest.version) throw new Error(t('update.pageBehind', { version: String(info.version) }));
+    if ((Number(info.firmware) || 1) > (S.status?.device?.firmware ?? 1)) throw new Error(t('update.needsUpdater', { version: String(info.version) }));
     const res = await fetch(UPDATE_SITE + (info.file || 'rondo.apk'), { cache: 'no-store' });
-    if (!res.ok) throw new Error(`The download failed (${res.status}).`);
+    if (!res.ok) throw new Error(t('update.downloadFailed', { status: String(res.status) }));
     await sendUpdate(await res.blob(), btn);
   } catch (e) {
     btn.disabled = false;
     btn.textContent = label;
-    toast(`Couldn’t update. ${e.message || ''}`, 'err');
+    toast(t('update.couldnt', { reason: e.message || '' }), 'err');
   }
 }
 function sendUpdate(blob, btn) {
@@ -649,17 +710,17 @@ function sendUpdate(blob, btn) {
     if (S.session) xhr.setRequestHeader('X-Rondo-Session', S.session);
     // an APK for 1.0.x, a .rondo bundle for Rondo 2.0
     xhr.setRequestHeader('Content-Type', /\.rondo$/.test(blob.name || '') || (S.status?.device?.firmware ?? 1) >= 2 ? 'application/octet-stream' : 'application/vnd.android.package-archive');
-    xhr.upload.onprogress = (e) => { if (btn && e.lengthComputable) btn.textContent = `Sending ${Math.round((e.loaded / e.total) * 100)}%`; };
+    xhr.upload.onprogress = (e) => { if (btn && e.lengthComputable) btn.textContent = t('update.sending', { percent: Math.round((e.loaded / e.total) * 100) }); };
     xhr.onload = () => {
       let data = null;
       try { data = JSON.parse(xhr.responseText); } catch { /* empty */ }
-      if (xhr.status !== 200) return reject(new Error(data?.error || `Your Rondo answered ${xhr.status}.`));
-      if (btn) btn.textContent = 'Installing…';
-      openSheet(`<h2>Installing Rondo ${esc(data?.version || '')}</h2><p>Your Rondo installs it and restarts in about 15 seconds, with its settings, Wi-Fi, playlists and music as they were. This page loses it then: open <b>Settings › Dashboard</b> on the Y1 to come back.</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">OK</button></div>`);
+      if (xhr.status !== 200) return reject(new Error(data?.error || t('update.answered', { status: String(xhr.status) })));
+      if (btn) btn.textContent = t('update.installing');
+      openSheet(`<h2>${te('update.installingTitle', { version: data?.version || '' })}</h2><p>${th('update.installingText')}</p><div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="ok">${te('common.ok')}</button></div>`);
       $('[data-r="ok"]', sheet).addEventListener('click', () => sheet.close(), { once: true });
       resolve();
     };
-    xhr.onerror = () => reject(new Error('Your Rondo didn’t answer.'));
+    xhr.onerror = () => reject(new Error(t('common.rondoNoAnswer')));
     xhr.send(blob);
   });
 }
@@ -697,15 +758,15 @@ $('#deviceRows').addEventListener('click', async (e) => {
   if (!b) return;
   const off = b.dataset.power === 'shutdown';
   const ok = await confirmSheet({
-    title: off ? 'Shut down your Rondo?' : 'Restart your Rondo?',
-    text: off ? 'Music stops and this page disconnects. Press the Power button on the Y1 to turn it on again.' : 'Music stops and this page disconnects. Open Settings › Dashboard on the Y1 again once it’s back.',
-    action: off ? 'Shut down' : 'Restart',
+    title: off ? t('power.shutDownTitle') : t('power.restartTitle'),
+    text: off ? te('power.shutDownText') : te('power.restartText'),
+    action: off ? t('power.shutDown') : t('power.restart'),
   });
   if (!ok) return;
   try {
     await api('POST', '/api/power', { action: b.dataset.power });
-    toast(off ? 'Your Rondo is shutting down' : 'Your Rondo is restarting');
-  } catch (e2) { if (e2.status !== 401) toast(`Couldn’t do that. ${reason(e2)}`, 'err'); }
+    toast(off ? t('power.shuttingDown') : t('power.restarting'));
+  } catch (e2) { if (e2.status !== 401) toast(t('power.couldnt', { reason: reason(e2) }), 'err'); }
 });
 
 // ---------- library ----------
@@ -723,14 +784,14 @@ const libList = $('#libList'), libEl = $('#lib');
 async function loadLibrary(quiet = false) {
   if (!quiet && !S.library) {
     libList.innerHTML = '<div class="lib-skel"></div>'.repeat(6);
-    $('#libSummary').textContent = 'Reading the card…';
+    $('#libSummary').textContent = t('library.reading');
   }
   try {
     S.library = await api('GET', '/api/library', undefined, { timeout: 45000 });
   } catch (e) {
     if (e.status === 401) return;
     if (!S.library) {
-      libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t read the library</h3><p>${esc(reason(e))}</p><button class="btn" type="button" data-act="retry">Try again</button></div>`;
+      libList.innerHTML = `<div class="lib-empty"><h3>${te('library.couldntRead')}</h3><p>${esc(reason(e))}</p><button class="btn" type="button" data-act="retry">${te('common.tryAgain')}</button></div>`;
       $('#libSummary').textContent = '';
     }
     return;
@@ -745,16 +806,17 @@ function prepLibrary() {
   for (const v of S.library.videos) { v._video = true; v._key = fold(`${v.title} ${fileName(v.path)}`); S.libByPath.set(v.path, v); }
 }
 function renderLibrarySummary() {
-  const L = S.library;
-  if (!L) return;
+  const lib = S.library;
+  if (!lib) return;
   const el = $('#libSummary');
-  if (L.scanning) { el.innerHTML = `<span class="scan-note">${spinner()}Scanning the card…</span>`; return; }
+  if (lib.scanning) { el.innerHTML = `<span class="scan-note">${spinner()}${te('library.scanning')}</span>`; return; }
   if (S.libKind === 'playlists') return;
-  const list = S.libKind === 'songs' ? L.songs : L.videos;
+  const list = S.libKind === 'songs' ? lib.songs : lib.videos;
   const bytes = list.reduce((n, x) => n + (x.size || 0), 0);
+  const sum = { count: list.length, size: fmtBytes(bytes) };
   el.textContent = list.length
-    ? `${plural(list.length, S.libKind === 'songs' ? 'song' : 'video')} · ${fmtBytes(bytes)}. They play without the internet.`
-    : 'Music and videos on the card. They play without the internet.';
+    ? (S.libKind === 'songs' ? t('library.summarySongs', sum) : t('library.summaryVideos', sum))
+    : t('library.summary');
   $('#rescanBtn').disabled = false;
 }
 // sorts that only songs have (tags, listening)
@@ -762,18 +824,18 @@ const SONG_SORTS = ['artist', 'album', 'albumArtist', 'genre', 'year', 'plays', 
 const sortKey = () => (S.libKind === 'videos' && SONG_SORTS.includes(S.libSort) ? 'title' : S.libSort);
 const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
 function dateGroup(ms) {
-  if (!ms) return 'Earlier';
+  if (!ms) return t('library.group.earlier');
   const now = new Date(), d = new Date(ms);
   const day = 86400000, start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  if (ms >= start) return 'Today';
-  if (ms >= start - day) return 'Yesterday';
-  if (ms >= start - 6 * day) return 'This week';
-  if (ms >= start - 29 * day) return 'This month';
-  return d.toLocaleDateString('en', { month: 'long', year: 'numeric' });
+  if (ms >= start) return t('library.group.today');
+  if (ms >= start - day) return t('library.group.yesterday');
+  if (ms >= start - 6 * day) return t('library.group.thisWeek');
+  if (ms >= start - 29 * day) return t('library.group.thisMonth');
+  return d.toLocaleDateString(L.code, { month: 'long', year: 'numeric' });
 }
 function buildRows() {
-  const L = S.library, kind = S.libKind, sort = sortKey();
-  const src = kind === 'songs' ? L.songs : L.videos;
+  const lib = S.library, kind = S.libKind, sort = sortKey();
+  const src = kind === 'songs' ? lib.songs : lib.videos;
   const q = fold(S.libQuery.trim());
   let items = q ? src.filter((x) => q.split(/\s+/).every((w) => x._key.includes(w))) : src.slice();
   // the listening sorts show only what has been listened to (rated)
@@ -800,11 +862,11 @@ function buildRows() {
     let label = null, sub = '';
     if (sort === 'added') label = dateGroup(it.modified);
     else if (kind === 'songs' && sort === 'title') { const c = fold(it.title || fileName(it.path)).charAt(0).toUpperCase(); label = /[A-Z]/.test(c) ? c : '#'; }
-    else if (sort === 'artist') label = it.artist || 'Unknown artist';
-    else if (sort === 'album') { label = it.album || 'Unknown album'; sub = it.album ? [it.albumArtist || it.artist, it.year || ''].filter(Boolean).join(' · ') : ''; }
-    else if (sort === 'albumArtist') label = it.albumArtist || it.artist || 'Unknown artist';
-    else if (sort === 'genre') label = it.genre || 'No genre';
-    else if (sort === 'year') label = it.year ? String(it.year) : 'No year';
+    else if (sort === 'artist') label = it.artist || t('common.unknownArtist');
+    else if (sort === 'album') { label = it.album || t('common.unknownAlbum'); sub = it.album ? [it.albumArtist || it.artist, it.year || ''].filter(Boolean).join(' · ') : ''; }
+    else if (sort === 'albumArtist') label = it.albumArtist || it.artist || t('common.unknownArtist');
+    else if (sort === 'genre') label = it.genre || t('library.noGenre');
+    else if (sort === 'year') label = it.year ? String(it.year) : t('library.noYear');
     else if (sort === 'played') label = dateGroup(it.lastPlayed);
     else if (sort === 'rating') label = stars(it.rating);
     if (label !== null && label !== last) { rows.push({ h: label, sub }); last = label; }
@@ -821,29 +883,29 @@ function renderLibrary() {
   libEl.classList.toggle('is-playlists', pls || files || albumsTab || photosTab);
   if (photosTab) {
     $('#libSortWrap').hidden = true;
-    $('#libSearch').placeholder = 'Search photos';
-    libList.setAttribute('aria-label', 'Photos');
+    $('#libSearch').placeholder = t('library.searchPhotos');
+    libList.setAttribute('aria-label', t('library.photos'));
     $('#view-library').classList.remove('is-empty');
     return renderPhotos();
   }
   if (albumsTab) {
     $('#libSortWrap').hidden = true;
-    $('#libSearch').placeholder = 'Search albums';
-    libList.setAttribute('aria-label', 'Albums');
+    $('#libSearch').placeholder = t('library.searchAlbums');
+    libList.setAttribute('aria-label', t('library.albums'));
     $('#view-library').classList.remove('is-empty');
     return renderAlbums();
   }
   if (files) {
     $('#libSortWrap').hidden = true;
-    $('#libSearch').placeholder = 'Search this folder';
-    libList.setAttribute('aria-label', 'Files');
+    $('#libSearch').placeholder = t('library.searchFolder');
+    libList.setAttribute('aria-label', t('library.files'));
     $('#view-library').classList.remove('is-empty');
     return renderFiles();
   }
   $('#libSortWrap').hidden = pls;
   if (pls) {
-    $('#libSearch').placeholder = 'Search playlists';
-    libList.setAttribute('aria-label', 'Playlists');
+    $('#libSearch').placeholder = t('library.searchPlaylists');
+    libList.setAttribute('aria-label', t('common.playlists'));
     $('#view-library').classList.remove('is-empty');
     return renderPlaylists();
   }
@@ -851,8 +913,8 @@ function renderLibrary() {
   for (const o of sel.options) o.hidden = videos && SONG_SORTS.includes(o.value);
   sel.value = sortKey();
   $$('#libHead [data-sort]').forEach((b) => (b.dataset.sort === sortKey() ? b.setAttribute('aria-sort', 'ascending') : b.removeAttribute('aria-sort')));
-  libList.setAttribute('aria-label', videos ? 'Videos' : 'Songs');
-  $('#libSearch').placeholder = videos ? 'Search videos' : matchMedia('(min-width: 900px)').matches ? 'Search songs, artists, albums' : 'Search songs';
+  libList.setAttribute('aria-label', videos ? t('library.videos') : t('library.songs'));
+  $('#libSearch').placeholder = videos ? t('library.searchVideos') : matchMedia('(min-width: 900px)').matches ? t('library.searchAll') : t('library.searchSongs');
   renderLibrarySummary();
 
   const { rows, count } = buildRows();
@@ -864,18 +926,19 @@ function renderLibrary() {
   const total = (videos ? S.library.videos : S.library.songs).length;
   $('#view-library').classList.toggle('is-empty', !total);
   // the listening sorts with nothing listened to (or rated) yet
-  const LISTENING = { plays: ['Nothing played yet', 'Songs show up here once you’ve played them through on your Rondo.'],
-    played: ['Nothing played yet', 'Songs show up here once you’ve played them through on your Rondo.'],
-    rating: ['Nothing rated yet', 'Rate a song from its details here, or on your Rondo in Now Playing (hold the center button).'] };
+  const LISTENING = { plays: [t('library.nothingPlayed'), t('library.nothingPlayedText')],
+    played: [t('library.nothingPlayed'), t('library.nothingPlayedText')],
+    rating: [t('library.nothingRated'), t('library.nothingRatedText')] };
   if (!count && total && !S.libQuery.trim() && LISTENING[sortKey()] && !videos) {
     const [h, p] = LISTENING[sortKey()];
-    libList.innerHTML = `<div class="lib-empty"><h3>${h}</h3><p>${p}</p></div>`;
+    libList.innerHTML = `<div class="lib-empty"><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`;
     return;
   }
   if (!count) {
-    libList.innerHTML = S.libQuery.trim() && total
-      ? `<div class="lib-empty"><h3>No matches</h3><p>Nothing ${videos ? 'among the videos' : 'in the songs'} matches “${esc(S.libQuery.trim())}”.</p></div>`
-      : `<div class="lib-empty"><h3>${videos ? 'No videos on the card' : 'No music on the card yet'}</h3><p>${videos ? 'Upload MP4, MKV or WebM files and they’ll show up here.' : 'Drop music files on this page or use Upload. FLAC, MP3, M4A and more.'}</p><button class="btn btn-primary" type="button" data-act="upload">${icon('upload')}<span>Upload files</span></button></div>`;
+    const query = S.libQuery.trim();
+    libList.innerHTML = query && total
+      ? `<div class="lib-empty"><h3>${te('common.noMatches')}</h3><p>${videos ? te('library.noMatchVideos', { query }) : te('library.noMatchSongs', { query })}</p></div>`
+      : `<div class="lib-empty"><h3>${videos ? te('library.noVideos') : te('library.noMusic')}</h3><p>${videos ? te('library.noVideosText') : te('library.noMusicText')}</p><button class="btn btn-primary" type="button" data-act="upload">${icon('upload')}<span>${te('library.uploadFiles')}</span></button></div>`;
     return;
   }
   appendRows();
@@ -884,9 +947,9 @@ const CHUNK = 120;
 function appendRows() {
   if (S.libKind !== 'songs' && S.libKind !== 'videos') return;  // the songs' rows stay out of the other tabs
   const end = Math.min(S.libShown + CHUNK, S.libRows.length);
-  let html = '';
-  for (let i = S.libShown; i < end; i++) html += rowHtml(S.libRows[i]);
-  libList.insertAdjacentHTML('beforeend', html);
+  let out = '';
+  for (let i = S.libShown; i < end; i++) out += rowHtml(S.libRows[i]);
+  libList.insertAdjacentHTML('beforeend', out);
   S.libShown = end;
   $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
   requestAnimationFrame(() => { if (S.libShown < S.libRows.length && $('#libSentinel').getBoundingClientRect().top < innerHeight + 900) appendRows(); });
@@ -909,8 +972,8 @@ function rowHtml(r) {
   if (r.h !== undefined) return `<div class="lhdr" role="heading" aria-level="3">${esc(r.h)}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</div>`;
   const title = r.title || fileName(r.path);
   // videos play from the device itself: opening its video player would close Settings › Dashboard
-  const play = r._video ? '' : `<button class="ib ib-sm" type="button" data-act="play" aria-label="Play ${esc(title)} on your Rondo">${icon('play')}</button>`;
-  const acts = `<span class="s-acts">${play}<button class="ib ib-sm" type="button" data-act="more" aria-label="Details for ${esc(title)}">${icon('more')}</button></span>`;
+  const play = r._video ? '' : `<button class="ib ib-sm" type="button" data-act="play" aria-label="${te('common.playNameOnRondo', { name: title })}">${icon('play')}</button>`;
+  const acts = `<span class="s-acts">${play}<button class="ib ib-sm" type="button" data-act="more" aria-label="${te('library.detailsFor', { name: title })}">${icon('more')}</button></span>`;
   if (r._video) {
     return `<div class="song is-video${isPlaying(r) ? ' is-playing' : ''}" role="listitem" data-path="${esc(r.path)}">
       <span class="art" data-art="${esc(r.path)}">${icon('film')}</span>
@@ -1018,17 +1081,18 @@ $('#libKind').addEventListener('click', (e) => {
   if (b.dataset.kind !== S.libKind) setKind(b.dataset.kind);
 });
 // every song shown (the search and sort as they are), in a random order, on the Rondo
-$('#shuffleBtn').addEventListener('click', () => shufflePaths(S.libRows.map((s) => s.path), 'the songs'));
-async function shufflePaths(paths, what) {
+$('#shuffleBtn').addEventListener('click', () => shufflePaths(S.libRows.map((s) => s.path), t('library.shufflingSongs')));
+// done: what the toast says once they play
+async function shufflePaths(paths, done) {
   const q = paths.filter((p) => S.libByPath.has(p));
-  if (!q.length) return toast('No songs to shuffle', 'err');
+  if (!q.length) return toast(t('library.noSongsToShuffle'), 'err');
   for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
   try {
     const st = await api('POST', '/api/player/play', { path: q[0], queue: q });
     if (S.status) { S.status.player = st; S.statusAt = performance.now(); }
     renderMini();
-    toast(`Shuffling ${what} on your Rondo`);
-  } catch (e) { if (e.status !== 401) toast(`Couldn’t play them. ${reason(e)}`, 'err'); }
+    toast(done);
+  } catch (e) { if (e.status !== 401) toast(t('library.couldntPlayThem', { reason: reason(e) }), 'err'); }
 }
 function setKind(kind) {
   S.libKind = kind;
@@ -1056,10 +1120,10 @@ async function playItem(it) {
     const p = await api('POST', '/api/player/play', { path: it.path });
     if (S.status) { S.status.player = p; S.statusAt = performance.now(); }
     renderMini(); markPlayingRows();
-    toast(`Playing “${it.title || fileName(it.path)}” on your Rondo`);
+    toast(t('common.playingOnRondo', { name: it.title || fileName(it.path) }));
     return true;
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('common.couldntPlayIt', { reason: reason(e) }), 'err');
     return false;
   }
 }
@@ -1067,13 +1131,13 @@ async function playItem(it) {
 // ---------- sheet (details and confirmations) ----------
 const sheet = $('#sheet');
 sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
-function openSheet(html) {
-  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div>${html}</div>`;
+function openSheet(body) {
+  sheet.innerHTML = `<div class="sheet-body"><div class="sheet-grab" aria-hidden="true"></div>${body}</div>`;
   if (!sheet.open) sheet.showModal();
 }
 function confirmSheet({ title, text, action, danger = true }) {
   return new Promise((resolve) => {
-    openSheet(`<h2>${esc(title)}</h2><p>${text}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" type="button" data-r="1">${esc(action)}</button></div>`);
+    openSheet(`<h2>${esc(title)}</h2><p>${text}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.cancel')}</button><button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" type="button" data-r="1">${esc(action)}</button></div>`);
     $('[data-r="1"]', sheet).focus();
     const onClick = (e) => { const b = e.target.closest('[data-r]'); if (b) finish(b.dataset.r === '1'); };
     const finish = (v) => { sheet.removeEventListener('click', onClick); sheet.removeEventListener('close', onClose); if (sheet.open) sheet.close(); resolve(v); };
@@ -1085,25 +1149,25 @@ function confirmSheet({ title, text, action, danger = true }) {
 function openItem(it) {
   const video = !!it._video, title = it.title || fileName(it.path);
   const facts = video
-    ? [['Length', fmtDur(it.durationSec)], ['Size', fmtBytes(it.size)], ['File', it.path, 'path']]
-    : [['Artist', it.artist], ['Album artist', it.albumArtist && it.albumArtist !== it.artist ? it.albumArtist : ''], ['Album', it.album],
-      ['Disc', it.disc || ''], ['Track', it.track || ''], ['Year', it.year || ''], ['Genre', it.genre || ''], ['Length', fmtDur(it.durationSec)],
-      ['Played', it.plays ? `${plural(it.plays, 'time')}, last ${new Date(it.lastPlayed).toLocaleDateString(undefined, { dateStyle: 'medium' })}` : 'Never'],
-      ['Size', fmtBytes(it.size)], ['File', it.path, 'path']];
+    ? [[t('library.details.length'), fmtDur(it.durationSec)], [t('library.details.size'), fmtBytes(it.size)], [t('library.details.file'), it.path, 'path']]
+    : [[t('library.sort.artist'), it.artist], [t('library.sort.albumArtist'), it.albumArtist && it.albumArtist !== it.artist ? it.albumArtist : ''], [t('library.sort.album'), it.album],
+      [t('library.details.disc'), it.disc || ''], [t('library.details.track'), it.track || ''], [t('library.sort.year'), it.year || ''], [t('library.sort.genre'), it.genre || ''], [t('library.details.length'), fmtDur(it.durationSec)],
+      [t('library.details.played'), it.plays ? t('library.details.playedTimes', { count: it.plays, date: new Date(it.lastPlayed).toLocaleDateString(dateLocale(), { dateStyle: 'medium' }) }) : t('library.details.never')],
+      [t('library.details.size'), fmtBytes(it.size)], [t('library.details.file'), it.path, 'path']];
   const detail = () => {
     openSheet(`<div class="song-sheet${video ? ' is-video' : ''}"><span class="art"${video || it.art ? ` data-art="${esc(it.path)}"` : ''}>${icon(video ? 'film' : 'note')}</span>
-      <div><h2>${esc(title)}</h2><p>${esc(video ? 'Video on the card' : [it.artist, it.album].filter(Boolean).join(' · ') || 'On the card')}</p></div></div>
-      ${video ? '' : `<div class="rate" role="radiogroup" aria-label="Rating">${[1, 2, 3, 4, 5].map((n) => `<button type="button" role="radio" aria-checked="${n === it.rating}" aria-label="${plural(n, 'star')}" data-rate="${n}" class="${n <= it.rating ? 'on' : ''}">★</button>`).join('')}</div>`}
-      <dl class="facts">${facts.filter((f) => f[1] !== '' && f[1] != null).map(([k, v, c]) => `<dt>${k}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>
-      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>Delete</span></button>${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>Add to playlist</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>Play on Rondo</span></button>`}</div>`);
+      <div><h2>${esc(title)}</h2><p>${esc(video ? t('library.details.videoOnCard') : [it.artist, it.album].filter(Boolean).join(' · ') || t('common.onCard'))}</p></div></div>
+      ${video ? '' : `<div class="rate" role="radiogroup" aria-label="${te('library.sort.rating')}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" role="radio" aria-checked="${n === it.rating}" aria-label="${te('library.details.stars', { count: n })}" data-rate="${n}" class="${n <= it.rating ? 'on' : ''}">★</button>`).join('')}</div>`}
+      <dl class="facts">${facts.filter((f) => f[1] !== '' && f[1] != null).map(([k, v, c]) => `<dt>${esc(k)}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>
+      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>${te('common.delete')}</span></button>${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>${te('library.details.addToPlaylist')}</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>${te('common.playOnRondo')}</span></button>`}</div>`);
     const art = $('.art[data-art]', sheet);
     if (art) loadArtInto(art, 240);
     ($('[data-act="play"]', sheet) || $('[data-act="delete"]', sheet)).focus();
   };
   const confirm = (err = '') => {
-    openSheet(`<h2>Delete this ${video ? 'video' : 'song'}?</h2><p>“${esc(title)}” will be removed from the card. This can’t be undone.</p>
+    openSheet(`<h2>${video ? te('library.deleteVideo') : te('library.deleteSong')}</h2><p>${te('library.deleteText', { title })}</p>
       ${err ? `<div class="note err" style="margin-top:14px">${icon('alert')}<span>${esc(err)}</span></div>` : ''}
-      <div class="sheet-actions"><button class="btn" type="button" data-act="back">Cancel</button><button class="btn btn-danger" type="button" data-act="really">Delete</button></div>`);
+      <div class="sheet-actions"><button class="btn" type="button" data-act="back">${te('common.cancel')}</button><button class="btn btn-danger" type="button" data-act="really">${te('common.delete')}</button></div>`);
     $('[data-act="back"]', sheet).focus();
   };
   const onClick = async (e) => {
@@ -1111,11 +1175,11 @@ function openItem(it) {
     if (star) {  // the same star again takes the rating away
       const n = +star.dataset.rate === it.rating ? 0 : +star.dataset.rate;
       try {
-        const t = await api('PUT', '/api/library/rating', { path: it.path, rating: n });
-        it.rating = t.rating ?? n;
+        const res = await api('PUT', '/api/library/rating', { path: it.path, rating: n });
+        it.rating = res.rating ?? n;
         $$('[data-rate]', sheet).forEach((x) => { x.classList.toggle('on', +x.dataset.rate <= it.rating); x.setAttribute('aria-checked', String(+x.dataset.rate === it.rating)); });
         if (sortKey() === 'rating') renderLibrary();
-      } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
+      } catch (err) { if (err.status !== 401) toast(t('common.notSaved', { reason: reason(err) }), 'err'); }
       return;
     }
     const b = e.target.closest('[data-act]');
@@ -1127,14 +1191,14 @@ function openItem(it) {
     if (act === 'back') detail();
     if (act === 'really') {
       b.disabled = true;
-      b.textContent = 'Deleting…';
+      b.textContent = t('library.deleting');
       try {
         await api('DELETE', `/api/library?path=${encodeURIComponent(it.path)}`);
         removeFromLibrary(it);
         sheet.close();
-        toast(`Deleted “${title}”`);
+        toast(t('common.deletedName', { name: title }));
       } catch (e2) {
-        if (e2.status !== 401) confirm(`Couldn’t delete it. ${reason(e2)}`);
+        if (e2.status !== 401) confirm(t('common.couldntDeleteIt', { reason: reason(e2) }));
       }
     }
   };
@@ -1143,10 +1207,10 @@ function openItem(it) {
   detail();
 }
 function removeFromLibrary(it) {
-  const L = S.library;
+  const lib = S.library;
   S.playlists = null; // the Rondo took it out of every playlist too
-  L.songs = L.songs.filter((s) => s !== it);
-  L.videos = L.videos.filter((v) => v !== it);
+  lib.songs = lib.songs.filter((s) => s !== it);
+  lib.videos = lib.videos.filter((v) => v !== it);
   S.libByPath.delete(it.path);
   const idx = S.libRows.indexOf(it);
   if (idx >= 0) {
@@ -1165,19 +1229,19 @@ function removeFromLibrary(it) {
     }
   }
   renderLibrarySummary();
-  if (!(S.libKind === 'songs' ? L.songs : L.videos).length) renderLibrary();
+  if (!(S.libKind === 'songs' ? lib.songs : lib.videos).length) renderLibrary();
 }
 
 // ---------- playlists (.m3u8 files in the card's Playlists folder; local/Playlists.kt) ----------
 const plTime = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.round(sec / 60)} min`);
-const plSub = (p) => [plural(p.paths.length - p.missing, 'song'), p.durationSec ? plTime(p.durationSec) : '', p.missing ? `${p.missing} not on the card` : ''].filter(Boolean).join(' · ');
+const plSub = (p) => [t('common.songs', { count: p.paths.length - p.missing }), p.durationSec ? plTime(p.durationSec) : '', p.missing ? t('playlists.missing', { count: p.missing }) : ''].filter(Boolean).join(' · ');
 async function loadPlaylists() {
   try {
     const [pl, sm] = await Promise.all([api('GET', '/api/playlists'), api('GET', '/api/smart').catch(() => ({ playlists: [] }))]);
     S.playlists = pl.playlists;
     S.smart = sm.playlists || [];
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t read the playlists. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('playlists.couldntRead', { reason: reason(e) }), 'err');
     S.playlists = S.playlists || [];
   }
   return S.playlists;
@@ -1193,14 +1257,14 @@ async function savePlaylist(name, change) {
     keepPlaylist(p, name);
     return p;
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t save it. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('playlists.couldntSave', { reason: reason(e) }), 'err');
     return null;
   }
 }
 // a one-line question in the sheet; resolves to the text, or null on Cancel
 function promptSheet({ title, text = '', value = '', action, placeholder = '' }) {
   return new Promise((resolve) => {
-    openSheet(`<h2>${esc(title)}</h2>${text ? `<p>${text}</p>` : ''}<form class="sheet-form"><input type="text" maxlength="60" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}" autocomplete="off"><div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`);
+    openSheet(`<h2>${esc(title)}</h2>${text ? `<p>${text}</p>` : ''}<form class="sheet-form"><input type="text" maxlength="60" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}" autocomplete="off"><div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.cancel')}</button><button class="btn btn-primary" type="submit">${esc(action)}</button></div></form>`);
     const input = $('input', sheet), form = $('form', sheet);
     input.focus();
     input.select();
@@ -1213,15 +1277,15 @@ function promptSheet({ title, text = '', value = '', action, placeholder = '' })
   });
 }
 async function newPlaylist(paths = []) {
-  const name = await promptSheet({ title: 'New playlist', action: 'Create', placeholder: 'Name' });
+  const name = await promptSheet({ title: t('playlists.new'), action: t('playlists.create'), placeholder: t('common.name') });
   if (!name) return null;
   try {
     const p = await api('POST', '/api/playlists', { name, paths });
     keepPlaylist(p);
-    toast(paths.length ? `Added to “${p.name}”` : `Made “${p.name}”`);
+    toast(paths.length ? t('playlists.addedTo', { name: p.name }) : t('common.made', { name: p.name }));
     return p;
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t make it. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('playlists.couldntMake', { reason: reason(e) }), 'err');
     return null;
   }
 }
@@ -1232,12 +1296,12 @@ function renderPlaylists() {
   if (S.openPlaylist) return renderPlaylist();
   const q = fold(S.libQuery.trim());
   const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.title || p.name).includes(w))) : all;
-  $('#libSummary').textContent = all.length ? `${plural(all.length, 'playlist')}, made here or on your Rondo. They’re saved on the card.` : 'Playlists of songs on the card. They’re saved on the card, so they survive a reflash.';
-  libList.innerHTML = `<div class="song pl-row pl-new" role="listitem" data-act="pl-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New playlist</span></span></div>` +
+  $('#libSummary').textContent = all.length ? t('playlists.summary', { count: all.length }) : t('playlists.summaryNone');
+  libList.innerHTML = `<div class="song pl-row pl-new" role="listitem" data-act="pl-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">${te('playlists.new')}</span></span></div>` +
     (shown.length ? shown.map((p) => `<div class="song pl-row" role="listitem" data-pl="${esc(p.name)}"><span class="art"${p.cover ? ` data-art="${esc(p.cover)}" data-photo="1"` : ''}>${icon('playlist')}</span>
       <span class="s-main"><span class="s-title">${esc(p.title || p.name)}</span><span class="s-sub">${esc((p.youtube ? 'YouTube Music · ' : '') + plSub(p))}</span></span>
-      <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="Play ${esc(p.title || p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="Open ${esc(p.title || p.name)}">${icon('chevron')}</button></span></div>`).join('')
-      : all.length ? `<div class="lib-empty"><h3>No matches</h3><p>No playlist is called anything like “${esc(S.libQuery.trim())}”.</p></div>` : '') +
+      <span class="s-acts">${p.paths.length > p.missing ? `<button class="ib ib-sm" type="button" data-act="pl-play" aria-label="${te('common.playNameOnRondo', { name: p.title || p.name })}">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="pl-open" aria-label="${te('playlists.openName', { name: p.title || p.name })}">${icon('chevron')}</button></span></div>`).join('')
+      : all.length ? `<div class="lib-empty"><h3>${te('common.noMatches')}</h3><p>${te('playlists.noMatch', { query: S.libQuery.trim() })}</p></div>` : '') +
     smartListHtml(q);
   $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });  // the covers
 }
@@ -1245,13 +1309,13 @@ function renderPlaylist() {
   const p = S.playlists.find((x) => x.name === S.openPlaylist);
   if (!p) { S.openPlaylist = null; return renderPlaylists(); }
   const yt = !!p.youtube;  // a downloaded YouTube Music playlist: it follows YouTube's, not edited here
-  $('#libSummary').textContent = yt ? 'A YouTube Music playlist downloaded to the card. It follows the one on YouTube Music: update it to get its new songs.' : 'A playlist on the card.';
+  $('#libSummary').textContent = yt ? t('playlists.ytSummary') : t('playlists.onCard');
   const rows = p.paths.map((path, i) => {
     const s = S.libByPath.get(path);
-    const up = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-up" data-i="${i}" aria-label="Move up"${i ? '' : ' disabled'}>${icon('up')}</button>`;
-    const down = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-down" data-i="${i}" aria-label="Move down"${i < p.paths.length - 1 ? '' : ' disabled'}>${icon('down')}</button>`;
-    const rm = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-remove" data-i="${i}" aria-label="Remove from the playlist">${icon('close')}</button>`;
-    if (!s) return `<div class="song pl-song is-missing" role="listitem"><span class="art">${icon('note')}</span><span class="s-main"><span class="s-title">${esc(fileName(path))}</span><span class="s-sub">Not on the card any more</span></span><span class="s-acts">${up}${down}${rm}</span></div>`;
+    const up = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-up" data-i="${i}" aria-label="${te('common.moveUp')}"${i ? '' : ' disabled'}>${icon('up')}</button>`;
+    const down = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-down" data-i="${i}" aria-label="${te('common.moveDown')}"${i < p.paths.length - 1 ? '' : ' disabled'}>${icon('down')}</button>`;
+    const rm = yt ? '' : `<button class="ib ib-sm" type="button" data-act="pl-remove" data-i="${i}" aria-label="${te('playlists.removeFrom')}">${icon('close')}</button>`;
+    if (!s) return `<div class="song pl-song is-missing" role="listitem"><span class="art">${icon('note')}</span><span class="s-main"><span class="s-title">${esc(fileName(path))}</span><span class="s-sub">${te('playlists.notOnCard')}</span></span><span class="s-acts">${up}${down}${rm}</span></div>`;
     return `<div class="song pl-song${isPlaying(s) ? ' is-playing' : ''}" role="listitem" data-path="${esc(path)}" data-i="${i}">
       <span class="art"${s.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
       <span class="s-main"><span class="s-title">${esc(s.title || fileName(path))}</span><span class="s-sub">${esc([s.artist, s.album].filter(Boolean).join(' · '))}</span></span>
@@ -1259,16 +1323,16 @@ function renderPlaylist() {
   }).join('');
   const playable = p.paths.length > p.missing;
   libList.innerHTML = `<div class="pl-head">
-      <button class="btn btn-sm btn-quiet" type="button" data-act="pl-back">${icon('chevron', 'i flip')}<span>Playlists</span></button>
+      <button class="btn btn-sm btn-quiet" type="button" data-act="pl-back">${icon('chevron', 'i flip')}<span>${te('common.playlists')}</span></button>
       <h2>${esc(p.title || p.name)}</h2><p>${esc((yt ? 'YouTube Music · ' : '') + plSub(p))}</p>
       <div class="pl-acts">
-        <button class="btn btn-primary btn-sm" type="button" data-act="pl-play"${playable ? '' : ' disabled'}>${icon('play')}<span>Play on Rondo</span></button>
-        <button class="btn btn-sm" type="button" data-act="pl-shuffle"${playable ? '' : ' disabled'}>${icon('shuffle')}<span>Shuffle</span></button>
-        ${yt ? (p.ytId ? `<button class="btn btn-sm" type="button" data-act="pl-update">${icon('refresh')}<span>Update download</span></button>` : '')
-    : `<button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>Add songs</span></button>
-        <button class="btn btn-sm" type="button" data-act="pl-rename">Rename</button>`}
-        <button class="btn btn-sm btn-red-text" type="button" data-act="pl-delete">${icon('trash')}<span>Delete</span></button>
-      </div></div>` + (rows || (yt ? '<div class="lib-empty"><h3>No songs on the card yet</h3><p>They come as they download.</p></div>' : '<div class="lib-empty"><h3>No songs yet</h3><p>Use Add songs, or Add to playlist in a song’s details.</p></div>'));
+        <button class="btn btn-primary btn-sm" type="button" data-act="pl-play"${playable ? '' : ' disabled'}>${icon('play')}<span>${te('common.playOnRondo')}</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-shuffle"${playable ? '' : ' disabled'}>${icon('shuffle')}<span>${te('library.shuffle')}</span></button>
+        ${yt ? (p.ytId ? `<button class="btn btn-sm" type="button" data-act="pl-update">${icon('refresh')}<span>${te('playlists.updateDownload')}</span></button>` : '')
+    : `<button class="btn btn-sm" type="button" data-act="pl-add">${icon('plus')}<span>${te('playlists.addSongs')}</span></button>
+        <button class="btn btn-sm" type="button" data-act="pl-rename">${te('common.rename')}</button>`}
+        <button class="btn btn-sm btn-red-text" type="button" data-act="pl-delete">${icon('trash')}<span>${te('common.delete')}</span></button>
+      </div></div>` + (rows || (yt ? `<div class="lib-empty"><h3>${te('playlists.noSongsYetYt')}</h3><p>${te('playlists.noSongsYetYtText')}</p></div>` : `<div class="lib-empty"><h3>${te('playlists.noSongsYet')}</h3><p>${te('playlists.noSongsYetText')}</p></div>`));
   $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
 }
 async function playPlaylist(p, path) {
@@ -1278,8 +1342,8 @@ async function playPlaylist(p, path) {
     const st = await api('POST', '/api/player/play', { path: path || onCard[0], queue: onCard });
     if (S.status) { S.status.player = st; S.statusAt = performance.now(); }
     renderMini();
-    toast(`Playing “${p.title || p.name}” on your Rondo`);
-  } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
+    toast(t('common.playingOnRondo', { name: p.title || p.name }));
+  } catch (e) { if (e.status !== 401) toast(t('common.couldntPlayIt', { reason: reason(e) }), 'err'); }
 }
 async function onPlaylistClick(e) {
   if (await onSmartClick(e)) return;
@@ -1292,11 +1356,11 @@ async function onPlaylistClick(e) {
   if (!p) return;
   if (act === 'pl-open') { S.openPlaylist = p.name; window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) }); return renderPlaylists(); }
   if (act === 'pl-play') return playPlaylist(p);
-  if (act === 'pl-shuffle') return shufflePaths(p.paths, `“${p.title || p.name}”`);
+  if (act === 'pl-shuffle') return shufflePaths(p.paths, t('library.shufflingName', { name: p.title || p.name }));
   if (act === 'pl-song') return playPlaylist(p, row.dataset.path);
   if (act === 'pl-add') return addSongsSheet(p.name);
   if (act === 'pl-rename') {
-    const next = await promptSheet({ title: 'Rename playlist', value: p.name, action: 'Rename' });
+    const next = await promptSheet({ title: t('playlists.renameTitle'), value: p.name, action: t('common.rename') });
     if (!next || next === p.name) return;
     const saved = await savePlaylist(p.name, { name: next });
     if (saved) { S.openPlaylist = saved.name; renderPlaylists(); }
@@ -1305,14 +1369,14 @@ async function onPlaylistClick(e) {
   if (act === 'pl-update') {
     try {
       await api('POST', `/api/downloads/playlist?id=${encodeURIComponent(p.ytId)}`, {});
-      toast(`Updating “${p.title}” on your Rondo`);
-    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t update it. ${reason(e2)}`, 'err'); }
+      toast(t('playlists.updating', { name: p.title }));
+    } catch (e2) { if (e2.status !== 401) toast(t('common.couldntUpdateIt', { reason: reason(e2) }), 'err'); }
     return;
   }
   if (act === 'pl-delete') {
     const title = p.title || p.name;
     // a downloaded one: its songs can go too
-    const how = p.youtube ? await dlListSheet({ title }) : (await confirmSheet({ title: `Delete “${title}”?`, text: 'The playlist goes; its songs stay on the card.', action: 'Delete' })) ? 'keep' : '';
+    const how = p.youtube ? await dlListSheet({ title }) : (await confirmSheet({ title: t('common.deleteName', { name: title }), text: te('playlists.deleteText'), action: t('common.delete') })) ? 'keep' : '';
     if (!how) return;
     try {
       await api('DELETE', `/api/playlists?name=${encodeURIComponent(p.name)}${how === 'songs' ? '&songs=1' : ''}`);
@@ -1320,8 +1384,8 @@ async function onPlaylistClick(e) {
       S.openPlaylist = null;
       if (how === 'songs') loadLibrary(true);
       renderPlaylists();
-      toast(how === 'songs' ? `Deleted “${title}” and its songs` : `Deleted “${title}”`);
-    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t delete it. ${reason(e2)}`, 'err'); }
+      toast(how === 'songs' ? t('playlists.deletedWithSongs', { name: title }) : t('common.deletedName', { name: title }));
+    } catch (e2) { if (e2.status !== 401) toast(t('common.couldntDeleteIt', { reason: reason(e2) }), 'err'); }
     return;
   }
   const i = Number(b?.dataset.i);
@@ -1344,10 +1408,10 @@ function addSongsSheet(name) {
     $('.pick-list', sheet).innerHTML = songs.length ? songs.map((s) => {
       const has = p.paths.includes(s.path);
       return `<div class="pick" data-path="${esc(s.path)}"><span class="s-main"><span class="s-title">${esc(s.title || fileName(s.path))}</span><span class="s-sub">${esc([s.artist, s.album].filter(Boolean).join(' · '))}</span></span>
-        <button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? 'Added' : 'Add'}</button></div>`;
-    }).join('') : `<p class="pick-none">${q.trim() ? 'No songs match.' : 'No songs on the card.'}</p>`;
+        <button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? te('common.added') : te('common.add')}</button></div>`;
+    }).join('') : `<p class="pick-none">${q.trim() ? te('playlists.noSongsMatch') : te('playlists.noSongsOnCard')}</p>`;
   };
-  openSheet(`<h2>Add to “${esc(name)}”</h2><label class="search pick-search">${icon('search')}<input type="search" placeholder="Search songs, artists, albums" autocomplete="off" aria-label="Search songs"></label><div class="pick-list"></div><div class="sheet-actions"><button class="btn" type="button" data-act="done">Done</button></div>`);
+  openSheet(`<h2>${te('playlists.addToName', { name })}</h2><label class="search pick-search">${icon('search')}<input type="search" placeholder="${te('library.searchAll')}" autocomplete="off" aria-label="${te('library.searchSongs')}"></label><div class="pick-list"></div><div class="sheet-actions"><button class="btn" type="button" data-act="done">${te('common.done')}</button></div>`);
   const input = $('input', sheet);
   input.addEventListener('input', () => { q = input.value; draw(); });
   input.focus();
@@ -1359,8 +1423,8 @@ function addSongsSheet(name) {
     const p = S.playlists.find((x) => x.name === name);
     if (!path || !p) return;
     b.disabled = true;
-    b.textContent = 'Adding…';
-    if (await savePlaylist(name, { paths: [...p.paths, path] })) draw(); else { b.disabled = false; b.textContent = 'Add'; }
+    b.textContent = t('common.adding');
+    if (await savePlaylist(name, { paths: [...p.paths, path] })) draw(); else { b.disabled = false; b.textContent = t('common.add'); }
   };
   sheet.addEventListener('click', onClick);
   sheet.addEventListener('close', () => { sheet.removeEventListener('click', onClick); if (S.libKind === 'playlists') renderPlaylists(); }, { once: true });
@@ -1369,10 +1433,10 @@ function addSongsSheet(name) {
 // from a song's details: pick a playlist, or start a new one with it
 async function addToPlaylistSheet(it) {
   const all = await loadPlaylists();
-  openSheet(`<h2>Add to a playlist</h2><p>“${esc(it.title || fileName(it.path))}”</p><div class="pick-list">${all.filter((p) => !p.youtube).map((p) => {
+  openSheet(`<h2>${te('playlists.addToA')}</h2><p>“${esc(it.title || fileName(it.path))}”</p><div class="pick-list">${all.filter((p) => !p.youtube).map((p) => {
     const has = p.paths.includes(it.path);
-    return `<div class="pick" data-pl="${esc(p.name)}"><span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span><button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? 'Added' : 'Add'}</button></div>`;
-  }).join('')}</div><div class="sheet-actions"><button class="btn" type="button" data-act="done">Done</button><button class="btn btn-primary" type="button" data-act="new">${icon('plus')}<span>New playlist</span></button></div>`);
+    return `<div class="pick" data-pl="${esc(p.name)}"><span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(plSub(p))}</span></span><button class="btn btn-sm${has ? '' : ' btn-primary'}" type="button" data-act="add"${has ? ' disabled' : ''}>${has ? te('common.added') : te('common.add')}</button></div>`;
+  }).join('')}</div><div class="sheet-actions"><button class="btn" type="button" data-act="done">${te('common.done')}</button><button class="btn btn-primary" type="button" data-act="new">${icon('plus')}<span>${te('playlists.new')}</span></button></div>`);
   const onClick = async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -1383,10 +1447,10 @@ async function addToPlaylistSheet(it) {
     b.disabled = true;
     const saved = await savePlaylist(p.name, { paths: [...p.paths, it.path] });
     if (saved) {
-      b.textContent = 'Added';
+      b.textContent = t('common.added');
       b.classList.remove('btn-primary');
       $('.s-sub', b.closest('.pick')).textContent = plSub(saved);
-      toast(`Added to “${p.name}”`);
+      toast(t('playlists.addedTo', { name: p.name }));
     } else b.disabled = false;
   };
   sheet.addEventListener('click', onClick);
@@ -1406,7 +1470,7 @@ async function rescan() {
     renderLibrarySummary();
     watchScan();
   } catch (e) {
-    if (e.status !== 401) toast(`Couldn’t start a scan. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('library.couldntScan', { reason: reason(e) }), 'err');
     btn.disabled = false;
   }
   btn.classList.remove('is-busy');
@@ -1418,14 +1482,14 @@ function watchScan(onDone) {
   const check = async () => {
     if (document.hidden) { scanTimer = setTimeout(check, 2000); return; }
     try {
-      const L = await api('GET', '/api/library', undefined, { timeout: 45000 });
-      if (L.scanning) { scanTimer = setTimeout(check, 2000); return; }
-      S.library = L;
+      const lib = await api('GET', '/api/library', undefined, { timeout: 45000 });
+      if (lib.scanning) { scanTimer = setTimeout(check, 2000); return; }
+      S.library = lib;
       prepLibrary();
       if (S.route === 'library') renderLibrary(); else renderLibrarySummary();
       if (S.uploads.length) renderUploads();
-      const added = L.songs.length + L.videos.length - before;
-      toast(added > 0 ? `Library updated: ${plural(added, 'new file')}` : 'Library is up to date');
+      const added = lib.songs.length + lib.videos.length - before;
+      toast(added > 0 ? t('library.updated', { count: added }) : t('library.upToDate'));
       onDone?.();
     } catch (e) {
       if (e.status !== 401) scanTimer = setTimeout(check, 4000);
@@ -1438,6 +1502,8 @@ function watchScan(onDone) {
 let upId = 0;
 const fileInput = $('#fileInput');
 $('#uploadBtn').addEventListener('click', () => fileInput.click());
+// the hint under the list, its "choose files" a button (in the page's language)
+$('#dropHint > span').innerHTML = th('library.dropHint', { pick: html(`<button type="button" class="link" id="dropPick">${te('library.dropPick')}</button>`) });
 $('#dropPick').addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => { enqueue([...fileInput.files]); fileInput.value = ''; });
 
@@ -1462,7 +1528,7 @@ function enqueue(files, folder = null) {
     S.uploads.push({ id: ++upId, file: f, name: f.name, size: f.size, loaded: 0, status: 'queued', folder: folder || folderFor(ext) });
     added++;
   }
-  if (bad.length) toast(bad.length === 1 ? `Skipped “${bad[0]}”: Rondo can’t play that kind of file` : `Skipped ${bad.length} files Rondo can’t play`, 'err');
+  if (bad.length) toast(bad.length === 1 ? t('upload.skippedOne', { name: bad[0] }) : t('upload.skippedMany', { count: String(bad.length) }), 'err');
   if (!added) return;
   renderUploads();
   pumpUploads();
@@ -1485,11 +1551,11 @@ function pumpUploads() {
   renderUploads();
 }
 function uploadError(status, code) {
-  if (status === 0) return 'Connection lost';
-  if (status === 415) return 'Rondo can’t play this kind of file';
-  if (status === 507) return 'Not enough space on the card';
-  if (status === 403) return 'Not allowed in that folder';
-  return code ? `Failed (${code})` : `Failed (error ${status})`;
+  if (status === 0) return t('upload.connectionLost');
+  if (status === 415) return t('upload.cantPlay');
+  if (status === 507) return t('upload.noSpace');
+  if (status === 403) return t('upload.notAllowed');
+  return code ? t('upload.failedCode', { code }) : t('upload.failedStatus', { status: String(status) });
 }
 function startUpload(u) {
   const xhr = new XMLHttpRequest();
@@ -1517,11 +1583,11 @@ function startUpload(u) {
   renderUploads();
 }
 function uploadMeta(u) {
-  if (u.status === 'queued') return { text: `Waiting · ${fmtBytes(u.size)}`, cls: '' };
-  if (u.status === 'uploading') return { text: `${Math.floor((u.loaded / u.size) * 100)}% · ${fmtBytes(u.loaded)} of ${fmtBytes(u.size)}`, cls: '' };
-  if (u.status === 'done') return { text: `Copied to ${fileName(u.folder)} · ${fmtBytes(u.size)}`, cls: 'ok' };
-  if (u.status === 'canceled') return { text: 'Canceled', cls: '' };
-  return { text: u.error || 'Failed', cls: 'err' };
+  if (u.status === 'queued') return { text: t('upload.waiting', { size: fmtBytes(u.size) }), cls: '' };
+  if (u.status === 'uploading') return { text: t('upload.progress', { percent: Math.floor((u.loaded / u.size) * 100), loaded: fmtBytes(u.loaded), size: fmtBytes(u.size) }), cls: '' };
+  if (u.status === 'done') return { text: t('upload.copiedTo', { folder: fileName(u.folder), size: fmtBytes(u.size) }), cls: 'ok' };
+  if (u.status === 'canceled') return { text: t('upload.canceled'), cls: '' };
+  return { text: u.error || t('upload.failed'), cls: 'err' };
 }
 function uploadsHead() {
   const list = S.uploads;
@@ -1534,15 +1600,16 @@ function uploadsHead() {
   let title, sub;
   if (active.length) {
     const nth = list.filter((u) => u.status !== 'canceled').indexOf(cur || active[0]) + 1;
-    title = `Uploading ${nth} of ${list.filter((u) => u.status !== 'canceled').length}`;
+    title = t('upload.uploadingNth', { n: String(nth), total: String(list.filter((u) => u.status !== 'canceled').length) });
     const elapsed = cur ? (performance.now() - cur.started) / 1000 : 0;
     const speed = cur && elapsed > 1.5 ? cur.loaded / elapsed : 0;
     const left = active.reduce((n, u) => n + u.size - u.loaded, 0);
     const eta = speed ? left / speed : 0;
-    sub = `${fmtBytes(sent)} of ${fmtBytes(totalBytes)}${eta > 5 ? ` · about ${eta > 90 ? `${Math.round(eta / 60)} min` : `${Math.round(eta)} s`} left` : ''}. Keep the dashboard open on your Rondo.`;
+    const sizes = { sent: fmtBytes(sent), total: fmtBytes(totalBytes) };
+    sub = eta > 5 ? t('upload.sentEta', { ...sizes, time: eta > 90 ? `${Math.round(eta / 60)} min` : `${Math.round(eta)} s` }) : t('upload.sent', sizes);
   } else {
-    title = failed ? `${plural(done, 'file')} copied, ${failed} failed` : `${plural(done, 'file')} copied to the card`;
-    sub = S.library?.scanning ? 'Adding them to the library…' : done ? 'They’re in the library now.' : 'Nothing was copied.';
+    title = failed ? t('upload.copiedFailed', { count: done, failed: String(failed) }) : t('upload.copied', { count: done });
+    sub = S.library?.scanning ? t('upload.adding') : done ? t('upload.inLibrary') : t('upload.nothing');
   }
   const pct = totalBytes ? (sent / totalBytes) * 100 : 0;
   return { title, sub, pct, active: active.length > 0 };
@@ -1558,14 +1625,15 @@ function renderUploads() {
     <div class="up-head">
       <span class="tile t-music">${icon('upload')}</span>
       <div class="row-main"><div class="row-title" id="upTitle">${esc(h.title)}</div><div class="row-sub" id="upSub">${esc(h.sub)}</div>${h.active ? `<div class="meter"><span id="upMeter" style="--p:${h.pct.toFixed(1)}%"></span></div>` : ''}</div>
-      ${h.active ? '<button class="btn btn-sm btn-quiet" type="button" data-up="cancel-all">Cancel all</button>' : '<button class="btn btn-sm" type="button" data-up="clear">Done</button>'}
+      ${h.active ? `<button class="btn btn-sm btn-quiet" type="button" data-up="cancel-all">${te('upload.cancelAll')}</button>` : `<button class="btn btn-sm" type="button" data-up="clear">${te('common.done')}</button>`}
     </div>
-    ${free != null && pendingBytes > free ? `<div class="note err" style="margin:0 16px 14px">${icon('alert')}<span>These files need ${fmtBytes(pendingBytes)} but the card has ${fmtBytes(free)} free. Some will fail.</span></div>` : ''}
+    ${free != null && pendingBytes > free ? `<div class="note err" style="margin:0 16px 14px">${icon('alert')}<span>${te('upload.tooBig', { need: fmtBytes(pendingBytes), free: fmtBytes(free) })}</span></div>` : ''}
     <div class="up-list">${S.uploads.map((u) => {
       const m = uploadMeta(u);
+      const going = u.status === 'queued' || u.status === 'uploading';
       const btn = u.status === 'error'
-        ? `<button class="ib ib-sm" type="button" data-up="retry" data-id="${u.id}" aria-label="Try ${esc(u.name)} again">${icon('refresh')}</button>`
-        : `<button class="ib ib-sm" type="button" data-up="${u.status === 'queued' || u.status === 'uploading' ? 'cancel' : 'remove'}" data-id="${u.id}" aria-label="${u.status === 'queued' || u.status === 'uploading' ? 'Cancel' : 'Remove'} ${esc(u.name)}">${icon('close')}</button>`;
+        ? `<button class="ib ib-sm" type="button" data-up="retry" data-id="${u.id}" aria-label="${te('upload.retryName', { name: u.name })}">${icon('refresh')}</button>`
+        : `<button class="ib ib-sm" type="button" data-up="${going ? 'cancel' : 'remove'}" data-id="${u.id}" aria-label="${going ? te('common.cancelName', { name: u.name }) : te('upload.removeName', { name: u.name })}">${icon('close')}</button>`;
       return `<div class="up-row" id="up-${u.id}"><span class="up-name">${esc(u.name)}</span>${btn}<span class="up-meta ${m.cls}">${esc(m.text)}</span>${u.status === 'uploading' ? `<div class="meter"><span style="--p:${((u.loaded / u.size) * 100).toFixed(1)}%"></span></div>` : ''}</div>`;
     }).join('')}</div>`;
   updateBadges();
@@ -1604,7 +1672,7 @@ $('#uploads').addEventListener('click', (e) => {
 });
 function updateBadges() {
   const n = S.uploads.filter((u) => u.status === 'queued' || u.status === 'uploading').length;
-  $$('[data-id="library"] .nav-badge').forEach((b) => (b.innerHTML = n ? `<span class="dot-badge" aria-label="${n} uploading">${n}</span>` : ''));
+  $$('[data-id="library"] .nav-badge').forEach((b) => (b.innerHTML = n ? `<span class="dot-badge" aria-label="${te('upload.badge', { count: n })}">${n}</span>` : ''));
 }
 window.addEventListener('beforeunload', (e) => {
   if (S.uploads.some((u) => u.status === 'uploading' || u.status === 'queued')) { e.preventDefault(); e.returnValue = ''; }
@@ -1634,10 +1702,10 @@ const MENU = {
   music: { tile: 'music', glyph: 'note', brand: 'music', t: ['#ff5a72', '#c8102e'], title: 'YouTube Music', logo: MARK.music('pv-glyph pv-mark') },
   videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#ff6a5c', '#d7001a'], title: 'YouTube', logo: MARK.video('pv-glyph pv-mark wide') },
   whatsapp: { tile: 'whatsapp', glyph: 'chat', brand: 'whatsapp', t: ['#63f08e', '#17a74c'], title: 'WhatsApp', logo: MARK.whatsapp('pv-glyph pv-mark wa') },
-  device: { tile: 'device', glyph: 'library', t: ['#5fb7ff', '#1f73e0'], title: 'Library' },
-  nowPlaying: { tile: 'now', glyph: 'bars', t: ['#7be07b', '#26a83b'], title: 'Nothing playing' },
-  radio: { tile: 'radio', glyph: 'radio', t: ['#ffb04d', '#f07a12'], title: 'FM Radio' },
-  settings: { tile: 'settings', glyph: 'gear', t: ['#b8bcc4', '#6f747d'], title: 'Settings' },
+  device: { tile: 'device', glyph: 'library', t: ['#5fb7ff', '#1f73e0'], title: t('common.library') },
+  nowPlaying: { tile: 'now', glyph: 'bars', t: ['#7be07b', '#26a83b'], title: t('overview.nothingPlaying') },
+  radio: { tile: 'radio', glyph: 'radio', t: ['#ffb04d', '#f07a12'], title: t('nav.fmRadio') },
+  settings: { tile: 'settings', glyph: 'gear', t: ['#b8bcc4', '#6f747d'], title: t('common.settings') },
 };
 async function loadTheme() {
   try {
@@ -1648,14 +1716,14 @@ async function loadTheme() {
     if (e.status === 401) return;
     $('#preview').innerHTML = '';
     $('#applied').className = 'applied err';
-    $('#applied').innerHTML = `${icon('alert')}<span>Couldn’t load the theme. ${esc(reason(e))}</span> <button class="link" type="button" data-act="reload-theme">Try again</button>`;
+    $('#applied').innerHTML = `${icon('alert')}<span>${te('theme.couldntLoad', { reason: reason(e) })}</span> <button class="link" type="button" data-act="reload-theme">${te('common.tryAgain')}</button>`;
   }
 }
 $('#applied').addEventListener('click', (e) => {
   if (e.target.closest('[data-act="reload-theme"]')) loadTheme();
   if (e.target.closest('[data-act="resend-theme"]')) {
-    const t = S.theme;
-    themePending = { accent: t.accent, appearance: t.appearance, textScale: t.textScale, menu: t.menu.map(({ id, visible }) => ({ id, visible })) };
+    const cur = S.theme;
+    themePending = { accent: cur.accent, appearance: cur.appearance, textScale: cur.textScale, menu: cur.menu.map(({ id, visible }) => ({ id, visible })) };
     flushTheme();
   }
 });
@@ -1666,9 +1734,9 @@ function renderTheme() {
   renderMenuItems();
 }
 function renderPreview() {
-  const t = S.theme, el = $('#preview');
-  if (!t || !el) return;
-  const items = t.menu.filter((m) => m.visible);
+  const thm = S.theme, el = $('#preview');
+  if (!thm || !el) return;
+  const items = thm.menu.filter((m) => m.visible);
   if (!items.some((m) => m.id === S.pvSel)) S.pvSel = items[0]?.id;
   const st = S.status || {}, p = st.player;
   const level = st.battery?.level ?? 80;
@@ -1676,11 +1744,11 @@ function renderPreview() {
     const d = MENU[m.id] || MENU.settings;
     return `<div class="pv-row${m.id === S.pvSel ? ' sel' : ''}" data-id="${m.id}">${d.brand ? brandTile(d.brand, 'pv-tile') : `<span class="pv-tile" style="--t1:${d.t[0]};--t2:${d.t[1]}"><svg aria-hidden="true"><use href="#i-${d.glyph}"/></svg></span>`}<span class="pv-label">${esc(m.label)}</span><svg class="pv-chev" aria-hidden="true"><use href="#i-chevron"/></svg></div>`;
   }).join('');
-  el.setAttribute('aria-label', `Preview of your Rondo’s main menu: ${items.map((m) => m.label).join(', ')}. ${t.appearance === 'dark' ? 'Dark' : 'Light'}, ${textScaleName(t.textScale)} text.`);
-  el.innerHTML = `<div class="pv${t.appearance === 'dark' ? ' dark' : ''}" style="--s:${t.textScale}">
+  el.setAttribute('aria-label', t('theme.previewLong', { items: items.map((m) => m.label).join(', '), appearance: thm.appearance === 'dark' ? t('theme.dark') : t('theme.light'), size: textScaleName(thm.textScale) }));
+  el.innerHTML = `<div class="pv${thm.appearance === 'dark' ? ' dark' : ''}" style="--s:${thm.textScale}">
     <div class="pv-bar">${p?.playing ? '<svg class="pv-play" aria-hidden="true"><use href="#i-play"/></svg>' : ''}<b>Rondo</b>
       <span class="pv-right"><svg class="pv-wifi" style="opacity:${st.wifi ? 1 : 0.25}" aria-hidden="true"><use href="#i-wifi"/></svg><span class="pv-pct">${level}%</span>${battSvg(level, 'pv-batt')}</span></div>
-    <div class="pv-body">${items.length ? `<div class="pv-list">${rows}</div><div class="pv-div"></div>${paneHtml(S.pvSel)}` : '<div class="pv-empty">Nothing in the menu</div>'}</div></div>`;
+    <div class="pv-body">${items.length ? `<div class="pv-list">${rows}</div><div class="pv-div"></div>${paneHtml(S.pvSel)}` : `<div class="pv-empty">${te('theme.nothingInMenu')}</div>`}</div></div>`;
   // like the device: the Now Playing pane takes its color from the cover
   const cover = $('.pv-visual.art img', el);
   if (cover) {
@@ -1714,13 +1782,13 @@ $('#preview').addEventListener('click', (e) => {
   const r = e.target.closest('.pv-row');
   if (r) { S.pvSel = r.dataset.id; renderPreview(); }
 });
-const textScaleName = (s) => (s < 1.3 ? 'small' : s > 1.5 ? 'large' : 'medium');
+const textScaleName = (s) => (s < 1.3 ? t('theme.sizeSmall') : s > 1.5 ? t('theme.sizeLarge') : t('theme.sizeMedium'));
 function renderSwatches() {
-  const t = S.theme, cur = (t.accent || '').toLowerCase();
-  const presets = t.presets?.length ? t.presets : [{ name: 'iPod Blue', accent: '#1c5ccc' }];
+  const thm = S.theme, cur = (thm.accent || '').toLowerCase();
+  const presets = thm.presets?.length ? thm.presets : [{ name: t('theme.ipodBlue'), accent: '#1c5ccc' }];
   const isPreset = presets.some((p) => p.accent.toLowerCase() === cur);
   $('#swatches').innerHTML = presets.map((p) => `<button class="sw" type="button" role="radio" aria-checked="${p.accent.toLowerCase() === cur}" data-accent="${esc(p.accent)}" style="--c:${esc(p.accent)};--top:${accentTop(p.accent)}"><span class="sw-dot">${icon('check')}</span><span>${esc(p.name)}</span></button>`).join('')
-    + `<div class="sw sw-custom" role="radio" aria-checked="${!isPreset}" style="--c:${esc(cur)};--top:${accentTop(cur)}"><span class="sw-dot">${icon('check')}</span><span>${isPreset ? 'Custom' : esc(cur)}</span><input type="color" value="${esc(cur)}" aria-label="Custom accent color"></div>`;
+    + `<div class="sw sw-custom" role="radio" aria-checked="${!isPreset}" style="--c:${esc(cur)};--top:${accentTop(cur)}"><span class="sw-dot">${icon('check')}</span><span>${isPreset ? te('theme.custom') : esc(cur)}</span><input type="color" value="${esc(cur)}" aria-label="${te('theme.customColor')}"></div>`;
 }
 function syncSwatches() { // while dragging the color picker: no re-render, just the marks
   const cur = S.theme.accent.toLowerCase();
@@ -1730,7 +1798,7 @@ function syncSwatches() { // while dragging the color picker: no re-render, just
   c.setAttribute('aria-checked', String(!preset));
   c.style.setProperty('--c', cur);
   c.style.setProperty('--top', accentTop(cur));
-  $('span:not(.sw-dot)', c).textContent = preset ? 'Custom' : cur;
+  $('span:not(.sw-dot)', c).textContent = preset ? t('theme.custom') : cur;
 }
 $('#swatches').addEventListener('click', (e) => {
   const b = e.target.closest('.sw[data-accent]');
@@ -1739,9 +1807,9 @@ $('#swatches').addEventListener('click', (e) => {
 $('#swatches').addEventListener('input', (e) => { if (e.target.type === 'color') changeTheme({ accent: e.target.value.toLowerCase() }, 350); });
 $('#swatches').addEventListener('change', (e) => { if (e.target.type === 'color') changeTheme({ accent: e.target.value.toLowerCase() }, 0); });
 function renderThemeSegs() {
-  const t = S.theme;
-  $$('#appearance button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === t.appearance)));
-  $$('#textScale button').forEach((b) => b.setAttribute('aria-checked', String(Math.abs(+b.dataset.v - t.textScale) < 0.01)));
+  const thm = S.theme;
+  $$('#appearance button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === thm.appearance)));
+  $$('#textScale button').forEach((b) => b.setAttribute('aria-checked', String(Math.abs(+b.dataset.v - thm.textScale) < 0.01)));
 }
 $('#appearance').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) changeTheme({ appearance: b.dataset.v }); });
 $('#textScale').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) changeTheme({ textScale: +b.dataset.v }); });
@@ -1751,11 +1819,11 @@ function renderMenuItems(focus) {
     const d = MENU[m.id] || MENU.settings;
     return `<div class="row menu-row${m.visible ? '' : ' is-off'}" data-id="${m.id}">
       ${d.brand ? brandTile(d.brand) : tileHtml(d.tile, d.glyph)}
-      <div class="row-main"><div class="row-title">${esc(m.label)}</div>${m.visible ? '' : '<div class="row-sub">Hidden</div>'}</div>
+      <div class="row-main"><div class="row-title">${esc(m.label)}</div>${m.visible ? '' : `<div class="row-sub">${te('theme.hidden')}</div>`}</div>
       <div class="row-ctl">
-        <button class="ib ib-sm" type="button" data-move="-1" aria-label="Move ${esc(m.label)} up"${i === 0 ? ' disabled' : ''}>${icon('up')}</button>
-        <button class="ib ib-sm" type="button" data-move="1" aria-label="Move ${esc(m.label)} down"${i === menu.length - 1 ? ' disabled' : ''}>${icon('down')}</button>
-        ${m.locked ? `<span class="locked" title="Settings is always in the menu">${icon('lock')}<span class="sr-only">Always shown</span></span>` : `<button class="switch" type="button" role="switch" aria-checked="${m.visible}" aria-label="Show ${esc(m.label)}"></button>`}
+        <button class="ib ib-sm" type="button" data-move="-1" aria-label="${te('theme.moveUp', { name: m.label })}"${i === 0 ? ' disabled' : ''}>${icon('up')}</button>
+        <button class="ib ib-sm" type="button" data-move="1" aria-label="${te('theme.moveDown', { name: m.label })}"${i === menu.length - 1 ? ' disabled' : ''}>${icon('down')}</button>
+        ${m.locked ? `<span class="locked" title="${te('theme.locked')}">${icon('lock')}<span class="sr-only">${te('theme.alwaysShown')}</span></span>` : `<button class="switch" type="button" role="switch" aria-checked="${m.visible}" aria-label="${te('theme.show', { name: m.label })}"></button>`}
       </div></div>`;
   }).join('');
   if (focus) {
@@ -1804,11 +1872,11 @@ async function flushTheme() {
   themePending = {};
   themeBusy = true;
   try {
-    const t = await api('PUT', '/api/theme', body);
+    const res = await api('PUT', '/api/theme', body);
     if (!Object.keys(themePending).length) {
-      const same = t.accent?.toLowerCase() === S.theme.accent?.toLowerCase();
-      S.theme = t;
-      applyAccent(t.accent);
+      const same = res.accent?.toLowerCase() === S.theme.accent?.toLowerCase();
+      S.theme = res;
+      applyAccent(res.accent);
       if (!same) renderSwatches(); else syncSwatches();
       renderThemeSegs();
       renderMenuItems();
@@ -1825,65 +1893,72 @@ async function flushTheme() {
 function setApplied(state, e) {
   const el = $('#applied');
   clearTimeout(appliedTimer);
-  if (state === 'busy') { el.className = 'applied'; el.innerHTML = '<span>Applying…</span>'; return; }
+  if (state === 'busy') { el.className = 'applied'; el.innerHTML = `<span>${te('theme.applying')}</span>`; return; }
   if (state === 'ok') {
     el.className = 'applied ok';
-    el.innerHTML = `${icon('check')}<span>Applied on your Rondo</span>`;
+    el.innerHTML = `${icon('check')}<span>${te('theme.applied')}</span>`;
     appliedTimer = setTimeout(() => el.classList.add('fade'), 2600);
     return;
   }
   el.className = 'applied err';
-  el.innerHTML = `${icon('alert')}<span>Not applied. ${esc(reason(e))}</span> <button class="link" type="button" data-act="resend-theme">Try again</button>`;
+  el.innerHTML = `${icon('alert')}<span>${te('theme.notApplied', { reason: reason(e) })}</span> <button class="link" type="button" data-act="resend-theme">${te('common.tryAgain')}</button>`;
 }
 
 // ---------- settings ----------
-const QUALITY = [[null, 'Auto'], [720, '720p'], [480, '480p'], [360, '360p']];
+const QUALITY = [[null, t('youtube.qualityAuto')], [720, '720p'], [480, '480p'], [360, '360p']];
 const TIMEOUTS = [[15, '15 s'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min']];
-const WHEEL = [['off', 'Off'], ['normal', 'Normal'], ['fast', 'Fast']];
-const BUZZ = [['off', 'Off'], ['light', 'Light'], ['normal', 'Normal'], ['strong', 'Strong']];
+const WHEEL = [['off', t('common.off')], ['normal', t('settings.wheel.normal')], ['fast', t('settings.wheel.fast')]];
+const BUZZ = [['off', t('common.off')], ['light', t('settings.buzz.light')], ['normal', t('settings.buzz.normal')], ['strong', t('settings.buzz.strong')]];
 async function loadSettings() {
   if (!S.settings) $('#settingsRows').innerHTML = '<div class="lib-skel"></div>'.repeat(5);
   try {
     S.settings = await api('GET', '/api/settings');
     renderSettings();
   } catch (e) {
-    if (e.status !== 401 && !S.settings) $('#settingsRows').innerHTML = `<div class="row-empty">Couldn’t load the settings. ${esc(reason(e))} <button class="link" type="button" data-act="reload">Try again</button></div>`;
+    if (e.status !== 401 && !S.settings) $('#settingsRows').innerHTML = `<div class="row-empty">${te('settings.couldntLoad', { reason: reason(e) })} <button class="link" type="button" data-act="reload">${te('common.tryAgain')}</button></div>`;
   }
 }
 function segHtml(key, options, cur, label) {
   // the value as JSON, escaped: a string's quotes ("off") had ended the attribute, so the Wheel's
   // choices read as nothing
-  return `<div class="seg seg-wide" role="radiogroup" aria-label="${esc(label)}" data-key="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${esc(JSON.stringify(v))}">${l}</button>`).join('')}</div>`;
+  return `<div class="seg seg-wide" role="radiogroup" aria-label="${esc(label)}" data-key="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${esc(JSON.stringify(v))}">${esc(l)}</button>`).join('')}</div>`;
 }
 function renderSettings() {
   const s = S.settings;
   if (S.server) renderQuality();
+  // the Rondo's language, and so this page's, each language in its own name (as Settings › Language on the Y1)
+  const langs = L.languages.length ? L.languages : [{ code: L.code, name: L.name }];
+  const curLang = s.language || L.code;
+  $('#langRows').innerHTML = `
+    <div class="row set-row"><span class="tile t-language">${icon('globe')}</span>
+      <div class="row-main"><div class="row-title">${te('settings.language')}</div><div class="row-sub">${te('settings.languageSub')}</div></div>
+      <div class="row-control"><div class="select"><select id="langSel" aria-label="${te('settings.language')}">${langs.map((l) => `<option value="${esc(l.code)}"${l.code === curLang ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select>${icon('down')}</div></div></div>`;
   $('#settingsRows').innerHTML = `
     <div class="row row-wide set-row"><span class="tile t-brightness">${icon('sun')}</span>
-      <div class="row-main"><div class="row-title">Brightness</div><div class="row-sub">Lower saves battery.</div></div>
-      <div class="row-control"><div class="range-row">${icon('sun')}<input type="range" id="brightness" min="10" max="100" step="5" value="${s.brightness}" aria-label="Brightness"><output id="brightnessOut">${s.brightness}%</output></div></div></div>
+      <div class="row-main"><div class="row-title">${te('settings.brightness')}</div><div class="row-sub">${te('settings.brightnessSub')}</div></div>
+      <div class="row-control"><div class="range-row">${icon('sun')}<input type="range" id="brightness" min="10" max="100" step="5" value="${s.brightness}" aria-label="${te('settings.brightness')}"><output id="brightnessOut">${s.brightness}%</output></div></div></div>
     <div class="row row-wide set-row"><span class="tile t-timer">${icon('timer')}</span>
-      <div class="row-main"><div class="row-title">Screen off after</div><div class="row-sub">Shorter saves battery.</div></div>
-      <div class="row-control">${segHtml('screenTimeoutSec', TIMEOUTS, s.screenTimeoutSec, 'Screen off after')}</div></div>
+      <div class="row-main"><div class="row-title">${te('settings.screenOff')}</div><div class="row-sub">${te('settings.screenOffSub')}</div></div>
+      <div class="row-control">${segHtml('screenTimeoutSec', TIMEOUTS, s.screenTimeoutSec, t('settings.screenOff'))}</div></div>
     <div class="row set-row"><span class="tile t-lyrics">${icon('mic')}</span>
-      <div class="row-main"><div class="row-title">Open lyrics automatically</div><div class="row-sub">Show the lyrics when Now Playing opens.</div></div>
-      <button class="switch" type="button" role="switch" data-key="lyricsOnOpen" aria-checked="${!!s.lyricsOnOpen}" aria-label="Open lyrics automatically"></button></div>`;
+      <div class="row-main"><div class="row-title">${te('settings.lyrics')}</div><div class="row-sub">${te('settings.lyricsSub')}</div></div>
+      <button class="switch" type="button" role="switch" data-key="lyricsOnOpen" aria-checked="${!!s.lyricsOnOpen}" aria-label="${te('settings.lyrics')}"></button></div>`;
   $('#controlRows').innerHTML = `
     <div class="row row-wide set-row"><span class="tile t-accel">${icon('gauge')}</span>
-      <div class="row-main"><div class="row-title">Wheel acceleration</div><div class="row-sub">Long lists scroll faster when you keep spinning the wheel quickly.</div></div>
-      <div class="row-control">${segHtml('wheelAcceleration', WHEEL, s.wheelAcceleration, 'Wheel acceleration')}</div></div>
+      <div class="row-main"><div class="row-title">${te('settings.wheelAccel')}</div><div class="row-sub">${te('settings.wheelAccelSub')}</div></div>
+      <div class="row-control">${segHtml('wheelAcceleration', WHEEL, s.wheelAcceleration, t('settings.wheelAccel'))}</div></div>
     <div class="row row-wide set-row"><span class="tile t-vibrate">${icon('vibrate')}</span>
-      <div class="row-main"><div class="row-title">Wheel vibration</div><div class="row-sub">A short buzz on every wheel step, like Rockbox. Normal matches Rockbox’s intensity 5.</div></div>
-      <div class="row-control">${segHtml('wheelVibration', BUZZ, s.wheelVibration ?? 'normal', 'Wheel vibration')}</div></div>
+      <div class="row-main"><div class="row-title">${te('settings.wheelVibration')}</div><div class="row-sub">${te('settings.wheelVibrationSub')}</div></div>
+      <div class="row-control">${segHtml('wheelVibration', BUZZ, s.wheelVibration ?? 'normal', t('settings.wheelVibration'))}</div></div>
     <div class="row set-row"><span class="tile t-click">${icon('volume')}</span>
-      <div class="row-main"><div class="row-title">Click sound</div><div class="row-sub">The tick on every wheel step, separate from vibration.</div></div>
-      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="Click sound"></button></div>`;
+      <div class="row-main"><div class="row-title">${te('settings.clickSound')}</div><div class="row-sub">${te('settings.clickSoundSub')}</div></div>
+      <button class="switch" type="button" role="switch" data-key="clickSound" aria-checked="${s.clickSound !== false}" aria-label="${te('settings.clickSound')}"></button></div>`;
   setFill($('#brightness'));
   renderSubtitles();
 }
 // Subtitles: the same choices as Settings › Display › Subtitles on the Y1, by index
 const SUB_OPACITY = [[25, '25%'], [50, '50%'], [75, '75%'], [100, '100%']];
-const SUB_BACK_OPACITY = [[0, 'None'], [25, '25%'], [50, '50%'], [75, '75%'], [100, '100%']];
+const SUB_BACK_OPACITY = [[0, t('settings.subtitles.none')], [25, '25%'], [50, '50%'], [75, '75%'], [100, '100%']];
 function subLineStyle(s) {
   const C = s.subChoices.colors;
   const rgba = (hex, pct) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${pct / 100})`; };
@@ -1903,25 +1978,25 @@ function renderSubtitles() {
   const sel = (key, opts, cur, label) => `<div class="select"><select data-key="${key}" aria-label="${esc(label)}">${opts.map(([v, l]) => `<option value="${esc(String(v))}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div>`;
   const colors = ch.colors.map((c, i) => [i, c.name]);
   el.innerHTML = `
-    <div class="sub-preview" aria-hidden="true"><span class="sub-line" id="subLine" style="${subLineStyle(s)}">Subtitles look like this</span></div>
+    <div class="sub-preview" aria-hidden="true"><span class="sub-line" id="subLine" style="${subLineStyle(s)}">${te('settings.subtitles.sample')}</span></div>
     <div class="row set-row"><span class="tile t-subtitles">${icon('captions')}</span>
-      <div class="row-main"><div class="row-title">Show subtitles</div><div class="row-sub">When a video has them: in the language below, the video’s own track before the speech recognition’s.</div></div>
-      <button class="switch" type="button" role="switch" data-key="subtitles" aria-checked="${!!s.subtitles}" aria-label="Show subtitles"></button></div>
-    <div class="row set-row"><div class="row-main"><div class="row-title">Language</div><div class="row-sub">The one looked for first.</div></div>
-      <div class="row-control">${sel('subLang', ch.languages.map((l) => [l.code, l.name]), s.subLang || '', 'Language')}</div></div>
-    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Size</div></div>
-      <div class="row-control">${segHtml('subSize', ch.sizes.map((n, i) => [i, n]), s.subSize, 'Size')}</div></div>
-    <div class="row set-row"><div class="row-main"><div class="row-title">Text color</div></div>
-      <div class="row-control">${sel('subColor', colors, s.subColor, 'Text color')}</div></div>
-    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Text opacity</div></div>
-      <div class="row-control">${segHtml('subOpacity', SUB_OPACITY, s.subOpacity, 'Text opacity')}</div></div>
-    <div class="row set-row"><div class="row-main"><div class="row-title">Background</div></div>
-      <div class="row-control">${sel('subBack', colors, s.subBack, 'Background')}</div></div>
-    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Background opacity</div></div>
-      <div class="row-control">${segHtml('subBackOpacity', SUB_BACK_OPACITY, s.subBackOpacity, 'Background opacity')}</div></div>
-    <div class="row set-row"><div class="row-main"><div class="row-title">Edges</div></div>
-      <div class="row-control">${sel('subEdge', ch.edges.map((n, i) => [i, n]), s.subEdge, 'Edges')}</div></div>
-    <div class="sub-actions"><button class="btn btn-sm" type="button" data-act="sub-reset">Use YouTube’s look</button></div>`;
+      <div class="row-main"><div class="row-title">${te('settings.subtitles.show')}</div><div class="row-sub">${te('settings.subtitles.showSub')}</div></div>
+      <button class="switch" type="button" role="switch" data-key="subtitles" aria-checked="${!!s.subtitles}" aria-label="${te('settings.subtitles.show')}"></button></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.language')}</div><div class="row-sub">${te('settings.subtitles.languageSub')}</div></div>
+      <div class="row-control">${sel('subLang', ch.languages.map((l) => [l.code, l.name]), s.subLang || '', t('settings.subtitles.language'))}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.size')}</div></div>
+      <div class="row-control">${segHtml('subSize', ch.sizes.map((n, i) => [i, n]), s.subSize, t('settings.subtitles.size'))}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.textColor')}</div></div>
+      <div class="row-control">${sel('subColor', colors, s.subColor, t('settings.subtitles.textColor'))}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.textOpacity')}</div></div>
+      <div class="row-control">${segHtml('subOpacity', SUB_OPACITY, s.subOpacity, t('settings.subtitles.textOpacity'))}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.background')}</div></div>
+      <div class="row-control">${sel('subBack', colors, s.subBack, t('settings.subtitles.background'))}</div></div>
+    <div class="row row-wide set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.backgroundOpacity')}</div></div>
+      <div class="row-control">${segHtml('subBackOpacity', SUB_BACK_OPACITY, s.subBackOpacity, t('settings.subtitles.backgroundOpacity'))}</div></div>
+    <div class="row set-row"><div class="row-main"><div class="row-title">${te('settings.subtitles.edges')}</div></div>
+      <div class="row-control">${sel('subEdge', ch.edges.map((n, i) => [i, n]), s.subEdge, t('settings.subtitles.edges'))}</div></div>
+    <div class="sub-actions"><button class="btn btn-sm" type="button" data-act="sub-reset">${te('settings.subtitles.youtubeLook')}</button></div>`;
 }
 const settingsRows = $('#view-settings');
 settingsRows.addEventListener('click', (e) => {
@@ -1948,6 +2023,7 @@ settingsRows.addEventListener('input', (e) => {
   brightTimer = setTimeout(() => saveSetting('brightness', +e.target.value, true), 250);
 });
 settingsRows.addEventListener('change', (e) => {
+  if (e.target.id === 'langSel') return setLanguage(e.target);
   const sel = e.target.closest('select[data-key]');
   if (sel) return saveSetting(sel.dataset.key, sel.dataset.key === 'subLang' ? sel.value : +sel.value);
   if (e.target.id !== 'brightness') return;
@@ -1963,11 +2039,23 @@ async function saveSetting(key, value, quiet = false) {
     }
     S.settings = await api('PUT', '/api/settings', { [key]: value });
     if (key.startsWith('sub')) renderSubtitles();
-    if (!quiet) toast('Saved on your Rondo');
+    if (!quiet) toast(t('common.savedOnRondo'));
   } catch (e) {
     if (e.status === 401) return;
-    toast(`Not saved. ${reason(e)}`, 'err');
+    toast(t('common.notSaved', { reason: reason(e) }), 'err');
     if (S.settings) renderSettings();
+  }
+}
+// the Rondo's language, and so this page's: saved there, then the page loads again in it
+async function setLanguage(sel) {
+  sel.disabled = true;
+  try {
+    await api('PUT', '/api/settings', { language: sel.value });
+    location.reload();
+  } catch (e) {
+    sel.disabled = false;
+    sel.value = S.settings?.language || L.code;
+    if (e.status !== 401) toast(t('common.notSaved', { reason: reason(e) }), 'err');
   }
 }
 
@@ -1978,15 +2066,15 @@ async function saveSetting(key, value, quiet = false) {
 let radioTimer = 0;
 const radioShape = (r) => JSON.stringify([r.headphones, r.error, r.on, r.starting, r.seeking, r.scanning, r.frequency, r.band, r.speaker, r.presets, r.found]);
 function radioState(r) {
-  const busy = r.starting ? 'Turning on…' : r.scanning ? 'Scanning…' : r.seeking ? 'Searching…' : '';
-  return !r.on ? (busy || 'Off') : [busy || (r.muted ? 'Muted' : r.stereo ? 'Stereo' : 'Mono'), r.speaker ? 'Speaker' : 'Headphones'].join(' · ');
+  const busy = r.starting ? t('common.turningOn') : r.scanning ? t('radio.scanning') : r.seeking ? t('common.searching') : '';
+  return !r.on ? (busy || t('radio.off')) : [busy || (r.muted ? t('radio.muted') : r.stereo ? t('radio.stereo') : t('radio.mono')), r.speaker ? t('radio.speaker') : t('radio.headphones')].join(' · ');
 }
 function updateHero(r) {
-  const set = (id, t) => { const el = document.getElementById(id); if (el && el.textContent !== t) el.textContent = t; };
+  const set = (id, text) => { const el = document.getElementById(id); if (el && el.textContent !== text) el.textContent = text; };
   set('fmStateText', radioState(r));
   set('fmName', r.name || '');
   set('fmText', r.text || '');
-  set('fmMute', r.muted ? 'Unmute' : 'Mute');
+  set('fmMute', r.muted ? t('radio.unmute') : t('radio.mute'));
   $$('#fmBars i').forEach((b, i) => b.classList.toggle('on', i < r.signal));
   // the volume follows the wheel on the Rondo, unless it is being dragged here
   const vol = document.getElementById('fmVol');
@@ -2009,7 +2097,7 @@ async function loadRadio(quiet = false) {
     if (!prev || !$('.fm-hero', body) || radioShape(prev) !== radioShape(S.radio)) renderRadio();
     else updateHero(S.radio);
   } catch (e) {
-    if (e.status !== 401 && !S.radio) body.innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the radio. ${esc(reason(e))}</div></div>`;
+    if (e.status !== 401 && !S.radio) body.innerHTML = `<div class="group"><div class="row-empty">${te('radio.couldntLoad', { reason: reason(e) })}</div></div>`;
   }
   if (S.route === 'radio' && !document.hidden) radioTimer = setTimeout(() => loadRadio(true), 1500);
 }
@@ -2022,23 +2110,23 @@ function fmHero(r) {
   for (let f = Math.ceil(r.min / 40) * 40; f <= r.max; f += (r.band === 'japan' ? 20 : 40)) labels.push(`<span>${f / 10}</span>`);
   return `<div class="fm-hero${r.on ? '' : ' is-off'}">
       <div class="fm-top"><span class="fm-state">${r.on ? bars : ''}<span id="fmStateText">${esc(state)}</span></span>
-        <button class="switch" type="button" role="switch" data-fm="power" aria-checked="${r.on || r.starting}" aria-label="Radio"${r.starting ? ' disabled' : ''}></button></div>
+        <button class="switch" type="button" role="switch" data-fm="power" aria-checked="${r.on || r.starting}" aria-label="${te('common.radio')}"${r.starting ? ' disabled' : ''}></button></div>
       <div class="fm-freq" id="fmFreq">${fmName(r.frequency)}<small>MHz</small></div>
       <div class="fm-name" id="fmName">${esc(r.name || '')}</div>
       <div class="fm-text" id="fmText">${esc(r.text || '')}</div>
-      <input class="fm-dial" type="range" id="fmDial" min="${r.min}" max="${r.max}" step="1" value="${r.frequency}" aria-label="Frequency"${r.on ? '' : ' disabled'}>
+      <input class="fm-dial" type="range" id="fmDial" min="${r.min}" max="${r.max}" step="1" value="${r.frequency}" aria-label="${te('radio.frequency')}"${r.on ? '' : ' disabled'}>
       <div class="fm-scale">${labels.join('')}</div>
       <div class="fm-controls">
-        <button class="ib" type="button" data-fm="seek" data-up="0" aria-label="Previous station"${r.on ? '' : ' disabled'}>${icon('prev')}</button>
+        <button class="ib" type="button" data-fm="seek" data-up="0" aria-label="${te('radio.prevStation')}"${r.on ? '' : ' disabled'}>${icon('prev')}</button>
         ${step(-1)}
-        <form class="fm-tune" id="fmTune"><input type="text" inputmode="decimal" id="fmTuneIn" value="${fmName(r.frequency)}" aria-label="Frequency in MHz"${r.on ? '' : ' disabled'}><button class="btn btn-sm" type="submit"${r.on ? '' : ' disabled'}>Tune</button></form>
+        <form class="fm-tune" id="fmTune"><input type="text" inputmode="decimal" id="fmTuneIn" value="${fmName(r.frequency)}" aria-label="${te('radio.frequencyMhz')}"${r.on ? '' : ' disabled'}><button class="btn btn-sm" type="submit"${r.on ? '' : ' disabled'}>${te('radio.tune')}</button></form>
         ${step(1)}
-        <button class="ib" type="button" data-fm="seek" data-up="1" aria-label="Next station"${r.on ? '' : ' disabled'}>${icon('next')}</button>
+        <button class="ib" type="button" data-fm="seek" data-up="1" aria-label="${te('radio.nextStation')}"${r.on ? '' : ' disabled'}>${icon('next')}</button>
       </div>
-      <div class="fm-volume">${icon('volume')}<input type="range" id="fmVol" min="0" max="${r.maxVolume}" step="1" value="${r.volume}" aria-label="Radio volume"><output id="fmVolOut">${r.volume}</output></div>
+      <div class="fm-volume">${icon('volume')}<input type="range" id="fmVol" min="0" max="${r.maxVolume}" step="1" value="${r.volume}" aria-label="${te('radio.volume')}"><output id="fmVolOut">${r.volume}</output></div>
       <div class="fm-controls">
-        <button class="btn btn-sm" type="button" id="fmMute" data-fm="mute"${r.on ? '' : ' disabled'}>${r.muted ? 'Unmute' : 'Mute'}</button>
-        <button class="btn btn-sm" type="button" data-fm="save"${saved ? ' disabled' : ''}>${saved ? 'Saved' : 'Save this station'}</button>
+        <button class="btn btn-sm" type="button" id="fmMute" data-fm="mute"${r.on ? '' : ' disabled'}>${r.muted ? te('radio.unmute') : te('radio.mute')}</button>
+        <button class="btn btn-sm" type="button" data-fm="save"${saved ? ' disabled' : ''}>${saved ? te('radio.saved') : te('radio.saveStation')}</button>
       </div>
     </div>`;
 }
@@ -2046,8 +2134,8 @@ function renderRadio() {
   const r = S.radio, body = $('#radioBody');
   const editing = body.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type !== 'range';
   const notes = [];
-  if (!r.headphones) notes.push(`<div class="note">${icon('alert')}<span>Plug wired headphones into your Rondo: their cable is the radio’s antenna.</span></div>`);
-  else if (r.error === 'chip') notes.push(`<div class="note err">${icon('alert')}<span>The radio didn’t start. Turn it on again.</span></div>`);
+  if (!r.headphones) notes.push(`<div class="note">${icon('alert')}<span>${te('radio.plugHeadphones')}</span></div>`);
+  else if (r.error === 'chip') notes.push(`<div class="note err">${icon('alert')}<span>${te('radio.chip')}</span></div>`);
   if (editing && $('.fm-hero', body)) {
     // keep the fields being typed in: only the top part follows the radio
     const hero = $('.fm-hero', body);
@@ -2057,29 +2145,29 @@ function renderRadio() {
   }
   const presets = (r.presets || []).map((p, i, all) => `<div class="row fm-preset" data-f="${p.frequency}">
       <div class="row-main"><button class="btn btn-sm btn-quiet fm-row-freq" type="button" data-fm="play" data-f="${p.frequency}">${fmName(p.frequency)}</button>
-        <input type="text" class="fm-name-input" data-fm="name" data-f="${p.frequency}" value="${esc(p.name)}" placeholder="Name" maxlength="40" aria-label="Name for ${fmName(p.frequency)} MHz">
-        ${p.frequency === r.frequency && r.on ? '<span class="fm-playing">Playing</span>' : ''}</div>
+        <input type="text" class="fm-name-input" data-fm="name" data-f="${p.frequency}" value="${esc(p.name)}" placeholder="${te('common.name')}" maxlength="40" aria-label="${te('radio.nameFor', { frequency: fmName(p.frequency) })}">
+        ${p.frequency === r.frequency && r.on ? `<span class="fm-playing">${te('common.playing')}</span>` : ''}</div>
       <div class="bt-actions">
-        <button class="ib ib-sm" type="button" data-fm="move" data-i="${i}" data-d="-1" aria-label="Move up"${i === 0 ? ' disabled' : ''}>${icon('up')}</button>
-        <button class="ib ib-sm" type="button" data-fm="move" data-i="${i}" data-d="1" aria-label="Move down"${i === all.length - 1 ? ' disabled' : ''}>${icon('down')}</button>
-        <button class="ib ib-sm danger" type="button" data-fm="remove" data-i="${i}" aria-label="Remove ${fmName(p.frequency)}">${icon('trash')}</button>
-      </div></div>`).join('') || '<div class="row-empty">No saved stations yet. Tune one in and press Save this station.</div>';
+        <button class="ib ib-sm" type="button" data-fm="move" data-i="${i}" data-d="-1" aria-label="${te('common.moveUp')}"${i === 0 ? ' disabled' : ''}>${icon('up')}</button>
+        <button class="ib ib-sm" type="button" data-fm="move" data-i="${i}" data-d="1" aria-label="${te('common.moveDown')}"${i === all.length - 1 ? ' disabled' : ''}>${icon('down')}</button>
+        <button class="ib ib-sm danger" type="button" data-fm="remove" data-i="${i}" aria-label="${te('radio.remove', { frequency: fmName(p.frequency) })}">${icon('trash')}</button>
+      </div></div>`).join('') || `<div class="row-empty">${te('radio.noSaved')}</div>`;
   const found = (r.found || []).map((s) => `<div class="row">
-      <div class="row-main"><div class="row-title">${fmName(s.frequency)} MHz${s.frequency === r.frequency && r.on ? ' <span class="fm-playing">Playing</span>' : ''}</div>${s.name ? `<div class="row-sub">${esc(s.name)}</div>` : ''}</div>
-      <div class="bt-actions"><button class="btn btn-sm" type="button" data-fm="play" data-f="${s.frequency}"${r.on ? '' : ' disabled'}>Play</button>
-        <button class="btn btn-sm btn-quiet" type="button" data-fm="add" data-f="${s.frequency}">Save</button></div></div>`).join('')
-    || `<div class="row-empty">${r.scanning ? 'Scanning… this takes about 20 seconds.' : 'Scan to list every station your Rondo can receive.'}</div>`;
-  const segs = (key, options, cur) => `<div class="seg" role="radiogroup" data-fm="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}">${l}</button>`).join('')}</div>`;
+      <div class="row-main"><div class="row-title">${fmName(s.frequency)} MHz${s.frequency === r.frequency && r.on ? ` <span class="fm-playing">${te('common.playing')}</span>` : ''}</div>${s.name ? `<div class="row-sub">${esc(s.name)}</div>` : ''}</div>
+      <div class="bt-actions"><button class="btn btn-sm" type="button" data-fm="play" data-f="${s.frequency}"${r.on ? '' : ' disabled'}>${te('common.play')}</button>
+        <button class="btn btn-sm btn-quiet" type="button" data-fm="add" data-f="${s.frequency}">${te('common.save')}</button></div></div>`).join('')
+    || `<div class="row-empty">${r.scanning ? te('radio.scanningLong') : te('radio.scanHint')}</div>`;
+  const segs = (key, options, cur) => `<div class="seg" role="radiogroup" data-fm="${key}">${options.map(([v, l]) => `<button type="button" role="radio" aria-checked="${v === cur}" data-v="${v}">${esc(l)}</button>`).join('')}</div>`;
   body.innerHTML = `${notes.join('')}${fmHero(r)}
-    <h2 class="gh">Saved stations</h2><div class="group">${presets}</div>
-    <h2 class="gh" style="display:flex;align-items:center;justify-content:space-between">Found <button class="btn btn-sm" type="button" data-fm="scan"${r.on && !r.scanning ? '' : ' disabled'}>${r.scanning ? 'Scanning…' : 'Scan'}</button></h2>
+    <h2 class="gh">${te('radio.savedStations')}</h2><div class="group">${presets}</div>
+    <h2 class="gh" style="display:flex;align-items:center;justify-content:space-between">${te('radio.found')} <button class="btn btn-sm" type="button" data-fm="scan"${r.on && !r.scanning ? '' : ' disabled'}>${r.scanning ? te('radio.scanning') : te('radio.scan')}</button></h2>
     <div class="group">${found}</div>
-    <h2 class="gh">Output and region</h2>
+    <h2 class="gh">${te('radio.outputRegion')}</h2>
     <div class="group">
-      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Output</div><div class="row-sub">The speaker plays out loud; the headphones stay plugged in as the antenna${r.speaker ? ', and they play too' : ''}.</div></div>
-        <div class="row-control">${segs('speaker', [['0', 'Headphones'], ['1', 'Speaker']], r.speaker ? '1' : '0')}</div></div>
-      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">Region</div><div class="row-sub">Japan uses 76–95 MHz; most of the world 87.5–108 MHz.</div></div>
-        <div class="row-control">${segs('band', [['world', 'Most of the world'], ['japan', 'Japan']], r.band)}</div></div>
+      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">${te('sound.output')}</div><div class="row-sub">${r.speaker ? te('radio.outputSubBoth') : te('radio.outputSub')}</div></div>
+        <div class="row-control">${segs('speaker', [['0', t('radio.headphones')], ['1', t('radio.speaker')]], r.speaker ? '1' : '0')}</div></div>
+      <div class="row row-wide set-row"><div class="row-main"><div class="row-title">${te('radio.region')}</div><div class="row-sub">${te('radio.regionSub')}</div></div>
+        <div class="row-control">${segs('band', [['world', t('radio.world')], ['japan', t('radio.japan')]], r.band)}</div></div>
     </div>`;
   setFill($('#fmDial'));
   setFill($('#fmVol'));
@@ -2089,7 +2177,7 @@ async function radioPut(path, body, method = 'PUT') {
     S.radio = await api(method, `/api/radio${path}`, body);
     renderRadio();
   } catch (e) {
-    if (e.status !== 401) toast(`Didn’t work. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('common.didntWork', { reason: reason(e) }), 'err');
   }
 }
 const savePresets = (presets) => radioPut('/presets', { presets });
@@ -2150,7 +2238,7 @@ $('#radioBody').addEventListener('submit', (e) => {
   e.preventDefault();
   const mhz = parseFloat($('#fmTuneIn').value.replace(',', '.'));
   const f = Math.round(mhz * 10), r = S.radio;
-  if (!(f >= r.min && f <= r.max)) return toast(`Pick a frequency between ${fmName(r.min)} and ${fmName(r.max)} MHz.`, 'err');
+  if (!(f >= r.min && f <= r.max)) return toast(t('radio.pickFrequency', { min: fmName(r.min), max: fmName(r.max) }), 'err');
   $('#fmTuneIn').blur();
   radioPut('', { frequency: f });
 });
@@ -2166,33 +2254,33 @@ async function loadBluetooth(quiet = false) {
     S.bt = await api('GET', '/api/bluetooth');
     renderBluetooth();
   } catch (e) {
-    if (e.status !== 401 && !S.bt) body.innerHTML = `<div class="group"><div class="row-empty">Couldn’t load Bluetooth. ${esc(reason(e))}</div></div>`;
+    if (e.status !== 401 && !S.bt) body.innerHTML = `<div class="group"><div class="row-empty">${te('bluetooth.couldntLoad', { reason: reason(e) })}</div></div>`;
   }
   if (S.route === 'bluetooth' && !document.hidden) btTimer = setTimeout(() => loadBluetooth(true), 2000);
 }
 function btDeviceRow(d) {
   const connected = d.status === 'connected', connecting = d.status === 'connecting';
-  const sub = connected ? 'Music plays here' : connecting ? 'Connecting…' : d.audio ? `${d.kind} · not connected` : d.kind;
-  const main = connecting ? `<span class="joining">${spinner()}Connecting…</span>`
-    : connected ? `<button class="btn btn-sm" type="button" data-bt="disconnect" data-addr="${esc(d.address)}">Disconnect</button>`
-    : `<button class="btn btn-sm btn-primary" type="button" data-bt="connect" data-addr="${esc(d.address)}">Connect</button>`;
-  return `<div class="row"><div class="row-main"><div class="row-title">${esc(d.name)}${connected ? '<span class="tag ok">Connected</span>' : ''}</div><div class="row-sub">${esc(sub)}</div></div>
-    <div class="bt-actions">${main}<button class="btn btn-sm btn-red-text" type="button" data-bt="forget" data-addr="${esc(d.address)}" data-name="${esc(d.name)}">Forget</button></div></div>`;
+  const sub = connected ? t('bluetooth.musicHere') : connecting ? t('common.connecting') : d.audio ? t('bluetooth.kindNotConnected', { kind: d.kind }) : d.kind;
+  const main = connecting ? `<span class="joining">${spinner()}${te('common.connecting')}</span>`
+    : connected ? `<button class="btn btn-sm" type="button" data-bt="disconnect" data-addr="${esc(d.address)}">${te('bluetooth.disconnect')}</button>`
+    : `<button class="btn btn-sm btn-primary" type="button" data-bt="connect" data-addr="${esc(d.address)}">${te('common.connect')}</button>`;
+  return `<div class="row"><div class="row-main"><div class="row-title">${esc(d.name)}${connected ? `<span class="tag ok">${te('common.connected')}</span>` : ''}</div><div class="row-sub">${esc(sub)}</div></div>
+    <div class="bt-actions">${main}<button class="btn btn-sm btn-red-text" type="button" data-bt="forget" data-addr="${esc(d.address)}" data-name="${esc(d.name)}">${te('common.forget')}</button></div></div>`;
 }
 function btOtherRow(d) {
-  const action = d.pairing ? `<span class="joining">${spinner()}Pairing…</span>`
-    : `<button class="btn btn-sm" type="button" data-bt="connect" data-addr="${esc(d.address)}">Pair</button>`;
+  const action = d.pairing ? `<span class="joining">${spinner()}${te('bluetooth.pairing')}</span>`
+    : `<button class="btn btn-sm" type="button" data-bt="connect" data-addr="${esc(d.address)}">${te('bluetooth.pair')}</button>`;
   return `<div class="row"><div class="row-main"><div class="row-title">${esc(d.name)}</div><div class="row-sub">${esc(d.kind)}</div></div><div class="bt-actions">${action}</div></div>`;
 }
 function renderBluetooth() {
   const b = S.bt, body = $('#btBody');
   $('#btSearch').hidden = !(b.available && b.state === 'on');
   if (!b.available) {
-    body.innerHTML = `<div class="note">${icon('alert')}<span>This Rondo has no Bluetooth.</span></div>`;
+    body.innerHTML = `<div class="note">${icon('alert')}<span>${te('bluetooth.none')}</span></div>`;
     return;
   }
   const on = b.state === 'on', turning = b.state.startsWith('turning');
-  const stateText = { on: 'On', off: 'Off', turning_on: 'Turning on…', turning_off: 'Turning off…' }[b.state] || '';
+  const stateText = { on: te('common.on'), off: te('common.off'), turning_on: te('common.turningOn'), turning_off: te('common.turningOff') }[b.state] || '';
   const power = `<div class="group"><div class="row wifi-current"><span class="tile t-bluetooth">${icon('bluetooth')}</span>
       <div class="row-main"><div class="row-title">Bluetooth</div><div class="row-sub">${stateText}</div></div>
       <button class="switch" type="button" role="switch" data-bt="power" aria-checked="${on || b.state === 'turning_on'}" aria-label="Bluetooth"${turning ? ' disabled' : ''}></button></div></div>`;
@@ -2200,16 +2288,16 @@ function renderBluetooth() {
     body.innerHTML = power;
     return;
   }
-  const mine = (b.mine || []).map(btDeviceRow).join('') || '<div class="row-empty">No paired devices yet.</div>';
+  const mine = (b.mine || []).map(btDeviceRow).join('') || `<div class="row-empty">${te('bluetooth.noPaired')}</div>`;
   const others = (b.others || []).map(btOtherRow).join('')
-    || `<div class="row-empty">${b.searching ? 'Looking for devices…' : 'No devices found.'} Put your headphones in pairing mode.</div>`;
+    || `<div class="row-empty">${b.searching ? te('bluetooth.looking') : te('bluetooth.noneFound')}</div>`;
   body.innerHTML = `${power}
-    <h2 class="gh">My devices</h2><div class="group">${mine}</div>
-    <h2 class="gh">Other devices${b.searching ? ` <span class="joining">${spinner()}Searching…</span>` : ''}</h2><div class="group">${others}</div>
-    <div class="note info">${icon('info')}<span>Headphones that ask for a PIN get 0000. One device plays at a time: connecting one disconnects the other.</span></div>`;
+    <h2 class="gh">${te('bluetooth.mine')}</h2><div class="group">${mine}</div>
+    <h2 class="gh">${te('bluetooth.others')}${b.searching ? ` <span class="joining">${spinner()}${te('common.searching')}</span>` : ''}</h2><div class="group">${others}</div>
+    <div class="note info">${icon('info')}<span>${te('bluetooth.pinNote')}</span></div>`;
 }
 $('#btSearch').addEventListener('click', async () => {
-  try { S.bt = await api('POST', '/api/bluetooth/search'); renderBluetooth(); } catch (e) { if (e.status !== 401) toast(`Couldn’t search. ${reason(e)}`, 'err'); }
+  try { S.bt = await api('POST', '/api/bluetooth/search'); renderBluetooth(); } catch (e) { if (e.status !== 401) toast(t('bluetooth.couldntSearch', { reason: reason(e) }), 'err'); }
 });
 $('#btBody').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-bt]');
@@ -2221,12 +2309,12 @@ $('#btBody').addEventListener('click', async (e) => {
       b.setAttribute('aria-checked', String(on));
       S.bt = await api('PUT', '/api/bluetooth', { enabled: on });
     } else {
-      if (act === 'forget' && !(await confirmSheet({ title: `Forget “${b.dataset.name}”?`, text: 'Your Rondo stops connecting to it. Pair it again to use it.', action: 'Forget' }))) return;
+      if (act === 'forget' && !(await confirmSheet({ title: t('common.forgetName', { name: b.dataset.name }), text: te('bluetooth.forgetText'), action: t('common.forget') }))) return;
       S.bt = await api('POST', `/api/bluetooth/${act}`, { address: b.dataset.addr });
     }
     renderBluetooth();
   } catch (err) {
-    if (err.status !== 401) toast(`Didn’t work. ${reason(err)}`, 'err');
+    if (err.status !== 401) toast(t('common.didntWork', { reason: reason(err) }), 'err');
   }
 });
 
@@ -2241,7 +2329,7 @@ async function loadWifi(quiet = false) {
     S.wifi = await api('GET', '/api/wifi');
     renderWifi();
   } catch (e) {
-    if (e.status !== 401 && !S.wifi) body.innerHTML = `<div class="group"><div class="row-empty">Couldn’t load Wi-Fi. ${esc(reason(e))}</div></div>`;
+    if (e.status !== 401 && !S.wifi) body.innerHTML = `<div class="group"><div class="row-empty">${te('wifi.couldntLoad', { reason: reason(e) })}</div></div>`;
   }
   btn.classList.remove('is-busy');
 }
@@ -2249,22 +2337,22 @@ $('#wifiRefresh').addEventListener('click', () => loadWifi(true));
 function renderWifi() {
   const w = S.wifi, body = $('#wifiBody');
   if (!w.enabled) {
-    body.innerHTML = `<div class="note">${icon('alert')}<span>Wi-Fi is off on your Rondo. Turn it on under Settings › Wi-Fi on the device.</span></div>`;
+    body.innerHTML = `<div class="note">${icon('alert')}<span>${te('wifi.off')}</span></div>`;
     return;
   }
   const cur = w.current;
   const current = `<div class="group"><div class="row wifi-current">
       <span class="tile t-wifi">${icon('wifi')}</span>
-      <div class="row-main"><div class="row-title">${cur ? esc(cur.ssid) : 'Not connected'}</div><div class="row-sub">${cur ? `Connected · ${esc(cur.ip || '')}` : 'Pick a network below.'}</div></div>
-      ${cur ? `<span class="row-value" aria-label="Signal ${cur.signal} of 4">${sigSvg(cur.signal ?? 0)}</span>` : ''}
+      <div class="row-main"><div class="row-title">${cur ? esc(cur.ssid) : te('common.notConnected')}</div><div class="row-sub">${cur ? te('wifi.connectedIp', { ip: cur.ip || '' }) : te('wifi.pick')}</div></div>
+      ${cur ? `<span class="row-value" aria-label="${te('common.signal', { signal: cur.signal })}">${sigSvg(cur.signal ?? 0)}</span>` : ''}
     </div></div>`;
   const saved = w.saved.length
-    ? w.saved.map((s) => `<div class="row row-flat"><div class="row-main"><div class="row-title">${esc(s.ssid)}${cur?.ssid === s.ssid ? '<span class="tag ok">Connected</span>' : ''}</div></div>
-        <button class="btn btn-sm btn-red-text" type="button" data-forget="${s.id}">Forget</button></div>`).join('')
-    : '<div class="row-empty">No saved networks.</div>';
+    ? w.saved.map((s) => `<div class="row row-flat"><div class="row-main"><div class="row-title">${esc(s.ssid)}${cur?.ssid === s.ssid ? `<span class="tag ok">${te('common.connected')}</span>` : ''}</div></div>
+        <button class="btn btn-sm btn-red-text" type="button" data-forget="${s.id}">${te('common.forget')}</button></div>`).join('')
+    : `<div class="row-empty">${te('wifi.noSaved')}</div>`;
   const nearby = [...w.nearby].sort((a, b) => (b.ssid === cur?.ssid) - (a.ssid === cur?.ssid) || b.signal - a.signal || collator.compare(a.ssid, b.ssid));
-  const near = nearby.length ? nearby.map((n) => netRow(n, cur)).join('') : '<div class="row-empty">No networks found. Try Refresh.</div>';
-  body.innerHTML = `${current}<h2 class="gh">Saved networks</h2><div class="group">${saved}</div><h2 class="gh">Nearby</h2><div class="group" id="nearby">${near}</div>`;
+  const near = nearby.length ? nearby.map((n) => netRow(n, cur)).join('') : `<div class="row-empty">${te('wifi.noneFound')}</div>`;
+  body.innerHTML = `${current}<h2 class="gh">${te('wifi.saved')}</h2><div class="group">${saved}</div><h2 class="gh">${te('wifi.nearby')}</h2><div class="group" id="nearby">${near}</div>`;
   if (wifiOpen) $('#nearby .pw input')?.focus();
 }
 function netRow(n, cur) {
@@ -2272,23 +2360,23 @@ function netRow(n, cur) {
   const open = wifiOpen === n.ssid;
   const joining = S.joining?.ssid === n.ssid;
   const secured = n.security !== 'open';
-  const label = `${n.ssid}${secured ? ', secured' : ''}, signal ${n.signal} of 4`;
+  const label = secured ? t('wifi.netLabelSecured', { name: n.ssid, signal: n.signal }) : t('wifi.netLabel', { name: n.ssid, signal: n.signal });
   const row = `<button class="row row-flat net" type="button" data-ssid="${esc(n.ssid)}" aria-expanded="${open}" aria-label="${esc(label)}"${connected ? ' disabled' : ''}>
       <span class="ico">${secured ? icon('lock') : ''}</span>
-      <span class="row-main"><span class="row-title" style="display:block">${esc(n.ssid)}${connected ? '<span class="tag ok">Connected</span>' : n.saved ? '<span class="tag">Saved</span>' : ''}</span></span>
-      ${joining ? `<span class="joining">${spinner()}Joining…</span>` : ''}
+      <span class="row-main"><span class="row-title" style="display:block">${esc(n.ssid)}${connected ? `<span class="tag ok">${te('common.connected')}</span>` : n.saved ? `<span class="tag">${te('wifi.savedTag')}</span>` : ''}</span></span>
+      ${joining ? `<span class="joining">${spinner()}${te('wifi.joining')}</span>` : ''}
       ${sigSvg(n.signal)}
     </button>`;
   if (!open) return row;
-  if (n.security === 'eap') return row + `<div class="join"><div class="note">${icon('info')}<span>Rondo can’t join enterprise networks like this one yet.</span></div></div>`;
+  if (n.security === 'eap') return row + `<div class="join"><div class="note">${icon('info')}<span>${te('wifi.enterprise')}</span></div></div>`;
   const needPw = secured && !n.saved;
   const warn = cur && !connected
-    ? `<div class="note">${icon('alert')}<span>Your Rondo will leave “${esc(cur.ssid)}”. If this phone or computer isn’t on “${esc(n.ssid)}” too, this page will lose its connection. The Rondo shows its new address under Settings › Dashboard.</span></div>` : '';
+    ? `<div class="note">${icon('alert')}<span>${te('wifi.leaveWarn', { current: cur.ssid, name: n.ssid })}</span></div>` : '';
   return row + `<form class="join" data-join="${esc(n.ssid)}">
-      ${needPw ? `<div><label class="field-label" for="wifiPw">Password for “${esc(n.ssid)}”</label><div class="pw"><input type="password" id="wifiPw" autocomplete="off" autocapitalize="off" spellcheck="false" minlength="${n.security === 'psk' ? 8 : 1}" required><button class="btn btn-sm btn-quiet" type="button" data-act="reveal">Show</button></div></div>` : ''}
+      ${needPw ? `<div><label class="field-label" for="wifiPw">${te('wifi.passwordFor', { name: n.ssid })}</label><div class="pw"><input type="password" id="wifiPw" autocomplete="off" autocapitalize="off" spellcheck="false" minlength="${n.security === 'psk' ? 8 : 1}" required><button class="btn btn-sm btn-quiet" type="button" data-act="reveal">${te('wifi.show')}</button></div></div>` : ''}
       ${warn}
       <p class="field-err" id="joinErr" hidden></p>
-      <div class="join-actions"><button class="btn" type="button" data-act="cancel">Cancel</button><button class="btn btn-primary" type="submit">Join</button></div>
+      <div class="join-actions"><button class="btn" type="button" data-act="cancel">${te('common.cancel')}</button><button class="btn btn-primary" type="submit">${te('wifi.join')}</button></div>
     </form>`;
 }
 $('#wifiBody').addEventListener('click', async (e) => {
@@ -2297,7 +2385,7 @@ $('#wifiBody').addEventListener('click', async (e) => {
   if (e.target.closest('[data-act="reveal"]')) {
     const input = $('#wifiPw'), b = e.target.closest('[data-act="reveal"]');
     input.type = input.type === 'password' ? 'text' : 'password';
-    b.textContent = input.type === 'password' ? 'Show' : 'Hide';
+    b.textContent = input.type === 'password' ? t('wifi.show') : t('common.hide');
     return input.focus();
   }
   if (e.target.closest('[data-act="cancel"]')) { wifiOpen = null; return renderWifi(); }
@@ -2312,21 +2400,21 @@ $('#wifiBody').addEventListener('submit', async (e) => {
   const err = $('#joinErr', form);
   if (pw && pw.value.length < (+pw.minLength || 1)) {
     err.hidden = false;
-    err.textContent = pw.minLength > 1 ? 'Wi-Fi passwords are at least 8 characters.' : 'Type the password.';
+    err.textContent = pw.minLength > 1 ? t('wifi.pwShort') : t('wifi.pwType');
     pw.classList.add('is-invalid');
     return pw.focus();
   }
   const submit = $('[type="submit"]', form);
   submit.disabled = true;
-  submit.textContent = 'Joining…';
+  submit.textContent = t('wifi.joining');
   try {
     await api('POST', '/api/wifi/join', pw ? { ssid, password: pw.value } : { ssid });
   } catch (e2) {
     if (e2.status === 401) return;
     submit.disabled = false;
-    submit.textContent = 'Join';
+    submit.textContent = t('wifi.join');
     err.hidden = false;
-    err.textContent = `Couldn’t join. ${reason(e2)}`;
+    err.textContent = t('wifi.couldntJoin', { reason: reason(e2) });
     return;
   }
   S.joining = { ssid, until: Date.now() + 30000 };
@@ -2343,16 +2431,16 @@ function watchJoin() {
       S.wifi = await api('GET', '/api/wifi');
       if (S.wifi.current?.ssid === j.ssid) {
         S.joining = null;
-        toast(`Connected to “${j.ssid}”`);
+        toast(t('wifi.connectedTo', { name: j.ssid }));
         poll();
       } else if (S.wifi.lastError === 'auth' && S.wifi.joining === j.ssid) {
         // the Rondo reports the network refused the password: say so at once and reopen the form
         S.joining = null;
         wifiOpen = j.ssid;
-        toast(`Wrong password for “${j.ssid}”. Try again.`, 'err');
+        toast(t('wifi.wrongPassword', { name: j.ssid }), 'err');
       } else if (Date.now() > j.until) {
         S.joining = null;
-        toast(`Couldn’t join “${j.ssid}”. Check the password and try again.`, 'err');
+        toast(t('wifi.couldntJoinName', { name: j.ssid }), 'err');
       }
     } catch { /* the banner explains a dropped connection */ }
     if (S.route === 'wifi' && S.wifi) renderWifi();
@@ -2364,16 +2452,16 @@ async function forgetNet(id) {
   if (!net) return;
   const isCurrent = S.wifi.current?.ssid === net.ssid;
   const ok = await confirmSheet({
-    title: `Forget “${net.ssid}”?`,
-    text: `Your Rondo won’t join it on its own any more.${isCurrent ? ' It’s the network your Rondo is on now, so this page will disconnect.' : ''}`,
-    action: 'Forget',
+    title: t('common.forgetName', { name: net.ssid }),
+    text: isCurrent ? te('wifi.forgetTextCurrent') : te('wifi.forgetText'),
+    action: t('common.forget'),
   });
   if (!ok) return;
   try {
     await api('DELETE', `/api/wifi/saved?id=${encodeURIComponent(id)}`);
-    toast(`Forgot “${net.ssid}”`);
+    toast(t('wifi.forgot', { name: net.ssid }));
     loadWifi(true);
-  } catch (e) { if (e.status !== 401) toast(`Couldn’t forget it. ${reason(e)}`, 'err'); }
+  } catch (e) { if (e.status !== 401) toast(t('wifi.couldntForget', { reason: reason(e) }), 'err'); }
 }
 
 // ---------- YouTube › Download ----------
@@ -2385,7 +2473,7 @@ async function forgetNet(id) {
 // songs; a paused one keeps what it has and goes on from there, after a restart too.
 let dlTimer = 0;
 const DL_QUALITY = [[720, '720p'], [480, '480p'], [360, '360p']];
-const DL_KIND = [['video', 'Video'], ['song', 'Song'], ['playlist', 'Playlist']];
+const DL_KIND = [['video', t('downloads.kind.video')], ['song', t('downloads.kind.song')], ['playlist', t('downloads.kind.playlist')]];
 const dlGoing = (j) => j.state === 'waiting' || j.state === 'running';
 async function loadDownloads() {
   clearTimeout(dlTimer);
@@ -2393,7 +2481,7 @@ async function loadDownloads() {
     S.downloads = await api('GET', '/api/downloads');
     renderDownloads();
   } catch (e) {
-    if (e.status !== 401 && !S.downloads) $('#dlBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the downloads. ${esc(reason(e))}</div></div>`;
+    if (e.status !== 401 && !S.downloads) $('#dlBody').innerHTML = `<div class="group"><div class="row-empty">${te('downloads.couldntLoad', { reason: reason(e) })}</div></div>`;
   }
   const busy = S.downloads && (S.downloads.jobs.some(dlGoing) || (S.downloads.playlists || []).some((p) => p.loading));
   if (S.route === 'youtube' && busy) dlTimer = setTimeout(loadDownloads, 2000);
@@ -2401,51 +2489,52 @@ async function loadDownloads() {
 // what a row on its way says (as the Y1's rows do)
 function dlState(j, what) {
   const tail = what ? ` · ${what}` : '';
-  const part = !j.stage || j.stage.startsWith('Downloading');  // the percent only while a part comes in, as on the Y1
-  if (j.state === 'running') return `${j.stage || 'Downloading'}${part ? ` · ${j.percent}%` : ''}${tail}`;
-  if (j.state === 'waiting') return `${S.downloads.held || 'Waiting'}${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
-  if (j.state === 'paused') return `Paused${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
-  return `Didn’t download: ${j.error}`;
+  // the percent only while a part comes in, as on the Y1 (fetching: the Y1 says so, its stage is in its language)
+  const part = !j.stage || j.fetching;
+  if (j.state === 'running') return `${j.stage || t('common.downloading')}${part ? ` · ${j.percent}%` : ''}${tail}`;
+  if (j.state === 'waiting') return `${S.downloads.held || t('downloads.waiting')}${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
+  if (j.state === 'paused') return `${t('common.paused')}${j.percent ? ` · ${j.percent}%` : ''}${tail}`;
+  return t('downloads.failed', { error: j.error });
 }
 function dlPlaylistSub(p) {
-  const n = plural(p.total, 'song');
-  if (p.loading) return 'Getting its songs…';
-  if (p.going) return `${p.paused === p.going ? 'Paused' : 'Downloading'} · ${p.onCard} of ${n}`;
-  if (p.onCard < p.total) return `${p.onCard} of ${n} on the card`;
-  return `${n}${p.mix ? ' · a mix' : ''} · in Library › Playlists`;
+  const n = { count: p.total, done: String(p.onCard) };
+  if (p.loading) return t('downloads.gettingSongs');
+  if (p.going) return t('downloads.listProgress', { ...n, state: p.paused === p.going ? t('common.paused') : t('common.downloading') });
+  if (p.onCard < p.total) return t('downloads.listPartial', n);
+  return p.mix ? t('downloads.listDoneMix', n) : t('downloads.listDone', n);
 }
 function renderDownloads() {
   const d = S.downloads, el = $('#dlBody');
   if (!el || !d) return;
   if (!$('#dlForm')) {
     el.innerHTML = `<div class="group"><form class="dl-form" id="dlForm">
-        <input type="text" id="dlVideo" placeholder="A YouTube or YouTube Music link, or an id" aria-label="YouTube or YouTube Music link, or an id" autocomplete="off" spellcheck="false">
-        ${segHtml('dlKind', DL_KIND, S.dlKind || 'video', 'Download as').replace('seg seg-wide', 'seg')}
-        ${segHtml('dlQuality', DL_QUALITY, S.dlQuality || 480, 'Quality').replace('seg seg-wide', 'seg')}
-        <button class="btn btn-primary" type="submit">${icon('download')}<span>Download</span></button></form></div>
+        <input type="text" id="dlVideo" placeholder="${te('downloads.placeholder')}" aria-label="${te('downloads.inputLabel')}" autocomplete="off" spellcheck="false">
+        ${segHtml('dlKind', DL_KIND, S.dlKind || 'video', t('downloads.as')).replace('seg seg-wide', 'seg')}
+        ${segHtml('dlQuality', DL_QUALITY, S.dlQuality || 480, t('downloads.quality')).replace('seg seg-wide', 'seg')}
+        <button class="btn btn-primary" type="submit">${icon('download')}<span>${te('common.download')}</span></button></form></div>
       <div id="dlRows"></div>`;
     syncDlKind();
   }
   const jobs = d.jobs.filter((j) => j.state !== 'done').reverse();
   const lists = d.playlists || [];
   const going = jobs.some(dlGoing), paused = jobs.some((j) => j.state === 'paused');
-  const group = (title, rows) => rows.length ? `<h3 class="dl-h">${title}</h3><div class="group">${rows.join('')}</div>` : '';
+  const group = (title, rows) => rows.length ? `<h3 class="dl-h">${esc(title)}</h3><div class="group">${rows.join('')}</div>` : '';
   const bar = going || paused ? `<div class="group"><div class="row dl-row dl-all">
       <span class="tile ${going ? 't-pause' : 't-resume'}">${icon(going ? 'pause' : 'play')}</span>
-      <div class="row-main"><div class="row-title">${going ? 'Downloading' : 'Paused'}</div><div class="row-sub">${esc(d.held || (going ? 'One at a time, videos and songs' : 'Each goes on where it stopped'))}</div></div>
-      <button class="btn btn-sm${going ? '' : ' btn-primary'}" type="button" data-dl-all="${going ? 'pause' : 'resume'}">${going ? 'Pause all' : 'Resume all'}</button></div></div>` : '';
+      <div class="row-main"><div class="row-title">${going ? te('common.downloading') : te('common.paused')}</div><div class="row-sub">${esc(d.held || (going ? t('downloads.oneAtATime') : t('downloads.eachGoesOn')))}</div></div>
+      <button class="btn btn-sm${going ? '' : ' btn-primary'}" type="button" data-dl-all="${going ? 'pause' : 'resume'}">${going ? te('downloads.pauseAll') : te('downloads.resumeAll')}</button></div></div>` : '';
   const listRows = lists.map((p) => `<div class="row dl-row">${p.cover ? `<span class="dl-cover"><img src="${photoUrl(p.cover, 96)}" alt="" loading="lazy"></span>` : `<span class="tile t-playlists">${icon('playlist')}</span>`}
       <div class="row-main"><div class="row-title">${esc(p.title)}</div><div class="row-sub">${esc(dlPlaylistSub(p))}</div>
         ${p.going && p.total ? `<div class="dl-bar"><span style="width:${Math.round((100 * p.onCard) / p.total)}%"></span></div>` : ''}</div>
-      ${p.loading ? '' : `<button class="btn btn-sm" type="button" data-dl-update="${esc(p.id)}" aria-label="Update ${esc(p.title)}">${icon('refresh')}<span class="dl-lbl">Update</span></button>`}
-      <button class="btn btn-sm btn-red-text" type="button" data-dl-list="${esc(p.id)}" aria-label="Delete ${esc(p.title)}">${icon('trash')}</button></div>`);
+      ${p.loading ? '' : `<button class="btn btn-sm" type="button" data-dl-update="${esc(p.id)}" aria-label="${te('downloads.updateName', { name: p.title })}">${icon('refresh')}<span class="dl-lbl">${te('downloads.update')}</span></button>`}
+      <button class="btn btn-sm btn-red-text" type="button" data-dl-list="${esc(p.id)}" aria-label="${te('downloads.deleteName', { name: p.title })}">${icon('trash')}</button></div>`);
   const jobRows = jobs.map((j) => {
-    const what = j.kind === 'song' ? 'Song' : `${j.quality}p`;
+    const what = j.kind === 'song' ? t('downloads.kind.song') : `${j.quality}p`;
     const acts = j.state === 'failed'
-      ? `<button class="btn btn-sm" type="button" data-dl-retry="${esc(j.id)}">Try again</button>
-         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="Take ${esc(j.title)} off the list">${icon('close')}</button>`
-      : `<button class="btn btn-sm" type="button" data-dl-${j.state === 'paused' ? 'resume' : 'pause'}="${esc(j.id)}">${j.state === 'paused' ? 'Resume' : 'Pause'}</button>
-         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="Cancel ${esc(j.title)}">${icon('close')}</button>`;
+      ? `<button class="btn btn-sm" type="button" data-dl-retry="${esc(j.id)}">${te('common.tryAgain')}</button>
+         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="${te('downloads.takeOff', { name: j.title })}">${icon('close')}</button>`
+      : `<button class="btn btn-sm" type="button" data-dl-${j.state === 'paused' ? 'resume' : 'pause'}="${esc(j.id)}">${j.state === 'paused' ? te('downloads.resume') : te('common.pause')}</button>
+         <button class="btn btn-sm btn-quiet" type="button" data-dl-cancel="${esc(j.id)}" aria-label="${te('common.cancelName', { name: j.title })}">${icon('close')}</button>`;
     return `<div class="row dl-row"><span class="tile t-downloads">${icon('download')}</span>
       <div class="row-main"><div class="row-title">${esc(j.title)}</div><div class="row-sub">${esc(dlState(j, what))}</div>
         ${j.state === 'running' || (j.state !== 'failed' && j.percent) ? `<div class="dl-bar${j.state === 'running' ? '' : ' is-still'}"><span style="width:${j.percent}%"></span></div>` : ''}</div>
@@ -2454,15 +2543,15 @@ function renderDownloads() {
   const cardRows = [
     ...(d.songs || []).map((x) => `<div class="row dl-row"><span class="tile t-music">${icon('note')}</span>
         <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
-        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
-        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" data-song="1" aria-label="Delete ${esc(x.title)}">${icon('trash')}</button></div>`),
+        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>${te('common.save')}</a>
+        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" data-song="1" aria-label="${te('downloads.deleteName', { name: x.title })}">${icon('trash')}</button></div>`),
     ...d.files.map((x) => `<div class="row dl-row"><span class="tile t-videos">${icon('film')}</span>
         <div class="row-main"><div class="row-title">${esc(x.title)}</div><div class="row-sub">${esc(x.subtitle)}</div></div>
-        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>Save</a>
-        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" aria-label="Delete ${esc(x.title)}">${icon('trash')}</button></div>`),
+        <a class="btn btn-sm" href="/api/files/download?path=${encodeURIComponent(x.file)}" download>${te('common.save')}</a>
+        <button class="btn btn-sm btn-red-text" type="button" data-dl-delete="${esc(x.file)}" aria-label="${te('downloads.deleteName', { name: x.title })}">${icon('trash')}</button></div>`),
   ];
-  const html = bar + group('Playlists', listRows) + group('On the way', jobRows) + group('On the card', cardRows);
-  $('#dlRows').innerHTML = html || '<div class="group"><div class="row-empty">Nothing downloaded yet.</div></div>';
+  const rowsHtml = bar + group(t('common.playlists'), listRows) + group(t('downloads.onTheWay'), jobRows) + group(t('common.onCard'), cardRows);
+  $('#dlRows').innerHTML = rowsHtml || `<div class="group"><div class="row-empty">${te('downloads.nothing')}</div></div>`;
 }
 // a song or a playlist has no height to pick
 function syncDlKind() {
@@ -2484,8 +2573,8 @@ $('#dlBody').addEventListener('input', (e) => {
 // delete a downloaded playlist: its songs stay, or go too
 function dlListSheet(p) {
   return new Promise((resolve) => {
-    openSheet(`<h2>Delete “${esc(p.title)}”?</h2><p>The playlist goes from Library. Its songs can stay on the card, or go too, except those another downloaded playlist has or that you downloaded by themselves.</p>
-      <div class="sheet-actions sheet-actions-3"><button class="btn" type="button" data-r="">Cancel</button><button class="btn btn-danger" type="button" data-r="songs">With its songs</button><button class="btn btn-primary" type="button" data-r="keep">Keep its songs</button></div>`);
+    openSheet(`<h2>${te('common.deleteName', { name: p.title })}</h2><p>${te('downloads.deleteListText')}</p>
+      <div class="sheet-actions sheet-actions-3"><button class="btn" type="button" data-r="">${te('common.cancel')}</button><button class="btn btn-danger" type="button" data-r="songs">${te('downloads.withSongs')}</button><button class="btn btn-primary" type="button" data-r="keep">${te('downloads.keepSongs')}</button></div>`);
     const onClick = (e) => { const b = e.target.closest('[data-r]'); if (b) finish(b.dataset.r); };
     const finish = (v) => { sheet.removeEventListener('click', onClick); sheet.removeEventListener('close', onClose); if (sheet.open) sheet.close(); resolve(v); };
     const onClose = () => finish('');
@@ -2511,19 +2600,19 @@ $('#dlBody').addEventListener('click', async (e) => {
     else if (all) S.downloads = await api('POST', `/api/downloads/${all.dataset.dlAll}`, {});
     else if (update) {
       S.downloads = await api('POST', `/api/downloads/playlist?id=${encodeURIComponent(update.dataset.dlUpdate)}`, {});
-      toast('Bringing it up to date on your Rondo');
+      toast(t('downloads.updating'));
     } else if (list) {
       const p = (S.downloads.playlists || []).find((x) => x.id === list.dataset.dlList);
       const how = p && await dlListSheet(p);
       if (!how) return;
       S.downloads = await api('DELETE', `/api/downloads/playlist?id=${encodeURIComponent(p.id)}${how === 'songs' ? '&songs=1' : ''}`);
       S.playlists = null;  // Library's playlists changed
-      toast(how === 'songs' ? 'Deleted with its songs' : 'Deleted: its songs stay on the card');
+      toast(how === 'songs' ? t('downloads.deletedWithSongs') : t('downloads.deletedKeepSongs'));
     } else if (del) {
       const name = del.closest('.row').querySelector('.row-title').textContent;
-      if (!await confirmSheet({ title: `Delete “${name}”?`, text: del.dataset.song ? 'It goes from the card, and from the playlists it’s in.' : 'It goes from the card with its subtitles.', action: 'Delete' })) return;
+      if (!await confirmSheet({ title: t('common.deleteName', { name }), text: del.dataset.song ? te('downloads.deleteSongText') : te('downloads.deleteVideoText'), action: t('common.delete') })) return;
       S.downloads = await api('DELETE', `/api/downloads?file=${encodeURIComponent(del.dataset.dlDelete)}`);
-      toast('Deleted from the card');
+      toast(t('downloads.deleted'));
     } else return;
     renderDownloads();
     loadDownloads();
@@ -2536,7 +2625,7 @@ $('#dlBody').addEventListener('submit', async (e) => {
   try {
     S.downloads = await api('POST', '/api/downloads', { video, quality: S.dlQuality || 480, song: kind === 'song', playlist: kind === 'playlist' }, { timeout: 70000 });
     input.value = '';
-    toast(kind === 'playlist' ? 'Downloading the playlist on your Rondo' : 'Downloading on your Rondo');
+    toast(kind === 'playlist' ? t('downloads.startedPlaylist') : t('downloads.started'));
     renderDownloads();
     loadDownloads();
   } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
@@ -2551,7 +2640,7 @@ async function loadServer() {
     renderServer();
     renderYouTube();
   } catch (e) {
-    const msg = `<div class="group"><div class="row-empty">Couldn’t load the settings. ${esc(reason(e))}</div></div>`;
+    const msg = `<div class="group"><div class="row-empty">${te('settings.couldntLoad', { reason: reason(e) })}</div></div>`;
     if (e.status !== 401 && !S.server) $('#serverBody').innerHTML = msg, $('#ytBody').innerHTML = msg;
   }
 }
@@ -2580,58 +2669,59 @@ function watchTv() {
     const cd = $('#tvCountdown'), p = S.ytTv?.pending;
     if (!cd || !p) return clearInterval(tvTick);
     const left = Math.max(0, Math.ceil((p.expiresAt - Date.now()) / 1000));
-    cd.textContent = left ? `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'This code expired. Get a new one.';
+    cd.textContent = left ? t('youtube.expiresIn', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` }) : t('youtube.codeExpired');
   }, 1000);
   tvTimer = setTimeout(async () => {
     if (S.route !== 'youtube') return;
     try {
       const was = S.ytTv;
       S.ytTv = await api('GET', '/api/youtube/tv', undefined, { timeout: 30000 });
-      if (!was?.signedIn && S.ytTv.signedIn) toast(`Signed in${S.ytTv.name ? ` as ${S.ytTv.name}` : ''}`);
-      if (S.ytTv.error && !S.ytTv.pending && was?.pending) toast(TV_ERRORS[S.ytTv.error] || 'The sign-in didn’t work. Try again.', 'err');
+      if (!was?.signedIn && S.ytTv.signedIn) toast(S.ytTv.name ? t('common.signedInAs', { name: S.ytTv.name }) : t('common.signedIn'));
+      if (S.ytTv.error && !S.ytTv.pending && was?.pending) toast(TV_ERRORS[S.ytTv.error] || t('youtube.signInFailed'), 'err');
       renderAccount();
     } catch (e) { if (e.status === 401) return; }
     watchTv();
   }, 3000);
 }
 const TV_ERRORS = {
-  denied: 'The sign-in was refused at Google.',
-  expired: 'The code expired before it was entered. Get a new one.',
-  revoked: 'The sign-in was removed from the Google account. Sign in again.',
-  failed: 'YouTube didn’t give a code. Check the Rondo’s Wi-Fi and try again.',
+  denied: t('youtube.tv.denied'),
+  expired: t('youtube.tv.expired'),
+  revoked: t('youtube.tv.revoked'),
+  failed: t('youtube.tv.failed'),
 };
 async function tvAct(action) {
   try {
     S.ytTv = await api('POST', `/api/youtube/tv/${action}`, {}, { timeout: 45000 });
     renderAccount();
     watchTv();
-    if (action === 'signout') toast('Signed out on your Rondo');
+    if (action === 'signout') toast(t('common.signedOutOnRondo'));
   } catch (e) { if (e.status !== 401) toast(reason(e), 'err'); }
 }
 function tvHtml() {
-  const t = S.ytTv;
-  if (!t) return `<div class="row set-row"><span class="tile t-account">${icon('key')}</span><div class="row-main"><div class="row-title">Sign in with a code</div><div class="row-sub">Checking…</div></div></div>`;
-  if (t.pending) {
+  const tv = S.ytTv;
+  if (!tv) return `<div class="row set-row"><span class="tile t-account">${icon('key')}</span><div class="row-main"><div class="row-title">${te('youtube.signInCode')}</div><div class="row-sub">${te('common.checking')}</div></div></div>`;
+  if (tv.pending) {
+    const link = `<a class="link" href="${esc(tv.pending.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(tv.pending.url.replace(/^https?:\/\//, ''))}</b></a>`;
     return `<div class="row row-wide set-row tv-pending"><span class="tile t-account">${icon('key')}</span>
-      <div class="row-main"><div class="row-title">Enter this code</div>
-        <div class="tv-code" aria-label="The code">${esc(t.pending.code)}</div>
+      <div class="row-main"><div class="row-title">${te('youtube.enterCode')}</div>
+        <div class="tv-code" aria-label="${te('youtube.theCode')}">${esc(tv.pending.code)}</div>
         <ol class="steps tv-steps">
-          <li>On your phone or computer, open <a class="link" href="${esc(t.pending.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(t.pending.url.replace(/^https?:\/\//, ''))}</b></a>.</li>
-          <li>Enter the code and pick the Google account for your Rondo.</li>
-          <li>Allow access. This page updates by itself.</li>
+          <li>${th('youtube.step1', { link: html(link) })}</li>
+          <li>${te('youtube.step2')}</li>
+          <li>${te('youtube.step3')}</li>
         </ol>
-        <div class="row-sub"><span id="tvCountdown"></span> · Waiting for Google…</div></div>
-      <div class="row-control acct-actions"><button class="btn btn-sm" type="button" data-act="tv-copy">Copy code</button><button class="btn btn-sm" type="button" data-act="tv-cancel">Cancel</button></div></div>`;
+        <div class="row-sub"><span id="tvCountdown"></span> · ${te('youtube.waitingGoogle')}</div></div>
+      <div class="row-control acct-actions"><button class="btn btn-sm" type="button" data-act="tv-copy">${te('youtube.copyCode')}</button><button class="btn btn-sm" type="button" data-act="tv-cancel">${te('common.cancel')}</button></div></div>`;
   }
-  if (t.signedIn) {
+  if (tv.signedIn) {
     return `<div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
-      <div class="row-main"><div class="row-title">Signed in${t.name ? ` as ${esc(t.name)}` : ''}</div><div class="row-sub">${t.handle ? `${esc(t.handle)} · ` : ''}YouTube’s home, Subscriptions and History; YouTube Music’s playlists and Liked Music.</div></div>
-      <div class="row-control acct-actions"><button class="btn btn-sm btn-red-text" type="button" data-act="tv-signout">Sign out</button></div></div>`;
+      <div class="row-main"><div class="row-title">${tv.name ? te('common.signedInAs', { name: tv.name }) : te('common.signedIn')}</div><div class="row-sub">${tv.handle ? `${esc(tv.handle)} · ` : ''}${te('youtube.signedInFeeds')}</div></div>
+      <div class="row-control acct-actions"><button class="btn btn-sm btn-red-text" type="button" data-act="tv-signout">${te('common.signOut')}</button></div></div>`;
   }
-  const err = t.error && TV_ERRORS[t.error] ? `<div class="row-sub tv-err">${TV_ERRORS[t.error]}</div>` : '';
+  const err = tv.error && TV_ERRORS[tv.error] ? `<div class="row-sub tv-err">${esc(TV_ERRORS[tv.error])}</div>` : '';
   return `<div class="row row-wide set-row"><span class="tile t-account">${icon('key')}</span>
-      <div class="row-main"><div class="row-title">Sign in with a code</div><div class="row-sub">Like signing in a smart TV: get a code, enter it at google.com/device. Brings your YouTube home, Subscriptions and History, and your YouTube Music playlists.</div>${err}</div>
-      <div class="row-control acct-actions"><button class="btn btn-primary btn-sm" type="button" data-act="tv-begin">${icon('key')}<span>Get a code</span></button></div></div>`;
+      <div class="row-main"><div class="row-title">${te('youtube.signInCode')}</div><div class="row-sub">${te('youtube.signInCodeSub')}</div>${err}</div>
+      <div class="row-control acct-actions"><button class="btn btn-primary btn-sm" type="button" data-act="tv-begin">${icon('key')}<span>${te('youtube.getCode')}</span></button></div></div>`;
 }
 function renderAccount() {
   const el = $('#ytAccount');
@@ -2639,29 +2729,29 @@ function renderAccount() {
   const a = S.ytAccount;
   if (!S.server?.direct) {
     el.innerHTML = `<div class="group"><div class="row set-row"><span class="tile t-account">${icon('key')}</span>
-      <div class="row-main"><div class="row-title">YouTube account</div><div class="row-sub">Your server has its own: sign in on its admin page${S.server?.url ? ` (<a class="link" href="${esc(S.server.url.replace(/\/+$/, ''))}/admin" target="_blank" rel="noopener">open it</a>)` : ''}.</div></div></div></div>`;
+      <div class="row-main"><div class="row-title">${te('youtube.account')}</div><div class="row-sub">${S.server?.url ? th('youtube.accountServerLink', { link: html(`<a class="link" href="${esc(S.server.url.replace(/\/+$/, ''))}/admin" target="_blank" rel="noopener">${te('common.openIt')}</a>`) }) : te('youtube.accountServer')}</div></div></div></div>`;
     return;
   }
-  const state = !a ? 'Checking…' : a.signedIn ? `Signed in${a.name ? ` as <b>${esc(a.name)}</b>` : ''}${a.handle ? ` (${esc(a.handle)})` : ''}${a.unchecked ? ' (not checked: no internet)' : ''}`
-    : a.expired ? 'Signed out: YouTube no longer takes these cookies. Export them again.' : a.unreachable ? 'Couldn’t ask your Rondo.' : 'Signed out';
-  el.innerHTML = `<h2 class="gh">YouTube account</h2><div class="group">${tvHtml()}</div>
-    <h2 class="gh">YouTube Music home and history</h2>
+  const state = !a ? te('common.checking') : a.signedIn ? `${a.name ? th('youtube.cookiesSignedInAs', { name: a.name }) : te('common.signedIn')}${a.handle ? ` (${esc(a.handle)})` : ''}${a.unchecked ? ` ${te('youtube.notChecked')}` : ''}`
+    : a.expired ? te('youtube.cookiesExpired') : a.unreachable ? te('youtube.couldntAsk') : te('common.signedOut');
+  el.innerHTML = `<h2 class="gh">${te('youtube.account')}</h2><div class="group">${tvHtml()}</div>
+    <h2 class="gh">${te('youtube.musicHome')}</h2>
     <div class="group">
       <div class="row row-wide set-row"><span class="tile t-cookies">${icon('file')}</span>
         <div class="row-main"><div class="row-title">cookies.txt</div><div class="row-sub">${state}</div>
-          <div class="row-sub">Optional: only YouTube Music’s own home and history need a cookies.txt from a browser; everything else works with the code sign-in.</div></div>
+          <div class="row-sub">${te('youtube.cookiesOptional')}</div></div>
         <div class="row-control acct-actions">
-          <button class="btn btn-primary btn-sm" type="button" data-act="cookies">${icon('upload')}<span>${a?.signedIn ? 'Replace cookies.txt' : 'Upload cookies.txt'}</span></button>
-          ${a?.signedIn || a?.expired ? '<button class="btn btn-sm" type="button" data-act="signout">Sign out</button>' : ''}
+          <button class="btn btn-primary btn-sm" type="button" data-act="cookies">${icon('upload')}<span>${a?.signedIn ? te('youtube.replaceCookies') : te('youtube.uploadCookies')}</span></button>
+          ${a?.signedIn || a?.expired ? `<button class="btn btn-sm" type="button" data-act="signout">${te('common.signOut')}</button>` : ''}
           <input type="file" id="cookiesFile" accept=".txt,text/plain" hidden></div></div>
     </div>
-    <h2 class="gh">Export cookies.txt safely</h2>
+    <h2 class="gh">${te('youtube.exportTitle')}</h2>
     <div class="group"><ol class="steps">
-      <li><b>Open a private window</b> (incognito) in your browser on a computer.</li>
-      <li><b>Sign in to youtube.com</b> (or music.youtube.com: the same cookies) in that window.</li>
-      <li><b>Export the cookies</b> with a cookies.txt browser extension while that page is open, then upload the file here.</li>
-      <li><b>Close the private window at once.</b> If a browser keeps using that session, Google signs it out and your Rondo loses access.</li>
-    </ol><p class="row-sub steps-note">A separate Google account for your Rondo is the safest choice. The file stays on your Rondo and this page never shows what’s inside.</p></div>`;
+      <li>${th('youtube.export1')}</li>
+      <li>${th('youtube.export2')}</li>
+      <li>${th('youtube.export3')}</li>
+      <li>${th('youtube.export4')}</li>
+    </ol><p class="row-sub steps-note">${te('youtube.exportNote')}</p></div>`;
 }
 // a cookies.txt cut to its youtube.com lines (an export of every site is large, and none of the rest is needed)
 function youtubeCookies(text) {
@@ -2673,20 +2763,20 @@ function youtubeCookies(text) {
   }).join('\n') + '\n';
 }
 async function sendCookies(file) {
-  if (file.size > 4 * 1024 * 1024) return toast('That file is too large to be a cookies.txt file. Export it again.', 'err');
+  if (file.size > 4 * 1024 * 1024) return toast(t('youtube.cookiesTooBig'), 'err');
   const text = youtubeCookies(await file.text());
   try {
     S.ytAccount = await api('PUT', '/api/youtube/cookies', { cookies: text }, { timeout: 40000 });
     renderAccount();
-    toast(S.ytAccount.signedIn ? `Signed in${S.ytAccount.name ? ` as ${S.ytAccount.name}` : ''}` : 'YouTube didn’t take these cookies. Export them again.', S.ytAccount.signedIn ? undefined : 'err');
+    toast(S.ytAccount.signedIn ? (S.ytAccount.name ? t('common.signedInAs', { name: S.ytAccount.name }) : t('common.signedIn')) : t('youtube.cookiesRefused'), S.ytAccount.signedIn ? undefined : 'err');
   } catch (e) { if (e.status !== 401) toast(reason(e), 'err'); }
 }
 function renderQuality() {
   const el = $('#ytQuality');
   if (!el || !S.settings) return;
   el.innerHTML = `<div class="group"><div class="row row-wide set-row"><span class="tile t-quality">${icon('diamond')}</span>
-      <div class="row-main"><div class="row-title">Video quality</div><div class="row-sub">Auto picks up to 360p, which plays smoothest. A video without the one picked plays the next one down.</div></div>
-      <div class="row-control">${segHtml('videoQuality', QUALITY, S.settings.videoQuality ?? null, 'Video quality')}</div></div></div>`;
+      <div class="row-main"><div class="row-title">${te('youtube.quality')}</div><div class="row-sub">${te('youtube.qualitySub')}</div></div>
+      <div class="row-control">${segHtml('videoQuality', QUALITY, S.settings.videoQuality ?? null, t('youtube.quality'))}</div></div></div>`;
 }
 // YouTube's page: where it comes from (directly, or through the server when one is connected), the
 // account, playback
@@ -2696,13 +2786,13 @@ function renderYouTube() {
   el.innerHTML = `
     <div class="group">
       <div class="row row-wide set-row">${brandTile('video')}
-        <div class="row-main"><div class="row-title">Connect to</div><div class="row-sub">${s.direct ? `Rondo talks to YouTube itself: nothing to set up. Sign in below for Library, Subscriptions and History.${s.url ? '' : ' To go through your own server, connect one on the <a class="link" href="#server">Server</a> page.'}` : 'YouTube Music and YouTube come through your server.'}</div></div>
-        <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="Connect to" id="srvMode">
-          <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">Directly to YouTube</button>
-          ${s.url ? `<button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0">My server</button>` : ''}</div></div></div>
+        <div class="row-main"><div class="row-title">${te('youtube.connectTo')}</div><div class="row-sub">${s.direct ? (s.url ? te('youtube.direct') : th('youtube.directNoServer', { link: html(`<a class="link" href="#server">${te('nav.server')}</a>`) })) : te('youtube.viaServer')}</div></div>
+        <div class="row-control"><div class="seg seg-wide" role="radiogroup" aria-label="${te('youtube.connectTo')}" id="srvMode">
+          <button type="button" role="radio" aria-checked="${!!s.direct}" data-direct="1">${te('youtube.directly')}</button>
+          ${s.url ? `<button type="button" role="radio" aria-checked="${!s.direct}" data-direct="0">${te('youtube.myServer')}</button>` : ''}</div></div></div>
     </div>
     <div id="ytAccount"></div>
-    <h2 class="gh">Playback</h2>
+    <h2 class="gh">${te('youtube.playback')}</h2>
     <div id="ytQuality"></div>`;
   renderAccount();
   renderQuality();
@@ -2714,53 +2804,53 @@ function renderServer() {
   $('#serverBody').innerHTML = `
     <div class="group">
       <div class="srv-field">
-        <div class="row-title">Your server</div>
-        <div class="row-sub srv-now"><span class="srv-url">${esc(s.url || 'None')}</span>
-          ${s.url ? `<span class="tag ${insecure(s.url) ? 'warn' : 'ok'}">${insecure(s.url) ? 'Not encrypted' : 'Encrypted'}</span>` : ''}
-          <span class="tag ${s.tokenSet ? 'ok' : 'warn'}">${s.tokenSet ? 'Connected' : 'Not connected'}</span></div>
-        ${insecure(s.url) ? '<p class="row-sub srv-warn">Plain http: use it only on your home network.</p>' : ''}
-        ${admin ? `<p class="row-sub"><a class="link" href="${esc(admin)}" target="_blank" rel="noopener">Open the server’s admin page</a></p>` : ''}
+        <div class="row-title">${te('server.yours')}</div>
+        <div class="row-sub srv-now"><span class="srv-url">${esc(s.url || t('server.none'))}</span>
+          ${s.url ? `<span class="tag ${insecure(s.url) ? 'warn' : 'ok'}">${insecure(s.url) ? te('server.notEncrypted') : te('server.encrypted')}</span>` : ''}
+          <span class="tag ${s.tokenSet ? 'ok' : 'warn'}">${s.tokenSet ? te('common.connected') : te('common.notConnected')}</span></div>
+        ${insecure(s.url) ? `<p class="row-sub srv-warn">${te('server.plainHttp')}</p>` : ''}
+        ${admin ? `<p class="row-sub"><a class="link" href="${esc(admin)}" target="_blank" rel="noopener">${te('server.openAdmin')}</a></p>` : ''}
       </div>
     </div>
     <div class="group">
       <form class="srv-field" id="connectForm">
-        <div class="row-title">Connect to a server</div>
-        <p class="row-sub">On the server’s admin page, open Device › Connect a Rondo and type the code it shows.</p>
-        <label class="field-label" for="srvUrl" style="margin-top:12px">Server address</label>
-        <div class="field-row"><input type="url" id="srvUrl" value="${esc(s.url || '')}" placeholder="https://music.example.com or http://192.168.1.10:3000" inputmode="url" autocapitalize="off" autocomplete="url" spellcheck="false"></div>
-        <p class="row-sub srv-warn" id="urlWarn" ${insecure(s.url) ? '' : 'hidden'}>Plain http isn’t encrypted: use it only on your home network.</p>
-        <label class="field-label" for="srvCode" style="margin-top:12px">Connect code</label>
+        <div class="row-title">${te('server.connectTo')}</div>
+        <p class="row-sub">${te('server.connectHelp')}</p>
+        <label class="field-label" for="srvUrl" style="margin-top:12px">${te('server.address')}</label>
+        <div class="field-row"><input type="url" id="srvUrl" value="${esc(s.url || '')}" placeholder="${te('server.addressPlaceholder')}" inputmode="url" autocapitalize="off" autocomplete="url" spellcheck="false"></div>
+        <p class="row-sub srv-warn" id="urlWarn" ${insecure(s.url) ? '' : 'hidden'}>${te('server.plainHttpWarn')}</p>
+        <label class="field-label" for="srvCode" style="margin-top:12px">${te('server.code')}</label>
         <div class="field-row"><input type="text" id="srvCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" spellcheck="false"></div>
         <p class="field-err" id="urlErr" hidden></p>
-        <div class="join-actions" style="margin-top:12px"><button class="btn" type="button" id="urlOnly">Save address only</button><button class="btn btn-primary" type="submit" id="connectBtn">Connect</button></div>
+        <div class="join-actions" style="margin-top:12px"><button class="btn" type="button" id="urlOnly">${te('server.saveAddress')}</button><button class="btn btn-primary" type="submit" id="connectBtn">${te('common.connect')}</button></div>
       </form>
     </div>
     <div class="group">
       <div class="srv-field">
         <div class="srv-token">
-          <div class="row-main"><div class="row-title">Use a token instead <span class="tag ${s.tokenSet ? 'ok' : 'warn'}">${s.tokenSet ? 'Set' : 'Not set'}</span></div>
-            <div class="row-sub">For servers set up with an API token. It’s stored on your Rondo and never shown here.</div></div>
-          <button class="btn btn-sm" type="button" id="tokenEdit">${s.tokenSet ? 'Replace token' : 'Add token'}</button>
+          <div class="row-main"><div class="row-title">${te('server.token')} <span class="tag ${s.tokenSet ? 'ok' : 'warn'}">${s.tokenSet ? te('server.set') : te('server.notSet')}</span></div>
+            <div class="row-sub">${te('server.tokenHelp')}</div></div>
+          <button class="btn btn-sm" type="button" id="tokenEdit">${s.tokenSet ? te('server.replaceToken') : te('server.addToken')}</button>
         </div>
         <form id="tokenForm" hidden style="margin-top:14px">
-          <label class="field-label" for="srvToken">New API token</label>
-          <div class="field-row"><input type="password" id="srvToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste the token from your server"></div>
+          <label class="field-label" for="srvToken">${te('server.newToken')}</label>
+          <div class="field-row"><input type="password" id="srvToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${te('server.tokenPlaceholder')}"></div>
           <p class="field-err" id="tokenErr" hidden></p>
-          <div class="join-actions" style="margin-top:12px"><button class="btn" type="button" id="tokenCancel">Cancel</button><button class="btn btn-primary" type="submit">Save token</button></div>
+          <div class="join-actions" style="margin-top:12px"><button class="btn" type="button" id="tokenCancel">${te('common.cancel')}</button><button class="btn btn-primary" type="submit">${te('server.saveToken')}</button></div>
         </form>
       </div>
     </div>
     <div class="group test">
-      <div class="test-head"><div class="row-main"><div class="row-title">Connection test</div><div class="row-sub">Your Rondo calls the server and reports back.</div></div>
-        <button class="btn btn-primary" type="button" id="srvTest">${icon('refresh')}<span>Test</span></button></div>
+      <div class="test-head"><div class="row-main"><div class="row-title">${te('server.test')}</div><div class="row-sub">${te('server.testSub')}</div></div>
+        <button class="btn btn-primary" type="button" id="srvTest">${icon('refresh')}<span>${te('server.testButton')}</span></button></div>
       <div class="test-res" id="testRes" hidden></div>
     </div>
-    <h2 class="gh">Used for</h2>
+    <h2 class="gh">${te('server.usedFor')}</h2>
     <div class="group">
       <a class="row more-row" href="#youtube">${brandTile('video')}
-        <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${!s.url ? 'Comes directly from YouTube.' : s.direct ? 'Comes directly from YouTube: you can switch it on the YouTube page.' : 'Comes through this server.'}</div></div>${icon('chevron', 'chev')}</a>
+        <div class="row-main"><div class="row-title">YouTube</div><div class="row-sub">${!s.url ? te('server.ytDirect') : s.direct ? te('server.ytDirectSwitch') : te('server.ytVia')}</div></div>${icon('chevron', 'chev')}</a>
       <div class="row set-row">${brandTile('whatsapp')}
-        <div class="row-main"><div class="row-title">WhatsApp</div><div class="row-sub">${s.url ? `Works only through the server. Link it on the server’s admin page${admin ? ` (<a class="link" href="${esc(admin)}#whatsapp" target="_blank" rel="noopener">open it</a>)` : ''}.` : 'Works only through a server: connect one above.'}</div></div></div>
+        <div class="row-main"><div class="row-title">WhatsApp</div><div class="row-sub">${s.url ? (admin ? th('server.waLinkOpen', { link: html(`<a class="link" href="${esc(admin)}#whatsapp" target="_blank" rel="noopener">${te('common.openIt')}</a>`) }) : te('server.waLink')) : te('server.waNone')}</div></div></div>
     </div>`;
 }
 const serverBody = $('#serverBody'), ytBody = $('#ytBody');
@@ -2776,14 +2866,14 @@ ytBody.addEventListener('click', async (e) => {
   if (e.target.closest('[data-act="tv-cancel"]')) return tvAct('cancel');
   if (e.target.closest('[data-act="tv-signout"]')) return tvAct('signout');
   if (e.target.closest('[data-act="tv-copy"]')) {
-    try { await navigator.clipboard.writeText(S.ytTv?.pending?.code || ''); toast('Code copied'); } catch { toast('Couldn’t copy: type it in', 'err'); }
+    try { await navigator.clipboard.writeText(S.ytTv?.pending?.code || ''); toast(t('youtube.codeCopied')); } catch { toast(t('youtube.couldntCopy'), 'err'); }
     return;
   }
   if (e.target.closest('[data-act="signout"]')) {
     try {
       S.ytAccount = await api('DELETE', '/api/youtube/cookies', undefined, { timeout: 30000 });
       renderAccount();
-      toast('Signed out on your Rondo');
+      toast(t('common.signedOutOnRondo'));
     } catch (err) { if (err.status !== 401) toast(reason(err), 'err'); }
     return;
   }
@@ -2794,8 +2884,8 @@ ytBody.addEventListener('click', async (e) => {
     renderServer();
     renderYouTube();
     loadYtAccount();
-    toast('Saved on your Rondo');
-  } catch (err) { if (err.status !== 401) toast(`Not saved. ${reason(err)}`, 'err'); }
+    toast(t('common.savedOnRondo'));
+  } catch (err) { if (err.status !== 401) toast(t('common.notSaved', { reason: reason(err) }), 'err'); }
 });
 serverBody.addEventListener('input', (e) => {
   if (e.target.id === 'srvUrl') {
@@ -2828,7 +2918,7 @@ function serverUrl() {
   if (ok) return v;
   input.classList.add('is-invalid');
   err.hidden = false;
-  err.textContent = 'Enter a full address, like https://music.example.com or http://192.168.1.10:3000';
+  err.textContent = t('server.badUrl');
   input.focus();
   return null;
 }
@@ -2843,8 +2933,8 @@ serverBody.addEventListener('click', async (e) => {
     try {
       S.server = await api('PUT', '/api/server', { url });
       renderServer();
-      toast('Server address saved');
-    } catch (e2) { if (e2.status !== 401) { $('#urlErr').hidden = false; $('#urlErr').textContent = `Not saved. ${reason(e2)}`; } }
+      toast(t('server.addressSaved'));
+    } catch (e2) { if (e2.status !== 401) { $('#urlErr').hidden = false; $('#urlErr').textContent = t('common.notSaved', { reason: reason(e2) }); } }
   }
 });
 serverBody.addEventListener('submit', async (e) => {
@@ -2854,68 +2944,68 @@ serverBody.addEventListener('submit', async (e) => {
     if (!url) return;
     const codeInput = $('#srvCode'), err = $('#urlErr'), btn = $('#connectBtn');
     const code = codeInput.value.replace(/\D/g, '');
-    if (code.length !== 6) { codeInput.classList.add('is-invalid'); err.hidden = false; err.textContent = 'Type the 6-digit code from the admin page.'; return codeInput.focus(); }
+    if (code.length !== 6) { codeInput.classList.add('is-invalid'); err.hidden = false; err.textContent = t('server.codeNeeded'); return codeInput.focus(); }
     btn.disabled = true;
-    btn.textContent = 'Connecting…';
+    btn.textContent = t('common.connecting');
     try {
       S.server = await api('PUT', '/api/server', { url, code });
       renderServer();
-      toast('Connected to your server');
+      toast(t('server.connected'));
     } catch (e2) {
       if (e2.status === 401) return;
       btn.disabled = false;
-      btn.textContent = 'Connect';
+      btn.textContent = t('common.connect');
       err.hidden = false;
-      err.textContent = e2.status === 403 ? 'That code is wrong or has expired. Make a new one on the admin page.'
-        : e2.code === 'unreachable' ? 'Your Rondo can’t reach that address. Check it, and that both are on the same network for a home server.'
-        : `Couldn’t connect. ${reason(e2)}`;
+      err.textContent = e2.status === 403 ? t('server.wrongCode')
+        : e2.code === 'unreachable' ? t('server.unreachable')
+        : t('server.couldntConnect', { reason: reason(e2) });
     }
   }
   if (e.target.id === 'tokenForm') {
     const input = $('#srvToken'), err = $('#tokenErr');
     const v = input.value.trim();
-    if (!v) { err.hidden = false; err.textContent = 'Paste the token first.'; return input.focus(); }
+    if (!v) { err.hidden = false; err.textContent = t('server.pasteFirst'); return input.focus(); }
     try {
       S.server = await api('PUT', '/api/server', { token: v });
       renderServer();
-      toast('Token saved');
-    } catch (e2) { if (e2.status !== 401) { err.hidden = false; err.textContent = `Not saved. ${reason(e2)}`; } }
+      toast(t('server.tokenSaved'));
+    } catch (e2) { if (e2.status !== 401) { err.hidden = false; err.textContent = t('common.notSaved', { reason: reason(e2) }); } }
   }
 });
 // one fact of the connection test: a check (or an alert when not ok), title, note, value
 function testRow(ok, title, sub, value, detail = '', muted = false) {
   const ico = ok ? (muted ? '<svg class="i" aria-hidden="true"><use href="#i-info"/></svg>' : '<svg class="i ok-ico" aria-hidden="true"><use href="#i-check"/></svg>')
     : '<svg class="i" aria-hidden="true" style="color:var(--amber)"><use href="#i-alert"/></svg>';
-  const subs = [sub, detail].filter(Boolean).map((t) => `<div class="row-sub">${esc(t)}</div>`).join('');
+  const subs = [sub, detail].filter(Boolean).map((x) => `<div class="row-sub">${esc(x)}</div>`).join('');
   return `<div class="row">${ico}<div class="row-main"><div class="row-title">${esc(title)}</div>${subs}</div><div class="row-value">${esc(value)}</div></div>`;
 }
 async function testServer() {
   const btn = $('#srvTest'), res = $('#testRes');
   btn.disabled = true;
   btn.classList.add('is-busy');
-  $('span', btn).textContent = 'Testing…';
+  $('span', btn).textContent = t('server.testing');
   let r;
   try { r = await api('POST', '/api/server/test', undefined, { timeout: 30000 }); } catch (e) {
     if (e.status === 401) return;
-    r = { ok: false, error: e.status === 0 ? 'rondo' : e.code || `error ${e.status}` };
+    r = { ok: false, error: e.status === 0 ? 'rondo' : e.code || t('server.errorStatus', { status: String(e.status) }) };
   }
   btn.disabled = false;
   btn.classList.remove('is-busy');
-  $('span', btn).textContent = 'Test again';
+  $('span', btn).textContent = t('server.testAgain');
   res.hidden = false;
   if (r.ok) {
     res.innerHTML = `
-      <div class="row"><svg class="i ok-ico" aria-hidden="true"><use href="#i-check"/></svg><div class="row-main"><div class="row-title">Connected</div></div><div class="row-value strong">${r.latencyMs} ms</div></div>
-      ${r.versionOk === false ? testRow(false, 'Server needs an update', `This Rondo needs Rondo server ${r.versionNeeded} or newer. Update it on the server’s admin page.`, r.version || 'Older than 3.1.0') : testRow(true, 'Server', '', r.version ? `Rondo server ${r.version}` : '')}
-      ${testRow(r.playbackOk !== false, 'Playback', r.playbackOk === false ? 'The server’s last playback check failed. Update yt-dlp on the server’s admin page.' : '', r.playbackOk === false ? 'Failing' : r.playbackOk ? 'Working' : 'Not checked yet', r.ytdlp ? `yt-dlp ${r.ytdlp}` : '')}
-      ${testRow(true, 'YouTube account', r.signedIn ? '' : 'Search and playback work without one. Sign in on the server’s admin page for your home, subscriptions and playlists.', r.signedIn ? 'Signed in' : 'Signed out', '', !r.signedIn)}`;
+      <div class="row"><svg class="i ok-ico" aria-hidden="true"><use href="#i-check"/></svg><div class="row-main"><div class="row-title">${te('common.connected')}</div></div><div class="row-value strong">${r.latencyMs} ms</div></div>
+      ${r.versionOk === false ? testRow(false, t('server.needsUpdate'), t('server.needsUpdateText', { version: String(r.versionNeeded) }), r.version || t('server.olderThan', { version: '3.1.0' })) : testRow(true, t('nav.server'), '', r.version ? t('server.version', { version: String(r.version) }) : '')}
+      ${testRow(r.playbackOk !== false, t('youtube.playback'), r.playbackOk === false ? t('server.playbackFailed') : '', r.playbackOk === false ? t('server.failing') : r.playbackOk ? t('server.working') : t('server.notChecked'), r.ytdlp ? `yt-dlp ${r.ytdlp}` : '')}
+      ${testRow(true, t('youtube.account'), r.signedIn ? '' : t('server.noAccount'), r.signedIn ? t('common.signedIn') : t('common.signedOut'), '', !r.signedIn)}`;
   } else {
     const msg = {
-      unreachable: ['Can’t reach the server', 'Check the address, and that the server is running.'],
-      unauthorized: ['The server refused the token', 'Replace the token with the one your server expects.'],
-      rondo: ['Your Rondo didn’t answer', 'Keep Settings › Dashboard open on the Rondo and try again.'],
-      none: ['No server yet', 'Connect to one above.'],
-    }[r.error] || ['The test failed', r.error || 'No details.'];
+      unreachable: [t('server.cantReach'), t('server.cantReachText')],
+      unauthorized: [t('server.refused'), t('server.refusedText')],
+      rondo: [t('server.rondoNoAnswer'), t('server.rondoNoAnswerText')],
+      none: [t('server.noServer'), t('server.noServerText')],
+    }[r.error] || [t('server.testFailed'), r.error || t('server.noDetails')];
     res.innerHTML = `<div class="row"><svg class="i err-ico" aria-hidden="true"><use href="#i-alert"/></svg><div class="row-main"><div class="row-title">${esc(msg[0])}</div><div class="row-sub">${esc(msg[1])}</div></div></div>`;
   }
 }
@@ -2944,17 +3034,17 @@ async function loadDateTime() {
     S.dateTimeAt = Date.now();
     renderDateTime();
   } catch (e) {
-    if (e.status !== 401 && !S.dateTime) $('#dateRows').innerHTML = `<div class="row-empty">Couldn’t load the date and time. ${esc(reason(e))}</div>`;
+    if (e.status !== 401 && !S.dateTime) $('#dateRows').innerHTML = `<div class="row-empty">${te('settings.date.couldntLoad', { reason: reason(e) })}</div>`;
   }
 }
 // the Rondo's clock now, as a datetime-local value in its own time zone
 function rondoLocal(d) {
-  const t = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
-  return t.toISOString().slice(0, 16);
+  const at = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
+  return at.toISOString().slice(0, 16);
 }
 function rondoClock(d) {
-  const t = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
-  return t.toLocaleString(undefined, { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short', hour12: !d.clock24 });
+  const at = new Date((d.now + d.offsetSec) * 1000 + (Date.now() - S.dateTimeAt));
+  return at.toLocaleString(dateLocale(), { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short', hour12: !d.clock24 });
 }
 function renderDateTime() {
   const d = S.dateTime;
@@ -2962,30 +3052,30 @@ function renderDateTime() {
   const zones = d.zones.map((z) => `<option value="${esc(z.id)}"${z.id === d.zone ? ' selected' : ''}>${esc(z.gmt)} · ${esc(z.city)}</option>`).join('');
   $('#dateRows').innerHTML = `
     <div class="row set-row"><span class="tile t-sync">${icon('sync')}</span>
-      <div class="row-main"><div class="row-title">Set automatically</div><div class="row-sub">From the network when Wi-Fi is on. Now: <b id="dtNow">${esc(rondoClock(d))}</b></div></div>
-      <button class="switch" type="button" role="switch" data-dt="autoTime" aria-checked="${d.autoTime}" aria-label="Set the time automatically"></button></div>
+      <div class="row-main"><div class="row-title">${te('settings.date.auto')}</div><div class="row-sub">${th('settings.date.autoSub', { now: html(`<b id="dtNow">${esc(rondoClock(d))}</b>`) })}</div></div>
+      <button class="switch" type="button" role="switch" data-dt="autoTime" aria-checked="${d.autoTime}" aria-label="${te('settings.date.autoLabel')}"></button></div>
     ${d.autoTime ? '' : `<div class="row row-wide set-row"><span class="tile t-clock">${icon('clock')}</span>
-      <div class="row-main"><div class="row-title">Date and time</div><div class="row-sub">Set on your Rondo, in its time zone.</div></div>
-      <div class="row-control date-set"><input type="datetime-local" id="dtValue" value="${esc(rondoLocal(d))}" aria-label="Date and time">
-        <button class="btn btn-sm" type="button" id="dtFromHere">Use this computer’s time</button><button class="btn btn-sm btn-primary" type="button" id="dtSet">Set</button></div></div>`}
+      <div class="row-main"><div class="row-title">${te('settings.date.dateTime')}</div><div class="row-sub">${te('settings.date.dateTimeSub')}</div></div>
+      <div class="row-control date-set"><input type="datetime-local" id="dtValue" value="${esc(rondoLocal(d))}" aria-label="${te('settings.date.dateTime')}">
+        <button class="btn btn-sm" type="button" id="dtFromHere">${te('settings.date.fromHere')}</button><button class="btn btn-sm btn-primary" type="button" id="dtSet">${te('settings.date.set')}</button></div></div>`}
     <div class="row set-row"><span class="tile t-zone">${icon('broadcast')}</span>
-      <div class="row-main"><div class="row-title">Time zone automatically</div><div class="row-sub">Where your Rondo is online. Now: ${esc(d.city)} (${esc(d.zone)})</div></div>
-      <button class="switch" type="button" role="switch" data-dt="autoZone" aria-checked="${d.autoZone}" aria-label="Set the time zone automatically"></button></div>
+      <div class="row-main"><div class="row-title">${te('settings.date.autoZone')}</div><div class="row-sub">${te('settings.date.autoZoneSub', { city: d.city, zone: d.zone })}</div></div>
+      <button class="switch" type="button" role="switch" data-dt="autoZone" aria-checked="${d.autoZone}" aria-label="${te('settings.date.autoZoneLabel')}"></button></div>
     ${d.autoZone ? '' : `<div class="row row-wide set-row"><span class="tile t-globe">${icon('globe')}</span>
-      <div class="row-main"><div class="row-title">Time zone</div></div>
-      <div class="row-control"><div class="select"><select id="dtZone" aria-label="Time zone">${zones}</select>${icon('down')}</div></div></div>`}
+      <div class="row-main"><div class="row-title">${te('settings.date.zone')}</div></div>
+      <div class="row-control"><div class="select"><select id="dtZone" aria-label="${te('settings.date.zone')}">${zones}</select>${icon('down')}</div></div></div>`}
     <div class="row set-row"><span class="tile t-timer">${icon('timer')}</span>
-      <div class="row-main"><div class="row-title">24-hour time</div><div class="row-sub">Off: AM and PM.</div></div>
-      <button class="switch" type="button" role="switch" data-dt="clock24" aria-checked="${d.clock24}" aria-label="24-hour time"></button></div>`;
+      <div class="row-main"><div class="row-title">${te('settings.date.clock24')}</div><div class="row-sub">${te('settings.date.clock24Sub')}</div></div>
+      <button class="switch" type="button" role="switch" data-dt="clock24" aria-checked="${d.clock24}" aria-label="${te('settings.date.clock24')}"></button></div>`;
 }
 async function putDateTime(body) {
   try {
     S.dateTime = await api('PUT', '/api/datetime', body);
     S.dateTimeAt = Date.now();
     renderDateTime();
-    toast('Saved on your Rondo');
+    toast(t('common.savedOnRondo'));
   } catch (e) {
-    if (e.status !== 401) toast(`Not saved. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('common.notSaved', { reason: reason(e) }), 'err');
     renderDateTime();
   }
 }
@@ -3014,8 +3104,8 @@ setInterval(() => { const el = document.getElementById('dtNow'); if (el && S.dat
 // Each output's own: the equalizer (a preset, or ten bands of your own), headphone match, the loudness
 // boost; for every output: volume leveling, the amplifier and the volume limit.
 let soundOut = null, eqTimer = 0;
-const BOOSTS = [[0, 'Off'], [3, '+3 dB'], [6, '+6 dB'], [9, '+9 dB'], [12, '+12 dB']];
-const AMPS = [[0, 'Standard'], [1, '+2 dB'], [2, '+4 dB'], [3, '+6 dB']];
+const BOOSTS = [[0, t('common.off')], [3, '+3 dB'], [6, '+6 dB'], [9, '+9 dB'], [12, '+12 dB']];
+const AMPS = [[0, t('sound.standard')], [1, '+2 dB'], [2, '+4 dB'], [3, '+6 dB']];
 const freqName = (f) => (f >= 1000 ? `${f / 1000}k` : String(f));
 const gainName = (g) => (g > 0 ? `+${g.toFixed(1)}` : g.toFixed(1)).replace('.0', '');
 async function loadSound(quiet = false) {
@@ -3024,7 +3114,7 @@ async function loadSound(quiet = false) {
     S.sound = await api('GET', '/api/sound');
     renderSound();
   } catch (e) {
-    if (e.status !== 401 && !S.sound) $('#soundBody').innerHTML = `<div class="group"><div class="row-empty">Couldn’t load the sound settings. ${esc(reason(e))} <button class="link" type="button" data-act="reload">Try again</button></div></div>`;
+    if (e.status !== 401 && !S.sound) $('#soundBody').innerHTML = `<div class="group"><div class="row-empty">${te('sound.couldntLoad', { reason: reason(e) })} <button class="link" type="button" data-act="reload">${te('common.tryAgain')}</button></div></div>`;
   }
 }
 function soundOutput() {
@@ -3034,43 +3124,43 @@ function soundOutput() {
 }
 function renderSound() {
   const s = S.sound, o = soundOutput();
-  const outs = s.outputs.map((x) => `<button type="button" role="radio" aria-checked="${x.key === o.key}" data-out="${esc(x.key)}">${esc(x.label)}${x.key === s.current ? ' · playing' : ''}</button>`).join('');
+  const outs = s.outputs.map((x) => `<button type="button" role="radio" aria-checked="${x.key === o.key}" data-out="${esc(x.key)}">${x.key === s.current ? te('sound.outputPlaying', { name: x.label }) : esc(x.label)}</button>`).join('');
   const presets = [...s.presets.map((p) => [p.id, p.name + (p.note ? ` (${p.note})` : '')]), ...s.userPresets.map((u) => ['user:' + u.name, u.name]),
-    ...(o.match ? [['autoeq', `${o.match.name} (headphone match)`]] : []), ['custom', 'Custom (your own bands)']];
+    ...(o.match ? [['autoeq', t('sound.matchPreset', { name: o.match.name })]] : []), ['custom', t('sound.custom')]];
   const bands = s.freqs.map((fr, i) => `<label class="eq-band"><output>${gainName(o.gains[i])}</output>
       <input type="range" min="-12" max="12" step="0.5" value="${o.gains[i]}" data-band="${i}" aria-label="${freqName(fr)} Hz"><span>${freqName(fr)}</span></label>`).join('');
   const user = o.preset.startsWith('user:') ? o.preset.slice(5) : '';
-  const limitName = (v) => (v >= s.maxVolume ? 'No limit' : `${v} of ${s.maxVolume}`);
+  const limitName = (v) => (v >= s.maxVolume ? t('sound.noLimit') : t('common.nOfTotal', { n: v, total: s.maxVolume }));
   $('#soundBody').innerHTML = `
     <div class="group"><div class="row row-wide set-row"><span class="tile t-output">${icon('headphones')}</span>
-      <div class="row-main"><div class="row-title">Output</div><div class="row-sub">The one music plays on now is marked “playing”. Changes to another apply when it plays.</div></div>
-      <div class="row-control"><div class="seg seg-wide sound-out" role="radiogroup" aria-label="Output" id="soundOuts">${outs}</div></div></div></div>
+      <div class="row-main"><div class="row-title">${te('sound.output')}</div><div class="row-sub">${te('sound.outputSub')}</div></div>
+      <div class="row-control"><div class="seg seg-wide sound-out" role="radiogroup" aria-label="${te('sound.output')}" id="soundOuts">${outs}</div></div></div></div>
     <h2 class="gh">${esc(o.label)}</h2>
     <div class="group">
       <div class="row row-wide set-row"><span class="tile t-eq">${icon('sliders')}</span>
-        <div class="row-main"><div class="row-title">Equalizer</div><div class="row-sub">Moving a band makes it your own (Custom).</div></div>
-        <div class="row-control"><div class="select"><select id="eqPreset" aria-label="Equalizer preset">${presets.map(([v, l]) => `<option value="${esc(v)}"${v === o.preset ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div></div></div>
+        <div class="row-main"><div class="row-title">${te('sound.equalizer')}</div><div class="row-sub">${te('sound.equalizerSub')}</div></div>
+        <div class="row-control"><div class="select"><select id="eqPreset" aria-label="${te('sound.presetLabel')}">${presets.map(([v, l]) => `<option value="${esc(v)}"${v === o.preset ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>${icon('down')}</div></div></div>
       <div class="eq" id="eqBands">${bands}</div>
-      <div class="eq-actions"><button class="btn btn-sm" type="button" id="eqFlat">Flat</button><button class="btn btn-sm" type="button" id="eqSave">${icon('plus')}<span>Save as a preset</span></button>
-        ${user ? `<button class="btn btn-sm btn-red-text" type="button" id="eqDelete" data-name="${esc(user)}">${icon('trash')}<span>Delete “${esc(user)}”</span></button>` : ''}</div>
+      <div class="eq-actions"><button class="btn btn-sm" type="button" id="eqFlat">${te('sound.flat')}</button><button class="btn btn-sm" type="button" id="eqSave">${icon('plus')}<span>${te('sound.saveAs')}</span></button>
+        ${user ? `<button class="btn btn-sm btn-red-text" type="button" id="eqDelete" data-name="${esc(user)}">${icon('trash')}<span>${te('sound.deletePreset', { name: user })}</span></button>` : ''}</div>
       ${o.key === 'speaker' ? '' : `<div class="row set-row"><span class="tile t-search">${icon('search')}</span>
-        <div class="row-main"><div class="row-title">Headphone match</div><div class="row-sub">${o.match ? `${esc(o.match.name)}, measured by ${esc(o.match.source)}${o.preset === 'autoeq' ? ' · in use' : ''}` : 'A correction for your model, from AutoEq’s measurements of about 9,000 headphones.'}</div></div>
-        <button class="btn btn-sm" type="button" id="matchFind">${o.match ? 'Change model' : 'Find your model'}</button></div>`}
+        <div class="row-main"><div class="row-title">${te('sound.match')}</div><div class="row-sub">${o.match ? (o.preset === 'autoeq' ? te('sound.matchInUse', { name: o.match.name, source: o.match.source }) : te('sound.matchSub', { name: o.match.name, source: o.match.source })) : te('sound.matchNone')}</div></div>
+        <button class="btn btn-sm" type="button" id="matchFind">${o.match ? te('sound.changeModel') : te('sound.findModel')}</button></div>`}
       <div class="row row-wide set-row"><span class="tile t-now">${icon('volume')}</span>
-        <div class="row-main"><div class="row-title">Loudness boost</div><div class="row-sub">Louder; the peaks are held, never clipped.</div></div>
-        <div class="row-control">${segHtml('boostDb', BOOSTS, o.boostDb, 'Loudness boost')}</div></div>
+        <div class="row-main"><div class="row-title">${te('sound.boost')}</div><div class="row-sub">${te('sound.boostSub')}</div></div>
+        <div class="row-control">${segHtml('boostDb', BOOSTS, o.boostDb, t('sound.boost'))}</div></div>
     </div>
-    <h2 class="gh">Every output</h2>
+    <h2 class="gh">${te('sound.every')}</h2>
     <div class="group">
       <div class="row set-row"><span class="tile t-level">${icon('gauge')}</span>
-        <div class="row-main"><div class="row-title">Volume leveling</div><div class="row-sub">${esc(s.levelingNote)}</div></div>
-        <button class="switch" type="button" role="switch" data-key="leveling" aria-checked="${s.leveling}" aria-label="Volume leveling"></button></div>
+        <div class="row-main"><div class="row-title">${te('sound.leveling')}</div><div class="row-sub">${esc(s.levelingNote)}</div></div>
+        <button class="switch" type="button" role="switch" data-key="leveling" aria-checked="${s.leveling}" aria-label="${te('sound.leveling')}"></button></div>
       ${s.amplifier >= 0 ? `<div class="row row-wide set-row"><span class="tile t-amp">${icon('bolt')}</span>
-        <div class="row-main"><div class="row-title">Amplifier</div><div class="row-sub">The Y1’s own, for headphones and the speaker. Standard is the cleanest, +6 dB the loudest with more hiss.</div></div>
-        <div class="row-control">${segHtml('amplifier', AMPS, s.amplifier, 'Amplifier')}</div></div>` : ''}
+        <div class="row-main"><div class="row-title">${te('sound.amplifier')}</div><div class="row-sub">${te('sound.amplifierSub')}</div></div>
+        <div class="row-control">${segHtml('amplifier', AMPS, s.amplifier, t('sound.amplifier'))}</div></div>` : ''}
       <div class="row row-wide set-row"><span class="tile t-limit">${icon('lock')}</span>
-        <div class="row-main"><div class="row-title">Volume limit</div><div class="row-sub">The highest step the wheel and this page can set, on every output. Anything louder comes down to it.</div></div>
-        <div class="row-control"><div class="range-row">${icon('volume')}<input type="range" id="volLimit" min="1" max="${s.maxVolume}" step="1" value="${s.volumeLimit}" aria-label="Volume limit"><output id="volLimitOut">${limitName(s.volumeLimit)}</output></div></div></div>
+        <div class="row-main"><div class="row-title">${te('sound.limit')}</div><div class="row-sub">${te('sound.limitSub')}</div></div>
+        <div class="row-control"><div class="range-row">${icon('volume')}<input type="range" id="volLimit" min="1" max="${s.maxVolume}" step="1" value="${s.volumeLimit}" aria-label="${te('sound.limit')}"><output id="volLimitOut">${esc(limitName(s.volumeLimit))}</output></div></div></div>
     </div>`;
   setFill($('#volLimit'));
 }
@@ -3078,10 +3168,10 @@ async function putSound(body, { quiet = false } = {}) {
   try {
     S.sound = await api('PUT', '/api/sound', { output: soundOutput().key, ...body });
     renderSound();
-    if (!quiet) toast('Saved on your Rondo');
+    if (!quiet) toast(t('common.savedOnRondo'));
     return true;
   } catch (e) {
-    if (e.status !== 401) toast(`Not saved. ${reason(e)}`, 'err');
+    if (e.status !== 401) toast(t('common.notSaved', { reason: reason(e) }), 'err');
     loadSound(true);
     return false;
   }
@@ -3100,13 +3190,13 @@ soundBody.addEventListener('click', async (e) => {
   if (sw) return putSound({ [sw.dataset.key]: sw.getAttribute('aria-checked') !== 'true' });  // leveling
   if (e.target.closest('#eqFlat')) return putSound({ preset: 'flat' });
   if (e.target.closest('#eqSave')) {
-    const name = await promptSheet({ title: 'Name this preset', text: 'Kept with the presets, for every output.', action: 'Save', placeholder: 'Name' });
+    const name = await promptSheet({ title: t('sound.presetName'), text: te('sound.presetNameText'), action: t('common.save'), placeholder: t('common.name') });
     if (name) putSound({ savePreset: name, custom: soundOutput().gains });
     return;
   }
   const del = e.target.closest('#eqDelete');
   if (del) {
-    if (await confirmSheet({ title: `Delete “${del.dataset.name}”?`, text: 'Outputs using it go back to Flat.', action: 'Delete' })) putSound({ deletePreset: del.dataset.name });
+    if (await confirmSheet({ title: t('common.deleteName', { name: del.dataset.name }), text: te('sound.deleteText'), action: t('common.delete') })) putSound({ deletePreset: del.dataset.name });
     return;
   }
   if (e.target.closest('#matchFind')) findMatch();
@@ -3128,29 +3218,29 @@ soundBody.addEventListener('input', (e) => {
   }
   if (e.target.id === 'volLimit') {
     setFill(e.target);
-    $('#volLimitOut').textContent = +e.target.value >= S.sound.maxVolume ? 'No limit' : `${e.target.value} of ${S.sound.maxVolume}`;
+    $('#volLimitOut').textContent = +e.target.value >= S.sound.maxVolume ? t('sound.noLimit') : t('common.nOfTotal', { n: +e.target.value, total: S.sound.maxVolume });
   }
 });
 // Headphone match: a model looked up on the server's AutoEq index, its correction kept with the output
 function findMatch() {
   const o = soundOutput();
-  openSheet(`<h2>Headphone match</h2><p>For ${esc(o.label)}. Through your Rondo server.</p>
-    <form class="sheet-form" id="matchForm"><label class="search pick-search">${icon('search')}<input type="search" placeholder="Like Sennheiser HD 650 or AirPods Pro" value="${esc(o.key.startsWith('bt:') ? o.label : '')}" autocomplete="off" aria-label="Headphone model"></label></form>
-    <div class="match-list" id="matchList"></div><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+  openSheet(`<h2>${te('sound.match')}</h2><p>${te('sound.matchFor', { name: o.label })}</p>
+    <form class="sheet-form" id="matchForm"><label class="search pick-search">${icon('search')}<input type="search" placeholder="${te('sound.matchPlaceholder')}" value="${esc(o.key.startsWith('bt:') ? o.label : '')}" autocomplete="off" aria-label="${te('sound.model')}"></label></form>
+    <div class="match-list" id="matchList"></div><div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.close')}</button></div>`);
   const input = $('input', sheet), list = $('#matchList', sheet);
   let asked = 0;
   const search = async () => {
     const q = input.value.trim();
     if (!q) return;
     const mine = ++asked;
-    list.innerHTML = '<div class="row-empty">Looking…</div>';
+    list.innerHTML = `<div class="row-empty">${te('sound.looking')}</div>`;
     try {
       const r = await api('GET', `/api/sound/match?q=${encodeURIComponent(q)}`, undefined, { timeout: 60000 });
       if (mine !== asked) return;
       const items = r.items || [];
-      list.innerHTML = items.length ? items.map((it) => `<button type="button" data-id="${esc(it.id)}" data-name="${esc(it.name)}" data-source="${esc(it.source)}"><div class="row-title">${esc(it.name)}</div><div class="row-sub">Measured by ${esc(it.source)}</div></button>`).join('') : '<div class="row-empty">No model by that name.</div>';
+      list.innerHTML = items.length ? items.map((it) => `<button type="button" data-id="${esc(it.id)}" data-name="${esc(it.name)}" data-source="${esc(it.source)}"><div class="row-title">${esc(it.name)}</div><div class="row-sub">${te('sound.measuredBy', { source: it.source })}</div></button>`).join('') : `<div class="row-empty">${te('sound.noModel')}</div>`;
     } catch (e) {
-      if (mine === asked) list.innerHTML = `<div class="row-empty">${esc(e.status === 404 ? 'Your server can’t look headphones up yet: update it.' : reason(e))}</div>`;
+      if (mine === asked) list.innerHTML = `<div class="row-empty">${esc(e.status === 404 ? t('sound.serverOld') : reason(e))}</div>`;
     }
   };
   $('#matchForm', sheet).addEventListener('submit', (e) => { e.preventDefault(); search(); });
@@ -3158,12 +3248,12 @@ function findMatch() {
   list.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-id]');
     if (!b) return;
-    list.innerHTML = `<div class="row-empty">Getting ${esc(b.dataset.name)}…</div>`;
+    list.innerHTML = `<div class="row-empty">${te('sound.getting', { name: b.dataset.name })}</div>`;
     try {
       S.sound = await api('POST', '/api/sound/match', { output: o.key, id: b.dataset.id, name: b.dataset.name, source: b.dataset.source }, { timeout: 60000 });
       sheet.close();
       renderSound();
-      toast(`${b.dataset.name}: in use on ${o.label}`);
+      toast(t('sound.inUse', { name: b.dataset.name, output: o.label }));
     } catch (err) { list.innerHTML = `<div class="row-empty">${esc(reason(err))}</div>`; }
   });
   input.focus();
@@ -3175,61 +3265,62 @@ function findMatch() {
 // Rondo whenever they're opened: they follow what you add, play and rate. Saved on the card beside
 // the playlists; the Rondo lists and plays them under Library › Playlists.
 const SM_FIELDS = [
-  ['title', 'Title', 'text'], ['artist', 'Artist', 'text'], ['album', 'Album', 'text'], ['albumArtist', 'Album artist', 'text'],
-  ['genre', 'Genre', 'text'], ['folder', 'Folder', 'text'], ['year', 'Year', 'number'], ['rating', 'Rating (stars)', 'number'],
-  ['plays', 'Plays', 'number'], ['length', 'Length (seconds)', 'number'], ['added', 'Added', 'date'], ['lastPlayed', 'Last played', 'date'],
+  ['title', t('library.sort.title'), 'text'], ['artist', t('library.sort.artist'), 'text'], ['album', t('library.sort.album'), 'text'], ['albumArtist', t('library.sort.albumArtist'), 'text'],
+  ['genre', t('library.sort.genre'), 'text'], ['folder', t('smart.field.folder'), 'text'], ['year', t('library.sort.year'), 'number'], ['rating', t('smart.field.rating'), 'number'],
+  ['plays', t('smart.field.plays'), 'number'], ['length', t('smart.field.length'), 'number'], ['added', t('smart.field.added'), 'date'], ['lastPlayed', t('smart.field.lastPlayed'), 'date'],
 ];
 const SM_OPS = {
-  text: [['contains', 'contains'], ['is', 'is'], ['isNot', 'is not'], ['notContains', 'doesn’t contain'], ['startsWith', 'starts with']],
-  number: [['atLeast', 'is at least'], ['atMost', 'is at most'], ['is', 'is'], ['isNot', 'is not']],
-  date: [['inLast', 'in the last'], ['notInLast', 'not in the last']],
+  text: [['contains', t('smart.op.contains')], ['is', t('smart.op.is')], ['isNot', t('smart.op.isNot')], ['notContains', t('smart.op.notContains')], ['startsWith', t('smart.op.startsWith')]],
+  number: [['atLeast', t('smart.op.atLeast')], ['atMost', t('smart.op.atMost')], ['is', t('smart.op.is')], ['isNot', t('smart.op.isNot')]],
+  date: [['inLast', t('smart.op.inLast')], ['notInLast', t('smart.op.notInLast')]],
 };
-const SM_SORTS = [['artist', 'Artist'], ['album', 'Album'], ['title', 'Title'], ['random', 'Random'], ['added', 'Recently added'],
-  ['lastPlayed', 'Recently played'], ['plays', 'Most played'], ['rating', 'Best rated'], ['year', 'Newest year']];
+const SM_SORTS = [['artist', t('library.sort.artist')], ['album', t('library.sort.album')], ['title', t('library.sort.title')], ['random', t('smart.sort.random')], ['added', t('library.sort.added')],
+  ['lastPlayed', t('library.sort.played')], ['plays', t('library.sort.plays')], ['rating', t('smart.sort.rating')], ['year', t('smart.sort.year')]];
 const smKind = (field) => (SM_FIELDS.find((x) => x[0] === field) || SM_FIELDS[0])[2];
+// "genre contains “Pop”": the field's name without its unit, in lower case
 function smRuleText(r) {
-  const fl = (SM_FIELDS.find((x) => x[0] === r.field) || [r.field, r.field])[1].replace(/ \(.*\)/, '').toLowerCase();
+  const field = (SM_FIELDS.find((x) => x[0] === r.field) || [r.field, r.field])[1].replace(/ \(.*\)/, '').toLocaleLowerCase(L.code);
   const op = ((SM_OPS[smKind(r.field)] || []).find((x) => x[0] === r.op) || [r.op, r.op])[1];
-  const v = smKind(r.field) === 'date' ? plural(r.value, 'day') : smKind(r.field) === 'text' ? `“${r.value}”` : r.value;
-  return `${fl} ${op} ${v}`;
+  const value = smKind(r.field) === 'date' ? t('smart.days', { count: r.value }) : smKind(r.field) === 'text' ? `“${r.value}”` : String(r.value);
+  return t('smart.rule', { field, op, value });
 }
-const smSub = (p) => `${plural(p.count, 'song')}${p.durationSec ? ` · ${fmtDur(p.durationSec)}` : ''} · ${p.rules.map(smRuleText).join(p.match === 'any' ? ' or ' : ', ')}`;
+const smSub = (p) => `${t('common.songs', { count: p.count })}${p.durationSec ? ` · ${fmtDur(p.durationSec)}` : ''} · ${p.rules.map(smRuleText).join(p.match === 'any' ? t('smart.or') : ', ')}`;
 function smartListHtml(q) {
   const all = S.smart || [];
   const shown = q ? all.filter((p) => q.split(/\s+/).every((w) => fold(p.title || p.name).includes(w))) : all;
-  return `<div class="lhdr" role="heading" aria-level="3">Smart playlists</div>
-    <div class="song pl-row pl-new" role="listitem" data-act="sm-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">New smart playlist</span><span class="s-sub">Songs picked by rules: a genre, a year, what you play and rate</span></span></div>` +
+  return `<div class="lhdr" role="heading" aria-level="3">${te('smart.title')}</div>
+    <div class="song pl-row pl-new" role="listitem" data-act="sm-new"><span class="art art-add">${icon('plus')}</span><span class="s-main"><span class="s-title">${te('smart.new')}</span><span class="s-sub">${te('smart.newSub')}</span></span></div>` +
     shown.map((p) => `<div class="song pl-row" role="listitem" data-sm="${esc(p.name)}"><span class="art">${icon('bolt')}</span>
       <span class="s-main"><span class="s-title">${esc(p.name)}</span><span class="s-sub">${esc(smSub(p))}</span></span>
-      <span class="s-acts">${p.count ? `<button class="ib ib-sm" type="button" data-act="sm-play" aria-label="Play ${esc(p.name)} on your Rondo">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="sm-edit" aria-label="Edit ${esc(p.name)}">${icon('gear')}</button></span></div>`).join('');
+      <span class="s-acts">${p.count ? `<button class="ib ib-sm" type="button" data-act="sm-play" aria-label="${te('common.playNameOnRondo', { name: p.name })}">${icon('play')}</button>` : ''}<button class="ib ib-sm" type="button" data-act="sm-edit" aria-label="${te('smart.editName', { name: p.name })}">${icon('gear')}</button></span></div>`).join('');
 }
 async function renderSmart() {
   const name = S.openSmart;
   const p = (S.smart || []).find((x) => x.name === name);
   if (!p) { S.openSmart = null; return renderPlaylists(); }
-  $('#libSummary').textContent = 'A smart playlist: the Rondo picks its songs by its rules.';
+  $('#libSummary').textContent = t('smart.summary');
   libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4);
   let songs;
   try { songs = await api('GET', `/api/smart/songs?name=${encodeURIComponent(name)}`); } catch (e) {
-    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t read it</h3><p>${esc(reason(e))}</p></div>`;
+    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>${te('smart.couldntRead')}</h3><p>${esc(reason(e))}</p></div>`;
     return;
   }
   if (S.openSmart !== name) return;
   S.smartPaths = songs.paths;
-  const head = `<div class="pl-head"><button class="btn btn-sm" type="button" data-act="sm-back">${icon('chevron', 'i flip')}<span>Playlists</span></button>
+  const head = `<div class="pl-head"><button class="btn btn-sm" type="button" data-act="sm-back">${icon('chevron', 'i flip')}<span>${te('common.playlists')}</span></button>
       <h2>${esc(p.name)}</h2><p>${esc(smSub(songs))}</p>
-      <div class="pl-acts">${songs.count ? `<button class="btn btn-primary btn-sm" type="button" data-act="sm-play">${icon('play')}<span>Play on Rondo</span></button>` : ''}
-        <button class="btn btn-sm" type="button" data-act="sm-edit">${icon('gear')}<span>Edit rules</span></button>
-        <button class="btn btn-sm btn-red-text" type="button" data-act="sm-delete">${icon('trash')}<span>Delete</span></button></div></div>`;
+      <div class="pl-acts">${songs.count ? `<button class="btn btn-primary btn-sm" type="button" data-act="sm-play">${icon('play')}<span>${te('common.playOnRondo')}</span></button>` : ''}
+        <button class="btn btn-sm" type="button" data-act="sm-edit">${icon('gear')}<span>${te('smart.editRules')}</span></button>
+        <button class="btn btn-sm btn-red-text" type="button" data-act="sm-delete">${icon('trash')}<span>${te('common.delete')}</span></button></div></div>`;
   const rows = songs.paths.map((path) => {
-    const t = S.libByPath?.get(path);
-    if (!t) return '';
-    return `<div class="song${isPlaying(t) ? ' is-playing' : ''}" role="listitem" data-smpath="${esc(path)}">
-      <span class="art"${t.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
-      <span class="s-main"><span class="s-title">${esc(t.title || fileName(path))}</span><span class="s-sub">${esc([t.artist, t.album].filter(Boolean).join(' · '))}</span></span>
-      <span class="s-time">${fmtDur(t.durationSec)}</span></div>`;
+    const s = S.libByPath?.get(path);
+    if (!s) return '';
+    return `<div class="song${isPlaying(s) ? ' is-playing' : ''}" role="listitem" data-smpath="${esc(path)}">
+      <span class="art"${s.art ? ` data-art="${esc(path)}"` : ''}>${icon('note')}</span>
+      <span class="s-main"><span class="s-title">${esc(s.title || fileName(path))}</span><span class="s-sub">${esc([s.artist, s.album].filter(Boolean).join(' · '))}</span></span>
+      <span class="s-time">${fmtDur(s.durationSec)}</span></div>`;
   }).join('');
-  libList.innerHTML = head + (rows || '<div class="lib-empty"><h3>No songs match</h3><p>Change the rules, or play and rate more songs.</p></div>');
+  libList.innerHTML = head + (rows || `<div class="lib-empty"><h3>${te('smart.noMatch')}</h3><p>${te('smart.noMatchText')}</p></div>`);
   $$('.art[data-art]', libList).forEach((el) => artIO.observe(el));
 }
 async function playSmart(p, from) {
@@ -3239,8 +3330,8 @@ async function playSmart(p, from) {
     const pl = await api('POST', '/api/player/play', { path: from || songs.paths[0], queue: songs.paths });
     if (S.status) { S.status.player = pl; S.statusAt = performance.now(); }
     renderMini(); markPlayingRows();
-    toast(`Playing “${p.title || p.name}” on your Rondo`);
-  } catch (e) { if (e.status !== 401) toast(`Couldn’t play it. ${reason(e)}`, 'err'); }
+    toast(t('common.playingOnRondo', { name: p.title || p.name }));
+  } catch (e) { if (e.status !== 401) toast(t('common.couldntPlayIt', { reason: reason(e) }), 'err'); }
 }
 // true when the click was a smart playlist's
 async function onSmartClick(e) {
@@ -3257,13 +3348,13 @@ async function onSmartClick(e) {
   if (act === 'sm-song') { playSmart(p, row.dataset.smpath); return true; }
   if (act === 'sm-edit') { editSmart(p); return true; }
   if (act === 'sm-delete') {
-    if (!(await confirmSheet({ title: `Delete “${p.name}”?`, text: 'The smart playlist goes; its songs stay on the card.', action: 'Delete' }))) return true;
+    if (!(await confirmSheet({ title: t('common.deleteName', { name: p.name }), text: te('smart.deleteText'), action: t('common.delete') }))) return true;
     try {
       S.smart = (await api('DELETE', `/api/smart?name=${encodeURIComponent(p.name)}`)).playlists;
       S.openSmart = null;
       renderPlaylists();
-      toast(`Deleted “${p.name}”`);
-    } catch (e2) { if (e2.status !== 401) toast(`Couldn’t delete it. ${reason(e2)}`, 'err'); }
+      toast(t('common.deletedName', { name: p.name }));
+    } catch (e2) { if (e2.status !== 401) toast(t('common.couldntDeleteIt', { reason: reason(e2) }), 'err'); }
     return true;
   }
   return true;
@@ -3275,26 +3366,28 @@ function editSmart(p) {
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('');
   const ruleHtml = (r, i) => {
     const kind = smKind(r.field);
-    const value = kind === 'text' ? `<input type="text" data-k="value" value="${esc(r.value ?? '')}" placeholder="${r.field === 'genre' ? 'Pop' : r.field === 'folder' ? 'Music/Jazz' : ''}" aria-label="Value">`
-      : `<input type="number" data-k="value" value="${esc(r.value ?? '')}" min="${kind === 'date' ? 1 : 0}" step="1" aria-label="${kind === 'date' ? 'Days' : 'Number'}">${kind === 'date' ? '<span class="sm-unit">days</span>' : ''}`;
-    return `<div class="sm-rule" data-i="${i}"><div class="select"><select data-k="field" aria-label="Field">${opts(SM_FIELDS.map((x) => [x[0], x[1]]), r.field)}</select>${icon('down')}</div>
-      <div class="select"><select data-k="op" aria-label="Condition">${opts(SM_OPS[kind], r.op)}</select>${icon('down')}</div>${value}
-      <button class="ib ib-sm" type="button" data-rm="${i}" aria-label="Remove this rule"${draft.rules.length > 1 ? '' : ' disabled'}>${icon('close')}</button></div>`;
+    const value = kind === 'text' ? `<input type="text" data-k="value" value="${esc(r.value ?? '')}" placeholder="${r.field === 'genre' ? 'Pop' : r.field === 'folder' ? 'Music/Jazz' : ''}" aria-label="${te('smart.value')}">`
+      : `<input type="number" data-k="value" value="${esc(r.value ?? '')}" min="${kind === 'date' ? 1 : 0}" step="1" aria-label="${kind === 'date' ? te('smart.daysLabel') : te('smart.number')}">${kind === 'date' ? `<span class="sm-unit">${te('smart.daysUnit')}</span>` : ''}`;
+    return `<div class="sm-rule" data-i="${i}"><div class="select"><select data-k="field" aria-label="${te('smart.field')}">${opts(SM_FIELDS.map((x) => [x[0], x[1]]), r.field)}</select>${icon('down')}</div>
+      <div class="select"><select data-k="op" aria-label="${te('smart.condition')}">${opts(SM_OPS[kind], r.op)}</select>${icon('down')}</div>${value}
+      <button class="ib ib-sm" type="button" data-rm="${i}" aria-label="${te('smart.removeRule')}"${draft.rules.length > 1 ? '' : ' disabled'}>${icon('close')}</button></div>`;
   };
-  const html = () => `<h2>${p ? 'Edit smart playlist' : 'New smart playlist'}</h2>
+  const matchSel = () => `<div class="select"><select id="smMatch" aria-label="${te('smart.matchLabel')}">${opts([['all', t('smart.all')], ['any', t('smart.any')]], draft.match)}</select>${icon('down')}</div>`;
+  const sortSel = () => `<div class="select"><select id="smSort" aria-label="${te('smart.order')}">${opts(SM_SORTS, draft.sort)}</select>${icon('down')}</div>`;
+  const limitIn = () => `<input type="number" id="smLimit" min="0" max="5000" step="1" value="${draft.limit || ''}" placeholder="${te('smart.anyNumber')}" aria-label="${te('smart.limitLabel')}">`;
+  const sheetHtml = () => `<h2>${p ? te('smart.edit') : te('smart.new')}</h2>
     <form class="sheet-form sm-form" novalidate>
-      <label class="field-label" for="smName">Name</label>
-      <div class="field-row"><input type="text" id="smName" maxlength="60" value="${esc(draft.name)}" placeholder="Like Pop of the 2010s" autocomplete="off"></div>
-      <div class="sm-match">Songs that match <div class="select"><select id="smMatch" aria-label="Match">${opts([['all', 'all'], ['any', 'any']], draft.match)}</select>${icon('down')}</div> of these rules:</div>
+      <label class="field-label" for="smName">${te('common.name')}</label>
+      <div class="field-row"><input type="text" id="smName" maxlength="60" value="${esc(draft.name)}" placeholder="${te('smart.namePlaceholder')}" autocomplete="off"></div>
+      <div class="sm-match">${th('smart.matchLine', { select: html(matchSel()) })}</div>
       <div id="smRules">${draft.rules.map(ruleHtml).join('')}</div>
-      <button class="btn btn-sm" type="button" id="smAdd"${draft.rules.length >= 12 ? ' disabled' : ''}>${icon('plus')}<span>Add a rule</span></button>
-      <div class="sm-match">In the order of <div class="select"><select id="smSort" aria-label="Order">${opts(SM_SORTS, draft.sort)}</select>${icon('down')}</div>,
-        at most <input type="number" id="smLimit" min="0" max="5000" step="1" value="${draft.limit || ''}" placeholder="any number of" aria-label="Songs at most"> songs</div>
+      <button class="btn btn-sm" type="button" id="smAdd"${draft.rules.length >= 12 ? ' disabled' : ''}>${icon('plus')}<span>${te('smart.addRule')}</span></button>
+      <div class="sm-match">${th('smart.orderLine', { sort: html(sortSel()), limit: html(limitIn()) })}</div>
       <p class="sm-preview" id="smPreview" aria-live="polite"></p>
       <p class="field-err" id="smErr" hidden></p>
-      <div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="submit">Save</button></div>
+      <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.cancel')}</button><button class="btn btn-primary" type="submit">${te('common.save')}</button></div>
     </form>`;
-  openSheet(html());
+  openSheet(sheetHtml());
   let timer = 0, asked = 0;
   const read = () => {
     draft.name = $('#smName', sheet).value.trim();
@@ -3316,7 +3409,7 @@ function editSmart(p) {
       if (!out) return;
       try {
         const r = await api('POST', '/api/smart/preview', { playlist: draft });
-        if (mine === asked) out.textContent = r.count ? `Now: ${plural(r.count, 'song')}${r.durationSec ? `, ${fmtDur(r.durationSec)}` : ''}` : 'Now: no songs match';
+        if (mine === asked) out.textContent = r.count ? (r.durationSec ? t('smart.previewLength', { count: r.count, length: fmtDur(r.durationSec) }) : t('smart.preview', { count: r.count })) : t('smart.previewNone');
       } catch (e) { if (mine === asked) out.textContent = e.code && e.code !== 'pair' ? e.code : ''; }
     }, 300);
   };
@@ -3342,14 +3435,14 @@ function editSmart(p) {
     e.preventDefault();
     read();
     const err = $('#smErr', sheet);
-    if (!draft.name) { err.textContent = 'Type a name.'; err.hidden = false; return; }
+    if (!draft.name) { err.textContent = t('smart.typeName'); err.hidden = false; return; }
     try {
       S.smart = (await api('PUT', '/api/smart', { playlist: draft, oldName: p ? p.name : undefined })).playlists;
       sheet.close();
       // the name as the card keeps it (FAT: no : / \ * ? " < > |)
       if (S.openSmart) S.openSmart = draft.name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
       renderPlaylists();
-      toast(`Saved “${draft.name}”`);
+      toast(t('smart.saved', { name: draft.name }));
     } catch (e2) { if (e2.status !== 401) { err.textContent = e2.code && e2.code !== 'pair' ? e2.code : reason(e2); err.hidden = false; } }
   });
   $('#smName', sheet).focus();
@@ -3365,10 +3458,10 @@ function editSmart(p) {
 $('#organizeBtn').addEventListener('click', openOrganize);
 const ORG = { plan: null, lookup: null, pick: {} };  // pick: a title's key -> the match taken (-1: as it is)
 async function openOrganize() {
-  openSheet('<h2>Organize the card</h2><p>Working out where everything goes…</p>');
+  openSheet(`<h2>${te('organize.title')}</h2><p>${te('organize.working')}</p>`);
   let plan;
   try { plan = await api('GET', '/api/organize', undefined, { timeout: 60000 }); } catch (e) {
-    if (e.status !== 401) openSheet(`<h2>Organize the card</h2><p>${esc(reason(e))}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+    if (e.status !== 401) openSheet(`<h2>${te('organize.title')}</h2><p>${esc(reason(e))}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.close')}</button></div>`);
     $('[data-r="0"]', sheet)?.addEventListener('click', () => sheet.close());
     return;
   }
@@ -3392,55 +3485,57 @@ const titleWithYears = (name, years) => (years ? `${name} (${years})` : name);
 function orgTitlesHtml() {
   const titles = ORG.plan.titles || [], lk = ORG.lookup;
   if (!titles.length) return '';
-  const keys = new Set(titles.map((t) => t.key));
+  const keys = new Set(titles.map((x) => x.key));
   const matches = (lk?.matches || []).filter((m) => keys.has(m.title.key));
-  const shows = titles.filter((t) => t.series).length, movies = titles.length - shows;
-  const what = [shows ? plural(shows, 'show') : '', movies ? plural(movies, 'movie') : ''].filter(Boolean).join(' and ');
+  const shows = titles.filter((x) => x.series).length, movies = titles.length - shows;
+  const parts = [shows ? t('organize.shows', { count: shows }) : '', movies ? t('organize.movies', { count: movies }) : ''].filter(Boolean);
+  const what = parts.length > 1 ? t('organize.and', { a: parts[0], b: parts[1] }) : parts[0] || '';
   let body;
   if (lk?.running) {
-    body = `<div class="meter"><span style="--p:${lk.total ? (lk.done / lk.total) * 100 : 0}%"></span></div><p class="row-sub">Looking up ${lk.done + 1 > lk.total ? lk.total : lk.done + 1} of ${lk.total}…</p>`;
+    body = `<div class="meter"><span style="--p:${lk.total ? (lk.done / lk.total) * 100 : 0}%"></span></div><p class="row-sub">${te('organize.lookingUp', { n: String(lk.done + 1 > lk.total ? lk.total : lk.done + 1), total: String(lk.total) })}</p>`;
   } else if (!matches.length) {
-    body = `<p class="row-sub">Years for ${esc(what)}, the way Jellyfin names them: a show “Silo (2023-)” while it runs, “The Walking Dead (2010-2022)” once it’s over, a movie “Arrival (2016)”.</p>
-      <button class="btn" type="button" data-r="lookup">${icon('globe')}<span>Look up ${titles.length === 1 ? 'its years' : 'their years'}</span></button>
-      <p class="row-sub org-src">From TVmaze (shows) and Wikidata (movies).</p>`;
+    body = `<p class="row-sub">${te('organize.yearsFor', { what })}</p>
+      <button class="btn" type="button" data-r="lookup">${icon('globe')}<span>${titles.length === 1 ? te('organize.lookUpIts') : te('organize.lookUpTheir')}</span></button>
+      <p class="row-sub org-src">${te('organize.source')}</p>`;
   } else {
     body = `<div class="org-list org-titles">${matches.map((m) => {
-      const t = m.title, pick = ORG.pick[t.key] ?? -1;
+      const ti = m.title, pick = ORG.pick[ti.key] ?? -1;
       const opts = m.found.map((f, i) => `<option value="${i}"${i === pick ? ' selected' : ''}>${esc(titleWithYears(f.name, f.years))}${f.detail ? ` · ${esc(f.detail)}` : ''}</option>`).join('');
-      const none = m.failed ? 'Couldn’t be looked up: as it is' : m.found.length ? 'Leave it as it is' : 'Not found: as it is';
-      return `<div class="org-move"><span class="tag">${t.series ? 'Show' : 'Movie'}</span><div class="org-pick">
-        <div class="org-to">${esc(titleWithYears(t.name, t.years))}${t.series ? ` <span class="org-sub">${plural(t.files, 'episode')}</span>` : ''}</div>
-        <label class="select"><span class="sr-only">Name it</span><select data-key="${esc(t.key)}">${opts}<option value="-1"${pick < 0 ? ' selected' : ''}>${none}</option></select>${icon('down')}</label></div></div>`;
+      const none = m.failed ? te('organize.couldntLookUp') : m.found.length ? te('organize.leave') : te('organize.notFound');
+      return `<div class="org-move"><span class="tag">${ti.series ? te('organize.show') : te('organize.movie')}</span><div class="org-pick">
+        <div class="org-to">${esc(titleWithYears(ti.name, ti.years))}${ti.series ? ` <span class="org-sub">${te('organize.episodes', { count: ti.files })}</span>` : ''}</div>
+        <label class="select"><span class="sr-only">${te('organize.nameIt')}</span><select data-key="${esc(ti.key)}">${opts}<option value="-1"${pick < 0 ? ' selected' : ''}>${none}</option></select>${icon('down')}</label></div></div>`;
     }).join('')}</div>`;
   }
-  return `<h3 class="org-h">Shows and movies</h3>${body}`;
+  return `<h3 class="org-h">${te('organize.showsMovies')}</h3>${body}`;
 }
 function orgMovesHtml() {
   const plan = ORG.plan, n = plan.moves.length;
-  const kindName = { song: 'Song', video: 'Video', lyrics: 'Lyrics', subtitles: 'Subtitles', cover: 'Picture' };
+  const kindName = { song: t('organize.kind.song'), video: t('organize.kind.video'), lyrics: t('organize.kind.lyrics'), subtitles: t('organize.kind.subtitles'), cover: t('organize.kind.cover') };
   const shown = plan.moves.slice(0, 400);
-  const facts = [['Songs', plan.songs, 'Music/Artist/Album (Year)/01 - Title'], ['Videos', plan.videos, 'Videos/Shows/Series (Years)/Season 01, or Videos/Movies/Title (Year)'],
-    ['Lyrics and subtitles', plan.sidecars, 'with their songs and videos'], ['Folder pictures', plan.covers, 'with their albums'], ['Already in place', plan.alreadyThere, '']]
+  // the folders as Organize writes them on the card: their names stay as they are
+  const facts = [[t('library.songs'), plan.songs, 'Music/Artist/Album (Year)/01 - Title'], [t('library.videos'), plan.videos, t('organize.videoFolders', { shows: 'Videos/Shows/Series (Years)/Season 01', movies: 'Videos/Movies/Title (Year)' })],
+    [t('organize.sidecars'), plan.sidecars, t('organize.sidecarsWhere')], [t('organize.covers'), plan.covers, t('organize.coversWhere')], [t('organize.already'), plan.alreadyThere, '']]
     .filter((x) => x[1]);
-  return `<dl class="facts">${facts.map(([k, v, sub]) => `<dt>${k}</dt><dd>${v}${sub ? ` <span class="org-sub">${esc(sub)}</span>` : ''}</dd>`).join('')}</dl>
-    ${n ? `<div class="org-list" role="list" aria-label="The moves">${shown.map((m) => `<div class="org-move" role="listitem"><span class="tag">${kindName[m.kind] || m.kind}</span>
-      <div><div class="org-to">${esc(m.to)}</div><div class="org-from">from ${esc(m.from)}</div></div></div>`).join('')}
-      ${n > shown.length ? `<div class="row-empty">and ${plural(n - shown.length, 'more')}</div>` : ''}</div>` : ''}`;
+  return `<dl class="facts">${facts.map(([k, v, sub]) => `<dt>${esc(k)}</dt><dd>${v}${sub ? ` <span class="org-sub">${esc(sub)}</span>` : ''}</dd>`).join('')}</dl>
+    ${n ? `<div class="org-list" role="list" aria-label="${te('organize.moves')}">${shown.map((m) => `<div class="org-move" role="listitem"><span class="tag">${esc(kindName[m.kind] || m.kind)}</span>
+      <div><div class="org-to">${esc(m.to)}</div><div class="org-from">${te('organize.from', { path: m.from })}</div></div></div>`).join('')}
+      ${n > shown.length ? `<div class="row-empty">${te('organize.andMore', { count: n - shown.length })}</div>` : ''}</div>` : ''}`;
 }
 function renderOrganize() {
   const n = ORG.plan.moves.length;
-  openSheet(`<h2>Organize the card</h2>
-    <p>${n ? `Folders the way Jellyfin, Plex and Kodi expect them, from the songs’ tags. Nothing moves until you press Organize; playlists, plays and ratings go along.` : 'Everything on the card is where it belongs.'}</p>
+  openSheet(`<h2>${te('organize.title')}</h2>
+    <p>${n ? te('organize.intro') : te('organize.inPlace')}</p>
     <div id="orgTitles">${orgTitlesHtml()}</div>
     <div id="orgMoves">${orgMovesHtml()}</div>
-    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${n ? 'Cancel' : 'Close'}</button><button class="btn btn-primary" type="button" data-r="go"${n ? '' : ' hidden'}>Organize ${plural(n, 'file')}</button></div>`);
+    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${n ? te('common.cancel') : te('common.close')}</button><button class="btn btn-primary" type="button" data-r="go"${n ? '' : ' hidden'}>${te('organize.go', { count: n })}</button></div>`);
   $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
   wireOrgTitles();
   $('[data-r="go"]', sheet).addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     b.disabled = true;
     try { await api('POST', '/api/organize', { names: orgNames() }); organizeProgress(); } catch (err) {
-      if (err.status !== 401) toast(`Didn’t start. ${err.code && err.code !== 'pair' ? err.code : reason(err)}`, 'err');
+      if (err.status !== 401) toast(t('common.didntStart', { reason: err.code && err.code !== 'pair' ? err.code : reason(err) }), 'err');
       b.disabled = false;
     }
   });
@@ -3449,7 +3544,7 @@ function wireOrgTitles() {
   $('[data-r="lookup"]', sheet)?.addEventListener('click', async (e) => {
     e.target.closest('button').disabled = true;
     try { ORG.lookup = await api('POST', '/api/organize/lookup'); } catch (err) {
-      if (err.status !== 401) toast(`Didn’t look them up. ${err.code && err.code !== 'pair' ? err.code : reason(err)}`, 'err');
+      if (err.status !== 401) toast(t('organize.didntLookUp', { reason: err.code && err.code !== 'pair' ? err.code : reason(err) }), 'err');
       e.target.closest('button').disabled = false;
       return;
     }
@@ -3491,25 +3586,26 @@ async function replan() {
     document.getElementById('orgMoves').innerHTML = orgMovesHtml();
     const go = $('[data-r="go"]', sheet), n = plan.moves.length;
     go.hidden = !n;
-    go.textContent = `Organize ${plural(n, 'file')}`;
-    $('[data-r="0"]', sheet).textContent = n ? 'Cancel' : 'Close';
+    go.textContent = t('organize.go', { count: n });
+    $('[data-r="0"]', sheet).textContent = n ? t('common.cancel') : t('common.close');
   } catch (err) {
-    if (err.status !== 401) toast(`Couldn’t work it out again. ${reason(err)}`, 'err');
+    if (err.status !== 401) toast(t('organize.couldntReplan', { reason: reason(err) }), 'err');
   }
 }
 async function organizeProgress() {
-  openSheet('<h2>Organizing</h2><div class="meter"><span id="orgBar" style="--p:0%"></span></div><p id="orgNote">Starting…</p>');
+  openSheet(`<h2>${te('organize.organizing')}</h2><div class="meter"><span id="orgBar" style="--p:0%"></span></div><p id="orgNote">${te('common.starting')}</p>`);
   for (;;) {
     let st;
     try { st = await api('GET', '/api/organize/status'); } catch { await new Promise((r) => setTimeout(r, 1500)); continue; }
     const bar = document.getElementById('orgBar'), note = document.getElementById('orgNote');
     if (!bar) return;  // the sheet was closed
     bar.style.setProperty('--p', `${st.total ? (st.done / st.total) * 100 : 0}%`);
-    note.textContent = st.running ? `Moving ${st.done} of ${st.total}… Keep your Rondo on.` : '';
+    note.textContent = st.running ? t('organize.moving', { n: String(st.done), total: String(st.total) }) : '';
     if (!st.running) {
-      openSheet(`<h2>Organized</h2><p>${plural(st.moved, 'file')} moved${st.errors.length ? `, ${plural(st.errors.length, 'file')} couldn’t be:` : '.'}</p>
+      const result = st.errors.length ? te('organize.resultFailed', { moved: t('organize.filesMoved', { count: st.moved }), failed: t('organize.filesFailed', { count: st.errors.length }) }) : te('organize.result', { count: st.moved });
+      openSheet(`<h2>${te('organize.done')}</h2><p>${result}</p>
         ${st.errors.length ? `<div class="org-list">${st.errors.slice(0, 100).map((x) => `<div class="org-move"><div class="org-from">${esc(x)}</div></div>`).join('')}</div>` : ''}
-        <div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="0">Done</button></div>`);
+        <div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="0">${te('common.done')}</button></div>`);
       $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
       setTimeout(() => loadLibrary(true), 1500);  // the new paths
       return;
@@ -3528,41 +3624,41 @@ const fillClose = () => { $('[data-r="0"]', sheet)?.addEventListener('click', ()
 // the iTunes Stores of this browser's languages' regions ("en-GB" -> "gb"), the songs' own and the US one besides
 const storeCountries = () => [...new Set((navigator.languages || [navigator.language]).map((l) => (l.split('-')[1] || '').toLowerCase()).filter((c) => /^[a-z]{2}$/.test(c)))];
 async function openFillIn() {
-  openSheet('<h2>Fill in what’s missing</h2><p>Looking at your songs…</p>');
+  openSheet(`<h2>${te('fill.title')}</h2><p>${te('fill.looking')}</p>`);
   let r;
   try { r = await api('GET', '/api/fill', undefined, { timeout: 30000 }); } catch (e) {
-    if (e.status !== 401) openSheet(`<h2>Fill in what’s missing</h2><p>${esc(reason(e))}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+    if (e.status !== 401) openSheet(`<h2>${te('fill.title')}</h2><p>${esc(reason(e))}</p><div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.close')}</button></div>`);
     return fillClose();
   }
   const st = r.status;
   if (st.running) return fillProgress();
   const waiting = st.kind === 'details' && st.finished && st.proposed;  // found, not saved yet
-  const m = r.summary, lacking = [['No genre', m.noGenre], ['No year', m.noYear], ['No album', m.noAlbum], ['No track number', m.noTrack]].filter((x) => x[1]);
+  const m = r.summary, lacking = [[t('library.noGenre'), m.noGenre], [t('library.noYear'), m.noYear], [t('fill.noAlbum'), m.noAlbum], [t('fill.noTrack'), m.noTrack]].filter((x) => x[1]);
   const minutes = Math.max(1, Math.round((m.albums * 3) / 60));  // about 3 s an album on the Y1 (the services allow a request a second)
-  openSheet(`<h2>Fill in what’s missing</h2>
-    <p>Rondo looks up what your songs’ tags leave out and saves it into the songs themselves, where Rondo, Jellyfin and any other player find it. Only what’s missing is filled in.</p>
+  openSheet(`<h2>${te('fill.title')}</h2>
+    <p>${te('fill.intro')}</p>
     <section class="fill-sec">
-      <h3>${icon('tag')}<span>Song details</span></h3>
-      ${lacking.length ? `<dl class="facts">${lacking.map(([k, v]) => `<dt>${k}</dt><dd>${plural(v, 'song')}</dd>`).join('')}</dl>
-      ${waiting ? `<p class="row-sub">Found for ${plural(st.proposed, 'album')}, not saved yet.</p>
-      <div class="fill-acts"><button class="btn btn-primary" type="button" data-r="review">${icon('check')}<span>Review and save</span></button>
-        <button class="btn" type="button" data-r="details">${icon('search')}<span>Look up again</span></button></div>`
-      : `<p class="row-sub">Asked of the iTunes Store, then MusicBrainz, album by album: ${plural(m.albums, 'album')}, about ${plural(minutes, 'minute')}. You see what was found before anything is saved.</p>
-      <button class="btn btn-primary" type="button" data-r="details">${icon('search')}<span>Look up details</span></button>`}`
-      : `<p class="row-sub">Every song has its genre, year, album and track number.</p>`}
+      <h3>${icon('tag')}<span>${te('fill.details')}</span></h3>
+      ${lacking.length ? `<dl class="facts">${lacking.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${te('common.songs', { count: v })}</dd>`).join('')}</dl>
+      ${waiting ? `<p class="row-sub">${te('fill.foundNotSaved', { count: st.proposed })}</p>
+      <div class="fill-acts"><button class="btn btn-primary" type="button" data-r="review">${icon('check')}<span>${te('fill.review')}</span></button>
+        <button class="btn" type="button" data-r="details">${icon('search')}<span>${te('fill.lookUpAgain')}</span></button></div>`
+      : `<p class="row-sub">${te('fill.asked', { albums: t('common.albums', { count: m.albums }), minutes: t('common.minutes', { count: minutes }) })}</p>
+      <button class="btn btn-primary" type="button" data-r="details">${icon('search')}<span>${te('fill.lookUpDetails')}</span></button>`}`
+      : `<p class="row-sub">${te('fill.complete')}</p>`}
     </section>
     <section class="fill-sec">
-      <h3>${icon('lyrics')}<span>Lyrics</span></h3>
-      <p class="row-sub">Lyrics from LRCLIB, timed where it has them, for every song that has none (songs with lyrics keep theirs). Saved into the song, or an .lrc beside it when its kind can’t hold them.</p>
-      <button class="btn" type="button" data-r="lyrics"${m.songs ? '' : ' disabled'}>${icon('search')}<span>Look up lyrics</span></button>
+      <h3>${icon('lyrics')}<span>${te('fill.lyrics')}</span></h3>
+      <p class="row-sub">${te('fill.lyricsText')}</p>
+      <button class="btn" type="button" data-r="lyrics"${m.songs ? '' : ' disabled'}>${icon('search')}<span>${te('fill.lookUpLyrics')}</span></button>
     </section>
-    ${m.unsupported ? `<div class="note info">${icon('info')}<span>${plural(m.unsupported, 'song')} ${m.unsupported === 1 ? 'is' : 'are'} of a kind Rondo can’t save details into yet (Ogg, WMA and others): ${m.unsupported === 1 ? 'its' : 'their'} details stay as they are.</span></div>` : ''}
-    <div class="sheet-actions"><button class="btn" type="button" data-r="0">Close</button></div>`);
+    ${m.unsupported ? `<div class="note info">${icon('info')}<span>${te('fill.unsupported', { count: m.unsupported })}</span></div>` : ''}
+    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.close')}</button></div>`);
   fillClose();
   const start = async (btn, path, body) => {
     btn.disabled = true;
     try { await api('POST', path, body); fillProgress(); } catch (err) {
-      if (err.status !== 401) toast(`Didn’t start. ${err.code && err.code !== 'pair' ? err.code : reason(err)}`, 'err');
+      if (err.status !== 401) toast(t('common.didntStart', { reason: err.code && err.code !== 'pair' ? err.code : reason(err) }), 'err');
       btn.disabled = false;
     }
   };
@@ -3571,10 +3667,10 @@ async function openFillIn() {
   $('[data-r="lyrics"]', sheet)?.addEventListener('click', (e) => start(e.target.closest('button'), '/api/fill/lyrics'));
 }
 async function fillProgress() {
-  const titles = { details: 'Looking up details', lyrics: 'Looking up lyrics', save: 'Saving' };
-  openSheet(`<h2 id="fillH">Working</h2><div class="meter"><span id="fillBar" style="--p:0%"></span></div><p id="fillNote">Starting…</p>
-    <p class="row-sub">It runs on your Rondo: you can close this and come back.</p>
-    <div class="sheet-actions"><button class="btn" type="button" data-r="0">Hide</button><button class="btn" type="button" data-r="stop">Stop</button></div>`);
+  const titles = { details: t('fill.lookingDetails'), lyrics: t('fill.lookingLyrics'), save: t('fill.saving') };
+  openSheet(`<h2 id="fillH">${te('fill.working')}</h2><div class="meter"><span id="fillBar" style="--p:0%"></span></div><p id="fillNote">${te('common.starting')}</p>
+    <p class="row-sub">${te('fill.runs')}</p>
+    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.hide')}</button><button class="btn" type="button" data-r="stop">${te('common.stop')}</button></div>`);
   fillClose();
   $('[data-r="stop"]', sheet).addEventListener('click', async (e) => {
     e.target.closest('button').disabled = true;
@@ -3585,12 +3681,12 @@ async function fillProgress() {
     try { st = await api('GET', '/api/fill/status'); } catch { await new Promise((r) => setTimeout(r, 1500)); continue; }
     const bar = document.getElementById('fillBar'), note = document.getElementById('fillNote');
     if (!bar) return;  // the sheet was closed: the job goes on
-    document.getElementById('fillH').textContent = titles[st.kind] || 'Working';
+    document.getElementById('fillH').textContent = titles[st.kind] || t('fill.working');
     bar.style.setProperty('--p', `${st.total ? (st.done / st.total) * 100 : 0}%`);
-    const at = Math.min(st.done + 1, st.total);
-    note.textContent = st.kind === 'details' ? `Album ${at} of ${st.total}… found for ${plural(st.proposed, 'album')} so far.`
-      : st.kind === 'lyrics' ? `Song ${at} of ${st.total}… lyrics for ${plural(st.saved, 'song')} so far${st.synced ? ` (${st.synced} timed)` : ''}.`
-      : `Saving into song ${at} of ${st.total}… Keep your Rondo on.`;
+    const at = String(Math.min(st.done + 1, st.total)), total = String(st.total);
+    note.textContent = st.kind === 'details' ? t('fill.progressDetails', { at, total, albums: t('common.albums', { count: st.proposed }) })
+      : st.kind === 'lyrics' ? (st.synced ? t('fill.progressLyricsTimed', { at, total, songs: t('common.songs', { count: st.saved }), synced: String(st.synced) }) : t('fill.progressLyrics', { at, total, songs: t('common.songs', { count: st.saved }) }))
+      : t('fill.progressSave', { at, total });
     if (!st.running) return st.kind === 'details' && st.proposed ? fillReview() : fillDone(st);
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -3605,34 +3701,34 @@ async function fillReview() {
   FILL.skip = new Set();
   const songs = () => FILL.proposals.filter((p) => !FILL.skip.has(p.id)).reduce((n, p) => n + p.songs, 0);
   const shown = FILL.proposals.slice(0, 600);
-  const left = [st.notFound ? `${plural(st.notFound, 'album')} weren’t found` : '', st.failed ? `${plural(st.failed, 'album')} couldn’t be looked up` : '',
-    st.canceled ? 'the lookup was stopped' : ''].filter(Boolean);
+  const left = [st.notFound ? t('fill.albumsNotFound', { count: st.notFound }) : '', st.failed ? t('fill.albumsFailed', { count: st.failed }) : '',
+    st.canceled ? t('fill.lookupStopped') : ''].filter(Boolean);
   const same = (a, b) => a.toLowerCase().replace(/ - (single|ep)$/i, '') === b.toLowerCase();
-  openSheet(`<h2>Found for ${plural(FILL.proposals.length, 'album')}</h2>
-    <p>Untick any that look wrong, then save. Only what the songs lack is saved${left.length ? `; ${left.join(', ')}` : ''}.</p>
+  openSheet(`<h2>${te('fill.foundFor', { count: FILL.proposals.length })}</h2>
+    <p>${left.length ? te('fill.reviewTextLeft', { left: left.join(', ') }) : te('fill.reviewText')}</p>
     <div class="org-list fill-list" role="list">${shown.map((p) => {
-      const what = [p.genre ? `Genre <b>${esc(p.genre)}</b>` : '', p.year ? `Year <b>${p.year}</b>` : '', p.newAlbum ? `Album <b>${esc(p.newAlbum)}</b>` : '',
-        p.tracks ? plural(p.tracks, 'track number') : ''].filter(Boolean).join(' · ');
+      const what = [p.genre ? th('fill.genre', { genre: p.genre }) : '', p.year ? th('fill.year', { year: String(p.year) }) : '', p.newAlbum ? th('fill.album', { album: p.newAlbum }) : '',
+        p.tracks ? te('fill.trackNumbers', { count: p.tracks }) : ''].filter(Boolean).join(' · ');
       const from = !same(p.foundAlbum, p.album || p.foundAlbum) || !p.foundArtist.toLowerCase().includes(p.artist.toLowerCase().split(/[,&]/)[0].trim())
-        ? ` <span class="org-sub">(${esc(p.foundAlbum)} by ${esc(p.foundArtist)})</span>` : '';
+        ? ` <span class="org-sub">${te('fill.foundAs', { album: p.foundAlbum, artist: p.foundArtist })}</span>` : '';
       return `<label class="org-move fill-row" role="listitem"><input type="checkbox" data-id="${p.id}" checked>
         <div><div class="org-to">${esc(p.artist)} — ${esc(p.album || p.foundAlbum)}</div><div class="org-from">${what}</div>
-        <div class="org-from">${plural(p.songs, 'song')} · ${esc(p.source)}${from}</div></div></label>`;
-    }).join('')}${FILL.proposals.length > shown.length ? `<div class="row-empty">and ${plural(FILL.proposals.length - shown.length, 'more')}, saved with them</div>` : ''}</div>
-    <div class="sheet-actions"><button class="btn" type="button" data-r="0">Not now</button><button class="btn btn-primary" type="button" data-r="save">Save into ${plural(songs(), 'song')}</button></div>`);
+        <div class="org-from">${te('common.songs', { count: p.songs })} · ${esc(p.source)}${from}</div></div></label>`;
+    }).join('')}${FILL.proposals.length > shown.length ? `<div class="row-empty">${te('fill.andMoreSaved', { count: FILL.proposals.length - shown.length })}</div>` : ''}</div>
+    <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('fill.notNow')}</button><button class="btn btn-primary" type="button" data-r="save">${te('fill.saveInto', { count: songs() })}</button></div>`);
   fillClose();
   const save = $('[data-r="save"]', sheet);
   for (const box of sheet.querySelectorAll('.fill-row input')) box.addEventListener('change', () => {
     const id = Number(box.dataset.id);
     if (box.checked) FILL.skip.delete(id); else FILL.skip.add(id);
     const n = songs();
-    save.textContent = `Save into ${plural(n, 'song')}`;
+    save.textContent = t('fill.saveInto', { count: n });
     save.disabled = !n;
   });
   save.addEventListener('click', async () => {
     save.disabled = true;
     try { await api('POST', '/api/fill/save', { skip: [...FILL.skip] }); fillProgress(); } catch (err) {
-      if (err.status !== 401) toast(`Didn’t save. ${err.code && err.code !== 'pair' ? err.code : reason(err)}`, 'err');
+      if (err.status !== 401) toast(t('fill.didntSave', { reason: err.code && err.code !== 'pair' ? err.code : reason(err) }), 'err');
       save.disabled = false;
     }
   });
@@ -3640,21 +3736,21 @@ async function fillReview() {
 function fillDone(st) {
   let title, text;
   if (st.kind === 'lyrics') {
-    title = st.saved ? `Lyrics for ${plural(st.saved, 'song')}` : 'No lyrics found';
-    text = [st.synced ? `${st.synced} of them timed` : '', st.beside ? `${st.beside} in an .lrc beside the song` : '', st.had ? `${plural(st.had, 'song')} had ${st.had === 1 ? 'its' : 'theirs'} already` : '',
-      st.notFound ? `${plural(st.notFound, 'song')} LRCLIB doesn’t have` : '', st.instrumental ? `${plural(st.instrumental, 'instrumental')} left as ${st.instrumental === 1 ? 'it is' : 'they are'}` : '',
-      st.failed ? `${plural(st.failed, 'song')} couldn’t be looked up` : ''].filter(Boolean).join('; ');
+    title = st.saved ? t('fill.lyricsFor', { count: st.saved }) : t('fill.noLyrics');
+    text = [st.synced ? t('fill.timed', { count: String(st.synced) }) : '', st.beside ? t('fill.beside', { count: String(st.beside) }) : '', st.had ? t('fill.had', { count: st.had }) : '',
+      st.notFound ? t('fill.lrclibMissing', { count: st.notFound }) : '', st.instrumental ? t('fill.instrumental', { count: st.instrumental }) : '',
+      st.failed ? t('fill.songsFailed', { count: st.failed }) : ''].filter(Boolean).join('; ');
   } else if (st.kind === 'save') {
-    title = `Saved into ${plural(st.saved, 'song')}`;
-    text = st.errors.length ? `${plural(st.errors.length, 'song')} couldn’t be saved into:` : 'Your library shows the new details now.';
+    title = t('fill.savedInto', { count: st.saved });
+    text = st.errors.length ? t('fill.saveErrors', { count: st.errors.length }) : t('fill.newDetails');
   } else {
-    title = 'Nothing found';
-    text = [st.notFound ? `${plural(st.notFound, 'album')} weren’t found` : '', st.failed ? `${plural(st.failed, 'album')} couldn’t be looked up` : ''].filter(Boolean).join('; ');
+    title = t('fill.nothingFound');
+    text = [st.notFound ? t('fill.albumsNotFound', { count: st.notFound }) : '', st.failed ? t('fill.albumsFailed', { count: st.failed }) : ''].filter(Boolean).join('; ');
   }
-  if (st.canceled) text = `Stopped. ${text}`;
+  if (st.canceled) text = t('fill.stopped', { text });
   openSheet(`<h2>${esc(title)}</h2>${st.stopped ? `<div class="note err">${icon('alert')}<span>${esc(st.stopped)}.</span></div>` : ''}<p>${esc(text)}${text && !/[.:]$/.test(text) ? '.' : ''}</p>
     ${st.errors.length ? `<div class="org-list">${st.errors.slice(0, 100).map((x) => `<div class="org-move"><div class="org-from">${esc(x)}</div></div>`).join('')}</div>` : ''}
-    <div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="0">Done</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-primary" type="button" data-r="0">${te('common.done')}</button></div>`);
   fillClose();
   if (st.saved) setTimeout(() => loadLibrary(true), 800);  // the new genres and years
 }
@@ -3672,12 +3768,12 @@ async function loadFiles(dir, quiet = false) {
     if (!quiet) S.fileSel = new Set();
   } catch (e) {
     if (e.status === 404 && dir) return loadFiles(null, quiet);  // a folder that went: the card's top
-    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t open the folder</h3><p>${esc(reason(e))}</p></div>`;
+    if (e.status !== 401) libList.innerHTML = `<div class="lib-empty"><h3>${te('files.couldntOpen')}</h3><p>${esc(reason(e))}</p></div>`;
     return;
   }
   renderLibrary();
 }
-const relName = (p) => { for (const r of S.files?.roots || [{ path: '/storage/sdcard0', name: 'Card' }, { path: '/storage/sdcard1', name: 'Internal storage' }]) if (p === r.path) return r.name; else if (p.startsWith(r.path + '/')) return `${r.name}/${p.slice(r.path.length + 1)}`; return p; };
+const relName = (p) => { for (const r of S.files?.roots || [{ path: '/storage/sdcard0', name: t('files.card') }, { path: '/storage/sdcard1', name: t('files.internal') }]) if (p === r.path) return r.name; else if (p.startsWith(r.path + '/')) return `${r.name}/${p.slice(r.path.length + 1)}`; return p; };
 function renderFiles() {
   const F = S.files;
   if (!F) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(5); return; }
@@ -3691,28 +3787,28 @@ function renderFiles() {
   let crumbs = '', at = '';
   for (const r of F.roots) if (F.path === r.path || F.path.startsWith(r.path + '/')) at = r.path;
   const root = F.roots.find((r) => r.path === at);
-  crumbs += `<button class="link" type="button" data-dir="${esc(at)}">${esc(root ? root.name : 'Card')}</button>`;
+  crumbs += `<button class="link" type="button" data-dir="${esc(at)}">${esc(root ? root.name : t('files.card'))}</button>`;
   let acc = at;
   for (const part of F.path.slice(at.length).split('/').filter(Boolean)) { acc += '/' + part; crumbs += ` › <button class="link" type="button" data-dir="${esc(acc)}">${esc(part)}</button>`; }
   const one = sel.length === 1 ? F.entries.find((e) => e.name === sel[0]) : null;
-  $('#libSummary').textContent = `${plural(F.entries.length, 'item')} in ${relName(F.path)}`;
+  $('#libSummary').textContent = t('files.summary', { count: F.entries.length, folder: relName(F.path) });
   libList.innerHTML = `<div class="files-head">
       <div class="crumbs">${crumbs}${F.roots.length > 1 ? `<span class="crumb-roots">${F.roots.filter((r) => r.path !== at).map((r) => `<button class="btn btn-sm btn-quiet" type="button" data-dir="${esc(r.path)}">${esc(r.name)}</button>`).join('')}</span>` : ''}</div>
-      <div class="files-acts">${sel.length ? `<span class="sel-count">${sel.length} selected</span>
-          ${one ? `<button class="btn btn-sm" type="button" data-fa="rename">Rename</button>` : ''}
-          ${one && one.kind !== 'folder' ? `<button class="btn btn-sm" type="button" data-fa="download">Download</button>` : ''}
-          <button class="btn btn-sm" type="button" data-fa="move">Move…</button>
-          <button class="btn btn-sm btn-red-text" type="button" data-fa="delete">${icon('trash')}<span>Delete</span></button>
-          <button class="btn btn-sm btn-quiet" type="button" data-fa="none">Clear</button>`
-        : `<button class="btn btn-sm" type="button" data-fa="folder">${icon('plus')}<span>New folder</span></button>
-          <button class="btn btn-sm" type="button" data-fa="upload">${icon('upload')}<span>Upload here</span></button>`}</div></div>
-    ${F.parent ? `<div class="song file-row" role="listitem" data-dir="${esc(F.parent)}"><span class="fsel"></span><span class="art">${icon('up')}</span><span class="s-main"><span class="s-title">Up a folder</span></span></div>` : ''}
+      <div class="files-acts">${sel.length ? `<span class="sel-count">${te('files.selected', { count: String(sel.length) })}</span>
+          ${one ? `<button class="btn btn-sm" type="button" data-fa="rename">${te('common.rename')}</button>` : ''}
+          ${one && one.kind !== 'folder' ? `<button class="btn btn-sm" type="button" data-fa="download">${te('common.download')}</button>` : ''}
+          <button class="btn btn-sm" type="button" data-fa="move">${te('files.move')}</button>
+          <button class="btn btn-sm btn-red-text" type="button" data-fa="delete">${icon('trash')}<span>${te('common.delete')}</span></button>
+          <button class="btn btn-sm btn-quiet" type="button" data-fa="none">${te('files.clear')}</button>`
+        : `<button class="btn btn-sm" type="button" data-fa="folder">${icon('plus')}<span>${te('files.newFolder')}</span></button>
+          <button class="btn btn-sm" type="button" data-fa="upload">${icon('upload')}<span>${te('files.uploadHere')}</span></button>`}</div></div>
+    ${F.parent ? `<div class="song file-row" role="listitem" data-dir="${esc(F.parent)}"><span class="fsel"></span><span class="art">${icon('up')}</span><span class="s-main"><span class="s-title">${te('files.up')}</span></span></div>` : ''}
     ${list.length ? list.map((e) => `<div class="song file-row${S.fileSel.has(e.name) ? ' is-sel' : ''}" role="listitem" data-name="${esc(e.name)}" data-kind="${e.kind}">
-        <label class="fsel"><input type="checkbox" ${S.fileSel.has(e.name) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></label>
+        <label class="fsel"><input type="checkbox" ${S.fileSel.has(e.name) ? 'checked' : ''} aria-label="${te('files.selectName', { name: e.name })}"></label>
         <span class="art">${icon(FILE_ICON[e.kind] || 'info')}</span>
-        <span class="s-main"><span class="s-title">${esc(e.name)}</span><span class="s-sub">${esc(e.kind === 'folder' ? 'Folder' : [e.title && e.title !== e.name ? e.title : '', e.artist, fmtBytes(e.size)].filter(Boolean).join(' · '))}</span></span>
-        <span class="s-time">${new Date(e.modified).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span></div>`).join('')
-      : `<div class="lib-empty"><h3>${q ? 'No matches' : 'An empty folder'}</h3><p>${q ? 'Nothing here matches.' : 'Upload files here, or move some in.'}</p></div>`}`;
+        <span class="s-main"><span class="s-title">${esc(e.name)}</span><span class="s-sub">${esc(e.kind === 'folder' ? t('files.folder') : [e.title && e.title !== e.name ? e.title : '', e.artist, fmtBytes(e.size)].filter(Boolean).join(' · '))}</span></span>
+        <span class="s-time">${new Date(e.modified).toLocaleDateString(dateLocale(), { dateStyle: 'medium' })}</span></div>`).join('')
+      : `<div class="lib-empty"><h3>${q ? te('common.noMatches') : te('files.empty')}</h3><p>${q ? te('files.noMatchText') : te('files.emptyText')}</p></div>`}`;
 }
 async function fileAction(act) {
   const F = S.files, sel = [...S.fileSel], paths = sel.map((n) => `${F.path}/${n}`);
@@ -3724,17 +3820,17 @@ async function fileAction(act) {
     return input.click();
   }
   if (act === 'folder') {
-    const name = await promptSheet({ title: 'New folder', text: `In ${esc(relName(F.path))}.`, action: 'Make', placeholder: 'Name' });
+    const name = await promptSheet({ title: t('files.newFolder'), text: te('files.newFolderIn', { folder: relName(F.path) }), action: t('files.make'), placeholder: t('common.name') });
     if (!name) return;
-    try { S.files = await api('POST', '/api/files/folder', { path: F.path, name }); renderFiles(); toast(`Made “${name}”`); }
-    catch (e) { if (e.status !== 401) toast(`Not made. ${e.code && e.code !== 'pair' ? e.code : reason(e)}`, 'err'); }
+    try { S.files = await api('POST', '/api/files/folder', { path: F.path, name }); renderFiles(); toast(t('common.made', { name })); }
+    catch (e) { if (e.status !== 401) toast(t('files.notMade', { reason: e.code && e.code !== 'pair' ? e.code : reason(e) }), 'err'); }
     return;
   }
   if (act === 'rename') {
-    const name = await promptSheet({ title: 'Rename', value: sel[0], action: 'Rename' });
+    const name = await promptSheet({ title: t('common.rename'), value: sel[0], action: t('common.rename') });
     if (!name || name === sel[0]) return;
-    try { S.files = await api('POST', '/api/files/rename', { path: paths[0], name }); S.fileSel = new Set(); renderFiles(); toast('Renamed'); }
-    catch (e) { if (e.status !== 401) toast(`Not renamed. ${e.code && e.code !== 'pair' ? e.code : reason(e)}`, 'err'); }
+    try { S.files = await api('POST', '/api/files/rename', { path: paths[0], name }); S.fileSel = new Set(); renderFiles(); toast(t('files.renamed')); }
+    catch (e) { if (e.status !== 401) toast(t('files.notRenamed', { reason: e.code && e.code !== 'pair' ? e.code : reason(e) }), 'err'); }
     return;
   }
   if (act === 'download') {
@@ -3746,13 +3842,15 @@ async function fileAction(act) {
   }
   if (act === 'delete') {
     const folders = sel.filter((n) => F.entries.find((e) => e.name === n)?.kind === 'folder').length;
-    const what = sel.length === 1 ? `“${esc(sel[0])}”` : plural(sel.length, 'item');
-    if (!(await confirmSheet({ title: `Delete ${what}?`, text: `${folders ? 'Folders go with everything in them. ' : ''}This can’t be undone.`, action: 'Delete' }))) return;
+    const one = sel.length === 1;
+    const title = one ? t('common.deleteName', { name: sel[0] }) : t('files.deleteMany', { count: sel.length });
+    if (!(await confirmSheet({ title, text: folders ? te('files.deleteTextFolders') : te('files.deleteText'), action: t('common.delete') }))) return;
     try {
       const r = await api('POST', '/api/files/delete', { paths }, { timeout: 120000 });
-      if (r.errors.length) toast(`${plural(r.errors.length, 'file')} couldn’t be deleted`, 'err'); else toast(`Deleted ${what.replace(/&quot;/g, '"')}`);
+      if (r.errors.length) toast(t('files.couldntDelete', { count: r.errors.length }), 'err');
+      else toast(one ? t('common.deletedName', { name: sel[0] }) : t('files.deletedMany', { count: sel.length }));
       loadFiles(F.path, true); loadLibrary(true);
-    } catch (e) { if (e.status !== 401) toast(`Not deleted. ${reason(e)}`, 'err'); }
+    } catch (e) { if (e.status !== 401) toast(t('files.notDeleted', { reason: reason(e) }), 'err'); }
     return;
   }
   if (act === 'move') return moveSheet(paths);
@@ -3761,26 +3859,26 @@ async function fileAction(act) {
 async function moveSheet(paths) {
   let dir = S.files.path;
   const draw = async () => {
-    let L;
-    try { L = await api('GET', `/api/files?path=${encodeURIComponent(dir)}`); } catch (e) { return; }
-    const folders = L.entries.filter((e) => e.kind === 'folder').sort((a, b) => collator.compare(a.name, b.name));
-    openSheet(`<h2>Move ${plural(paths.length, 'item')}</h2><p>Into <b>${esc(relName(L.path))}</b></p>
-      <div class="org-list mv-list">${L.parent ? `<button type="button" class="mv-dir" data-to="${esc(L.parent)}">${icon('up')}<span>Up a folder</span></button>` : ''}
-        ${folders.map((e) => `<button type="button" class="mv-dir" data-to="${esc(L.path + '/' + e.name)}"${paths.includes(L.path + '/' + e.name) ? ' disabled' : ''}>${icon('folder')}<span>${esc(e.name)}</span></button>`).join('') || '<div class="row-empty">No folders in here.</div>'}</div>
-      <div class="sheet-actions"><button class="btn" type="button" data-r="0">Cancel</button><button class="btn btn-primary" type="button" data-r="here"${L.path === S.files.path ? ' disabled' : ''}>Move here</button></div>`);
+    let to;
+    try { to = await api('GET', `/api/files?path=${encodeURIComponent(dir)}`); } catch (e) { return; }
+    const folders = to.entries.filter((e) => e.kind === 'folder').sort((a, b) => collator.compare(a.name, b.name));
+    openSheet(`<h2>${te('files.moveTitle', { count: paths.length })}</h2><p>${th('files.into', { folder: relName(to.path) })}</p>
+      <div class="org-list mv-list">${to.parent ? `<button type="button" class="mv-dir" data-to="${esc(to.parent)}">${icon('up')}<span>${te('files.up')}</span></button>` : ''}
+        ${folders.map((e) => `<button type="button" class="mv-dir" data-to="${esc(to.path + '/' + e.name)}"${paths.includes(to.path + '/' + e.name) ? ' disabled' : ''}>${icon('folder')}<span>${esc(e.name)}</span></button>`).join('') || `<div class="row-empty">${te('files.noFolders')}</div>`}</div>
+      <div class="sheet-actions"><button class="btn" type="button" data-r="0">${te('common.cancel')}</button><button class="btn btn-primary" type="button" data-r="here"${to.path === S.files.path ? ' disabled' : ''}>${te('files.moveHere')}</button></div>`);
     $('[data-r="0"]', sheet).addEventListener('click', () => sheet.close());
     $$('.mv-dir', sheet).forEach((b) => b.addEventListener('click', () => { dir = b.dataset.to; draw(); }));
     $('[data-r="here"]', sheet).addEventListener('click', async () => {
       try {
-        const r = await api('POST', '/api/files/move', { paths, to: L.path }, { timeout: 120000 });
+        const r = await api('POST', '/api/files/move', { paths, to: to.path }, { timeout: 120000 });
         sheet.close();
         if (r.errors.length) toast(r.errors[0], 'err');
-        else if (r.background) toast(`Moving to ${relName(L.path)} in the background (between the card and the internal storage)`);
-        else toast(`Moved ${plural(r.moved, 'item')} to ${relName(L.path)}`);
+        else if (r.background) toast(t('files.movingBackground', { folder: relName(to.path) }));
+        else toast(t('files.moved', { count: r.moved, folder: relName(to.path) }));
         if (r.background) setTimeout(() => { loadFiles(S.files.path, true); loadLibrary(true); }, 8000);
         S.fileSel = new Set();
         loadFiles(S.files.path, true); loadLibrary(true);
-      } catch (e) { if (e.status !== 401) toast(`Not moved. ${reason(e)}`, 'err'); }
+      } catch (e) { if (e.status !== 401) toast(t('files.notMoved', { reason: reason(e) }), 'err'); }
     });
   };
   draw();
@@ -3813,11 +3911,11 @@ libList.addEventListener('click', (e) => {
 // The albums' covers in perspective, the one in the middle facing you; the wheel, the arrow keys, a drag
 // or a click move through them, and the album's songs are listed below, to play on the Rondo.
 function albumsOf() {
-  const L = S.library;
-  if (!L) return [];
-  if (S.albumsFor === L) return S.albums;
+  const lib = S.library;
+  if (!lib) return [];
+  if (S.albumsFor === lib) return S.albums;
   const by = new Map();
-  for (const s of L.songs) {
+  for (const s of lib.songs) {
     if (!s.album) continue;
     const key = fold(s.album) + '\u001f' + fold(s.albumArtist || '');
     let a = by.get(key);
@@ -3831,7 +3929,7 @@ function albumsOf() {
     a.year = +Object.entries(a.years).sort((x, y) => y[1] - x[1])[0]?.[0] || 0;
     a.cover = a.songs.find((x) => x.art)?.path || a.songs[0].path;
   }
-  S.albumsFor = L;
+  S.albumsFor = lib;
   return S.albums;
 }
 function renderAlbums() {
@@ -3840,11 +3938,11 @@ function renderAlbums() {
   const all = albumsOf().filter((a) => !q || fold(a.name + ' ' + a.artist).includes(q));
   S.cfList = all;
   S.cfAt = Math.max(0, Math.min(all.length - 1, S.cfAt || 0));
-  $('#libSummary').textContent = all.length ? `${plural(all.length, 'album')} on the card` : 'No albums';
-  if (!all.length) { libList.innerHTML = '<div class="lib-empty"><h3>No albums</h3><p>Songs tagged with an album show up here.</p></div>'; return; }
-  libList.innerHTML = `<div class="cf" id="cf" tabindex="0" aria-label="Cover Flow: arrow keys move through the albums">
-      <button class="cf-nav prev" type="button" data-cf="-1" aria-label="Previous album">${icon('chevron', 'i flip')}</button>
-      <button class="cf-nav next" type="button" data-cf="1" aria-label="Next album">${icon('chevron')}</button>
+  $('#libSummary').textContent = all.length ? t('albums.summary', { count: all.length }) : t('albums.none');
+  if (!all.length) { libList.innerHTML = `<div class="lib-empty"><h3>${te('albums.none')}</h3><p>${te('albums.noneText')}</p></div>`; return; }
+  libList.innerHTML = `<div class="cf" id="cf" tabindex="0" aria-label="${te('albums.coverFlow')}">
+      <button class="cf-nav prev" type="button" data-cf="-1" aria-label="${te('albums.prev')}">${icon('chevron', 'i flip')}</button>
+      <button class="cf-nav next" type="button" data-cf="1" aria-label="${te('albums.next')}">${icon('chevron')}</button>
       <div id="cfItems"></div><div class="cf-caption"><h3 id="cfTitle"></h3><p id="cfSub"></p></div></div>
     <div class="cf-songs" id="cfSongs"></div>`;
   layoutFlow(true);
@@ -3884,12 +3982,12 @@ function layoutFlow(rebuild = false) {
   }
   const a = all[at];
   $('#cfTitle').textContent = a.name;
-  $('#cfSub').textContent = [a.artist, a.year || '', `${at + 1} of ${all.length}`].filter(Boolean).join(' · ');
+  $('#cfSub').textContent = [a.artist, a.year || '', t('common.nOfTotal', { n: String(at + 1), total: String(all.length) })].filter(Boolean).join(' · ');
   clearTimeout(S.cfSongsTimer);
   S.cfSongsTimer = setTimeout(() => {  // the songs once the glide stops
     const songs = $('#cfSongs');
     if (!songs || S.cfList[S.cfAt] !== a) return;
-    songs.innerHTML = `<div class="lhdr" role="heading" aria-level="3">${esc(a.name)}<small>${esc(plural(a.songs.length, 'song'))}</small></div>` +
+    songs.innerHTML = `<div class="lhdr" role="heading" aria-level="3">${esc(a.name)}<small>${te('common.songs', { count: a.songs.length })}</small></div>` +
       a.songs.map((s) => rowHtml(s)).join('');
     $$('.art[data-art]', songs).forEach((el) => artIO.observe(el));
     markPlayingRows();
@@ -3940,7 +4038,7 @@ window.addEventListener('pointerup', () => { cfDrag = null; });
 async function loadPhotos() {
   if (!S.photos) libList.innerHTML = '<div class="lib-skel"></div>'.repeat(4);
   try { S.photos = (await api('GET', '/api/photos', undefined, { timeout: 60000 })).photos; } catch (e) {
-    if (e.status !== 401 && !S.photos) libList.innerHTML = `<div class="lib-empty"><h3>Couldn’t look for photos</h3><p>${esc(reason(e))}</p></div>`;
+    if (e.status !== 401 && !S.photos) libList.innerHTML = `<div class="lib-empty"><h3>${te('photos.couldntLook')}</h3><p>${esc(reason(e))}</p></div>`;
     return;
   }
   renderLibrary();
@@ -3952,8 +4050,8 @@ function renderPhotos() {
   const q = fold(S.libQuery.trim());
   const shown = q ? all.filter((p) => fold(p.path).includes(q)) : all;
   S.photosShown = shown;
-  $('#libSummary').textContent = all.length ? `${plural(all.length, 'photo')} on your Rondo` : 'No photos';
-  if (!shown.length) { libList.innerHTML = `<div class="lib-empty"><h3>${all.length ? 'No matches' : 'No photos'}</h3><p>${all.length ? 'No photo’s name or folder matches.' : 'Upload JPEG or PNG pictures in the Files tab, or copy them to the card.'}</p></div>`; return; }
+  $('#libSummary').textContent = all.length ? t('photos.summary', { count: all.length }) : t('photos.none');
+  if (!shown.length) { libList.innerHTML = `<div class="lib-empty"><h3>${all.length ? te('common.noMatches') : te('photos.none')}</h3><p>${all.length ? te('photos.noMatchText') : te('photos.noneText')}</p></div>`; return; }
   const groups = [];
   for (let i = 0; i < shown.length; i++) {
     const dir = shown[i].path.slice(0, shown[i].path.lastIndexOf('/'));
@@ -3961,7 +4059,7 @@ function renderPhotos() {
     if (!g) groups.push((g = { dir, items: [] }));
     g.items.push(i);
   }
-  libList.innerHTML = groups.map((g) => `<div class="lhdr" role="heading" aria-level="3">${esc(relName(g.dir))}<small>${esc(plural(g.items.length, 'photo'))}</small></div>
+  libList.innerHTML = groups.map((g) => `<div class="lhdr" role="heading" aria-level="3">${esc(relName(g.dir))}<small>${te('common.photos', { count: g.items.length })}</small></div>
     <div class="ph-grid">${g.items.map((i) => `<button class="ph-cell" type="button" data-ph="${i}" aria-label="${esc(fileName(shown[i].path))}"><img alt="" loading="lazy" decoding="async" src="${photoUrl(shown[i].path, 320)}" onload="this.classList.add('ok')" onerror="artRetry(this)"></button>`).join('')}</div>`).join('');
 }
 libList.addEventListener('click', (e) => {
@@ -3977,13 +4075,13 @@ function openLightbox(i) {
     lb = document.createElement('div');
     lb.className = 'lightbox';
     lb.setAttribute('role', 'dialog');
-    lb.setAttribute('aria-label', 'Photo');
-    lb.innerHTML = `<div class="lb-stage"><button class="lb-nav prev" type="button" data-lb="-1" aria-label="Previous photo">${icon('chevron', 'i flip')}</button>
-      <button class="lb-nav next" type="button" data-lb="1" aria-label="Next photo">${icon('chevron')}</button></div>
+    lb.setAttribute('aria-label', t('photos.photo'));
+    lb.innerHTML = `<div class="lb-stage"><button class="lb-nav prev" type="button" data-lb="-1" aria-label="${te('photos.prev')}">${icon('chevron', 'i flip')}</button>
+      <button class="lb-nav next" type="button" data-lb="1" aria-label="${te('photos.next')}">${icon('chevron')}</button></div>
       <div class="lb-bar"><span class="lb-name"></span><span class="lb-meta"></span>
-        <button class="btn btn-sm" type="button" data-lb="show">${icon('play')}<span>Slideshow</span></button>
-        <a class="btn btn-sm" data-lb="save" download>Download</a>
-        <button class="btn btn-sm" type="button" data-lb="close">${icon('close')}<span>Close</span></button></div>`;
+        <button class="btn btn-sm" type="button" data-lb="show">${icon('play')}<span>${te('photos.slideshow')}</span></button>
+        <a class="btn btn-sm" data-lb="save" download>${te('common.download')}</a>
+        <button class="btn btn-sm" type="button" data-lb="close">${icon('close')}<span>${te('common.close')}</span></button></div>`;
     document.body.append(lb);
     lb.addEventListener('click', (e) => {
       const b = e.target.closest('[data-lb]');
@@ -4060,7 +4158,7 @@ function lbGo(i, dir = 0, fade = false, from = 0) {
   // the neighbors fetched ahead: the next turn has its photo at once
   for (const k of [i + 1, i - 1]) { const n = all[(k + all.length) % all.length]; if (n && n !== p) { const pre = new Image(); pre.decoding = 'async'; pre.src = viewUrl(n.path); } }
   $('.lb-name', lb).textContent = fileName(p.path);
-  $('.lb-meta', lb).textContent = `${new Date(p.modified).toLocaleDateString(undefined, { dateStyle: 'medium' })} · ${i + 1} of ${all.length}`;
+  $('.lb-meta', lb).textContent = `${new Date(p.modified).toLocaleDateString(dateLocale(), { dateStyle: 'medium' })} · ${t('common.nOfTotal', { n: String(i + 1), total: String(all.length) })}`;
   const save = $('[data-lb="save"]', lb);
   save.href = `/api/files/download?path=${encodeURIComponent(p.path)}`;
   save.setAttribute('download', fileName(p.path));
@@ -4068,9 +4166,9 @@ function lbGo(i, dir = 0, fade = false, from = 0) {
 let showTimer = 0;
 function toggleShow() {
   const b = $('[data-lb="show"] span', lb);
-  if (showTimer) { clearInterval(showTimer); showTimer = 0; b.textContent = 'Slideshow'; return; }
+  if (showTimer) { clearInterval(showTimer); showTimer = 0; b.textContent = t('photos.slideshow'); return; }
   showTimer = setInterval(() => lbGo(lb._i + 1, 1, true), 4000);
-  b.textContent = 'Stop';
+  b.textContent = t('common.stop');
 }
 function closeLightbox() {
   if (showTimer) toggleShow();

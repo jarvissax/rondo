@@ -275,6 +275,7 @@ input { caret-color: var(--accent-hi); }
 .t-vibrate, .t-clock, .t-level { --t1: #4fd8c8; --t2: #139c8c; }
 .t-sync { --t1: #9aa0a8; --t2: #5b616a; }
 .t-globe, .t-crossfade { --t1: #8c7bff; --t2: #4b36d6; }
+.t-language { --t1: #4fc3f7; --t2: #0288d1; }  /* Settings › Language: the Y1's tile (tiles::language) */
 .t-fade { --t1: #9a8cff; --t2: #5a3fe0; }
 .t-eq { --t1: #ffb04d; --t2: #f07a12; }
 .t-limit { --t1: #ff7a7a; --t2: #e0283c; }
