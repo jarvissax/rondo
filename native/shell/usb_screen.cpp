@@ -46,7 +46,7 @@ bool cardPlaying() {
 
 class UsbDriveScreen : public ShellListScreen {
  public:
-  UsbDriveScreen() : ShellListScreen("USB drive") {
+  UsbDriveScreen() : ShellListScreen(tr("common.usbDrive")) {
     on_ = usb::shared();
     render();
   }
@@ -71,29 +71,29 @@ class UsbDriveScreen : public ShellListScreen {
  private:
   void render() {
     std::vector<Row> rows;
-    auto add = [&](const char* title, const char* subtitle, const Tile* tile, bool enabled, std::function<void()> on) {
+    auto add = [&](const std::string& title, const std::string& subtitle, const Tile* tile, bool enabled, std::function<void()> on) {
       Row r;
       r.title = title;
-      if (subtitle) r.subtitle = subtitle;
+      r.subtitle = subtitle;
       r.tile = tile;
       r.enabled = enabled;
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
     if (switching_) {
-      add(target_ ? "Turning on\xe2\x80\xa6" : "Turning off\xe2\x80\xa6", nullptr, &tiles::usb, false, nullptr);
+      add(target_ ? tr("usb.turningOn") : tr("usb.turningOff"), "", &tiles::usb, false, nullptr);
     } else if (on_) {
-      add("USB drive is on", "Copy files on your computer", &tiles::usb, false, nullptr);
-      add("Turn off USB drive", "Eject it on the computer first", nullptr, true, [this] { switchTo(false); });
+      add(tr("usb.isOn"), tr("usb.copyOn"), &tiles::usb, false, nullptr);
+      add(tr("usb.turnOff"), tr("usb.ejectFirst"), nullptr, true, [this] { switchTo(false); });
       Row h;
       h.header = true;
-      h.title = "While it's on";
+      h.title = tr("usb.whileOn");
       rows.push_back(h);
-      add("Music on the card is paused", "It comes back when the drive is off", nullptr, false, nullptr);
-      if (downloadsGoing()) add("Downloads wait", "They go on when the drive is off", nullptr, false, nullptr);
+      add(tr("usb.musicPaused"), tr("usb.musicBack"), nullptr, false, nullptr);
+      if (downloadsGoing()) add(tr("usb.downloadsWait"), tr("usb.downloadsBack"), nullptr, false, nullptr);
     } else {
-      add("Use as USB drive", "Copy files from your computer", &tiles::usb, true, [this] { switchTo(true); });
-      add("Not now", "Keep listening while it charges", nullptr, true, [] { g_app->pop(); });
+      add(tr("usb.use"), tr("usb.copyFrom"), &tiles::usb, true, [this] { switchTo(true); });
+      add(tr("usb.notNow"), tr("usb.keepListening"), nullptr, true, [] { g_app->pop(); });
     }
     list_.setRows(std::move(rows));
   }
@@ -115,18 +115,18 @@ std::unique_ptr<Screen> makeUsbDrive() { return std::unique_ptr<Screen>(new UsbD
 
 void usbCableChanged(bool computer) {
   if (computer) {
-    if (g_app->topTitle() != "USB drive") g_app->push(makeUsbDrive());
+    if (g_app->topTitle() != tr("common.usbDrive")) g_app->push(makeUsbDrive());
     return;
   }
   // the cable came out: the card is the Y1's again
   if (g_switch == 0 && usb::shared()) startSwitch(false);
-  if (g_app->topTitle() == "USB drive") g_app->pop();
+  if (g_app->topTitle() == tr("common.usbDrive")) g_app->pop();
 }
 
 bool usbIdle() {
   // a switch that ended with no USB drive screen to see it (the cable came out): the card, back, is
   // read again
-  if (g_switch != 2 || g_app->topTitle() == "USB drive") return false;
+  if (g_switch != 2 || g_app->topTitle() == tr("common.usbDrive")) return false;
   g_switch = 0;
   if (!usb::shared()) rescanCard();
   return true;

@@ -204,10 +204,10 @@ void run(std::function<void()> work) {
 
 // a job starts: "" when it may
 std::string begin(const char* kind, int total) {
-  if (g_library.scanning()) return "The card is being read: try again in a moment";
-  if (organizeStatus().running) return "The card is being organized: try again when it's done";
+  if (g_library.scanning()) return tr("fillIn.cardReading");
+  if (organizeStatus().running) return tr("fillIn.organizing");
   std::lock_guard<std::mutex> l(g_mu);
-  if (g_status.running) return "Rondo is busy with the last one: wait for it, or cancel it";
+  if (g_status.running) return tr("fillIn.busy");
   g_status = FillStatus();
   g_status.kind = kind, g_status.running = true, g_status.total = total;
   g_cancel = false, g_active = true;
@@ -281,7 +281,7 @@ void fillInCancel() { g_cancel = true; }
 
 std::string fillInDetails(const std::vector<std::string>& countries) {
   auto groups = std::make_shared<std::vector<Group>>(groupsOf(songsNow(false)));
-  if (groups->empty()) return "Every song has its genre, year, album and track number";
+  if (groups->empty()) return tr("fillIn.nothingMissing");
   std::string why = begin("details", int(groups->size()));
   if (!why.empty()) return why;
   {
@@ -314,7 +314,7 @@ std::string fillInDetails(const std::vector<std::string>& countries) {
         g_planned.push_back(std::move(p));
       }
       if (inRow >= kFailuresToStop) {
-        end("The services didn't answer: check that your Rondo is online, then try again");
+        end(tr("fillIn.servicesNoAnswer"));
         curl_easy_cleanup(c);
         return;
       }
@@ -329,12 +329,12 @@ std::string fillInSave(const std::set<int>& skip) {
   auto work = std::make_shared<std::vector<std::pair<std::string, TagChanges>>>();
   {
     std::lock_guard<std::mutex> l(g_mu);
-    if (g_status.running) return "Rondo is busy with the last one: wait for it, or cancel it";
-    if (g_status.kind != "details" || !g_status.finished) return "Look the details up first";
+    if (g_status.running) return tr("fillIn.busy");
+    if (g_status.kind != "details" || !g_status.finished) return tr("fillIn.lookUpFirst");
     for (const Planned& p : g_planned)
       if (!skip.count(p.shown.id)) work->insert(work->end(), p.changes.begin(), p.changes.end());
   }
-  if (work->empty()) return "Nothing to save";
+  if (work->empty()) return tr("fillIn.nothingToSave");
   std::string why = begin("save", int(work->size()));
   if (!why.empty()) return why;
   run([work] {
@@ -358,7 +358,7 @@ std::string fillInSave(const std::set<int>& skip) {
 
 std::string fillInLyrics() {
   auto songs = std::make_shared<std::vector<Song>>(songsNow(true));
-  if (songs->empty()) return "There are no songs on the card";
+  if (songs->empty()) return tr("fillIn.noSongs");
   std::string why = begin("lyrics", int(songs->size()));
   if (!why.empty()) return why;
   run([songs] {
@@ -390,10 +390,10 @@ std::string fillInLyrics() {
           std::string lrc = (dot == std::string::npos ? s.path : s.path.substr(0, dot)) + ".lrc";
           if (FILE* f = fopen(lrc.c_str(), "wb")) {
             bool ok = fwrite(l.text.data(), 1, l.text.size(), f) == l.text.size();
-            if (fclose(f) != 0 || !ok) err = "couldn't write its .lrc";
+            if (fclose(f) != 0 || !ok) err = tr("fillIn.cantWriteLrc");
             beside = err.empty();
           } else {
-            err = "couldn't write its .lrc";
+            err = tr("fillIn.cantWriteLrc");
           }
         }
       }
@@ -412,7 +412,7 @@ std::string fillInLyrics() {
       });
       if (inRow >= kFailuresToStop) {
         flush(batch);
-        end("LRCLIB didn't answer: check that your Rondo is online, then try again");
+        end(tr("fillIn.lrclibNoAnswer"));
         curl_easy_cleanup(c);
         return;
       }
@@ -462,7 +462,7 @@ TitlesStatus titlesStatus() {
 
 std::string titlesLookupStart() {
   auto titles = std::make_shared<std::vector<VideoTitle>>(titlesToLookUp());
-  if (titles->empty()) return "Every show and movie has its years";
+  if (titles->empty()) return tr("fillIn.titlesKnown");
   {
     std::lock_guard<std::mutex> l(g_tmu);
     if (g_titles.running) return "";  // looking already: its result comes

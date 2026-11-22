@@ -17,8 +17,8 @@ extern const float kEqFreqs[kEqBands];  // 31 Hz to 16 kHz, an octave apart
 
 struct EqPreset {
   const char* id;
-  const char* name;
-  const char* note;  // the list's note: "" or a few words
+  const char* name;  // the catalog's key for its name (lang.h: tr(name) where it's shown), "sound.preset.bass"
+  const char* note;  // the key of the list's note (a few words), or "" for none
 };
 // The built-in presets, in the list's order ("flat" first: the sound as it comes)
 const std::vector<EqPreset>& eqPresets();
@@ -47,7 +47,7 @@ struct SoundConfig {
 SoundConfig loadSound(const std::string& path);
 bool saveSound(const std::string& path, const SoundConfig& c);
 
-// The preset's name for a profile ("Custom", a user preset's name…)
+// The preset's name for a profile, in the language spoken ("Custom", a user preset's name…)
 std::string presetName(const SoundConfig& c, const SoundProfile& p);
 // What the player runs for a profile: the filters, the gain, leveling. On the speaker, whenever anything
 // is applied, what it can't play (below 180 Hz) is cut first: more loudness, no rattle.

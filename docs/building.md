@@ -69,7 +69,9 @@ The YouTube client also builds for the Mac, which is quicker for trying a change
 tools/native/direct-host.sh && native/build/host/dcli '/music/search?q=rondo&type=song'
 ```
 
-The tests in `native/tests/host/` run on the Mac too; each has its build line at the top.
+The tests in `native/tests/host/` run on the Mac too; each has its build line at the top, and
+`tools/native/host-tests.sh` builds and runs them all, with the language check (`node tools/lang/check.mjs`).
+`tools/native/check-file.sh <file.cpp>` compiles one file with the build's flags without building anything.
 
 ### Rules of the road
 

@@ -14,8 +14,6 @@
 namespace rondo::shell {
 namespace {
 
-std::string quoted(const std::string& s) { return "\xe2\x80\x9c" + s + "\xe2\x80\x9d"; }
-
 std::string trimmed(const std::string& s) {
   size_t a = s.find_first_not_of(' '), b = s.find_last_not_of(' ');
   return a == std::string::npos ? "" : s.substr(a, b - a + 1);
@@ -45,7 +43,7 @@ class ConfirmScreen : public ShellListScreen {
     q.header = true;
     q.title = question;
     Row cancel;
-    cancel.title = "Cancel";
+    cancel.title = tr("common.cancel");
     cancel.onSelect = [] { g_app->pop(); };
     Row act;
     act.title = action;
@@ -104,15 +102,14 @@ class TextEntryScreen : public Screen {
     if (msg.h == 0 || line_.empty()) msg.h = label(e, " ", 10, false).h;
     drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, problem_ && !working_ ? p.accent : p.muted);
     float area = sy + msg.h + e.dp(3);
-    drawKeyboard(e, kb_, area, w, h, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right",
-                 p.muted, p.text);
+    drawKeyboard(e, kb_, area, w, h, tr("library.keyboardHint"), p.muted, p.text);
   }
 
  private:
   void finish() {
     std::string text = trimmed(kb_.typed());
     working_ = true;
-    line_ = "Just a moment\xe2\x80\xa6";
+    line_ = tr("playlists.justAMoment");
     std::shared_ptr<bool> alive = alive_;
     // nothing of this screen is touched after onDone_: its answer may have closed it
     onDone_(text, [this, alive, text](const std::string& problem) {
@@ -161,14 +158,14 @@ class PlaylistMenuScreen;
 // AddToPlaylistScreen: pick a playlist for the songs (or start a new one with them).
 class AddToPlaylistScreen : public ShellListScreen {
  public:
-  explicit AddToPlaylistScreen(std::vector<std::string> paths) : ShellListScreen("Add to playlist"), paths_(std::move(paths)) {
+  explicit AddToPlaylistScreen(std::vector<std::string> paths) : ShellListScreen(tr("playlists.addTo")), paths_(std::move(paths)) {
     std::vector<Row> rows;
     Row add;
-    add.title = "New playlist";
+    add.title = tr("playlists.new");
     add.tile = &tiles::add;
     auto paths2 = paths_;
     add.onSelect = [paths2] {
-      g_app->push(makeTextEntry("New playlist", "", "Create", 60,
+      g_app->push(makeTextEntry(tr("playlists.new"), "", tr("playlists.create"), 60,
                                 [paths2](const std::string& name) { return g_playlists.create(name, paths2); },
                                 [](const std::string&) { g_app->pop(); }));
     };
@@ -179,7 +176,7 @@ class AddToPlaylistScreen : public ShellListScreen {
                              [&](const std::string& s) { return std::find(p.paths.begin(), p.paths.end(), s) != p.paths.end(); });
       Row r;
       r.title = p.name;
-      r.trailing = has ? "Added" : std::to_string(p.paths.size());
+      r.trailing = has ? tr("library.added") : std::to_string(p.paths.size());
       r.tile = p.cover.empty() ? &tiles::playlists : nullptr;
       r.thumb = p.cover;
       r.enabled = !has;
@@ -210,7 +207,7 @@ class LocalSongMenuScreen : public RenderedList {
   void render() override {
     if (!note_.empty()) return list_.setMessage(note_);
     std::vector<Row> rows;
-    auto entry = [&](const char* title, std::function<void()> f) {
+    auto entry = [&](const std::string& title, std::function<void()> f) {
       Row r;
       r.title = title;
       r.onSelect = std::move(f);
@@ -218,10 +215,10 @@ class LocalSongMenuScreen : public RenderedList {
       return &rows.back();
     };
     std::string path = path_;
-    entry("Play now", [path] { playNow({path}, 0); });
-    entry("Play next", [this] { enqueue(true); });
-    entry("Add to queue", [this] { enqueue(false); });
-    Row* add = entry("Add to playlist", [path] { g_app->push(makeAddToPlaylist({path})); });
+    entry(tr("playlists.song.playNow"), [path] { playNow({path}, 0); });
+    entry(tr("playlists.song.playNext"), [this] { enqueue(true); });
+    entry(tr("playlists.song.addToQueue"), [this] { enqueue(false); });
+    Row* add = entry(tr("playlists.addTo"), [path] { g_app->push(makeAddToPlaylist({path})); });
     add->tile = &tiles::playlists;
     add->chevron = true;
     if (!playlist_.empty()) {
@@ -232,14 +229,14 @@ class LocalSongMenuScreen : public RenderedList {
       if (at >= int(paths.size())) at = -1;
       Row h;
       h.header = true;
-      h.title = "In " + quoted(playlist_);
+      h.title = tr("playlists.song.inPlaylist", {{"name", playlist_}});
       rows.push_back(h);
       std::string name = playlist_;
-      Row* up = entry("Move up", [name, paths, at] { move(name, paths, at, at - 1); });
+      Row* up = entry(tr("playlists.song.moveUp"), [name, paths, at] { move(name, paths, at, at - 1); });
       up->enabled = at > 0;
-      Row* down = entry("Move down", [name, paths, at] { move(name, paths, at, at + 1); });
+      Row* down = entry(tr("playlists.song.moveDown"), [name, paths, at] { move(name, paths, at, at + 1); });
       down->enabled = at >= 0 && at < int(paths.size()) - 1;
-      entry("Remove from playlist", [name, paths, path] {
+      entry(tr("playlists.song.remove"), [name, paths, path] {
         std::vector<std::string> rest;
         for (auto& s : paths)
           if (s != path) rest.push_back(s);
@@ -248,17 +245,18 @@ class LocalSongMenuScreen : public RenderedList {
       });
     }
     std::string title = songInfo(path_).title;
-    Row* del = entry("Delete from card", [this, path, title] {
-      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete this song?", quoted(title) + " will be removed from the card.",
-                                                            "Delete", [this, path] {
+    Row* del = entry(tr("playlists.song.delete"), [this, path, title] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen(tr("playlists.song.deleteQuestion"),
+                                                            tr("playlists.song.deleteNote", {{"title", title}}), tr("common.delete"),
+                                                            [this, path] {
                                                               bool ok = g_library.deleteFile(path);
                                                               if (ok) g_playlists.forget(path);
                                                               g_app->pop();  // the question
                                                               if (ok) g_app->pop();  // this menu
-                                                              else note_ = "Couldn't delete it", render();
+                                                              else note_ = tr("playlists.song.cantDelete"), render();
                                                             })));
     });
-    del->subtitle = "Can't be undone";
+    del->subtitle = tr("playlists.song.cantUndo");
     del->tile = &tiles::del;
     list_.setRows(std::move(rows), true);
   }
@@ -275,7 +273,7 @@ class LocalSongMenuScreen : public RenderedList {
   void enqueue(bool next) {
     PlayerState s = g_player.state();
     if (g_player.active() && s.index >= 0 && isStream(s.path)) {
-      note_ = "Songs on the card can't join an online queue.\nUse Play now to start a new one.";
+      note_ = tr("playlists.song.notOnline");
       return render();
     }
     if (!g_player.active()) g_player.playQueue({path_}, 0);
@@ -296,22 +294,22 @@ class PlaylistMenuScreen : public ShellListScreen {
       return;
     }
     Row rename;
-    rename.title = "Rename";
+    rename.title = tr("common.rename");
     rename.chevron = true;
     rename.onSelect = [name] {
-      g_app->push(makeTextEntry("Rename " + quoted(name), name, "Save", 60,
+      g_app->push(makeTextEntry(tr("playlists.renameTitle", {{"name", name}}), name, tr("common.save"), 60,
                                 [name](const std::string& typed) { return g_playlists.update(name, &typed, nullptr); },
                                 [](const std::string&) { g_app->pop(); }));
     };
     Row del;
-    del.title = "Delete playlist";
-    del.subtitle = "The songs stay on the card";
+    del.title = tr("playlists.delete");
+    del.subtitle = tr("playlists.songsStay");
     del.tile = &tiles::del;
     del.onSelect = [name] {
-      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete " + quoted(name) + "?", "The songs stay on the card.",
-                                                            "Delete playlist", [name] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen(tr("playlists.deleteQuestion", {{"name", name}}), tr("playlists.songsStayNote"),
+                                                            tr("playlists.delete"), [name] {
                                                               g_playlists.remove(name);
-                                                              g_app->popTo("Playlists");
+                                                              g_app->popTo(tr("common.playlists"));  // PlaylistsScreen's title
                                                             })));
     };
     list_.setRows({rename, del});
@@ -327,8 +325,8 @@ class PlaylistMenuScreen : public ShellListScreen {
     std::vector<Row> rows;
     if (!id.empty()) {
       Row up;
-      up.title = "Update download";
-      up.subtitle = "Its new songs come; the order is YouTube's";
+      up.title = tr("playlists.updateDownload");
+      up.subtitle = tr("playlists.updateDownloadNote");
       up.tile = &tiles::downloads;
       up.onSelect = [id, title] {
         downloadPlaylist(id, title);
@@ -337,25 +335,25 @@ class PlaylistMenuScreen : public ShellListScreen {
       rows.push_back(up);
     }
     Row keep;
-    keep.title = "Delete playlist";
-    keep.subtitle = "Its songs stay on the card";
+    keep.title = tr("playlists.delete");
+    keep.subtitle = tr("playlists.itsSongsStay");
     keep.tile = &tiles::del;
     keep.onSelect = [name, title] {
-      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete " + quoted(title) + "?", "Its songs stay on the card.", "Delete playlist",
-                                                            [name] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen(tr("playlists.deleteQuestion", {{"name", title}}), tr("playlists.itsSongsStayNote"),
+                                                            tr("playlists.delete"), [name] {
                                                               deleteLibraryPlaylist(name, false);
-                                                              g_app->popTo("Playlists");
+                                                              g_app->popTo(tr("common.playlists"));
                                                             })));
     };
     rows.push_back(keep);
     Row all;
-    all.title = "Delete it and its songs";
-    all.subtitle = "Not those another playlist has, or downloaded by themselves";
+    all.title = tr("playlists.deleteWithSongs");
+    all.subtitle = tr("playlists.deleteWithSongsNote");
     all.onSelect = [name, title] {
-      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen("Delete " + quoted(title) + " and its songs?",
-                                                            "They're deleted from the card. Can't be undone.", "Delete them", [name] {
+      g_app->push(std::unique_ptr<Screen>(new ConfirmScreen(tr("playlists.deleteWithSongsQuestion", {{"name", title}}),
+                                                            tr("playlists.deleteWithSongsWarning"), tr("playlists.deleteThem"), [name] {
                                                               deleteLibraryPlaylist(name, true);
-                                                              g_app->popTo("Playlists");
+                                                              g_app->popTo(tr("common.playlists"));
                                                             })));
     };
     rows.push_back(all);
@@ -381,13 +379,13 @@ class PlaylistScreen : public RenderedList {
  protected:
   void render() override {
     Playlist p;
-    if (!g_playlists.get(name_, p)) return list_.setMessage("This playlist is gone");
+    if (!g_playlists.get(name_, p)) return list_.setMessage(tr("playlists.thisIsGone"));
     std::vector<std::string> items;
     for (auto& s : p.paths)
       if (g_library.find(s)) items.push_back(s);
     std::vector<Row> rows;
     Row shuffle;
-    shuffle.title = "Shuffle";
+    shuffle.title = tr("library.shuffle");
     shuffle.trailing = std::to_string(items.size());
     shuffle.tile = &tiles::shuffle;
     shuffle.enabled = !items.empty();
@@ -400,7 +398,7 @@ class PlaylistScreen : public RenderedList {
     std::string name = name_;
     if (!youtube_) {  // a downloaded one follows YouTube's: not edited here
       Row add;
-      add.title = "Add songs";
+      add.title = tr("playlists.addSongs");
       add.tile = &tiles::add;
       add.chevron = true;
       add.onSelect = [name] { g_app->push(makeSearchToAdd(name)); };
@@ -408,10 +406,10 @@ class PlaylistScreen : public RenderedList {
     }
     Row head;
     head.header = true;
-    std::string count = std::to_string(items.size()) + (items.size() == 1 ? " song" : " songs");
-    head.title = youtube_       ? (items.empty() ? std::string("No songs on the card yet") : count + " \xc2\xb7 from YouTube Music")
-                 : items.empty() ? "No songs yet \xc2\xb7 Add songs, or hold center on any song"
-                                 : count + " \xc2\xb7 hold center: move or remove";
+    std::string count = tr("playlists.songCount", {{"count", items.size()}});
+    head.title = youtube_       ? (items.empty() ? tr("playlists.noSongsOnCard") : count + " \xc2\xb7 " + tr("playlists.fromYouTubeMusic"))
+                 : items.empty() ? tr("playlists.noSongsYet")
+                                 : count + " \xc2\xb7 " + tr("playlists.holdToMove");
     rows.push_back(head);
     // one list shared by every row (a copy each was 821 x 821 strings), and each row's text and
     // artwork filled in when it is drawn, as Songs does
@@ -438,8 +436,8 @@ class PlaylistScreen : public RenderedList {
     size_t missing = p.paths.size() - items.size();
     if (missing > 0) {
       Row m;
-      m.title = std::to_string(missing) + (missing == 1 ? " song isn't on the card" : " songs aren't on the card");
-      m.subtitle = youtube_ ? "Update its download to get them again" : "Copy them back, or they're skipped";
+      m.title = tr("playlists.missing", {{"count", missing}});
+      m.subtitle = youtube_ ? tr("playlists.missingYouTube") : tr("playlists.missingCopy");
       m.enabled = false;
       rows.push_back(m);
     }
@@ -456,17 +454,17 @@ class PlaylistScreen : public RenderedList {
 // its options.
 class PlaylistsScreen : public RenderedList {
  public:
-  PlaylistsScreen() : RenderedList("Playlists") { render(); }
+  PlaylistsScreen() : RenderedList(tr("common.playlists")) { render(); }  // what popTo() looks for
 
  protected:
   void render() override {
     std::vector<Playlist> all = g_playlists.all();
     std::vector<Row> rows;
     Row add;
-    add.title = "New playlist";
+    add.title = tr("playlists.new");
     add.tile = &tiles::add;
     add.onSelect = [] {
-      g_app->push(makeTextEntry("New playlist", "", "Create", 60, [](const std::string& name) { return g_playlists.create(name); },
+      g_app->push(makeTextEntry(tr("playlists.new"), "", tr("playlists.create"), 60, [](const std::string& name) { return g_playlists.create(name); },
                                 [](const std::string& name) { g_app->push(makePlaylist(Playlists::clean(name))); }));
     };
     rows.push_back(add);
@@ -474,7 +472,7 @@ class PlaylistsScreen : public RenderedList {
     if (all.empty()) {
       Row h;
       h.header = true;
-      h.title = "No playlists yet";
+      h.title = tr("playlists.noneYet");
       rows.push_back(h);
     }
     for (const Playlist& p : all) {
@@ -495,13 +493,13 @@ class PlaylistsScreen : public RenderedList {
     if (!smart.empty()) {
       Row h;
       h.header = true;
-      h.title = "Smart playlists";
+      h.title = tr("playlists.smart");
       rows.push_back(h);
     }
     for (const SmartPlaylist& p : smart) {
       Row r;
       r.title = p.name;
-      r.subtitle = "Made on the dashboard";
+      r.subtitle = tr("playlists.smartNote");
       r.trailing = std::to_string(SmartPlaylists::songs(p, g_library).size());
       r.tile = &tiles::smart;
       r.chevron = true;

@@ -62,33 +62,42 @@ std::string whenShort(int64_t ms) {
   if (ms <= 0) return "";
   int64_t d = (dayOf(nowMs()) - dayOf(ms)) / 86400;
   if (d <= 0) return timeOf(ms);
-  if (d == 1) return "Yesterday";
+  if (d == 1) return tr("whatsapp.yesterday");
   time_t t = time_t(ms / 1000);
   if (d < 7) {
-    static const char* kDays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     struct tm tm;
     localtime_r(&t, &tm);
-    return kDays[tm.tm_wday];
+    return tr("date.day" + std::to_string(tm.tm_wday));  // "Sun"
   }
   return clockDate(t, false);
+}
+
+// a weekday's whole name ("Sunday": 0)
+std::string weekday(int n) {
+  switch (n) {
+    case 0: return tr("whatsapp.sunday");
+    case 1: return tr("whatsapp.monday");
+    case 2: return tr("whatsapp.tuesday");
+    case 3: return tr("whatsapp.wednesday");
+    case 4: return tr("whatsapp.thursday");
+    case 5: return tr("whatsapp.friday");
+    default: return tr("whatsapp.saturday");
+  }
 }
 
 // a chat's day between its messages
 std::string dayLabel(int64_t ms) {
   int64_t d = (dayOf(nowMs()) - dayOf(ms)) / 86400;
-  if (d <= 0) return "Today";
-  if (d == 1) return "Yesterday";
+  if (d <= 0) return tr("whatsapp.today");
+  if (d == 1) return tr("whatsapp.yesterday");
   time_t t = time_t(ms / 1000);
   struct tm tm, now;
   localtime_r(&t, &tm);
   time_t n = time(nullptr);
   localtime_r(&n, &now);
-  if (d < 7) {
-    static const char* kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    return kDays[tm.tm_wday];
-  }
+  if (d < 7) return weekday(tm.tm_wday);
   std::string s = clockDate(t, false);
-  if (tm.tm_year != now.tm_year) s += ", " + std::to_string(tm.tm_year + 1900);
+  if (tm.tm_year != now.tm_year) s = tr("whatsapp.dateWithYear", {{"date", s}, {"year", std::to_string(tm.tm_year + 1900)}});
   return s;
 }
 
@@ -181,19 +190,22 @@ void centered(Env& e, float w, float top, float h, const std::string& text, cons
   for (auto& l : subs) drawLabel(e, l, centerText(0, w, l.w), y, kMuted), y += l.h;
 }
 
+// a name as the server sends it: its words for the owner and for someone it has no name for are English
+// ("You", "Someone": whatsapp.ts nameOf()), shown in the language spoken
+std::string shownName(const std::string& n) {
+  if (n == "You") return tr("whatsapp.you");
+  if (n == "Someone") return tr("whatsapp.someone");
+  return n;
+}
+
 // what the state of the server's WhatsApp says, when there's nothing to show ("" there's something)
 std::pair<std::string, std::string> stateWords(const WaClient& c) {
   using S = WaClient::State;
   switch (c.state()) {
-    case S::NoServer:
-      return {"WhatsApp works through your Rondo server",
-              "Connect one in Settings \xe2\x80\xba Server, then link WhatsApp on the server\xe2\x80\x99s admin page."};
-    case S::Old:
-      return {"Your server is too old for WhatsApp", "Update it to Rondo server 3.3.0 or newer on its admin page."};
-    case S::Unlinked:
-      return {"WhatsApp isn\xe2\x80\x99t linked yet",
-              "Link it on your server\xe2\x80\x99s admin page (WhatsApp), with a code you type on your phone."};
-    case S::Linking: return {"Linking\xe2\x80\xa6", "Type the code the server\xe2\x80\x99s admin page shows on your phone."};
+    case S::NoServer: return {tr("whatsapp.state.noServer"), tr("whatsapp.state.noServerHint")};
+    case S::Old: return {tr("whatsapp.state.old"), tr("whatsapp.state.oldHint")};
+    case S::Unlinked: return {tr("whatsapp.state.unlinked"), tr("whatsapp.state.unlinkedHint")};
+    case S::Linking: return {tr("whatsapp.state.linking"), tr("whatsapp.state.linkingHint")};
     default: break;
   }
   return {"", ""};
@@ -301,8 +313,8 @@ class ChatsScreen : public Screen {
     float top = float(e.dp(31));
     // a line under the header while the server's WhatsApp isn't there (what the card kept shows)
     std::string note;
-    if (c.state() == WaClient::State::Connecting) note = "Connecting to WhatsApp\xe2\x80\xa6";
-    else if (c.state() == WaClient::State::Offline) note = offlineOr("Can\xe2\x80\x99t reach your server");
+    if (c.state() == WaClient::State::Connecting) note = tr("whatsapp.connecting");
+    else if (c.state() == WaClient::State::Offline) note = offlineOr(tr("whatsapp.cantReachServer"));
     if (!c.problem().empty()) note = c.problem();
     auto words = stateWords(c);
     const std::vector<WaChat>& chats = c.chats();
@@ -312,7 +324,7 @@ class ChatsScreen : public Screen {
     if (c.state() == S::NoServer || c.state() == S::Old || (!words.first.empty() && chats.empty()))
       return centered(e, w, top, h - top, words.first, words.second);
     if (!words.first.empty()) note = words.first;
-    if (!c.loaded()) return centered(e, w, top, h - top, note.empty() ? "Loading\xe2\x80\xa6" : note);
+    if (!c.loaded()) return centered(e, w, top, h - top, note.empty() ? tr("common.loading") : note);
     if (!note.empty()) {
       Label n = label(e, note, 9, false, w - e.dp(20));
       float nh = float(n.h + e.dp(6));
@@ -339,12 +351,12 @@ class ChatsScreen : public Screen {
         e.c.layer(1);
         e.c.shape({float(e.dp(4)), y + 1, w - e.dp(8), rowH - 2}, e.dpf(8), kSel);
       }
-      if (i == 0) actionRow(e, w, y, rowH, Icon::Search, kSel, "Search", "Names and numbers");
-      else if (i == 1) actionRow(e, w, y, rowH, Icon::Plus, kGreen, "New chat", "Your contacts");
+      if (i == 0) actionRow(e, w, y, rowH, Icon::Search, kSel, tr("whatsapp.search"), tr("whatsapp.searchHint"));
+      else if (i == 1) actionRow(e, w, y, rowH, Icon::Plus, kGreen, tr("whatsapp.newChat"), tr("whatsapp.newChatHint"));
       else chatRow(e, w, y, rowH, chats[size_t(i - 2)]);
     }
     e.c.popClip();
-    if (chats.empty()) centered(e, w, top + 2 * rowH, viewH - 2 * rowH, "No chats yet", "Start one with New chat.");
+    if (chats.empty()) centered(e, w, top + 2 * rowH, viewH - 2 * rowH, tr("whatsapp.noChats"), tr("whatsapp.noChatsHint"));
     e.c.layer(0);
   }
 
@@ -359,7 +371,7 @@ class ChatsScreen : public Screen {
     g_app->push(hold ? makeProfile(ch.jid, ch.name, ch.group, false) : makeChat(ch.jid, ch.name, ch.group));
   }
   std::unique_ptr<Screen> makeContacts();
-  void actionRow(Env& e, float w, float y, float rowH, Icon icon, Color circle, const char* title, const char* sub) {
+  void actionRow(Env& e, float w, float y, float rowH, Icon icon, Color circle, const std::string& title, const std::string& sub) {
     int a = e.dp(34);
     Rect r{float(e.dp(10)), y + float((int(rowH) - a) / 2), float(a), float(a)};
     e.c.layer(2);
@@ -381,8 +393,12 @@ class ChatsScreen : public Screen {
     e.c.layer(4);
     Label when = label(e, whenShort(ch.at), 9, false);
     Label name = label(e, ch.name, 13, true, right - x - when.w - e.dp(8));
-    // the preview: who wrote it (a group), the ticks for yours, the text
-    std::string text = ch.hasPreview ? ch.preview.text : "";
+    // the preview: who wrote it (a group), the ticks for yours, the text (the server's, in English: a
+    // sticker and a deleted one, whose text is only what they are, in the language spoken)
+    std::string text = !ch.hasPreview                   ? ""
+                       : ch.preview.kind == "sticker" ? tr("whatsapp.sticker")
+                       : ch.preview.kind == "deleted" ? tr("whatsapp.deleted")
+                                                      : ch.preview.text;
     if (ch.hasPreview && !ch.preview.sender.empty()) text = ch.preview.sender + ": " + text;
     float lineY = y + float((int(rowH) - name.h - e.dp(15)) / 2);
     drawLabel(e, name, x, lineY, kText);
@@ -416,9 +432,10 @@ class ChatsScreen : public Screen {
       int s = e.dp(13);
       e.icons.draw(e.c, kindIcon, {px, mid - s / 2.f, float(s), float(s)}, pr.kind == "voice" ? kGreen : kMuted);
       px += s + e.dp(3);
-      text = pr.kind == "voice" || pr.kind == "audio" ? (pr.seconds > 0 ? formatTime(pr.seconds) : pr.kind == "voice" ? "Voice message" : "Audio")
-             : pr.kind == "image" ? (pr.caption.empty() ? "Photo" : pr.caption)
-             : pr.kind == "video" ? (pr.caption.empty() ? "Video" : pr.caption)
+      // (a document's: the server's line without its "Document: ", always English)
+      text = pr.kind == "voice" || pr.kind == "audio" ? (pr.seconds > 0 ? formatTime(pr.seconds) : pr.kind == "voice" ? tr("whatsapp.voiceMessage") : tr("whatsapp.audio"))
+             : pr.kind == "image" ? (pr.caption.empty() ? tr("whatsapp.photo") : pr.caption)
+             : pr.kind == "video" ? (pr.caption.empty() ? tr("whatsapp.video") : pr.caption)
                                   : pr.text.substr(pr.text.compare(0, 10, "Document: ") == 0 ? 10 : 0);
     }
     Label pv = label(e, text, 11, false, pRight - px);
@@ -440,7 +457,7 @@ class ContactsScreen : public Screen {
     waClient().loadContacts([] {});
   }
   ~ContactsScreen() override { waClient().release(); }
-  std::string title() const override { return "New chat"; }
+  std::string title() const override { return tr("whatsapp.newChat"); }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     const auto& all = waClient().contacts();
@@ -488,10 +505,10 @@ class ContactsScreen : public Screen {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
     const auto& all = waClient().contacts();
-    waHeader(e, w, "New chat", waClient().contactsLoaded() ? std::to_string(all.size()) + " contacts" : "");
+    waHeader(e, w, tr("whatsapp.newChat"), waClient().contactsLoaded() ? tr("whatsapp.contactCount", {{"count", all.size()}}) : "");
     float top = float(e.dp(31));
-    if (!waClient().contactsLoaded()) return centered(e, w, top, h - top, "Loading your contacts\xe2\x80\xa6");
-    if (all.empty()) return centered(e, w, top, h - top, "No contacts yet");
+    if (!waClient().contactsLoaded()) return centered(e, w, top, h - top, tr("whatsapp.loadingContacts"));
+    if (all.empty()) return centered(e, w, top, h - top, tr("whatsapp.noContacts"));
     float rowH = float(e.dp(42)), viewH = h - top;
     if (int(all.size()) + 1 != count_ || viewH != viewH_) {
       list_.configure(int(all.size()) + 1, rowH, viewH);
@@ -513,7 +530,7 @@ class ContactsScreen : public Screen {
         int g = e.dp(16);
         e.c.layer(4);
         e.icons.drawInTile(e.c, Icon::Search, r, float(g), rgb(0xffffff));
-        Label t = label(e, "Search", 13, true);
+        Label t = label(e, tr("whatsapp.search"), 13, true);
         drawLabel(e, t, r.x + a + e.dp(10), y + float((int(rowH) - t.h) / 2), kText);
         continue;
       }
@@ -575,7 +592,7 @@ class ProfileScreen : public Screen {
   void draw(Env& e, float w, float h) override {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
-    waHeader(e, w, group_ ? "Group" : "Contact");
+    waHeader(e, w, group_ ? tr("whatsapp.group") : tr("whatsapp.contact"));
     float y = float(e.dp(31) + e.dp(12));
     int a = e.dp(84);
     avatar(e, jid_, group_, {float((int(w) - a) / 2), y, float(a), float(a)});
@@ -585,7 +602,7 @@ class ProfileScreen : public Screen {
     Label n = label(e, name, 16, true, w - e.dp(20));
     drawLabel(e, n, centerText(0, w, n.w), y, kText);
     y += n.h + e.dp(2);
-    std::string sub = group_ ? "Group" : contact_.number;
+    std::string sub = group_ ? tr("whatsapp.group") : contact_.number;
     if (!group_ && !contact_.pushName.empty() && contact_.pushName != name) sub += " \xc2\xb7 ~" + contact_.pushName;
     if (!sub.empty()) {
       Label s = label(e, sub, 11, false, w - e.dp(20));
@@ -594,14 +611,17 @@ class ProfileScreen : public Screen {
     }
     y += e.dp(10);
     if (!group_) {
-      std::string about = !loaded_ ? "Loading\xe2\x80\xa6" : failed_ ? "Couldn\xe2\x80\x99t load the profile" : contact_.about.empty() ? "No about" : contact_.about;
-      Label head = label(e, "About", 10, true);
+      std::string about = !loaded_                ? tr("common.loading")
+                          : failed_               ? tr("whatsapp.profileFailed")
+                          : contact_.about.empty() ? tr("whatsapp.noAbout")
+                                                   : contact_.about;
+      Label head = label(e, tr("whatsapp.about"), 10, true);
       drawLabel(e, head, float(e.dp(16)), y, kGreen);
       y += head.h + e.dp(2);
       for (auto& l : wrap(e, about, 12, false, w - e.dp(32), 3)) drawLabel(e, l, float(e.dp(16)), y, kText), y += l.h;
     }
     if (offerChat_) {
-      Label b = label(e, "Message", 12, true);
+      Label b = label(e, tr("whatsapp.button.message"), 12, true);
       float bw = float(b.w + e.dp(36)), bh = float(e.dp(26)), bx = float((int(w) - int(bw)) / 2), by = h - bh - e.dp(10);
       e.c.layer(2);
       e.c.shape({bx, by, bw, bh}, bh / 2, kGreen);
@@ -625,6 +645,7 @@ class ProfileScreen : public Screen {
 
 class ComposeScreen : public Screen {
  public:
+  // "Send": the keyboard draws it as WhatsApp's paper plane (ui/keyboard.cpp knows it by this word)
   ComposeScreen(std::string jid, std::string name, WaQuote quote)
       : jid_(std::move(jid)), name_(std::move(name)), quote_(std::move(quote)), kb_("Send", Keyboard::Style::WhatsApp) {
     kb_.setTyped(g_drafts[jid_]);
@@ -643,11 +664,11 @@ class ComposeScreen : public Screen {
   void draw(Env& e, float w, float h) override {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
-    waHeader(e, w, name_, quote_.id.empty() ? "New message" : "Reply");
+    waHeader(e, w, name_, quote_.id.empty() ? tr("whatsapp.newMessage") : tr("whatsapp.replying"));
     float y = float(e.dp(31) + e.dp(4)), bx = float(e.dp(8)), bw = w - 2 * bx;
     // the message being answered
     if (!quote_.id.empty()) {
-      Label qn = label(e, quote_.name.empty() ? "Message" : quote_.name, 10, true, bw - e.dp(14));
+      Label qn = label(e, quote_.name.empty() ? tr("whatsapp.message") : shownName(quote_.name), 10, true, bw - e.dp(14));
       Label qt = label(e, quote_.text.empty() ? quote_.kind : quote_.text, 10, false, bw - e.dp(14));
       float qh = float(qn.h + qt.h + e.dp(6));
       e.c.layer(2);
@@ -669,7 +690,7 @@ class ComposeScreen : public Screen {
     e.c.layer(4);
     float ly = y + e.dp(4);
     if (kb_.typed().empty()) {
-      Label hint = label(e, "|  Message", 13, false, bw - e.dp(20));
+      Label hint = label(e, "|  " + tr("whatsapp.message"), 13, false, bw - e.dp(20));
       drawLabel(e, hint, bx + e.dp(10), ly, kMuted);
     } else {
       for (size_t i = from; i < all.size(); i++) {
@@ -679,8 +700,7 @@ class ComposeScreen : public Screen {
       }
     }
     float area = y + fh + e.dp(4);
-    drawKeyboard(e, kb_, area, w, h, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type",
-                 kMuted, kText);
+    drawKeyboard(e, kb_, area, w, h, tr("whatsapp.keyboardHint"), kMuted, kText);
     e.c.layer(0);
   }
 
@@ -719,7 +739,7 @@ class RecordScreen : public Screen {
       unlink(file_.c_str());
     }
   }
-  std::string title() const override { return "Voice message"; }
+  std::string title() const override { return tr("whatsapp.voiceMessage"); }
   bool statusBar() const override { return false; }
   bool keepScreenOn() const override { return true; }
   bool onAction(Action a, int) override {
@@ -775,11 +795,10 @@ class RecordScreen : public Screen {
     PlayerState s = g_player.state();
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
-    waHeader(e, w, name_, "Voice message");
+    waHeader(e, w, name_, tr("whatsapp.voiceMessage"));
     float top = float(e.dp(31));
     if (s.recordError && !s.recording) {
-      centered(e, w, top, h - top, "The microphone couldn\xe2\x80\x99t be opened",
-               "Error " + std::to_string(s.recordError) + ". Menu goes back.");
+      centered(e, w, top, h - top, tr("whatsapp.record.micFailed"), tr("whatsapp.record.micFailedHint", {{"code", s.recordError}}));
       return;
     }
     float cx = w / 2, cy = top + (h - top) * 0.42f;
@@ -793,7 +812,7 @@ class RecordScreen : public Screen {
     e.c.layer(4);
     e.icons.draw(e.c, Icon::Mic, {cx - g / 2.f, cy - g / 2.f, float(g), float(g)}, rgb(0xffffff));
     std::string t = formatTime(int(s.recordMs / 1000));
-    Label tl = label(e, stopping_ ? "Sending\xe2\x80\xa6" : t, 18, true);
+    Label tl = label(e, stopping_ ? tr("whatsapp.record.sending") : t, 18, true);
     float ty = cy + base / 2 + most / 2 + e.dp(10);  // below the ring at its largest: it stays put
     drawLabel(e, tl, centerText(0, w, tl.w), ty, kText);
     bool on = s.recording && (now_ns() - started_) / 500000000 % 2 == 0;
@@ -803,7 +822,7 @@ class RecordScreen : public Screen {
       e.c.shape({centerText(0, w, tl.w) - d - e.dp(6), ty + float((tl.h - d) / 2), float(d), float(d)}, d / 2.f, on ? kRed : 0x55f15c6d);
     }
     e.c.layer(4);
-    Label hint = label(e, s.recording ? "center: send \xc2\xb7 Menu: throw away" : "Starting the microphone\xe2\x80\xa6", 10, false, w - e.dp(20));
+    Label hint = label(e, s.recording ? tr("whatsapp.record.hint") : tr("whatsapp.record.starting"), 10, false, w - e.dp(20));
     drawLabel(e, hint, centerText(0, w, hint.w), h - hint.h - e.dp(10), kMuted);
   }
 
@@ -861,7 +880,7 @@ class SendPreviewScreen : public Screen {
     std::lock_guard<std::mutex> l(big_->mu);
     return big_->done && !shown_;
   }
-  std::string title() const override { return "Send"; }
+  std::string title() const override { return tr("whatsapp.send"); }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int) override {
     if (a == Action::Select) {
@@ -874,7 +893,7 @@ class SendPreviewScreen : public Screen {
   void draw(Env& e, float w, float h) override {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, rgb(0x000000));
-    waHeader(e, w, "Send to " + name_, pick_.video ? "Video" : "Photo");
+    waHeader(e, w, tr("whatsapp.sendTo", {{"name", name_}}), pick_.video ? tr("whatsapp.video") : tr("whatsapp.photo"));
     float top = float(e.dp(31)), bottom = float(e.dp(28));
     Rect area{0, top, w, h - top - bottom};
     if (!pick_.video) {
@@ -890,7 +909,7 @@ class SendPreviewScreen : public Screen {
         e.c.layer(3);
         e.c.image(tex_, {area.x + (area.w - pw) / 2, area.y + (area.h - ph) / 2, pw, ph}, {0, 0, 1, 1});
       } else if (shown_) {
-        centered(e, w, area.y, area.h, "This photo can\xe2\x80\x99t be shown", "It can still be sent.");
+        centered(e, w, area.y, area.h, tr("whatsapp.preview.cantShow"), tr("whatsapp.preview.cantShowHint"));
       }
     } else {
       float a = 0;
@@ -910,10 +929,10 @@ class SendPreviewScreen : public Screen {
       e.icons.draw(e.c, Icon::Play, {w / 2 - g / 2.f, area.y + area.h / 2 - g / 2.f, float(g), float(g)}, rgb(0xffffff));
     }
     e.c.layer(4);
-    std::string size;
     struct stat st;
-    if (stat(pick_.path.c_str(), &st) == 0) size = " \xc2\xb7 " + bytes(uint64_t(st.st_size));
-    Label hint = label(e, "center: send" + size + " \xc2\xb7 Menu: back", 10, false, w - e.dp(20));
+    std::string hintText = stat(pick_.path.c_str(), &st) == 0 ? tr("whatsapp.preview.hintSize", {{"size", bytes(uint64_t(st.st_size))}})
+                                                              : tr("whatsapp.preview.hint");
+    Label hint = label(e, hintText, 10, false, w - e.dp(20));
     drawLabel(e, hint, centerText(0, w, hint.w), h - bottom + float((int(bottom) - hint.h) / 2), kMuted);
     e.c.layer(0);
   }
@@ -953,7 +972,7 @@ class PickScreen : public Screen {
     alive_->self = this;
   }
   ~PickScreen() override { *alive_ = false; }
-  std::string title() const override { return "Photo or video"; }
+  std::string title() const override { return tr("whatsapp.pick.title"); }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     switch (a) {
@@ -975,10 +994,10 @@ class PickScreen : public Screen {
   void draw(Env& e, float w, float h) override {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, kBg);
-    waHeader(e, w, "Send to " + name_, "Photo or video from the card");
+    waHeader(e, w, tr("whatsapp.sendTo", {{"name", name_}}), tr("whatsapp.pick.sub"));
     float top = float(e.dp(31));
-    if (!found_) return centered(e, w, top, h - top, "Looking on the card\xe2\x80\xa6");
-    if (all_.empty()) return centered(e, w, top, h - top, "No photos or videos on the card");
+    if (!found_) return centered(e, w, top, h - top, tr("whatsapp.pick.looking"));
+    if (all_.empty()) return centered(e, w, top, h - top, tr("whatsapp.pick.none"));
     float rowH = float(e.dp(48)), viewH = h - top;
     if (count_ != int(all_.size())) {
       list_.configure(int(all_.size()), rowH, viewH);
@@ -1006,8 +1025,8 @@ class PickScreen : public Screen {
       e.c.layer(4);
       std::string name = p.path.substr(p.path.rfind('/') + 1);
       Label n = label(e, name, 12, true, w - x - e.dp(10));
-      std::string sub = std::string(p.video ? "Video" : "Photo") + (p.video && p.seconds > 0 ? " " + formatTime(p.seconds) : "") + " \xc2\xb7 " +
-                        clockDate(time_t(p.modified), false);
+      std::string what = !p.video ? tr("whatsapp.photo") : p.seconds > 0 ? tr("whatsapp.videoLength", {{"length", formatTime(p.seconds)}}) : tr("whatsapp.video");
+      std::string sub = what + " \xc2\xb7 " + clockDate(time_t(p.modified), false);
       Label s = label(e, sub, 10, false, w - x - e.dp(10));
       float ty = y + float((int(rowH) - n.h - s.h - e.dp(1)) / 2);
       drawLabel(e, n, x, ty, kText);
@@ -1188,9 +1207,7 @@ class MessageMenu : public Screen {
     }
     float ly = y + bh + e.dp(3);
     const std::string& mine = reacting_->mine;
-    Label hint = label(e, mine.empty() ? "Center reacts \xc2\xb7 + any emoji \xc2\xb7 Play: the menu below"
-                                       : "Yours: " + mine + " \xc2\xb7 center on it takes it back \xc2\xb7 Play: the menu below",
-                       9, false, w - 2 * bx);
+    Label hint = label(e, mine.empty() ? tr("whatsapp.react.hint") : tr("whatsapp.react.hintMine", {{"emoji", mine}}), 9, false, w - 2 * bx);
     drawLabel(e, hint, centerText(0, w, hint.w), ly, kMuted);
     return ly + hint.h + e.dp(4);
   }
@@ -1204,14 +1221,14 @@ class MessageMenu : public Screen {
     e.c.layer(4);
     float gw = float(e.dp(22)), gh = float(e.dp(3));
     e.c.shape({roundf((w - gw) / 2), top + e.dp(5), gw, gh}, gh / 2, rgb(0x3b4a54));
-    Label t = label(e, "React with any emoji", 13, true, w - 2 * e.dp(12));
+    Label t = label(e, tr("whatsapp.react.sheetTitle"), 13, true, w - 2 * e.dp(12));
     drawLabel(e, t, float(e.dp(12)), top + e.dp(10), kText);
-    drawKeyboard(e, *sheet_, top + e.dp(10) + t.h + e.dp(4), w, h, "Menu on the tabs closes this", kMuted, kText);
+    drawKeyboard(e, *sheet_, top + e.dp(10) + t.h + e.dp(4), w, h, tr("whatsapp.react.sheetHint"), kMuted, kText);
   }
 
   void openSheet() {
     const std::string& mine = reacting_->mine;
-    sheet_ = std::make_unique<Keyboard>(Keyboard::picker(Keyboard::Style::WhatsApp, mine.empty() ? "" : "Take back " + mine));
+    sheet_ = std::make_unique<Keyboard>(Keyboard::picker(Keyboard::Style::WhatsApp, mine.empty() ? "" : tr("whatsapp.react.takeBack", {{"emoji", mine}})));
     sheetOpen_ = true;
   }
 
@@ -1253,12 +1270,12 @@ class MessageMenu : public Screen {
 
 class SearchScreen : public Screen {
  public:
-  explicit SearchScreen(bool contactsOnly) : contactsOnly_(contactsOnly), kb_("Search", Keyboard::Style::WhatsApp) {
+  explicit SearchScreen(bool contactsOnly) : contactsOnly_(contactsOnly), kb_(tr("whatsapp.search"), Keyboard::Style::WhatsApp) {
     waClient().hold();
     waClient().loadContacts([] {});
   }
   ~SearchScreen() override { waClient().release(); }
-  std::string title() const override { return contactsOnly_ ? "Search contacts" : "Search WhatsApp"; }
+  std::string title() const override { return contactsOnly_ ? tr("whatsapp.searchContacts") : tr("whatsapp.searchWhatsApp"); }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     if (showing_) {
@@ -1304,13 +1321,13 @@ class SearchScreen : public Screen {
     e.icons.draw(e.c, Icon::Search, {ix, by + float((int(bh) - icon) / 2), float(icon), float(icon)}, kMuted);
     float fx = ix + icon + e.dp(8), fw = bx + bw - e.dp(10) - fx;
     bool empty = kb_.typed().empty() && !showing_;
-    Label field = label(e, empty ? "|  A name or a number" : showing_ ? kb_.typed() : kb_.typed() + "|", 14, false, fw);
+    Label field = label(e, empty ? "|  " + tr("whatsapp.searchPlaceholder") : showing_ ? kb_.typed() : kb_.typed() + "|", 14, false, fw);
     drawLabel(e, field, fx, by + float((int(bh) - field.h) / 2), empty ? kMuted : kText);
     float area = by + bh + e.dp(5);
     if (showing_) {
       float rowH = float(e.dp(42)), viewH = h - area;
       if (found_.empty()) {
-        centered(e, w, area, viewH, waiting_ ? "Looking\xe2\x80\xa6" : "Nothing found", waiting_ ? "" : "Names and numbers only, not messages.");
+        centered(e, w, area, viewH, waiting_ ? tr("whatsapp.searchLooking") : tr("whatsapp.nothingFound"), waiting_ ? "" : tr("whatsapp.searchOnlyNames"));
         return;
       }
       if (configured_ != int(found_.size())) list_.configure(int(found_.size()), rowH, viewH), list_.select(0), configured_ = int(found_.size());
@@ -1336,8 +1353,7 @@ class SearchScreen : public Screen {
       e.c.layer(0);
       return;
     }
-    drawKeyboard(e, kb_, area, w, h, "Menu up \xc2\xb7 Play down \xc2\xb7 Prev left \xc2\xb7 Next right \xc2\xb7 wheel: next key \xc2\xb7 center: type",
-                 kMuted, kText);
+    drawKeyboard(e, kb_, area, w, h, tr("whatsapp.keyboardHint"), kMuted, kText);
     e.c.layer(0);
   }
 
@@ -1371,7 +1387,7 @@ class SearchScreen : public Screen {
       for (const WaChat& c : waClient().chats()) {
         std::string num = c.group ? "" : c.jid.substr(0, c.jid.find('@'));
         if (!matches(q, qd, c.name, "", c.jid.find("@s.whatsapp.net") != std::string::npos ? num : "")) continue;
-        found_.push_back({c.jid, c.name, c.group ? "Group" : c.hasPreview ? c.preview.text : "+" + num, c.group});
+        found_.push_back({c.jid, c.name, c.group ? tr("whatsapp.group") : c.hasPreview ? c.preview.text : "+" + num, c.group});
         seen.push_back(c.jid);
       }
     for (const WaContact& c : waClient().contacts()) {
@@ -1520,7 +1536,7 @@ ChatScreen::Bubble ChatScreen::lay(Env& e, const WaMessage& m, float maxW) {
   for (const std::string& l : b.lines) textW = std::max(textW, e.text.run(font, l).width);
   b.textH = float(b.lines.size() * e.text.lineHeight(font));
   // the footer: the time, "edited", the ticks
-  std::string foot = (m.edited ? "edited " : "") + timeOf(m.at);
+  std::string foot = m.edited ? tr("whatsapp.editedAt", {{"time", timeOf(m.at)}}) : timeOf(m.at);
   b.footerW = e.text.run(e.font(9, false), foot).width + (m.fromMe ? e.dp(17) : 0);
   float lastW = b.lines.empty() ? 0 : e.text.run(font, b.lines.back()).width;
   b.footerInline = !b.lines.empty() && b.mediaH == 0 && lastW + e.dp(8) + b.footerW <= inner;
@@ -1547,7 +1563,7 @@ void ChatScreen::layout(Env& e, float w) {
     if (waClient().olderToCome(jid_)) {
       Item it;
       it.kind = Item::Older;
-      it.text = waClient().loadingOlder(jid_) ? "Loading earlier messages\xe2\x80\xa6" : "Earlier messages";
+      it.text = waClient().loadingOlder(jid_) ? tr("whatsapp.loadingEarlier") : tr("whatsapp.earlier");
       it.y = y, it.h = float(e.dp(24));
       items_.push_back(it);
       y += it.h;
@@ -1612,7 +1628,7 @@ void ChatScreen::drawBubble(Env& e, const WaMessage& m, const Bubble& b, float w
   float cy = y + e.dp(5);
   e.c.layer(4);
   if (b.nameH > 0) {
-    Label n = label(e, m.name.empty() ? "Someone" : m.name, 11, true, iw);
+    Label n = label(e, m.name.empty() ? tr("whatsapp.someone") : shownName(m.name), 11, true, iw);
     drawLabel(e, n, ix, cy, kNames[hashOf(m.sender) % 8]);
     cy += b.nameH;
   }
@@ -1622,9 +1638,9 @@ void ChatScreen::drawBubble(Env& e, const WaMessage& m, const Bubble& b, float w
     e.c.shape({ix, cy, iw, qh}, e.dpf(5), kQuote);
     e.c.fill({ix, cy, float(e.dp(3)), qh}, kGreen);
     e.c.layer(4);
-    Label qn = label(e, m.quote.name.empty() ? "Message" : m.quote.name, 10, true, iw - e.dp(12));
-    std::string qt = m.quote.text.empty() ? (m.quote.kind == "image" ? "Photo" : m.quote.kind == "video" ? "Video"
-                                             : m.quote.kind == "voice"  ? "Voice message"
+    Label qn = label(e, m.quote.name.empty() ? tr("whatsapp.message") : shownName(m.quote.name), 10, true, iw - e.dp(12));
+    std::string qt = m.quote.text.empty() ? (m.quote.kind == "image" ? tr("whatsapp.photo") : m.quote.kind == "video" ? tr("whatsapp.video")
+                                             : m.quote.kind == "voice"  ? tr("whatsapp.voiceMessage")
                                                                         : m.quote.kind)
                                           : m.quote.text;
     Label qtl = label(e, qt, 10, false, iw - e.dp(12));
@@ -1679,8 +1695,8 @@ void ChatScreen::drawBubble(Env& e, const WaMessage& m, const Bubble& b, float w
       e.c.shape(mr, e.dpf(5), kQuote);
       e.c.layer(4);
       e.icons.draw(e.c, Icon::File, {mr.x + e.dp(5), mr.y + float((int(mr.h) - g) / 2), float(g), float(g)}, kMuted);
-      Label fn = label(e, m.fileName.empty() ? "Document" : m.fileName, 11, false, mr.w - g - e.dp(14));
-      Label fs = label(e, m.size > 0 ? bytes(uint64_t(m.size)) : "Document", 9, false);
+      Label fn = label(e, m.fileName.empty() ? tr("whatsapp.document") : m.fileName, 11, false, mr.w - g - e.dp(14));
+      Label fs = label(e, m.size > 0 ? bytes(uint64_t(m.size)) : tr("whatsapp.document"), 9, false);
       float tx = mr.x + g + e.dp(10);
       drawLabel(e, fn, tx, mr.y + e.dp(3), kText);
       drawLabel(e, fs, tx, mr.y + e.dp(3) + fn.h, kMuted);
@@ -1696,7 +1712,7 @@ void ChatScreen::drawBubble(Env& e, const WaMessage& m, const Bubble& b, float w
     cy += e.text.lineHeight(font);
   }
   // the footer at the bottom right
-  std::string foot = (m.edited ? "edited " : "") + timeOf(m.at);
+  std::string foot = m.edited ? tr("whatsapp.editedAt", {{"time", timeOf(m.at)}}) : timeOf(m.at);
   Label fl = label(e, foot, 9, false);
   float fy = y + b.h - fl.h - e.dp(3);
   float fx = x + b.w - padX - b.footerW;
@@ -1719,7 +1735,7 @@ void ChatScreen::drawBubble(Env& e, const WaMessage& m, const Bubble& b, float w
     below += e.dp(13);
   }
   if (m.failed) {
-    Label fl2 = label(e, "Not sent \xc2\xb7 center sends it again", 9, false);
+    Label fl2 = label(e, tr("whatsapp.notSentRetry"), 9, false);
     drawLabel(e, fl2, m.fromMe ? w - margin - fl2.w : margin, below + e.dp(1), kRed);
   }
 }
@@ -1737,9 +1753,9 @@ void ChatScreen::draw(Env& e, float w, float h) {
   e.c.layer(0);
   e.c.fill({0, 0, w, h}, kBg);
   const WaChat* ch = c.chat(jid_);
-  std::string sub = group_ ? "Group" : "";
-  if (c.state() == WaClient::State::Connecting) sub = "Connecting\xe2\x80\xa6";
-  if (c.state() == WaClient::State::Offline) sub = "Offline";
+  std::string sub = group_ ? tr("whatsapp.group") : "";
+  if (c.state() == WaClient::State::Connecting) sub = tr("whatsapp.connectingShort");
+  if (c.state() == WaClient::State::Offline) sub = tr("whatsapp.offline");
   waHeader(e, w, ch && !ch->name.empty() ? ch->name : name_, sub, jid_, group_);
   float top = float(e.dp(31)), barH = float(e.dp(34)), viewH = h - top - barH;
   // the scroll: the selected message whole in view (its top when it's taller than the view), the
@@ -1759,9 +1775,9 @@ void ChatScreen::draw(Env& e, float w, float h) {
   const auto* all = c.messages(jid_);
   e.c.pushClip({0, top, w, viewH});
   if (!all) {
-    centered(e, w, top, viewH, "Loading\xe2\x80\xa6");
+    centered(e, w, top, viewH, tr("common.loading"));
   } else if (all->empty()) {
-    centered(e, w, top, viewH, "No messages yet", "Say hello with Message, Voice or Photo below.");
+    centered(e, w, top, viewH, tr("whatsapp.noMessages"), tr("whatsapp.noMessagesHint"));
   }
   float base = top + offset - scroll_.x;
   const WaMessage* selected = selectedMessage();
@@ -1786,7 +1802,6 @@ void ChatScreen::draw(Env& e, float w, float h) {
   // the buttons
   e.c.layer(1);
   e.c.fill({0, h - barH, w, barH}, kBar);
-  static const char* kLabels[] = {"Message", "Voice", "Photo"};
   static const Icon kIcons[] = {Icon::Chat, Icon::Mic, Icon::Photo};
   float gap = float(e.dp(6)), bw = (w - 4 * gap) / 3, bh = float(e.dp(24)), by = h - barH + float((int(barH) - int(bh)) / 2);
   for (int i = 0; i < 3; i++) {
@@ -1794,7 +1809,7 @@ void ChatScreen::draw(Env& e, float w, float h) {
     bool on = button() == i;
     e.c.layer(2);
     e.c.shape({bx, by, bw, bh}, bh / 2, on ? kGreen : kSel);
-    Label l = label(e, kLabels[i], 11, true);
+    Label l = label(e, i == 0 ? tr("whatsapp.button.message") : i == 1 ? tr("whatsapp.button.voice") : tr("whatsapp.button.photo"), 11, true);
     int g = e.dp(13);
     float tx = bx + float((int(bw) - (g + e.dp(5) + l.w)) / 2);
     Color col = on ? rgb(0x0b141a) : kText;
@@ -1823,22 +1838,22 @@ void ChatScreen::activate(bool menu) {
   std::unique_ptr<MessageMenu::Reacting> reacting;  // the reaction bar on top
   if (!m.sending && !m.failed && m.kind != "deleted") reacting.reset(new MessageMenu::Reacting{jid, m.id, m.mine});
   if (!m.sending && !m.failed) {
-    WaQuote q{m.id, m.sender, m.fromMe ? "You" : m.name.empty() ? name : m.name, m.kind, m.kind == "text" ? m.text : WaClient::summary(m)};
-    entries.push_back({"Reply", Icon::Chat, [jid, name, q] { g_app->push(std::unique_ptr<Screen>(new ComposeScreen(jid, name, q))); }});
+    WaQuote q{m.id, m.sender, m.fromMe ? tr("whatsapp.you") : m.name.empty() ? name : m.name, m.kind, m.kind == "text" ? m.text : WaClient::summary(m)};
+    entries.push_back({tr("whatsapp.menu.reply"), Icon::Chat, [jid, name, q] { g_app->push(std::unique_ptr<Screen>(new ComposeScreen(jid, name, q))); }});
   }
   if (media) {
-    std::string verb = m.kind == "voice" || m.kind == "audio" ? (voicePlaying(m.id) ? "Stop" : "Play") : "Open";
+    std::string verb = m.kind == "voice" || m.kind == "audio" ? (voicePlaying(m.id) ? tr("whatsapp.menu.stop") : tr("whatsapp.menu.play")) : tr("common.open");
     entries.push_back({verb, m.kind == "image" || m.kind == "sticker" ? Icon::Photo : m.kind == "video" ? Icon::Film : Icon::Play,
                        [this, m] { openMedia(m); }});
   }
-  if (m.failed) entries.push_back({"Send again", Icon::Refresh, [jid, m] { waClient().retry(jid, m.id); }});
+  if (m.failed) entries.push_back({tr("whatsapp.menu.sendAgain"), Icon::Refresh, [jid, m] { waClient().retry(jid, m.id); }});
   if (group_ && !m.fromMe && !m.sender.empty()) {
     std::string who = m.sender, wn = m.name;
-    entries.push_back({"Profile of " + (wn.empty() ? std::string("the sender") : wn), Icon::Person,
+    entries.push_back({wn.empty() ? tr("whatsapp.menu.senderProfile") : tr("whatsapp.menu.profileOf", {{"name", shownName(wn)}}), Icon::Person,
                        [who, wn] { g_app->push(makeProfile(who, wn, false, true)); }});
   }
   bool group = group_;
-  entries.push_back({group_ ? "Group info" : "Profile", group_ ? Icon::People : Icon::Person,
+  entries.push_back({group_ ? tr("whatsapp.menu.groupInfo") : tr("whatsapp.menu.profile"), group_ ? Icon::People : Icon::Person,
                      [jid, name, group] { g_app->push(makeProfile(jid, name, group, false)); }});
   g_app->push(std::unique_ptr<Screen>(new MessageMenu(WaClient::summary(m).substr(0, 60), std::move(entries), std::move(reacting))));
 }

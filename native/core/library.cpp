@@ -697,6 +697,8 @@ std::vector<Library::Group> group(const std::deque<Track>& tracks, By by) {
   for (const Track& t : tracks) {
     if (t.gone || t.video || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
     const std::string& artist = by == By::AlbumArtist && !t.albumArtist.empty() ? t.albumArtist : t.artist;
+    // "Unknown artist" stays English here: it's the group's name, which opens, sorts and finds it; the
+    // screens show it in the language spoken (shell/library_screens.cpp, groupTitle)
     std::string name = album ? t.album : by == By::Genre ? t.genre : (artist.empty() ? "Unknown artist" : artist);
     // an album is its name and its album artist: "Greatest Hits" by two artists are two albums
     std::string k = lower(name) + (album && !t.albumArtist.empty() ? "\x1f" + lower(t.albumArtist) : "");

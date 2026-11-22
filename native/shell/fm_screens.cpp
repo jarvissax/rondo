@@ -136,16 +136,16 @@ class FmPresetScreen : public RadioList {
     int at = -1;
     for (size_t i = 0; i < presets.size(); i++)
       if (presets[i].frequency == f_) at = int(i);
-    if (at < 0) return list_.setMessage("Not saved any more");
+    if (at < 0) return list_.setMessage(tr("radio.preset.notSaved"));
     std::string name = presets[size_t(at)].name;
     int f = f_;
     std::vector<Row> rows;
     Row rename;
-    rename.title = "Rename";
-    rename.subtitle = name.empty() ? "No name yet" : name;
+    rename.title = tr("common.rename");
+    rename.subtitle = name.empty() ? tr("radio.preset.noName") : name;
     rename.chevron = true;
     rename.onSelect = [f, name] {
-      g_app->push(makeTextEntry("Name for " + fmName(f) + " MHz", name.empty() ? heardName(f) : name, "Save", 40,
+      g_app->push(makeTextEntry(tr("radio.preset.nameFor", {{"frequency", fmName(f)}}), name.empty() ? heardName(f) : name, tr("common.save"), 40,
                                 [f](const std::string& typed) {
                                   for (Preset& p : g_config.radio.presets)
                                     if (p.frequency == f) p.name = typed;
@@ -156,17 +156,17 @@ class FmPresetScreen : public RadioList {
     };
     rows.push_back(rename);
     Row up;
-    up.title = "Move up";
+    up.title = tr("radio.preset.moveUp");
     up.enabled = at > 0;
     up.onSelect = [this, at] { move(at, at - 1); };
     rows.push_back(up);
     Row down;
-    down.title = "Move down";
+    down.title = tr("radio.preset.moveDown");
     down.enabled = at < int(presets.size()) - 1;
     down.onSelect = [this, at] { move(at, at + 1); };
     rows.push_back(down);
     Row remove;
-    remove.title = "Remove from saved";
+    remove.title = tr("radio.preset.remove");
     remove.tile = &tiles::del;
     remove.onSelect = [f] {
       auto& ps = g_config.radio.presets;
@@ -194,27 +194,27 @@ class FmPresetScreen : public RadioList {
 // Hold center: rename, move or remove a saved station, or save a found one (like the dashboard).
 class FmStationsScreen : public RadioList {
  public:
-  FmStationsScreen() : RadioList("Stations") { render(g_player.state()); }
+  FmStationsScreen() : RadioList(tr("radio.stations")) { render(g_player.state()); }
 
  protected:
   void render(const PlayerState& s) override {
     const Radio& r = g_config.radio;
     std::vector<Row> rows;
-    auto header = [&](const char* t) {
+    auto header = [&](std::string title) {
       Row h;
       h.header = true;
-      h.title = t;
+      h.title = std::move(title);
       rows.push_back(h);
     };
     auto pick = [](int f) {
       tune(f);
-      g_app->popTo("Radio");
+      g_app->popTo(tr("common.radio"));  // FmScreen's title
     };
-    header("Saved");
+    header(tr("radio.saved"));
     if (r.presets.empty()) {
       Row e;
-      e.title = "No saved stations";
-      e.subtitle = "Hold center on the radio, then Save";
+      e.title = tr("radio.noSaved");
+      e.subtitle = tr("radio.noSavedNote");
       e.enabled = false;
       rows.push_back(e);
     }
@@ -223,16 +223,16 @@ class FmStationsScreen : public RadioList {
       int f = p.frequency;
       row.title = fmName(f) + " MHz";
       row.subtitle = p.name.empty() ? heardName(f) : p.name;
-      row.trailing = f == r.frequency ? "Playing" : "";
+      row.trailing = f == r.frequency ? tr("radio.playing") : "";
       row.onSelect = [pick, f] { pick(f); };
       row.onLongSelect = [f] { g_app->push(std::unique_ptr<Screen>(new FmPresetScreen(f))); };
       rows.push_back(row);
     }
-    header("Found");
+    header(tr("radio.found"));
     if (r.found.empty()) {
       Row e;
-      e.title = "Not scanned yet";
-      e.subtitle = "Scan for stations in the radio's options";
+      e.title = tr("radio.notScanned");
+      e.subtitle = tr("radio.notScannedNote");
       e.enabled = false;
       rows.push_back(e);
     }
@@ -241,7 +241,7 @@ class FmStationsScreen : public RadioList {
       Row row;
       row.title = fmName(f) + " MHz";
       row.subtitle = heardName(f);
-      row.trailing = f == r.frequency ? "Playing" : "hold center: save";
+      row.trailing = f == r.frequency ? tr("radio.playing") : tr("radio.holdToSave");
       row.onSelect = [pick, f] { pick(f); };
       row.onLongSelect = [this, f] {
         std::string n = heardName(f);
@@ -261,7 +261,7 @@ std::unique_ptr<Screen> makeStations() { return std::unique_ptr<Screen>(new FmSt
 // Hold center on the radio: stations, scan, save, output, off
 class FmOptionsScreen : public RadioList {
  public:
-  FmOptionsScreen() : RadioList("FM Radio") { render(g_player.state()); }
+  FmOptionsScreen() : RadioList(tr("menu.fmRadio")) { render(g_player.state()); }
   bool tick(int64_t now) override {
     PlayerState s = g_player.state();
     // the scan asked for here has finished: its stations
@@ -279,14 +279,14 @@ class FmOptionsScreen : public RadioList {
     bool saved = presetAt(f) != nullptr;
     std::vector<Row> rows;
     Row stations;
-    stations.title = "Stations";
-    stations.trailing = std::to_string(g_config.radio.presets.size()) + " saved";
+    stations.title = tr("radio.stations");
+    stations.trailing = tr("radio.savedCount", {{"count", g_config.radio.presets.size()}});
     stations.chevron = true;
     stations.onSelect = [] { g_app->push(makeStations()); };
     rows.push_back(stations);
     Row scan;
-    scan.title = s.fmScanning ? "Scanning\xe2\x80\xa6" : "Scan for stations";
-    scan.subtitle = s.fmScanning ? "" : "Finds every station you can receive";
+    scan.title = s.fmScanning ? tr("radio.scanning") : tr("radio.scan");
+    scan.subtitle = s.fmScanning ? "" : tr("radio.scanNote");
     scan.enabled = s.fmOn && !s.fmScanning;
     uint32_t serial = s.fmScanSerial;
     scan.onSelect = [this, serial] {
@@ -297,7 +297,7 @@ class FmOptionsScreen : public RadioList {
     rows.push_back(scan);
     Row save;
     if (saved) {
-      save.title = "Remove " + fmName(f) + " from saved";
+      save.title = tr("radio.removeFrequency", {{"frequency", fmName(f)}});
       save.onSelect = [this, f] {
         auto& ps = g_config.radio.presets;
         ps.erase(std::remove_if(ps.begin(), ps.end(), [f](const Preset& p) { return p.frequency == f; }), ps.end());
@@ -305,7 +305,7 @@ class FmOptionsScreen : public RadioList {
         render(g_player.state());
       };
     } else {
-      save.title = "Save " + fmName(f);
+      save.title = tr("radio.saveFrequency", {{"frequency", fmName(f)}});
       save.subtitle = s.fmName;
       std::string name = s.fmName;
       save.onSelect = [this, f, name] {
@@ -318,11 +318,11 @@ class FmOptionsScreen : public RadioList {
     }
     rows.push_back(save);
     Row output;
-    output.title = "Output";
-    output.trailing = g_config.radio.speaker ? "Speaker" : "Headphones";
+    output.title = tr("radio.output");
+    output.trailing = g_config.radio.speaker ? tr("radio.speaker") : tr("radio.headphones");
     // the Y1's speaker is fed from the headphone amplifier, and the headphones stay in as the
     // antenna: they play too, at the speaker's level (MediaTek's HAL opens both, Nov 18)
-    if (g_config.radio.speaker) output.subtitle = "Headphones play too";
+    if (g_config.radio.speaker) output.subtitle = tr("radio.headphonesToo");
     output.onSelect = [this] {
       g_config.radio.speaker = !g_config.radio.speaker;
       saveRadio();
@@ -331,8 +331,8 @@ class FmOptionsScreen : public RadioList {
     };
     rows.push_back(output);
     Row region;
-    region.title = "Region";
-    region.trailing = japan() ? "Japan" : "Most of the world";
+    region.title = tr("radio.region");
+    region.trailing = japan() ? tr("radio.japan") : tr("radio.world");
     region.onSelect = [this] {
       g_config.radio.band = japan() ? "world" : "japan";
       g_config.radio.found.clear();
@@ -343,7 +343,7 @@ class FmOptionsScreen : public RadioList {
     rows.push_back(region);
     Row power;
     bool on = s.fmOn || s.fmStarting;
-    power.title = on ? "Turn radio off" : "Turn radio on";
+    power.title = on ? tr("radio.turnOff") : tr("radio.turnOn");
     power.onSelect = [on] {
       if (on) {
         g_player.fmStop();
@@ -363,7 +363,7 @@ class FmOptionsScreen : public RadioList {
 
 class FmScreen : public Screen {
  public:
-  std::string title() const override { return "Radio"; }
+  std::string title() const override { return tr("common.radio"); }  // FmStationsScreen's popTo
   bool statusBar() const override { return false; }
   void onShow() override {
     PlayerState s = g_player.state();
@@ -422,7 +422,7 @@ class FmScreen : public Screen {
     // the header
     int headH = e.dp(24);
     e.c.layer(2);
-    Label head = label(e, "FM RADIO", 11, true);
+    Label head = label(e, tr("radio.header"), 11, true);
     drawLabel(e, head, float(e.dp(12)), float((headH - head.h) / 2), whiteA(200));
     statusIcons(e, w - e.dp(10), headH, whiteA(200), true);
     // the bottom bar, the dial above it, the center between
@@ -461,12 +461,12 @@ class FmScreen : public Screen {
     // what is on: an error, the state, or the station's name and radio text
     const Preset* saved = presetAt(f);
     std::string title, sub;
-    if (s.fmError == 1) title = "Plug in wired headphones", sub = "Their cable is the radio's antenna.";
-    else if (s.fmError == 2) title = "The radio didn't start", sub = "Press Play/Pause to try again.";
-    else if (s.fmStarting) title = "Turning on\xe2\x80\xa6";
-    else if (!s.fmOn) title = "Radio off", sub = "Press Play/Pause to turn it on.";
-    else if (s.fmScanning) title = "Scanning\xe2\x80\xa6", sub = "Finding every station. This takes a little while.";
-    else if (s.fmSeeking) title = "Searching\xe2\x80\xa6";
+    if (s.fmError == 1) title = tr("radio.error.antenna"), sub = tr("radio.error.antennaNote");
+    else if (s.fmError == 2) title = tr("radio.error.start"), sub = tr("radio.error.startNote");
+    else if (s.fmStarting) title = tr("radio.turningOn");
+    else if (!s.fmOn) title = tr("radio.off"), sub = tr("radio.offNote");
+    else if (s.fmScanning) title = tr("radio.scanning"), sub = tr("radio.scanningNote");
+    else if (s.fmSeeking) title = tr("radio.searching");
     else {
       title = s.fmName[0] ? s.fmName : saved && !saved->name.empty() ? saved->name : heardName(f);
       sub = s.fmText;
@@ -531,15 +531,16 @@ class FmScreen : public Screen {
       }
       x += bw + e.dp(8);
     }
-    std::string info = !s.fmOn ? "" : s.fmMuted ? "Muted"
-                                                : std::string(s.fmStereo ? "Stereo" : "Mono") + " \xc2\xb7 " +
-                                                      (g_config.radio.speaker ? "Speaker" : "Headphones");
+    std::string info = !s.fmOn     ? ""
+                       : s.fmMuted ? tr("radio.muted")
+                                   : (s.fmStereo ? tr("radio.stereo") : tr("radio.mono")) + " \xc2\xb7 " +
+                                         (g_config.radio.speaker ? tr("radio.speaker") : tr("radio.headphones"));
     if (!info.empty()) {
       Label l = label(e, info, 11, false);
       drawLabel(e, l, x, top + float((int(content) - l.h) / 2), whiteA(200));
     }
     if (tuning_) {
-      Label l = label(e, "turn to tune \xc2\xb7 center: done", 11, false);
+      Label l = label(e, tr("radio.tuneHint"), 11, false);
       drawLabel(e, l, w - side - l.w, top + float((int(content) - l.h) / 2), whiteA(170));
     }
   }

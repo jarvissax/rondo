@@ -14,11 +14,21 @@ namespace rondo::shell {
 
 std::string wifiName() {
   CoreState s = g_core.state();
-  if (s.wifiEnabled != 2) return "Off";
-  return s.wifiState > 0 && s.ssid[0] ? std::string(s.ssid) : "Not connected";
+  if (s.wifiEnabled != 2) return tr("common.off");
+  return s.wifiState > 0 && s.ssid[0] ? std::string(s.ssid) : tr("wifi.notConnected");
 }
 
 namespace {
+
+// rondo-core's wifiSignal() in the language spoken (rondo-core speaks only English)
+std::string signalName(int rssi) {
+  switch (wifiLevel(rssi)) {
+    case 3: return tr("wifi.signal.strong");
+    case 2: return tr("wifi.signal.good");
+    case 1: return tr("wifi.signal.fair");
+    default: return tr("wifi.signal.weak");
+  }
+}
 
 const WifiSaved* savedNamed(const CoreState& s, const std::string& ssid) {
   for (int i = 0; i < s.savedCount; i++)
@@ -59,21 +69,21 @@ class WifiNetworkScreen : public WifiList {
     bool connected = s.wifiState == 4 && ssid_ == s.ssid;
     const WifiSaved* saved = savedNamed(s, ssid_);
     std::vector<Row> rows;
-    auto info = [&](const char* title, std::string trailing) {
+    auto info = [&](std::string title, std::string trailing) {
       Row r;
-      r.title = title;
+      r.title = std::move(title);
       r.trailing = std::move(trailing);
       r.enabled = false;
       rows.push_back(std::move(r));
     };
     if (connected) {
-      info("Status", "Connected");
-      info("Signal", wifiSignal(s.rssi));
-      info("Speed", std::to_string(s.linkSpeed) + " Mb/s");
-      info("IP address", ipText(s.ip));
+      info(tr("wifi.network.status"), tr("wifi.connected"));
+      info(tr("wifi.network.signal"), signalName(s.rssi));
+      info(tr("wifi.network.speed"), std::to_string(s.linkSpeed) + " Mb/s");
+      info(tr("wifi.network.ipAddress"), ipText(s.ip));
     } else if (saved) {
       Row c;
-      c.title = "Connect";
+      c.title = tr("wifi.network.connect");
       int id = saved->id;
       c.onSelect = [id] {
         g_core.wifiConnect(id);
@@ -83,8 +93,8 @@ class WifiNetworkScreen : public WifiList {
     }
     if (saved) {
       Row f;
-      f.title = "Forget this network";
-      f.subtitle = "The password will be needed again";
+      f.title = tr("wifi.network.forget");
+      f.subtitle = tr("wifi.network.forgetNote");
       int id = saved->id;
       f.onSelect = [id] {
         g_core.wifiForget(id);
@@ -105,15 +115,15 @@ class WifiPasswordScreen : public Screen {
  public:
   // Rondo's own keyboard, without emoji: a Wi-Fi password is letters, digits and symbols only
   WifiPasswordScreen(std::string ssid, WifiSecurity security)
-      : ssid_(std::move(ssid)), security_(security), kb_("Join", Keyboard::Style::Shell, false) {}
-  std::string title() const override { return "Password for " + ssid_; }
+      : ssid_(std::move(ssid)), security_(security), kb_(tr("wifi.password.join"), Keyboard::Style::Shell, false) {}
+  std::string title() const override { return tr("wifi.password.title", {{"network", ssid_}}); }
   bool onAction(Action a, int steps) override {
     Keyboard::Result r;  // TvKeyboard.handle()
     if (!keyboardAction(kb_, a, steps, &r)) return false;
     if (r == Keyboard::Result::Action) {
       size_t minimum = security_ == WifiSecurity::Psk ? 8 : 1;
       if (Keyboard::characters(kb_.typed()) < minimum) {
-        note_ = "At least " + std::to_string(minimum) + " characters";
+        note_ = tr("wifi.password.atLeast", {{"count", minimum}});
         return true;
       }
       g_core.wifiJoin(ssid_, security_, kb_.typed());
@@ -139,11 +149,10 @@ class WifiPasswordScreen : public Screen {
     Label field = label(e, kb_.typed() + "|", 14, false, bw - 2 * e.dp(10));
     drawLabel(e, field, bx + e.dp(10), by + float((int(bh) - field.h) / 2), p.text);
     float sy = by + bh + e.dp(3);
-    std::string line = !note_.empty() ? note_ : security_ == WifiSecurity::Psk ? "Shown as you type it" : "";
+    std::string line = !note_.empty() ? note_ : security_ == WifiSecurity::Psk ? tr("wifi.password.shown") : "";
     Label msg = label(e, line.empty() ? " " : line, 10, false, w - 2 * e.dp(8));
     drawLabel(e, msg, centerText(float(e.dp(8)), w - 2 * e.dp(8), msg.w), sy, note_.empty() ? p.muted : p.accent);
-    drawKeyboard(e, kb_, sy + msg.h + e.dp(3), w, h,
-                 "ABC: capitals \xc2\xb7 #+=: symbols \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right", p.muted, p.text);
+    drawKeyboard(e, kb_, sy + msg.h + e.dp(3), w, h, tr("wifi.password.keyboardHint"), p.muted, p.text);
     e.c.layer(0);
   }
 
@@ -177,7 +186,7 @@ class WifiScreen : public WifiList {
     std::vector<Row> rows;
     Row onOff;
     onOff.title = "Wi-Fi";
-    onOff.trailing = enabled ? "On" : s.wifiEnabled == 1 ? "Turning on\xe2\x80\xa6" : "Off";
+    onOff.trailing = enabled ? tr("common.on") : s.wifiEnabled == 1 ? tr("wifi.turningOn") : tr("common.off");
     onOff.tile = &tiles::wifi;
     onOff.onSelect = [enabled] {
       g_core.wifiEnable(!enabled);
@@ -195,7 +204,7 @@ class WifiScreen : public WifiList {
       });
       Row h;
       h.header = true;
-      h.title = nets.empty() ? "Searching\xe2\x80\xa6" : "Choose a network";
+      h.title = nets.empty() ? tr("wifi.searching") : tr("wifi.chooseNetwork");
       rows.push_back(h);
       for (const WifiNetwork& n : nets) {
         std::string ssid = n.ssid;
@@ -203,19 +212,19 @@ class WifiScreen : public WifiList {
         const WifiSaved* saved = savedNamed(s, ssid);
         bool isCurrent = ssid == current;
         bool failed = ssid == s.failedSsid;
-        std::string status = isCurrent             ? (s.wifiState == 4   ? "Connected"
-                                                      : s.wifiState == 3 ? "Getting address\xe2\x80\xa6"
-                                                      : s.wifiState == 2 ? "Checking password\xe2\x80\xa6"
-                                                                         : "Connecting\xe2\x80\xa6")
-                             : failed              ? "Wrong password"
-                             : saved               ? "Saved"
-                             : security == WifiSecurity::Open ? "Open"
-                             : security == WifiSecurity::Eap  ? "Enterprise (not supported)"
-                                                              : "Secured";
+        std::string status = isCurrent             ? (s.wifiState == 4   ? tr("wifi.connected")
+                                                      : s.wifiState == 3 ? tr("wifi.status.gettingAddress")
+                                                      : s.wifiState == 2 ? tr("wifi.status.checkingPassword")
+                                                                         : tr("wifi.status.connecting"))
+                             : failed              ? tr("wifi.status.wrongPassword")
+                             : saved               ? tr("wifi.status.saved")
+                             : security == WifiSecurity::Open ? tr("wifi.status.open")
+                             : security == WifiSecurity::Eap  ? tr("wifi.status.enterprise")
+                                                              : tr("wifi.status.secured");
         Row r;
         r.title = ssid;
         r.subtitle = status;
-        r.trailing = wifiSignal(n.rssi);
+        r.trailing = signalName(n.rssi);
         r.chevron = saved != nullptr;
         r.enabled = security != WifiSecurity::Eap;
         int id = saved ? saved->id : -1;

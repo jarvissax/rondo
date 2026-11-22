@@ -22,9 +22,11 @@ struct SubLang {
 };
 // "en", "eng" or "en-GB" -> its entry, with the two-letter code (nullptr: not one of the common languages)
 const SubLang* findLanguage(const std::string& code);
-// "English" -> its entry (nullptr: no common language by that name)
+// "English" -> its entry (nullptr: no common language by that name). The names here are English's,
+// as files name them ("Movie.English.srt"), whatever language Rondo speaks.
 const SubLang* languageNamed(const std::string& name);
-// "en" -> "English" (the code itself for one not known)
+// "en" -> "English", in the language Rondo speaks ("Inglés"; lang/'s languageName.<code>); the code
+// itself for one not known
 std::string languageName(const std::string& code);
 
 }  // namespace rondo

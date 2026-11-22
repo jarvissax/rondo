@@ -32,6 +32,7 @@
 #include "../../core/bundle.h"
 #include "../../core/clock.h"
 #include "../../core/config.h"
+#include "../../core/lang.h"
 #include "../../core/library.h"
 #include "../../core/cover.h"
 #include "../../core/tags.h"
@@ -186,6 +187,8 @@ int main(int argc, char** argv) {
   // rondo --install <file.rondo> <folder>: a bundle checked and put in place, as Software update does
   // (the release's check on the Y1, and a way to install one over adb)
   if (argc == 4 && !strcmp(argv[1], "--install")) {
+    // why it can't install, in English (the update page shows it): lang/ beside this binary
+    lang::init(exeDir() + "/lang", "device", "");
     std::string version, why;
     bool ok = rondo::bundle::install(argv[2], argv[3], version, why);
     printf(ok ? "installed %s in %s\n" : "not installed: %s\n", ok ? version.c_str() : why.c_str(), argv[3]);
@@ -268,6 +271,9 @@ int main(int argc, char** argv) {
   g_config = loadConfig(configPath);
   g_configPath = configPath, g_prefsPath = prefsPath;
   g_prefs = loadPrefs(prefsPath);
+  // the language picked (lang/ beside the fonts, as the dashboard's page is); English until one is
+  if (!lang::init(assets + "/lang", "device", g_prefs.language) && !g_prefs.language.empty())
+    fprintf(stderr, "rondo: no %s/lang/%s.json: speaking English\n", assets.c_str(), g_prefs.language.c_str());
   // the keyboard's recent emoji and skin tone, kept with the prefs
   emoji::restore(g_prefs.emojiRecent, g_prefs.emojiTone);
   emoji::onChange = [] {
@@ -344,6 +350,8 @@ int main(int argc, char** argv) {
   // RONDO_USB_PROMPT=0 (the test scripts) leaves it to the cable being plugged in later.
   bool usbComputer = usb::computerConnected();
   if (usbComputer && !(getenv("RONDO_USB_PROMPT") && !strcmp(getenv("RONDO_USB_PROMPT"), "0"))) app.push(makeUsbDrive());
+  // the very first start (no language kept yet): the language comes first, as on the stock firmware
+  if (g_prefs.language.empty()) app.push(makeLanguage(true));
   int64_t lastUsb = 0;
   Dispatcher dispatch;
   dispatch.acceleration = g_config.behavior.wheelAcceleration;
@@ -426,7 +434,7 @@ int main(int argc, char** argv) {
   buildWarm();
   static const char kWarmChars[] =
       " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
-      "ÀÁÂÄÇÈÉÊÍÑÓÖÚÜ"
+      "ÀÁÂÄÇÈÉÊÍÑÓÖÚÜ¿¡"
       "àáâãäåçèéêëíîïñóôöøúûü"
       "ĞğİıŞşƏə·–—‘’“”•…";
   bool warmed = false;

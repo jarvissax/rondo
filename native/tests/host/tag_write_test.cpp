@@ -2,7 +2,8 @@
 // each one decoded by ffmpeg afterwards (the sound untouched):
 //   Y=native/third_party/src/yyjson-0.12.0/src; clang -c $Y/yyjson.c -o /tmp/yy.o
 //   clang++ -std=c++17 -Dpread64=pread -Dlseek64=lseek -Doff64_t=off_t -I native -I $Y native/core/tag_write.cpp native/core/tags.cpp native/core/lyrics.cpp \
-//     native/core/fold.cpp /tmp/yy.o native/tests/host/tag_write_test.cpp -o /tmp/tw && /tmp/tw
+//     native/core/fold.cpp native/core/lang.cpp /tmp/yy.o native/tests/host/tag_write_test.cpp -o /tmp/tw && /tmp/tw
+// (or tools/native/host-tests.sh, every host test)
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>

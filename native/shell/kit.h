@@ -16,6 +16,7 @@
 #include "../ui/motion.h"
 #include "../ui/text.h"
 #include "../ui/theme.h"
+#include "../core/lang.h"
 #include "dispatch.h"
 
 namespace rondo::shell {
@@ -90,7 +91,9 @@ extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bl
     // YouTube Music's song menu
     playNow, playNext, addToQueue, startRadio, onCard,
     // Settings › Sound
-    eqPreset, eqEdit, match, boost, leveling, amplifier, limit;
+    eqPreset, eqEdit, match, boost, leveling, amplifier, limit,
+    // Settings › Language
+    language;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 // a service's mark in white, size wide, centered in r (YouTube's play mark in its tile's red)
@@ -184,7 +187,7 @@ class RowList {
   float target_ = 0;
   Spring scroll_, bar_;
   bool placed_ = false;
-  std::string message_ = "Loading\xe2\x80\xa6";
+  std::string message_ = tr("common.loading");
 };
 
 std::string formatTime(int seconds);  // 1.0.x formatTime(): m:ss or h:mm:ss

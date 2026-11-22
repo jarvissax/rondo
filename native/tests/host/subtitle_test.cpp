@@ -1,5 +1,8 @@
 // The subtitle file parser (core/subtitle_file.cpp) on the Mac:
-//   clang++ -std=c++17 -I native native/core/subtitle_file.cpp native/tests/host/subtitle_test.cpp -o /tmp/st && /tmp/st
+//   Y=native/third_party/src/yyjson-0.12.0/src; clang -c $Y/yyjson.c -o /tmp/yy.o
+//   clang++ -std=c++17 -I native -I $Y native/core/subtitle_file.cpp native/core/lang.cpp /tmp/yy.o \
+//     native/tests/host/subtitle_test.cpp -o /tmp/st && /tmp/st
+// (or tools/native/host-tests.sh, every host test)
 #include <stdio.h>
 
 #include <string>

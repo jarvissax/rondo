@@ -252,9 +252,7 @@ class VideoPlayerScreen : public Screen {
       ql = label(e, q, 10, true);
       qw = ql.w + 2 * e.dp(4), qh = ql.h + 2 * e.dp(1);
     }
-    const char* hint = scrub_.active ? "center jumps \xc2\xb7 Menu cancels"
-                       : local_      ? "center: scrub \xc2\xb7 hold center: subtitles"
-                                     : "center: scrub \xc2\xb7 hold center: options";
+    std::string hint = scrub_.active ? tr("videoPlayer.hintScrubbing") : local_ ? tr("videoPlayer.hintLocal") : tr("videoPlayer.hint");
     float rowX = float(padL + e.dp(4)), rowRight = w - padR;
     float hintX = rowX + icon + e.dp(7) + time.w + e.dp(8);
     float hintW = rowRight - qw - e.dp(8) - hintX;
@@ -281,7 +279,7 @@ class VideoPlayerScreen : public Screen {
     if (!height) return "";
     std::string p = std::to_string(height) + "p";
     if (local_) return p;
-    return g_prefs.videoQuality == 0 ? "Auto \xc2\xb7 " + p : p;
+    return g_prefs.videoQuality == 0 ? tr("videoPlayer.auto") + " \xc2\xb7 " + p : p;
   }
 
   // The options, a list of sections: QUALITY (YouTube's: Auto and the three heights), SUBTITLES (Off
@@ -294,27 +292,27 @@ class VideoPlayerScreen : public Screen {
   };
   std::vector<PanelRow> panelRows() const {
     std::vector<PanelRow> rows;
-    auto header = [&](const char* t) {
+    auto header = [&](const std::string& t) {
       PanelRow r;
       r.header = true, r.text = t;
       rows.push_back(r);
     };
     VideoPlayerScreen* self = const_cast<VideoPlayerScreen*>(this);
     if (!local_) {
-      header("QUALITY");
+      header(tr("videoPlayer.quality"));
       for (int q : kChoices) {
         PanelRow r;
-        r.text = q ? std::to_string(q) + "p" : "Auto";
-        if (savesBattery(q)) r.note = "saves battery";
+        r.text = q ? std::to_string(q) + "p" : tr("videoPlayer.auto");
+        if (savesBattery(q)) r.note = tr("videoPlayer.savesBattery");
         r.checked = g_prefs.videoQuality == q;
         r.pick = [self, q] { self->setQuality(q); };
         rows.push_back(r);
       }
     }
-    header("SUBTITLES");
+    header(tr("videoPlayer.subtitles"));
     {
       PanelRow off;
-      off.text = "Off";
+      off.text = tr("videoPlayer.subtitlesOff");
       off.checked = track_ < 0;
       off.pick = [self] {
         g_prefs.subtitles = false;
@@ -325,7 +323,7 @@ class VideoPlayerScreen : public Screen {
     }
     if (!tracksKnown_ || tracks_.empty()) {
       PanelRow r;
-      r.text = tracksKnown_ ? "None for this video" : "Finding subtitles\xe2\x80\xa6";
+      r.text = tracksKnown_ ? tr("videoPlayer.noSubtitles") : tr("videoPlayer.findingSubtitles");
       rows.push_back(r);
     }
     for (size_t i = 0; i < tracks_.size(); i++) {
@@ -341,35 +339,35 @@ class VideoPlayerScreen : public Screen {
       rows.push_back(r);
     }
     if (!local_) {
-      header("DOWNLOAD");
+      header(tr("videoPlayer.download"));
       const DownloadJob* job = nullptr;
       for (const DownloadJob& j : downloadJobs())
         if (j.id == item_.id && j.state != DownloadJob::Failed) job = &j;
       if (!downloadedFile(item_.id).empty()) {
         PanelRow r;
-        r.text = "On the card";
+        r.text = tr("videoPlayer.onCard");
         r.checked = true;
         rows.push_back(r);
       } else if (job && job->state != DownloadJob::Done) {
         PanelRow r;
-        r.text = job->state == DownloadJob::Paused ? "Paused" : job->state == DownloadJob::Waiting ? "Waiting" : job->stage.empty() ? "Downloading" : job->stage;
+        r.text = job->state == DownloadJob::Paused ? tr("downloads.state.paused") : job->state == DownloadJob::Waiting ? tr("downloads.state.waiting") : job->stage.empty() ? tr("downloads.stage.downloading") : job->stage;
         r.note = job->state != DownloadJob::Waiting && job->percent > 0 ? std::to_string(job->percent) + "%" : "";
         rows.push_back(r);
         std::string id = item_.id;
         PanelRow p;
         bool paused = job->state == DownloadJob::Paused;
-        p.text = paused ? "Resume download" : "Pause download";
+        p.text = paused ? tr("videoPlayer.resume") : tr("videoPlayer.pause");
         p.pick = [id, paused] { paused ? resumeDownload(id) : pauseDownload(id); };
         rows.push_back(p);
         PanelRow c;
-        c.text = "Cancel download";
+        c.text = tr("videoPlayer.cancel");
         c.pick = [id] { cancelDownload(id); };
         rows.push_back(c);
       } else {
         for (int q : {720, 480, 360}) {
           PanelRow r;
           r.text = std::to_string(q) + "p";
-          r.note = "to the card";
+          r.note = tr("videoPlayer.toCard");
           Item it = item_;
           r.pick = [it, q] { downloadVideo(it, q); };
           rows.push_back(r);
@@ -423,7 +421,7 @@ class VideoPlayerScreen : public Screen {
   void drawPanel(Env& e, float w, float h) {
     std::vector<PanelRow> rows = panelRows();
     int pw = std::min(e.dp(180), int(w) - 2 * e.dp(10)), padV = e.dp(5), rowH = e.dp(24), side = e.dp(12);
-    Label probe = label(e, "QUALITY", 10, true);
+    Label probe = label(e, tr("videoPlayer.quality"), 10, true);
     int headH = e.dp(3) + probe.h + e.dp(5);
     int content = 0, cursorTop = 0;
     for (size_t i = 0; i < rows.size(); i++) {

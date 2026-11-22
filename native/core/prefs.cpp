@@ -118,6 +118,7 @@ Prefs loadPrefs(const std::string& path) {
   pick("emojiTone", p.emojiTone, 0, 5);
   if (yyjson_val* v = yyjson_obj_get(root, "subLang"); yyjson_is_str(v)) p.subLang = cleanLang(yyjson_get_str(v));
   if (yyjson_val* v = yyjson_obj_get(root, "emojiRecent"); yyjson_is_str(v)) p.emojiRecent = yyjson_get_str(v);
+  if (yyjson_val* v = yyjson_obj_get(root, "language"); yyjson_is_str(v)) p.language = cleanLang(yyjson_get_str(v));
   auto flag = [&](const char* k, bool& out) {
     yyjson_val* v = yyjson_obj_get(root, k);
     if (yyjson_is_bool(v)) out = yyjson_get_bool(v);
@@ -159,11 +160,13 @@ bool savePrefs(const std::string& path, const Prefs& p) {
                    "{\"videoQuality\":%d,\"brightness\":%d,\"screenTimeoutMs\":%d,\"clickSound\":%s,\"accountMusic\":%s,"
                    "\"accountVideos\":%s,\"bluetoothOn\":%s,\"wifiOn\":%s,\"fmVolume\":%d,\"fmSpeakerVolume\":%d,\"autoTime\":%s,\"autoZone\":%s,"
                    "\"clock24\":%s,\"subtitles\":%s,\"subLang\":\"%s\",\"subSize\":%d,\"subColor\":%d,\"subOpacity\":%d,"
-                   "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d,\"emojiTone\":%d,\"emojiRecent\":\"%s\"}\n",
+                   "\"subBack\":%d,\"subBackOpacity\":%d,\"subEdge\":%d,\"emojiTone\":%d,\"emojiRecent\":\"%s\"%s}\n",
                    p.videoQuality, p.brightness, p.screenTimeoutMs, b(p.clickSound), b(p.accountMusic), b(p.accountVideos),
                    b(p.bluetoothOn), b(p.wifiOn), p.fmVolume, p.fmSpeakerVolume, b(p.autoTime), b(p.autoZone), b(p.clock24),
                    b(p.subtitles), cleanLang(p.subLang).c_str(), p.subSize, p.subColor, p.subOpacity, p.subBack, p.subBackOpacity,
-                   p.subEdge, p.emojiTone, jsonSafe(p.emojiRecent).c_str());
+                   p.subEdge, p.emojiTone, jsonSafe(p.emojiRecent).c_str(),
+                   // written once picked: without it the next start shows the picker again
+                   p.language.empty() ? "" : (",\"language\":\"" + cleanLang(p.language) + "\"").c_str());
   std::string tmp = path + ".part";
   int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   bool ok = fd >= 0 && write(fd, json, size_t(n)) == n && fsync(fd) == 0;

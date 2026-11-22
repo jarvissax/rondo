@@ -67,17 +67,20 @@ void walk(const std::string& dir, int depth, std::vector<Photo>& out) {
 
 std::string folderName(const std::string& dir) {
   for (const char* r : {"/storage/sdcard0", "/storage/sdcard1"})
-    if (dir == r) return std::string(r) == "/storage/sdcard0" ? "Card" : "Internal storage";
+    if (dir == r) return std::string(r) == "/storage/sdcard0" ? tr("files.card") : tr("files.internalStorage");
   return dir.substr(dir.rfind('/') + 1);
 }
 
+// "Nov  3, 2026" (strftime's "%b %e, %Y", the day padded to two), in the language spoken; a language that
+// starts with the day doesn't start with its padding
 std::string dateOf(int64_t s) {
   time_t t = time_t(s);
   struct tm tm;
   localtime_r(&t, &tm);
-  char b[64];
-  strftime(b, sizeof(b), "%b %e, %Y", &tm);
-  return b;
+  char day[8];
+  snprintf(day, sizeof(day), "%2d", tm.tm_mday);
+  std::string d = tr("files.date", {{"month", tr("date.month" + std::to_string(tm.tm_mon + 1))}, {"day", day}, {"year", tm.tm_year + 1900}});
+  return d.substr(std::min(d.size(), d.find_first_not_of(' ')));
 }
 
 // ---- the viewer ----
@@ -152,7 +155,7 @@ class PhotoViewerScreen : public Screen {
     decoder_.reset();
     for (auto& kv : textures_) ui::destroyTexture(kv.second);
   }
-  std::string title() const override { return "Photos"; }
+  std::string title() const override { return tr("photos.title"); }
   bool statusBar() const override { return false; }
   bool keepScreenOn() const override { return slideshow_; }
 
@@ -166,7 +169,7 @@ class PhotoViewerScreen : public Screen {
       case Action::PlayPause:
         slideshow_ = !slideshow_;
         nextSlide_ = now_ns() + 4000 * kMs;
-        g_app->toast(slideshow_ ? "Slideshow" : "Slideshow stopped");
+        g_app->toast(slideshow_ ? tr("photos.slideshow") : tr("photos.slideshowStopped"));
         return true;
       default: return false;
     }
@@ -216,7 +219,7 @@ class PhotoViewerScreen : public Screen {
     bool have = textures_.count(at_) && textures_[at_].id;
     if (!have) {
       bool failed = failed_.count(at_) != 0;
-      Label l = label(e, failed ? "Rondo can't open this picture" : "Opening\xe2\x80\xa6", 13, false, w);
+      Label l = label(e, failed ? tr("photos.cantOpen") : tr("photos.opening"), 13, false, w);
       float dx = t < 1 && !fade_ ? dir_ * (1 - ease) * w : 0;
       drawLabel(e, l, (w - l.w) / 2 + dx, (h - l.h) / 2, whiteA(150));
     }
@@ -231,9 +234,7 @@ class PhotoViewerScreen : public Screen {
       Label l2 = label(e, dateOf(p.modified), 11, false, w - e.dp(110));
       drawLabel(e, l1, float(e.dp(12)), h - bh + e.dp(6), white);
       drawLabel(e, l2, float(e.dp(12)), h - bh + e.dp(6) + l1.h, whiteA(170));
-      char c[32];
-      snprintf(c, sizeof(c), "%d of %d", at_ + 1, int(photos_->size()));
-      Label l3 = label(e, c, 11, false, w);
+      Label l3 = label(e, tr("photos.position", {{"at", at_ + 1}, {"total", int(photos_->size())}}), 11, false, w);
       drawLabel(e, l3, w - l3.w - e.dp(12), h - bh + e.dp(6) + l1.h, whiteA(170));
     }
   }
@@ -350,7 +351,7 @@ class PhotoGridScreen : public Screen {
     e.c.fill({0, 0, w, h}, e.p.shellBg);
     int n = int(photos_->size());
     if (!n) {
-      Label l = label(e, "No photos here", 14, false, w);
+      Label l = label(e, tr("photos.noneHere"), 14, false, w);
       drawLabel(e, l, (w - l.w) / 2, (h - l.h) / 2, e.p.muted);
       return;
     }
@@ -398,8 +399,8 @@ class PhotoGridScreen : public Screen {
 
 class PhotoFoldersScreen : public ShellListScreen {
  public:
-  PhotoFoldersScreen() : ShellListScreen("Photos") {
-    list_.setMessage("Looking for photos\xe2\x80\xa6");
+  PhotoFoldersScreen() : ShellListScreen(tr("photos.title")) {
+    list_.setMessage(tr("photos.looking"));
     auto alive = alive_;
     std::thread([this, alive] {
       auto all = std::make_shared<std::vector<Photo>>();
@@ -413,7 +414,7 @@ class PhotoFoldersScreen : public ShellListScreen {
 
  private:
   void show(std::shared_ptr<std::vector<Photo>> all) {
-    if (all->empty()) return list_.setMessage("No photos on the card.\nCopy JPEG or PNG pictures to it.");
+    if (all->empty()) return list_.setMessage(tr("photos.none"));
     // the newest first, everywhere
     std::sort(all->begin(), all->end(), [](const Photo& a, const Photo& b) { return a.modified > b.modified; });
     std::map<std::string, std::shared_ptr<std::vector<Photo>>> byFolder;
@@ -432,7 +433,7 @@ class PhotoFoldersScreen : public ShellListScreen {
       r.onSelect = [title, v] { g_app->push(std::unique_ptr<Screen>(new PhotoGridScreen(title, v))); };
       rows.push_back(std::move(r));
     };
-    add("All photos", "The newest first", all);
+    add(tr("photos.all"), tr("photos.newestFirst"), all);
     std::vector<std::pair<std::string, std::shared_ptr<std::vector<Photo>>>> folders(byFolder.begin(), byFolder.end());
     std::sort(folders.begin(), folders.end(), [](const auto& a, const auto& b) { return a.second->front().modified > b.second->front().modified; });
     for (auto& f : folders) add(folderName(f.first), dateOf(f.second->front().modified), f.second);

@@ -32,8 +32,12 @@ struct DownloadJob {
   int quality = 480;  // the height asked for (a video)
   enum State { Waiting, Running, Done, Failed, Paused } state = Waiting;
   int percent = 0;
-  std::string stage;  // "Picture", "Sound", "Subtitles", "Saving"
-  std::string error, file;
+  // what a running one does now, in the Y1's language ("Downloading video", "Getting subtitles",
+  // "Saving"); fetching: a part coming in (a row shows its percent then), the stage's words aside
+  std::string stage;
+  bool fetching = false;
+  std::string error, file;  // error: why it failed, in the Y1's language
+  bool cancelled = false;   // failed because it was cancelled: not kept in the queue's file
 };
 
 // Queued (false: already on the card or in the queue); a toast says which
@@ -52,8 +56,8 @@ void resumeDownloads();
 uint32_t downloadsSerial();
 bool downloadsGoing();  // one waiting or running (the screens' Pause row)
 bool downloadsPaused();  // one paused (Resume)
-// Why nothing starts now ("" nothing holds them): "The card is on the computer", "Waiting for Wi-Fi",
-// "Waiting to try again", "The card is full"
+// Why nothing starts now, in the Y1's language ("" nothing holds them): "The card is on the computer",
+// "Waiting for Wi-Fi", "Waiting to try again", "The card is full"
 std::string downloadsHeld();
 // USB drive: on, every download lets go of the card first (a file kept open there gets Rondo killed
 // when vold takes it); they go on when it's back. Thread-safe (the switch's thread calls it).
@@ -71,7 +75,8 @@ bool deleteDownload(const std::string& file);
 bool downloadsTick();
 // development (rondo --join): a download's two parts into one .mp4, as its last step does
 bool joinDownloadParts(const std::string& video, const std::string& audio, const std::string& out);
-// The queue and the files as JSON (the dashboard's GET /api/downloads)
+// The queue and the files as JSON (the dashboard's GET /api/downloads); a job's "fetching" is its
+// fetching above (its "stage", "error" and "held" are words to show, in the Y1's language)
 std::string downloadsJson();
 
 // YouTube Music › Download, in the same queue: a song saved the way the library keeps music (the layout

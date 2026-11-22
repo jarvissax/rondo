@@ -22,7 +22,7 @@ enum class Icon : uint8_t {
   // 2.0's: one glyph for each place (Settings' groups, Library's sections), none used twice
   Star, Photo, File, Headphones, Film, People, Tag, Flame, History, Sparkle, Stack, Tree, Sliders, Gauge,
   Vibrate, Wheel, Chip, Key, Diamond, Queue, Seek, Download, Sync, Usb, Device, Broadcast, Library, Mic,
-  Type, Menu, Wand, Bolt, Lock, Captions,
+  Type, Menu, Wand, Bolt, Lock, Captions, Globe,
   // WhatsApp's: a chat, send, a message read (two ticks)
   Chat, Send, Ticks, Tick, Smile,
   // the brand logos, each in two colors (drawn as their two masks)

@@ -24,7 +24,7 @@ Row entry(const std::string& title, const std::string& subtitle = "", const std:
   return r;
 }
 
-const char* onOff(bool v) { return v ? "On" : "Off"; }
+std::string onOff(bool v) { return v ? tr("common.on") : tr("common.off"); }
 
 std::string currentZone() {
   char z[PROP_VALUE_MAX] = "";
@@ -88,7 +88,7 @@ const char* kZones[] = {
 // The zone picker: by their offset from UTC now, then by name
 class ZoneScreen : public ShellListScreen {
  public:
-  ZoneScreen() : ShellListScreen("Time zone") {
+  ZoneScreen() : ShellListScreen(tr("dateTime.timeZone")) {
     time_t now = time(nullptr);
     struct Z {
       std::string id;
@@ -105,7 +105,7 @@ class ZoneScreen : public ShellListScreen {
     int at = 0;
     for (const Z& z : zones) {
       if (z.id == current) at = int(rows.size());
-      Row r = entry(cityOf(z.id), gmt(z.offset), z.id == current ? "Current" : "");
+      Row r = entry(cityOf(z.id), gmt(z.offset), z.id == current ? tr("common.current") : "");
       std::string id = z.id;
       r.onSelect = [id] {
         setTimeZoneByHand(id);
@@ -189,7 +189,7 @@ class PartsScreen : public Screen {
         x += float(sep.w + e.dp(4));
       }
     }
-    Label hint = label(e, "Wheel: change \xc2\xb7 Center: next \xc2\xb7 Menu: cancel", 11, false, w - 2 * e.dp(10));
+    Label hint = label(e, tr("dateTime.partsHint"), 11, false, w - 2 * e.dp(10));
     drawLabel(e, hint, centerText(0, w, hint.w), top + float(boxH) + float(e.dp(18)), p.muted);
   }
 
@@ -208,15 +208,14 @@ std::string two(int v) {
 }
 
 std::unique_ptr<Screen> makeDateEntry() {
-  static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
   time_t now = time(nullptr);
   struct tm tm;
   localtime_r(&now, &tm);
   std::vector<PartsScreen::Part> parts = {
-      {tm.tm_mon, 0, 11, [](int v) { return std::string(kMonths[v]); }},
+      {tm.tm_mon, 0, 11, [](int v) { return tr("date.month" + std::to_string(v + 1)); }},  // as clockDate() names them
       {tm.tm_mday, 1, 31, [](int v) { return std::to_string(v); }},
       {std::max(2025, std::min(2099, tm.tm_year + 1900)), 2025, 2099, [](int v) { return std::to_string(v); }}};
-  return std::unique_ptr<Screen>(new PartsScreen("Date", parts, " ", [](const std::vector<int>& v) {
+  return std::unique_ptr<Screen>(new PartsScreen(tr("dateTime.date"), parts, " ", [](const std::vector<int>& v) {
     time_t t = time(nullptr);
     struct tm d;
     localtime_r(&t, &d);  // the time of day stays
@@ -246,9 +245,9 @@ std::unique_ptr<Screen> makeTimeEntry() {
     int h12 = tm.tm_hour % 12 ? tm.tm_hour % 12 : 12;
     parts.push_back({h12, 1, 12, [](int v) { return std::to_string(v); }});
     parts.push_back({tm.tm_min, 0, 59, [](int v) { return two(v); }});
-    parts.push_back({tm.tm_hour < 12 ? 0 : 1, 0, 1, [](int v) { return std::string(v ? "PM" : "AM"); }});
+    parts.push_back({tm.tm_hour < 12 ? 0 : 1, 0, 1, [](int v) { return tr(v ? "time.pm" : "time.am"); }});
   }
-  return std::unique_ptr<Screen>(new PartsScreen("Time", parts, ":", [h24](const std::vector<int>& v) {
+  return std::unique_ptr<Screen>(new PartsScreen(tr("dateTime.time"), parts, ":", [h24](const std::vector<int>& v) {
     time_t t = time(nullptr);
     struct tm d;
     localtime_r(&t, &d);  // the date stays
@@ -261,7 +260,7 @@ std::unique_ptr<Screen> makeTimeEntry() {
 
 class DateTimeScreen : public ShellListScreen {
  public:
-  DateTimeScreen() : ShellListScreen("Date & time") { render(); }
+  DateTimeScreen() : ShellListScreen(tr("dateTime.title")) { render(); }
   void onShow() override { render(); }
   // the minute turning shows in the Date and Time rows
   bool tick(int64_t) override {
@@ -276,7 +275,7 @@ class DateTimeScreen : public ShellListScreen {
     time_t now = shown_ = time(nullptr);
     std::vector<Row> rows;
     bool autoTime = g_prefs.autoTime, autoZone = g_prefs.autoZone;
-    Row a = entry("Set automatically", "From the network when Wi-Fi is on", onOff(autoTime));
+    Row a = entry(tr("dateTime.auto"), tr("dateTime.autoNote"), onOff(autoTime));
     a.onSelect = [this] {
       g_prefs.autoTime = !g_prefs.autoTime;
       savePrefsNow();
@@ -284,8 +283,8 @@ class DateTimeScreen : public ShellListScreen {
       render();
     };
     rows.push_back(a);
-    Row date = entry("Date", "", clockDate(now, true));
-    Row timeRow = entry("Time", "", clockTime(now, g_prefs.clock24));
+    Row date = entry(tr("dateTime.date"), "", clockDate(now, true));
+    Row timeRow = entry(tr("dateTime.time"), "", clockTime(now, g_prefs.clock24));
     if (autoTime) {
       date.enabled = timeRow.enabled = false;
     } else {
@@ -295,7 +294,7 @@ class DateTimeScreen : public ShellListScreen {
     }
     rows.push_back(date);
     rows.push_back(timeRow);
-    Row z = entry("Time zone automatically", "Where the Y1 is online", onOff(autoZone));
+    Row z = entry(tr("dateTime.autoZone"), tr("dateTime.autoZoneNote"), onOff(autoZone));
     z.onSelect = [this] {
       g_prefs.autoZone = !g_prefs.autoZone;
       savePrefsNow();
@@ -304,7 +303,7 @@ class DateTimeScreen : public ShellListScreen {
     };
     rows.push_back(z);
     std::string zone = currentZone();
-    Row zr = entry("Time zone", gmt(offsetIn(zone, now)), cityOf(zone));
+    Row zr = entry(tr("dateTime.timeZone"), gmt(offsetIn(zone, now)), cityOf(zone));
     if (autoZone) {
       zr.enabled = false;
     } else {
@@ -312,7 +311,7 @@ class DateTimeScreen : public ShellListScreen {
       zr.onSelect = [] { g_app->push(std::unique_ptr<Screen>(new ZoneScreen())); };
     }
     rows.push_back(zr);
-    Row h = entry("24-hour time", "", onOff(g_prefs.clock24));
+    Row h = entry(tr("dateTime.clock24"), "", onOff(g_prefs.clock24));
     h.onSelect = [this] {
       g_prefs.clock24 = !g_prefs.clock24;
       savePrefsNow();
@@ -374,13 +373,13 @@ void dateTimeSetAuto(int autoTime, int autoZone, int clock24) {  // -1: as it is
 
 // "" when set, else why not (automatic time or zone is on, an unknown zone)
 std::string dateTimeSetClock(int64_t epoch) {
-  if (g_prefs.autoTime) return "Turn off Set automatically first";
-  if (epoch < 1704067200 || epoch > 4102444800LL) return "That date is out of range";  // 2024 to 2100
-  return setWallClock(time_t(epoch)) ? "" : "The clock didn't take it";
+  if (g_prefs.autoTime) return tr("dateTime.turnOffFirst", {{"setting", tr("dateTime.auto")}});
+  if (epoch < 1704067200 || epoch > 4102444800LL) return tr("dateTime.outOfRange");  // 2024 to 2100
+  return setWallClock(time_t(epoch)) ? "" : tr("dateTime.clockRefused");
 }
 std::string dateTimeSetZone(const std::string& id) {
-  if (g_prefs.autoZone) return "Turn off Time zone automatically first";
-  if (!knownTimeZone(id)) return "Rondo doesn't know that time zone";
+  if (g_prefs.autoZone) return tr("dateTime.turnOffFirst", {{"setting", tr("dateTime.autoZone")}});
+  if (!knownTimeZone(id)) return tr("dateTime.unknownZone");
   setTimeZoneByHand(id);
   return "";
 }

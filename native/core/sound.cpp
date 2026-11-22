@@ -8,6 +8,8 @@
 
 #include <algorithm>
 
+#include "lang.h"
+
 namespace rondo {
 
 const float kEqFreqs[kEqBands] = {31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000};
@@ -63,32 +65,32 @@ const UserPreset* userPreset(const SoundConfig& c, const std::string& id) {
 
 const std::vector<EqPreset>& eqPresets() {
   static const std::vector<EqPreset> all = {
-      {"flat", "Flat", "as it comes"},
-      {"speaker", "Y1 speaker", "made for the speaker"},
-      {"loudness", "Loudness", "for low volume"},
-      {"bass", "Bass boost", ""},
-      {"treble", "Treble boost", ""},
-      {"vocal", "Vocal", ""},
-      {"normal", "Normal", ""},
-      {"classical", "Classical", ""},
-      {"dance", "Dance", ""},
-      {"folk", "Folk", ""},
-      {"heavymetal", "Heavy Metal", ""},
-      {"hiphop", "Hip Hop", ""},
-      {"jazz", "Jazz", ""},
-      {"pop", "Pop", ""},
-      {"rock", "Rock", ""},
+      {"flat", "sound.preset.flat", "sound.asItComes"},
+      {"speaker", "sound.preset.speaker", "sound.presetNote.speaker"},
+      {"loudness", "sound.preset.loudness", "sound.presetNote.loudness"},
+      {"bass", "sound.preset.bass", ""},
+      {"treble", "sound.preset.treble", ""},
+      {"vocal", "sound.preset.vocal", ""},
+      {"normal", "sound.preset.normal", ""},
+      {"classical", "sound.preset.classical", ""},
+      {"dance", "sound.preset.dance", ""},
+      {"folk", "sound.preset.folk", ""},
+      {"heavymetal", "sound.preset.heavyMetal", ""},
+      {"hiphop", "sound.preset.hipHop", ""},
+      {"jazz", "sound.preset.jazz", ""},
+      {"pop", "sound.preset.pop", ""},
+      {"rock", "sound.preset.rock", ""},
   };
   return all;
 }
 
 std::string presetName(const SoundConfig& c, const SoundProfile& p) {
-  if (p.preset == "custom") return "Custom";
+  if (p.preset == "custom") return tr("sound.preset.custom");
   if (p.preset == "autoeq" && !p.autoEq.empty()) return p.autoEqName;
   if (const UserPreset* u = userPreset(c, p.preset)) return u->name;
   for (const EqPreset& e : eqPresets())
-    if (p.preset == e.id) return e.name;
-  return "Flat";
+    if (p.preset == e.id) return tr(e.name);
+  return tr("sound.preset.flat");
 }
 
 std::array<float, kEqBands> presetGains(const SoundConfig& c, const SoundProfile& p) {

@@ -62,7 +62,8 @@ bool g_queueRead = false;
 // what holds the queue: the card at the computer (set from the USB switch's thread), a connection that
 // failed (tried again from g_retryAt, waiting longer each time), the card full (looked at again from g_fullUntil)
 std::atomic<bool> g_cardAway{false};
-std::string g_held;  // downloadsHeld(): why nothing starts now
+// downloadsHeld(): why nothing starts now (its words in the language spoken when asked)
+enum class HeldBy { Nothing, CardAway, NoCard, NoWifi, Retry, CardFull } g_held = HeldBy::Nothing;
 int64_t g_retryAt = 0, g_fullUntil = 0, g_heldAt = 0;
 int64_t g_offlineSince = 0, g_onlineAt = 0;  // a download running with no network since (0: online), looked at when
 int g_misses = 0;  // connection failures in a row
@@ -330,7 +331,7 @@ void saveQueue() {
   std::string j = "{\"jobs\":[";
   int n = 0;
   for (const DownloadJob& d : g_jobs) {
-    if (d.state == DownloadJob::Done || (d.state == DownloadJob::Failed && d.error == "Cancelled")) continue;
+    if (d.state == DownloadJob::Done || (d.state == DownloadJob::Failed && d.cancelled)) continue;
     // a running one is waiting when read again
     const char* st = d.state == DownloadJob::Running ? "waiting" : stateName(d.state);
     j += std::string(n++ ? "," : "") + "{\"id\":" + jstr(d.id) + ",\"song\":" + (d.song ? "true" : "false") + ",\"alone\":" + (d.alone ? "true" : "false") +
@@ -417,26 +418,29 @@ bool online() {
   return on;
 }
 int64_t g_onlineSince = 0;  // Wi-Fi back since (0: not): a moment for it to settle before asking anything
-std::string holdNow() {
-  if (g_cardAway) return "The card is on the computer";
-  if (!cardMounted()) return "Waiting for the card";
+HeldBy holdNow() {
+  if (g_cardAway) return HeldBy::CardAway;
+  if (!cardMounted()) return HeldBy::NoCard;
   if (!online()) {
     g_onlineSince = 0;
-    return "Waiting for Wi-Fi";
+    return HeldBy::NoWifi;
   }
   if (!g_onlineSince) g_onlineSince = now_ns();
-  if (now_ns() - g_onlineSince < 2 * kSec) return "Waiting for Wi-Fi";
-  if (now_ns() < g_retryAt) return "Waiting to try again";
-  if (now_ns() < g_fullUntil) return "The card is full";
-  return "";
+  if (now_ns() - g_onlineSince < 2 * kSec) return HeldBy::NoWifi;
+  if (now_ns() < g_retryAt) return HeldBy::Retry;
+  if (now_ns() < g_fullUntil) return HeldBy::CardFull;
+  return HeldBy::Nothing;
 }
+
+// what a job's row says it does now; fetching: a part coming in (the row shows its percent)
+void setStage(DownloadJob* j, std::string words, bool fetching = false) { j->stage = std::move(words), j->fetching = fetching; }
 
 // the job running goes back to `to` (Waiting: held; Paused: the user's), its part kept
 void stopRunning(DownloadJob::State to) {
   DownloadJob* j = current();
   if (!j || g_step == Joining) return;  // being saved: it finishes in a moment
   if (g_coreBusy) g_core.cancelDownload();  // the part stays (its last synced size noted as it ends)
-  j->state = to, j->stage = "";
+  j->state = to, setStage(j, "");
   g_at = -1, g_step = Idle, g_subs.clear(), g_subsPending = 0;
   g_generation++;
   g_changed = g_queueDirty = true;
@@ -452,10 +456,10 @@ void retryLater() {
 void finish(DownloadJob::State state, const std::string& error = "") {
   DownloadJob* j = current();
   if (!j) return;
-  j->state = state, j->error = error, j->stage = "";
+  j->state = state, j->error = error, setStage(j, "");
   if (state == DownloadJob::Failed) {
     removeParts(j->id);
-    g_app->toast("Download failed: " + j->title);
+    g_app->toast(tr("downloads.failedToast", {{"title", j->title}}));
   }
   if (state == DownloadJob::Done) clearMarks(j->id), g_misses = 0;
   g_at = -1, g_step = Idle, g_subs.clear(), g_subsPending = 0;
@@ -575,7 +579,7 @@ bool roomToSave() {
   int64_t room = files::freeBytes(files::kRoots[0]);
   if (!j || room < 0 || room >= partsSize(*j) + (8 << 20)) return true;
   g_fullUntil = now_ns() + 60 * kSec;
-  g_app->toast("The card is full: downloads wait");
+  g_app->toast(tr("downloads.cardFullToast"));
   stopRunning(DownloadJob::Waiting);
   return false;
 }
@@ -584,7 +588,7 @@ bool roomToSave() {
 void startCaptions() {
   DownloadJob* j = current();
   g_step = Captions;
-  j->stage = "Getting subtitles";
+  setStage(j, tr("downloads.stage.subtitles"));
   g_changed = true;
   uint32_t gen = g_generation;
   std::string id = j->id;
@@ -604,7 +608,7 @@ void startCaptions() {
       if (!roomToSave()) return;
       DownloadJob* j = current();
       g_step = Joining;
-      j->stage = "Saving";
+      setStage(j, tr("downloads.stage.saving"));
       g_changed = true;
       g_joined = 0;
       std::string base = partsBase(j->id);
@@ -645,7 +649,7 @@ void startPart(Step step) {
   int itag = step == Picture ? g_videoItag : g_audioItag;
   int64_t bytes = step == Picture ? g_videoBytes : g_audioBytes;
   // the words a row shows ("Picture" read like the video's name for a picture, Nov 12)
-  j->stage = j->song ? "Downloading" : step == Picture ? (g_audioItag ? "Downloading video" : "Downloading") : "Downloading sound";
+  setStage(j, j->song ? tr("downloads.stage.downloading") : step == Picture ? (g_audioItag ? tr("downloads.stage.video") : tr("downloads.stage.downloading")) : tr("downloads.stage.sound"), true);
   g_changed = true;
   if (g_cardAway) return stopRunning(DownloadJob::Waiting);  // the card is going to the computer
   std::string file = (j->song ? songParts(j->id) : partsBase(j->id)) + (step == Picture ? ".video" : ".audio");
@@ -663,7 +667,7 @@ void startPart(Step step) {
   int64_t room = files::freeBytes(files::kRoots[0]);
   if (room >= 0 && room < bytes - from + (16 << 20)) {
     g_fullUntil = now_ns() + 60 * kSec;
-    g_app->toast("The card is full: downloads wait");
+    g_app->toast(tr("downloads.cardFullToast"));
     return stopRunning(DownloadJob::Waiting);
   }
   g_marks[file] = {j->id, file, from, bytes};
@@ -698,7 +702,7 @@ void startSaving() {
   if (!roomToSave()) return;
   DownloadJob* j = current();
   g_step = Joining;
-  j->stage = "Saving";
+  setStage(j, tr("downloads.stage.saving"));
   g_changed = true;
   g_joined = 0;
   std::string base = songParts(j->id), id = j->id;
@@ -743,7 +747,7 @@ void startSaving() {
 void startWords() {
   DownloadJob* j = current();
   g_step = Words;
-  j->stage = "Getting lyrics";
+  setStage(j, tr("downloads.stage.lyrics"));
   g_changed = true;
   uint32_t gen = g_generation;
   std::string q = "/lyrics?title=" + Api::escape(g_song.title) + "&artist=" + Api::escape(g_song.artist);
@@ -774,7 +778,7 @@ void startCover() {
   if (g_song.cover.empty()) return startWords();
   if (g_cardAway) return stopRunning(DownloadJob::Waiting);
   g_step = Cover;
-  j->stage = "Getting the cover";
+  setStage(j, tr("downloads.stage.cover"));
   g_changed = true;
   g_coreBusy = true;
   g_seq = g_core.state().downloadSeq;
@@ -821,7 +825,7 @@ void startSong() {
       DownloadJob* j = current();
       if (!j) return;
       if (status == 0) return retryLater();
-      if (status != 200) return finish(DownloadJob::Failed, "YouTube didn't give this song");
+      if (status != 200) return finish(DownloadJob::Failed, tr("downloads.error.noSong"));
       int64_t bytes = -1;
       if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
         yyjson_val* f = yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(d), "formats"), "140");
@@ -829,7 +833,7 @@ void startSong() {
         if (!g_song.seconds || g_song.seconds < 0) g_song.seconds = int(yyjson_get_num(yyjson_obj_get(yyjson_doc_get_root(d), "duration")));
         yyjson_doc_free(d);
       }
-      if (bytes < 0) return finish(DownloadJob::Failed, "No sound the Y1 plays");
+      if (bytes < 0) return finish(DownloadJob::Failed, tr("downloads.error.noSound"));
       g_videoItag = 0, g_audioItag = 140, g_videoBytes = 0, g_audioBytes = bytes;
       startPart(Sound);
     });
@@ -845,7 +849,7 @@ void start(int at) {
     j->file = there, j->percent = 100;
     return finish(DownloadJob::Done);
   }
-  j->state = DownloadJob::Running, j->stage = "Starting";
+  j->state = DownloadJob::Running, setStage(j, tr("downloads.stage.starting"));
   g_step = Resolving;
   g_changed = g_queueDirty = true;
   if (j->song) {
@@ -861,7 +865,7 @@ void start(int at) {
     DownloadJob* j = current();
     if (!j) return;
     if (status == 0) return retryLater();
-    if (status != 200) return finish(DownloadJob::Failed, "YouTube didn't give this video");
+    if (status != 200) return finish(DownloadJob::Failed, tr("downloads.error.noVideo"));
     yyjson_doc* d = yyjson_read(body.data(), body.size(), 0);
     std::map<int, std::pair<int, int64_t>> formats;  // itag -> height, bytes
     if (d) {
@@ -884,7 +888,7 @@ void start(int at) {
       if (!g_videoItag && formats.count(itag)) g_videoItag = itag;
     if (g_videoItag && formats.count(140)) g_audioItag = 140;
     else if (formats.count(18)) g_videoItag = 18, g_audioItag = 0;  // picture and sound in one (360p)
-    else return finish(DownloadJob::Failed, "No format the Y1 plays");
+    else return finish(DownloadJob::Failed, tr("downloads.error.noFormat"));
     j->quality = g_videoItag == 136 ? 720 : g_videoItag == 135 ? 480 : 360;
     g_videoBytes = formats[g_videoItag].second, g_audioBytes = g_audioItag ? formats[g_audioItag].second : 0;
     startPart(Picture);
@@ -1018,10 +1022,10 @@ void playlistLoaded(const std::string& pid, ListLoad& l) {
   writeListFile(pid);
   saveListCover(pid, r.thumb);
   g_changed = true;
-  if (songs.empty()) g_app->toast("No songs in " + l.title);
-  else if (queued) g_app->toast("Downloading " + std::to_string(queued) + (queued == 1 ? " song" : " songs") + " of " + l.title);
-  else if (there == int(songs.size())) g_app->toast(l.title + " is on the card");
-  else g_app->toast("Its songs are on their way");
+  if (songs.empty()) g_app->toast(tr("downloads.playlistEmpty", {{"title", l.title}}));
+  else if (queued) g_app->toast(tr("downloads.playlistSongs", {{"count", queued}, {"title", l.title}}));
+  else if (there == int(songs.size())) g_app->toast(tr("downloads.playlistOnCard", {{"title", l.title}}));
+  else g_app->toast(tr("downloads.playlistOnTheWay"));
 }
 
 // its songs, page after page (a mix: the first page; it never ends)
@@ -1032,7 +1036,7 @@ void loadPage(const std::string& pid, const std::string& next) {
     if (it == g_loads.end()) return;  // deleted meanwhile
     ListLoad& l = it->second;
     if (status != 200 && (first || status != 410)) {  // 410: a next page's token ran out: what came is kept
-      g_app->toast("Couldn't get " + l.title + ": " + (status == 0 ? "no connection" : "HTTP " + std::to_string(status)));
+      g_app->toast(tr("downloads.couldntGet", {{"title", l.title}, {"problem", status == 0 ? tr("downloads.noConnection") : "HTTP " + std::to_string(status)}}));
       g_loads.erase(it);
       g_changed = true;
       return;
@@ -1093,12 +1097,12 @@ bool downloadVideo(const Item& item, int quality) {
   ensureRead();
   if (item.id.empty() || item.id[0] == '/') return false;
   if (!downloadedFile(item.id).empty()) {
-    g_app->toast("Already on the card");
+    g_app->toast(tr("downloads.alreadyOnCard"));
     return false;
   }
   for (const DownloadJob& j : g_jobs)
     if (j.id == item.id && going(j)) {
-      g_app->toast(j.state == DownloadJob::Paused ? "It's paused in Downloads" : "Already downloading");
+      g_app->toast(j.state == DownloadJob::Paused ? tr("downloads.pausedInDownloads") : tr("downloads.alreadyDownloading"));
       return false;
     }
   // a failed or cancelled one is tried again in its place
@@ -1113,7 +1117,7 @@ bool downloadVideo(const Item& item, int quality) {
   j.quality = quality;
   g_jobs.push_back(j);
   g_changed = g_queueDirty = true;
-  g_app->toast(g_at >= 0 ? "Download waiting: " + j.title : "Downloading " + std::to_string(quality) + "p: " + j.title);
+  g_app->toast(g_at >= 0 ? tr("downloads.waitingToast", {{"title", j.title}}) : tr("downloads.downloadingVideo", {{"height", quality}, {"title", j.title}}));
   return true;
 }
 
@@ -1130,7 +1134,7 @@ bool downloadsActive() {
     waiting = waiting || j.state == DownloadJob::Waiting;
   }
   // held: only a short wait to try again keeps the CPU up (no Wi-Fi, the card away or full don't)
-  return waiting && (g_held.empty() || (g_held == "Waiting to try again" && g_misses <= 3));
+  return waiting && (g_held == HeldBy::Nothing || (g_held == HeldBy::Retry && g_misses <= 3));
 }
 
 void cancelDownload(const std::string& id) {
@@ -1145,12 +1149,12 @@ void cancelDownload(const std::string& id) {
       return;
     }
     if (j.state == DownloadJob::Waiting || j.state == DownloadJob::Paused) {
-      j.state = DownloadJob::Failed, j.error = "Cancelled";
+      j.state = DownloadJob::Failed, j.error = tr("downloads.error.cancelled"), j.cancelled = true;
       removeParts(id);
     } else if (j.state == DownloadJob::Running && int(i) == g_at) {
       if (g_step == Joining) return;  // nearly done: let it finish
       if (g_coreBusy) g_core.cancelDownload();  // it ends as failed: the next waits for that (downloadsTick)
-      j.state = DownloadJob::Failed, j.error = "Cancelled";
+      j.state = DownloadJob::Failed, j.error = tr("downloads.error.cancelled"), j.cancelled = true;
       removeParts(id);
       g_at = -1, g_step = Idle, g_subs.clear(), g_subsPending = 0;
       g_generation++;
@@ -1163,7 +1167,7 @@ void retryDownload(const std::string& id) {
   ensureRead();
   for (DownloadJob& j : g_jobs)
     if (j.id == id && j.state == DownloadJob::Failed) {
-      j.state = DownloadJob::Waiting, j.error = "", j.percent = 0, j.stage = "";
+      j.state = DownloadJob::Waiting, j.error = "", j.cancelled = false, j.percent = 0, setStage(&j, "");
       g_changed = g_queueDirty = true;
     }
 }
@@ -1213,7 +1217,17 @@ bool downloadsPaused() {
   return false;
 }
 
-std::string downloadsHeld() { return g_held; }
+std::string downloadsHeld() {
+  switch (g_held) {
+    case HeldBy::CardAway: return tr("downloads.held.cardAway");
+    case HeldBy::NoCard: return tr("downloads.held.noCard");
+    case HeldBy::NoWifi: return tr("downloads.held.noWifi");
+    case HeldBy::Retry: return tr("downloads.held.retry");
+    case HeldBy::CardFull: return tr("downloads.held.cardFull");
+    case HeldBy::Nothing: break;
+  }
+  return "";
+}
 
 // a change not handed out by downloadsTick yet counts already
 uint32_t downloadsSerial() { return g_serial + (g_changed ? 1 : 0); }
@@ -1335,12 +1349,12 @@ bool downloadsTick() {
     for (size_t i = 0; i < g_jobs.size() && next < 0; i++)
       if (g_jobs[i].state == DownloadJob::Waiting) next = int(i);
     if (next < 0) {
-      if (!g_held.empty()) g_held.clear(), g_changed = true;
+      if (g_held != HeldBy::Nothing) g_held = HeldBy::Nothing, g_changed = true;
     } else if (!g_coreBusy && c.downloadState != 1 && now_ns() - g_heldAt >= 900 * kMs) {  // Software update's download first
       g_heldAt = now_ns();
-      std::string h = holdNow();
+      HeldBy h = holdNow();
       if (h != g_held) g_held = h, g_changed = true;
-      if (h.empty()) start(next);
+      if (h == HeldBy::Nothing) start(next);
     }
   } else if (g_step == Picture || g_step == Sound) {
     if (c.downloadSeq != g_seq) {  // the core has begun this part
@@ -1354,14 +1368,14 @@ bool downloadsTick() {
       } else if (c.downloadState == 3) {
         g_coreBusy = false;
         if (c.downloadStatus != 0) {
-          finish(DownloadJob::Failed, "The stream was refused (" + std::to_string(c.downloadStatus) + ")");
+          finish(DownloadJob::Failed, tr("downloads.error.refused", {{"status", c.downloadStatus}}));
         } else if (g_cardAway || !cardMounted()) {  // the card went: on when it's back
           stopRunning(DownloadJob::Waiting);
         } else {
           int64_t room = files::freeBytes(files::kRoots[0]);
           if (room >= 0 && room < (8 << 20)) {
             g_fullUntil = now_ns() + 60 * kSec;
-            g_app->toast("The card is full: downloads wait");
+            g_app->toast(tr("downloads.cardFullToast"));
             stopRunning(DownloadJob::Waiting);
           } else {
             retryLater();  // the connection: what came is kept, the rest when it's back
@@ -1381,7 +1395,7 @@ bool downloadsTick() {
     if (g_joiner.joinable()) g_joiner.join();
     unlink((songParts(j->id) + ".saving.m4a").c_str());
     unlink((partsBase(j->id) + ".mp4.part").c_str());
-    if (g_joined == 2) g_fullUntil = now_ns() + 60 * kSec, g_app->toast("The card is full: downloads wait");
+    if (g_joined == 2) g_fullUntil = now_ns() + 60 * kSec, g_app->toast(tr("downloads.cardFullToast"));
     g_step = Idle;  // (stopRunning leaves a save be)
     stopRunning(DownloadJob::Waiting);
   } else if (g_step == Joining && g_joined != 0 && j->song) {
@@ -1400,9 +1414,9 @@ bool downloadsTick() {
       for (auto& [pid, r] : g_lists)  // in its place in the playlists it's in
         if (std::find(r.ids.begin(), r.ids.end(), id) != r.ids.end()) writeListFile(pid);
       g_library.scanAsync();
-      g_app->toast("Downloaded: " + title);
+      g_app->toast(tr("downloads.downloaded", {{"title", title}}));
     } else {
-      finish(DownloadJob::Failed, "Couldn't save it to the card");
+      finish(DownloadJob::Failed, tr("downloads.error.notSaved"));
     }
   } else if (g_step == Joining && g_joined != 0) {
     if (g_joiner.joinable()) g_joiner.join();
@@ -1410,8 +1424,8 @@ bool downloadsTick() {
     std::string name = fileTitle(j->title) + " [" + j->id + "]";
     std::string file = downloadDir() + "/" + name + ".mp4";
     if (g_joined == 1 && rename((base + ".mp4.part").c_str(), file.c_str()) == 0) {
-      for (auto& [lang, vtt] : g_subs)
-        if (FILE* f = fopen((downloadDir() + "/" + name + "." + lang + ".vtt").c_str(), "wb")) {
+      for (auto& [code, vtt] : g_subs)
+        if (FILE* f = fopen((downloadDir() + "/" + name + "." + code + ".vtt").c_str(), "wb")) {
           fwrite(vtt.data(), 1, vtt.size(), f);
           fclose(f);
         }
@@ -1424,9 +1438,9 @@ bool downloadsTick() {
       finish(DownloadJob::Done);
       refreshFiles(true);
       g_library.scanAsync();
-      g_app->toast("Downloaded: " + title);
+      g_app->toast(tr("downloads.downloaded", {{"title", title}}));
     } else {
-      finish(DownloadJob::Failed, "Couldn't save it to the card");
+      finish(DownloadJob::Failed, tr("downloads.error.notSaved"));
     }
   }
   if (g_queueDirty) saveQueue();
@@ -1443,13 +1457,13 @@ bool downloadSong(const Item& item, bool quiet, bool alone) {
   if (item.id.empty() || item.id[0] == '/') return false;
   if (!downloadedSong(item.id).empty()) {
     if (alone && !g_songs[item.id].alone) g_songs[item.id].alone = true, writeSongs();  // kept if its playlist goes
-    if (!quiet) g_app->toast("Already on the card");
+    if (!quiet) g_app->toast(tr("downloads.alreadyOnCard"));
     return false;
   }
   for (DownloadJob& j : g_jobs)
     if (j.id == item.id && going(j)) {
       if (alone && !j.alone) j.alone = true, g_queueDirty = true;
-      if (!quiet) g_app->toast(j.state == DownloadJob::Paused ? "It's paused in Downloads" : "Already downloading");
+      if (!quiet) g_app->toast(j.state == DownloadJob::Paused ? tr("downloads.pausedInDownloads") : tr("downloads.alreadyDownloading"));
       return false;
     }
   g_jobs.erase(std::remove_if(g_jobs.begin(), g_jobs.end(), [&](const DownloadJob& j) { return j.id == item.id; }), g_jobs.end());
@@ -1461,7 +1475,7 @@ bool downloadSong(const Item& item, bool quiet, bool alone) {
   j.channel = item.subtitle;  // "Artist · Album": the song's details when /music/song can't say
   g_jobs.push_back(j);
   g_changed = g_queueDirty = true;
-  if (!quiet) g_app->toast(g_at >= 0 ? "Download waiting: " + j.title : "Downloading: " + j.title);
+  if (!quiet) g_app->toast(g_at >= 0 ? tr("downloads.waitingToast", {{"title", j.title}}) : tr("downloads.downloadingSong", {{"title", j.title}}));
   return true;
 }
 
@@ -1469,7 +1483,7 @@ int downloadSongs(const std::vector<Item>& songs) {
   int n = 0;
   for (const Item& s : songs)
     if ((s.kind == "song" || s.kind == "video") && downloadSong(s, true)) n++;
-  g_app->toast(n ? "Downloading " + std::to_string(n) + (n == 1 ? " song" : " songs") : "They're on the card already");
+  g_app->toast(n ? tr("downloads.songsQueued", {{"count", n}}) : tr("downloads.songsOnCard"));
   return n;
 }
 
@@ -1523,15 +1537,15 @@ bool downloadPlaylist(const std::string& id, const std::string& title) {
   readSongs();
   if (id.empty()) return false;
   if (g_loads.count(id)) {
-    g_app->toast("Getting its songs already");
+    g_app->toast(tr("downloads.gettingSongs"));
     return false;
   }
   ListLoad& l = g_loads[id];
-  l.title = title.empty() ? "Playlist" : title;
+  l.title = title.empty() ? "Playlist" : title;  // also its file's name on the card: as it is
   l.mix = isMixId(id);
   l.at = time(nullptr);
   g_changed = true;
-  g_app->toast((g_lists.count(id) ? "Updating " : "Downloading ") + l.title);
+  g_app->toast(g_lists.count(id) ? tr("downloads.updatingPlaylist", {{"title", l.title}}) : tr("downloads.downloadingPlaylist", {{"title", l.title}}));
   loadPage(id, "");
   return true;
 }
@@ -1637,12 +1651,12 @@ bool deleteLibraryPlaylist(const std::string& name, bool songsToo) {
 
 std::string downloadsJson() {
   ensureRead();
-  std::string s = "{\"dir\":" + jstr(downloadDir()) + ",\"held\":" + jstr(g_held) + ",\"jobs\":[";
+  std::string s = "{\"dir\":" + jstr(downloadDir()) + ",\"held\":" + jstr(downloadsHeld()) + ",\"jobs\":[";
   int n = 0;
   for (const DownloadJob& j : g_jobs) {
     s += std::string(n++ ? "," : "") + "{\"id\":" + jstr(j.id) + ",\"kind\":\"" + (j.song ? "song" : "video") + "\",\"title\":" + jstr(j.title) + ",\"channel\":" + jstr(j.channel) +
          ",\"quality\":" + std::to_string(j.quality) + ",\"state\":\"" + stateName(j.state) + "\",\"percent\":" + std::to_string(j.percent) +
-         ",\"stage\":" + jstr(j.stage) + ",\"error\":" + jstr(j.error) + ",\"file\":" + jstr(j.file) + "}";
+         ",\"stage\":" + jstr(j.stage) + ",\"fetching\":" + (j.fetching ? "true" : "false") + ",\"error\":" + jstr(j.error) + ",\"file\":" + jstr(j.file) + "}";
   }
   s += "],\"files\":[";
   n = 0;

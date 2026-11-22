@@ -1,5 +1,8 @@
 // planOrganize / applyOrganize (core/organize.h) on a card made of empty files in a temporary folder:
-//   clang++ -std=c++17 -I native native/core/organize.cpp native/core/fold.cpp native/tests/host/organize_test.cpp -o /tmp/ot && /tmp/ot
+//   Y=native/third_party/src/yyjson-0.12.0/src; clang -c $Y/yyjson.c -o /tmp/yy.o
+//   clang++ -std=c++17 -I native -I $Y native/core/organize.cpp native/core/fold.cpp native/core/lang.cpp /tmp/yy.o \
+//     native/tests/host/organize_test.cpp -o /tmp/ot && /tmp/ot
+// (or tools/native/host-tests.sh, every host test)
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>

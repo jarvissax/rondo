@@ -58,7 +58,7 @@ void progressBar(Env& e, Rect r, Color track, Color played, float fraction, int 
 void drawScrubBubble(Env& e, float w, float h, int64_t target, int64_t from) {
   Label t = label(e, formatTime(int(target / 1000)), 26, true);
   int64_t d = target - from;
-  std::string delta = (d >= 0 ? "+" : "\xe2\x88\x92") + formatTime(int(std::llabs(d) / 1000)) + "   center to jump";
+  std::string delta = tr("nowPlaying.centerToJump", {{"delta", (d >= 0 ? "+" : "\xe2\x88\x92") + formatTime(int(std::llabs(d) / 1000))}});
   Label dl = label(e, delta, 14, false);
   int padX = e.dp(16), padY = e.dp(8), inner = std::max(t.w, dl.w);
   int bw = inner + 2 * padX, bh = padY + t.h + e.dp(2) + dl.h + padY;
@@ -300,7 +300,7 @@ class NowPlayingScreen : public Screen {
  public:
   // "Open lyrics automatically" (dashboard) applies when Now Playing opens; the page stays for the next visit
   NowPlayingScreen() { showLyrics(lyricsOn() || g_config.behavior.lyricsOnOpen); }
-  std::string title() const override { return "Now Playing"; }
+  std::string title() const override { return tr("menu.nowPlaying"); }
   bool statusBar() const override { return false; }
 
   bool onAction(Action a, int steps) override {
@@ -448,13 +448,12 @@ class NowPlayingScreen : public Screen {
     // ---- header: NOW PLAYING, "3 of 12", the status icons ----
     int headH = e.dp(24);
     e.c.layer(4);
-    Label np = label(e, "NOW PLAYING", 11, true);
+    Label np = label(e, tr("nowPlaying.header"), 11, true);
     float hx = float(e.dp(12));
     drawLabel(e, np, hx, float((headH - np.h) / 2), whiteA(200));
     float iconsLeft = statusIcons(e, w - e.dp(10), headH, whiteA(200));
     if (s.count > 1) {
-      char pos[32];
-      snprintf(pos, sizeof(pos), "%d of %d", s.index + 1, s.count);
+      std::string pos = tr("nowPlaying.position", {{"pos", s.index + 1}, {"total", s.count}});
       float px = hx + np.w + e.dp(8);
       Label pl = label(e, pos, 11, false, iconsLeft - px);
       drawLabel(e, pl, px, float((headH - pl.h) / 2), whiteA(160));
@@ -497,7 +496,7 @@ class NowPlayingScreen : public Screen {
     float cy = ay + e.dp(2), bottom = ay + art;
     // the title, artist and album: the new ones slide a little and fade in, the ones before out
     auto songText = [&](const std::string& p, float dx, float alpha) {
-      SongInfo song = p.empty() ? SongInfo{"Nothing playing", ""} : songInfo(p);
+      SongInfo song = p.empty() ? SongInfo{tr("nowPlaying.nothingPlaying"), ""} : songInfo(p);
       auto parts = firstAndRest(song.subtitle);
       float y = cy;
       e.c.pushAlpha(alpha);
@@ -525,7 +524,9 @@ class NowPlayingScreen : public Screen {
     }
     // from the bottom: the modes row, the song up next, "UP NEXT"
     int iconW = e.dp(15), iconH = e.dp(13);
-    std::string source = path.empty() ? "" : isStream(path) ? std::string("Streaming \xc2\xb7 ") + (s.codec[0] ? s.codec : "AAC") : upperExt(path) + " \xc2\xb7 Library";
+    std::string source = path.empty()     ? ""
+                         : isStream(path) ? tr("nowPlaying.streaming", {{"codec", s.codec[0] ? s.codec : "AAC"}})
+                                          : tr("nowPlaying.fromLibrary", {{"format", upperExt(path)}});
     float srcX = cx + iconW + e.dp(12) + iconW;
     Label src = label(e, source, 10, false, cx + cw - srcX);
     int modesH = std::max(iconH, src.h);
@@ -545,7 +546,7 @@ class NowPlayingScreen : public Screen {
     Label nl = label(e, next, 11, false, cw);
     float ny = my - e.dp(8) - nl.h;
     drawLabel(e, nl, cx, ny, whiteA(220));
-    Label up = label(e, "UP NEXT", 9, true, cw);
+    Label up = label(e, tr("nowPlaying.upNextHeader"), 9, true, cw);
     drawLabel(e, up, cx, ny - e.dp(1) - up.h, whiteA(150));
 
     // ---- bottom: the progress and the times ----
@@ -567,10 +568,10 @@ class NowPlayingScreen : public Screen {
     drawLabel(e, el, tx, by, whiteA(220));
     Label rem = label(e, "-" + formatTime(int(std::max<int64_t>(0, d / 1000 - pos / 1000))), 11, false);
     drawLabel(e, rem, tx + w1 + w2 + w3 - rem.w, by, whiteA(220));
-    std::string state = scrub_.active ? "Turn to move \xc2\xb7 center jumps"
-                        : s.buffering ? "Loading"
-                        : s.playing   ? "Playing"
-                                      : "Paused";
+    std::string state = scrub_.active ? tr("nowPlaying.scrubHint")
+                        : s.buffering ? tr("nowPlaying.loading")
+                        : s.playing   ? tr("nowPlaying.playing")
+                                      : tr("nowPlaying.paused");
     int ic = e.dp(9), gap = e.dp(5);
     Label st = label(e, state, 11, false);
     int groupW = (scrub_.active ? 0 : ic + gap) + st.w;
@@ -604,7 +605,7 @@ class NowPlayingScreen : public Screen {
     if (path.empty()) {
       lyricsFor_.clear();
       loadPending_ = false;
-      lyrics_.showMessage("Nothing playing");
+      lyrics_.showMessage(tr("nowPlaying.nothingPlaying"));
       return;
     }
     if (path == lyricsFor_) return;
@@ -617,7 +618,7 @@ class NowPlayingScreen : public Screen {
         lyrics_.show(cache().back().second);
         return;
       }
-    lyrics_.showMessage("Finding lyrics\xe2\x80\xa6");
+    lyrics_.showMessage(tr("lyrics.finding"));
     if (isStream(path)) return loadOnline(path);
     loadPending_ = true;
     g_lyricsLoader.request(path);
@@ -625,7 +626,7 @@ class NowPlayingScreen : public Screen {
   // a YouTube Music song: the server's /lyrics (LyricsSource.find), kept 30 minutes
   void loadOnline(const std::string& path) {
     const Item* it = streamItem(path);
-    if (!it) return lyrics_.showMessage("No lyrics found for this song");
+    if (!it) return lyrics_.showMessage(tr("lyrics.none"));
     std::string q = "/lyrics?title=" + Api::escape(it->title) + "&artist=" + Api::escape(firstAndRest(it->subtitle).first);
     if (it->durationSec >= 0) q += "&duration=" + std::to_string(it->durationSec);
     q += "&id=" + Api::escape(it->id);
@@ -638,8 +639,8 @@ class NowPlayingScreen : public Screen {
         return;
       }
       lyricsFor_.clear();  // try again next time
-      lyrics_.showMessage(!g_app->status().online ? "Lyrics need Wi-Fi.\nConnect in Settings \xe2\x80\xba Wi-Fi."
-                                                  : "Couldn't get lyrics: " + httpProblem(status, q));
+      lyrics_.showMessage(!g_app->status().online ? tr("lyrics.needWifi")
+                                                  : tr("lyrics.cantGet", {{"problem", httpProblem(status, q)}}));
     });
   }
   // LyricsSource's cache: 24 songs, least recently used dropped first
@@ -666,7 +667,7 @@ class NowPlayingScreen : public Screen {
       if (const Texture* t = e.covers.get(artOf(path, 0), art, art, 0, e.now, &a)) e.c.image(*t, ar, {0, 0, 1, 1}, e.dpf(3), withAlpha(white, a));
     }
     e.c.layer(6);
-    Label tag = label(e, "LYRICS", 9, true);
+    Label tag = label(e, tr("lyrics.header"), 9, true);
     float tagX = w - e.dp(10) - tag.w;
     drawLabel(e, tag, tagX, float((headH - tag.h) / 2), whiteA(150));
     float nx = ax + art + e.dp(8), nw = tagX - e.dp(8) - nx;
@@ -722,19 +723,32 @@ class NowPlayingScreen : public Screen {
   }
   // a card song also has its rating (center: one star more, after five none); a streamed one, Download
   int optionCount() const { return ratable().empty() && !downloadable() ? 4 : 5; }
-  static std::string downloadLabel(const Item& it) {
-    if (!downloadedSong(it.id).empty()) return "Downloaded";
+  // where a streamed song's download is: not asked for, on the card, paused, on its way
+  enum class Dl { None, Done, Paused, Going };
+  static Dl downloadState(const Item& it) {
+    if (!downloadedSong(it.id).empty()) return Dl::Done;
     for (const DownloadJob& j : downloadJobs())
-      if (j.id == it.id && j.state == DownloadJob::Paused) return "Download paused";
-      else if (j.id == it.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return "Downloading";
-    return "Download";
+      if (j.id == it.id && j.state == DownloadJob::Paused) return Dl::Paused;
+      else if (j.id == it.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return Dl::Going;
+    return Dl::None;
+  }
+  static std::string downloadLabel(const Item& it) {
+    switch (downloadState(it)) {
+      case Dl::Done: return tr("music.downloaded");
+      case Dl::Paused: return tr("music.downloadPaused");
+      case Dl::Going: return tr("music.downloading");
+      default: return tr("music.download");
+    }
   }
   std::string optionLabel(int i, const PlayerState& s) const {
     switch (i) {
-      case 0: return "Scrub through the song";
-      case 1: return "Up next";
-      case 2: return std::string("Shuffle: ") + (s.shuffle ? "On" : "Off");
-      case 3: return std::string("Repeat: ") + (s.repeat == 1 ? "All" : s.repeat == 2 ? "One" : "Off");
+      case 0: return tr("nowPlaying.scrub");
+      case 1: return tr("nowPlaying.upNext");
+      case 2: return tr("nowPlaying.shuffle", {{"state", s.shuffle ? tr("common.on") : tr("common.off")}});
+      case 3:
+        return tr("nowPlaying.repeat", {{"mode", s.repeat == 1   ? tr("nowPlaying.repeatAll")
+                                                 : s.repeat == 2 ? tr("nowPlaying.repeatOne")
+                                                                 : tr("common.off")}});
       default: {
         if (ratable().empty())
           if (const Item* it = downloadable()) return downloadLabel(*it);
@@ -742,7 +756,7 @@ class NowPlayingScreen : public Screen {
         int r = t ? t->rating : 0;
         std::string stars;
         for (int k = 0; k < r; k++) stars += "\xe2\xad\x90";  // U+2B50, in color (Roboto has no star)
-        return "Rating: " + (r ? stars : std::string("none"));
+        return tr("nowPlaying.rating", {{"stars", r ? stars : tr("nowPlaying.ratingNone")}});
       }
     }
   }
@@ -765,7 +779,7 @@ class NowPlayingScreen : public Screen {
           if (const Item* it = downloadable()) {
             Item song = *it;
             options_ = false;
-            if (downloadLabel(song) == "Download") downloadSong(song);
+            if (downloadState(song) == Dl::None) downloadSong(song);
             else g_app->push(makeMusicDownloads());
           }
           break;

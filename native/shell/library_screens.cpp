@@ -22,26 +22,31 @@ std::string subtitleOf(const Track& t) {
 }
 
 
-const char* scopeTitle(Scope s) {
+std::string scopeTitle(Scope s) {
   switch (s) {
-    case Scope::All: return "Search";
-    case Scope::Songs: return "Search songs";
-    case Scope::Artists: return "Search artists";
-    case Scope::Albums: return "Search albums";
-    case Scope::Playlists: return "Search playlists";
-    default: return "Search videos";
+    case Scope::All: return tr("library.search.all");
+    case Scope::Songs: return tr("library.search.songs");
+    case Scope::Artists: return tr("library.search.artists");
+    case Scope::Albums: return tr("library.search.albums");
+    case Scope::Playlists: return tr("library.search.playlists");
+    default: return tr("library.search.videos");
   }
 }
-const char* scopeHint(Scope s) {
+std::string scopeHint(Scope s) {
   switch (s) {
-    case Scope::All: return "Songs, artists, albums, videos and playlists";
-    case Scope::Songs: return "Songs by title, artist or album";
-    case Scope::Artists: return "The artists on the card";
-    case Scope::Albums: return "The albums on the card";
-    case Scope::Playlists: return "Your playlists";
-    default: return "The videos on the card";
+    case Scope::All: return tr("library.searchHint.all");
+    case Scope::Songs: return tr("library.searchHint.songs");
+    case Scope::Artists: return tr("library.searchHint.artists");
+    case Scope::Albums: return tr("library.searchHint.albums");
+    case Scope::Playlists: return tr("library.searchHint.playlists");
+    default: return tr("library.searchHint.videos");
   }
 }
+
+// A group's name as a row shows it. The library names the songs without an artist "Unknown artist"
+// (core/library.cpp): that stays the group's name (it opens, sorts and finds the group), shown in the
+// language spoken.
+std::string groupTitle(const std::string& name) { return name == "Unknown artist" ? tr("library.unknownArtist") : name; }
 
 
 // the first row of a long list: search just that list
@@ -75,14 +80,12 @@ class LocalSongsScreen : public LetterListScreen {
     if (alphabetical) rows.push_back(searchRow(Scope::Songs));
     Row head;
     head.header = true;
-    char h[96];
-    if (alphabetical && tracks_.size() > 30) snprintf(h, sizeof(h), "%zu songs \xc2\xb7 Next/Prev jump A\xe2\x80\x93Z", tracks_.size());
-    else snprintf(h, sizeof(h), "%zu songs", tracks_.size());
-    head.title = h;
+    if (alphabetical && tracks_.size() > 30) head.title = tr("library.songsJump", {{"count", tracks_.size()}});
+    else head.title = tr("library.songsHeader", {{"count", tracks_.size()}});
     rows.push_back(head);
     if (tracks_.size() > 1) {
       Row sh;
-      sh.title = "Shuffle";
+      sh.title = tr("library.shuffle");
       sh.tile = &tiles::shuffle;
       sh.onSelect = [this] { shuffleAll(); };
       rows.push_back(sh);
@@ -147,7 +150,7 @@ class LocalGroupsScreen : public LetterListScreen {
     for (size_t i = 0; i < groups_.size(); i++) {
       const auto& g = groups_[i];
       Row r;
-      r.title = g.first;
+      r.title = groupTitle(g.first);
       if (scope == Scope::Albums && !g.second.empty()) {  // its album artist (else artist) and year
         const Track* t = g.second.front();
         std::string by = !t->albumArtist.empty() ? t->albumArtist : t->artist;
@@ -158,7 +161,7 @@ class LocalGroupsScreen : public LetterListScreen {
       if (!g.second.empty()) r.thumb = g.second.front()->path;
       r.chevron = true;
       r.onSelect = [this, i] {
-        g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(groups_[i].first, groups_[i].second, false, false)));
+        g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(groupTitle(groups_[i].first), groups_[i].second, false, false)));
       };
       rows.push_back(std::move(r));
     }
@@ -195,7 +198,7 @@ class LocalVideosScreen : public ShellListScreen {
       r.onSelect = [item] { openVideo(item); };
       rows.push_back(std::move(r));
     }
-    if (rows.empty()) list_.setMessage("No videos here");
+    if (rows.empty()) list_.setMessage(tr("library.noVideosHere"));
     else list_.setRows(std::move(rows));
   }
 };
@@ -203,10 +206,10 @@ class LocalVideosScreen : public ShellListScreen {
 // Library › Videos: all of them, the newest first, and each folder that has some
 class VideosSectionScreen : public ShellListScreen {
  public:
-  VideosSectionScreen() : ShellListScreen("Videos") {
+  VideosSectionScreen() : ShellListScreen(tr("library.videos")) {
     std::vector<const Track*> all = g_library.videos();
     if (all.empty()) {
-      list_.setMessage("No videos on the card.\nCopy MP4, MKV or WebM files to it.");
+      list_.setMessage(tr("library.noVideos"));
       return;
     }
     std::vector<Row> rows;
@@ -216,20 +219,20 @@ class VideosSectionScreen : public ShellListScreen {
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    add("All videos", &tiles::videos, "", std::to_string(all.size()), [all] {
-      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen("All videos", all, true)));
+    add(tr("library.allVideos"), &tiles::videos, "", std::to_string(all.size()), [all] {
+      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(tr("library.allVideos"), all, true)));
     });
     std::vector<const Track*> newest = all;
     std::stable_sort(newest.begin(), newest.end(), [](const Track* a, const Track* b) { return a->modified > b->modified; });
-    add("Recently added", &tiles::recent, "", "", [newest] {
-      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen("Recently added", newest, false)));
+    add(tr("library.recentlyAdded"), &tiles::recent, "", "", [newest] {
+      g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(tr("library.recentlyAdded"), newest, false)));
     });
     std::map<std::string, std::vector<const Track*>> byFolder;
     for (const Track* t : all) byFolder[t->path.substr(0, t->path.rfind('/'))].push_back(t);
     if (byFolder.size() > 1) {
       Row h;
       h.header = true;
-      h.title = "Folders";
+      h.title = tr("library.folders");
       rows.push_back(h);
       for (auto& kv : byFolder) {
         std::string name = kv.first.substr(kv.first.rfind('/') + 1);
@@ -255,10 +258,10 @@ std::vector<const Track*> recent() {
 // center adds the song (or a whole artist or album).
 class LibrarySearchScreen : public Screen {
  public:
-  explicit LibrarySearchScreen(Scope scope, std::string addTo = "") : scope_(scope), addTo_(std::move(addTo)), kb_("Show", Keyboard::Style::Shell) {
+  explicit LibrarySearchScreen(Scope scope, std::string addTo = "") : scope_(scope), addTo_(std::move(addTo)), kb_(tr("library.show"), Keyboard::Style::Shell) {
     onShow();
   }
-  std::string title() const override { return addTo_.empty() ? scopeTitle(scope_) : "Add to " + addTo_; }
+  std::string title() const override { return addTo_.empty() ? scopeTitle(scope_) : tr("library.addTo", {{"playlist", addTo_}}); }
   void onShow() override {
     g_library.rescanIfStale();  // 1.0.x: Library's search opening
     allPlaylists_.clear();
@@ -320,8 +323,7 @@ class LibrarySearchScreen : public Screen {
       results_.draw(e, 0, area);
       return;
     }
-    drawKeyboard(e, kb_, area, w, h, "wheel: next key \xc2\xb7 center: type \xc2\xb7 Menu up \xc2\xb7 Play down \xc2\xb7 Prev/Next left/right",
-                 p.muted, p.text);
+    drawKeyboard(e, kb_, area, w, h, tr("library.keyboardHint"), p.muted, p.text);
   }
 
  private:
@@ -360,34 +362,34 @@ class LibrarySearchScreen : public Screen {
   std::string summary() const {
     if (!problem_.empty()) return problem_;
     const std::string& q = kb_.typed();
-    if (q.find_first_not_of(' ') == std::string::npos) return addTo_.empty() ? scopeHint(scope_) : "Find songs to add, then press Show";
-    if (nothingFound()) return "Nothing on the card matches";
+    if (q.find_first_not_of(' ') == std::string::npos) return addTo_.empty() ? scopeHint(scope_) : tr("library.searchToAdd");
+    if (nothingFound()) return tr("library.nothingMatches");
     std::string s;
-    auto part = [&](size_t n, const char* word) {
+    auto part = [&](size_t n, const char* key) {
       if (!n) return;
       if (!s.empty()) s += " \xc2\xb7 ";
-      s += std::to_string(n) + " " + word + (n == 1 ? "" : "s");
+      s += tr(key, {{"count", n}});
     };
-    part(found_.artists.size(), "artist");
-    part(found_.albums.size(), "album");
-    part(found_.songs.size(), "song");
+    part(found_.artists.size(), "library.found.artists");
+    part(found_.albums.size(), "library.found.albums");
+    part(found_.songs.size(), "library.found.songs");
     if (addTo_.empty()) {
-      part(found_.videos.size(), "video");
-      part(playlists_.size(), "playlist");
+      part(found_.videos.size(), "library.found.videos");
+      part(playlists_.size(), "library.found.playlists");
     }
-    return s + (showing_ ? " \xc2\xb7 Menu: back to typing" : " \xc2\xb7 Show to see them");
+    return s + " \xc2\xb7 " + (showing_ ? tr("library.found.backToTyping") : tr("library.found.showToSee"));
   }
   Row group(const Library::Group& g) {
     Row r;
-    r.title = g.first;
+    r.title = groupTitle(g.first);
     std::vector<std::string> paths;
     for (const Track* t : g.second) paths.push_back(t->path);
     bool all = !addTo_.empty() && std::all_of(paths.begin(), paths.end(), [&](const std::string& p) { return added_.count(p); });
-    r.trailing = all ? "Added" : !addTo_.empty() ? "Add " + std::to_string(g.second.size()) : std::to_string(g.second.size());
+    r.trailing = all ? tr("library.added") : !addTo_.empty() ? tr("library.addCount", {{"count", g.second.size()}}) : std::to_string(g.second.size());
     if (!g.second.empty()) r.thumb = g.second.front()->path;
     r.chevron = addTo_.empty();
     auto tracks = g.second;
-    std::string name = g.first;
+    std::string name = groupTitle(g.first);
     if (!addTo_.empty()) r.onSelect = [this, paths] { add(paths); };
     else r.onSelect = [name, tracks] { g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(name, tracks, false, true))); };
     return r;
@@ -400,17 +402,17 @@ class LibrarySearchScreen : public Screen {
   }
   std::vector<Row> rows() {
     std::vector<Row> rows;
-    auto header = [&](const char* t) {
+    auto header = [&](const std::string& t) {
       Row h;
       h.header = true;
       h.title = t;
       rows.push_back(h);
     };
-    if (!found_.artists.empty()) header("Artists");
+    if (!found_.artists.empty()) header(tr("library.artists"));
     for (auto& g : found_.artists) rows.push_back(group(g));
-    if (!found_.albums.empty()) header("Albums");
+    if (!found_.albums.empty()) header(tr("library.albums"));
     for (auto& g : found_.albums) rows.push_back(group(g));
-    if (!found_.songs.empty()) header("Songs");
+    if (!found_.songs.empty()) header(tr("library.songs"));
     // one list for every song row to play from (a copy each grew with the square of the matches)
     auto songs = std::make_shared<std::vector<std::string>>();
     for (const Track* t : found_.songs) songs->push_back(t->path);
@@ -419,7 +421,7 @@ class LibrarySearchScreen : public Screen {
       Row r;
       r.title = t->title;
       r.subtitle = subtitleOf(*t);
-      r.trailing = !addTo_.empty() && added_.count(t->path) ? "Added" : t->durationSec >= 0 ? formatTime(t->durationSec) : "";
+      r.trailing = !addTo_.empty() && added_.count(t->path) ? tr("library.added") : t->durationSec >= 0 ? formatTime(t->durationSec) : "";
       r.thumb = t->path;
       std::string path = t->path;
       if (!addTo_.empty()) {
@@ -434,7 +436,7 @@ class LibrarySearchScreen : public Screen {
       rows.push_back(std::move(r));
     }
     if (addTo_.empty()) {  // videos aren't added to playlists
-      if (!found_.videos.empty()) header("Videos");
+      if (!found_.videos.empty()) header(tr("library.videos"));
       for (const Track* t : found_.videos) {
         Row r;
         r.title = t->title;
@@ -445,7 +447,7 @@ class LibrarySearchScreen : public Screen {
         rows.push_back(std::move(r));
       }
     }
-    if (!playlists_.empty()) header("Playlists");
+    if (!playlists_.empty()) header(tr("common.playlists"));
     for (const Playlist& p : playlists_) {
       Row r;
       r.title = p.title();
@@ -482,31 +484,31 @@ std::unique_ptr<Screen> makeSearchToAdd(const std::string& playlist) {
 // themselves are Library › Files'
 class MusicSectionScreen : public ShellListScreen {
  public:
-  MusicSectionScreen() : ShellListScreen("Music") { render(); }
+  MusicSectionScreen() : ShellListScreen(tr("library.music")) { render(); }
 
  private:
   void render() {
     // the counts only (copying the groups cost 3 ms of the opening)
     size_t songs = g_library.songCount();
     if (!songs && !scanning_) {
-      list_.setMessage("No music on the card.\nCopy files to it over USB, or upload them on the dashboard.");
+      list_.setMessage(tr("library.noMusic"));
       return;
     }
     size_t artists = g_library.artistCount(), albums = g_library.albumCount();
     std::vector<Row> rows;
-    auto header = [&](const char* title) {
+    auto header = [&](const std::string& title) {
       Row h;
       h.header = true;
       h.title = title;
       rows.push_back(h);
     };
-    auto add = [&](const char* title, const Tile& tile, std::string trailing, bool chevron, bool enabled, std::function<void()> on) {
+    auto add = [&](const std::string& title, const Tile& tile, std::string trailing, bool chevron, bool enabled, std::function<void()> on) {
       Row r;
       r.title = title, r.tile = &tile, r.trailing = std::move(trailing), r.chevron = chevron, r.enabled = enabled;
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    add("Shuffle songs", tiles::shuffle, std::to_string(songs), false, songs != 0, [] {
+    add(tr("library.shuffleSongs"), tiles::shuffle, std::to_string(songs), false, songs != 0, [] {
       std::vector<std::string> paths;
       for (const Track* t : g_library.songs()) paths.push_back(t->path);
       static std::mt19937 rng(uint32_t(time(nullptr)));
@@ -514,47 +516,47 @@ class MusicSectionScreen : public ShellListScreen {
       g_player.playQueue(paths, 0);
       openNowPlaying();
     });
-    add("Search", tiles::search, "", true, true, [] { g_app->push(makeSearch(Scope::All)); });
-    header("Browse");
-    add("Songs", tiles::songs, std::to_string(songs), true, songs != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Songs", g_library.songs(), true, true)));
+    add(tr("library.search.all"), tiles::search, "", true, true, [] { g_app->push(makeSearch(Scope::All)); });
+    header(tr("library.browse"));
+    add(tr("library.songs"), tiles::songs, std::to_string(songs), true, songs != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(tr("library.songs"), g_library.songs(), true, true)));
     });
-    add("Artists", tiles::artists, std::to_string(artists), true, artists != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Artists", g_library.artists(), Scope::Artists)));
+    add(tr("library.artists"), tiles::artists, std::to_string(artists), true, artists != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen(tr("library.artists"), g_library.artists(), Scope::Artists)));
     });
     size_t albumArtists = g_library.albumArtistCount(), genres = g_library.genreCount();
-    add("Album artists", tiles::albumArtists, std::to_string(albumArtists), true, albumArtists != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Album artists", g_library.albumArtists(), Scope::Artists)));
+    add(tr("library.albumArtists"), tiles::albumArtists, std::to_string(albumArtists), true, albumArtists != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen(tr("library.albumArtists"), g_library.albumArtists(), Scope::Artists)));
     });
-    add("Albums", tiles::albums, albums == 0 ? "reading tags\xe2\x80\xa6" : std::to_string(albums), true, albums != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Albums", g_library.albums(), Scope::Albums)));
+    add(tr("library.albums"), tiles::albums, albums == 0 ? tr("library.readingTags") : std::to_string(albums), true, albums != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen(tr("library.albums"), g_library.albums(), Scope::Albums)));
     });
     add("Cover Flow", tiles::coverFlow, "", true, albums != 0, [] { g_app->push(makeCoverFlow()); });
-    add("Genres", tiles::genres, std::to_string(genres), true, genres != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen("Genres", g_library.genres(), Scope::Songs)));
+    add(tr("library.genres"), tiles::genres, std::to_string(genres), true, genres != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalGroupsScreen(tr("library.genres"), g_library.genres(), Scope::Songs)));
     });
-    header("Playlists");
+    header(tr("common.playlists"));
     size_t playlists = g_playlists.all().size();
-    add("Playlists", tiles::playlists, playlists ? std::to_string(playlists) : "", true, true, [] { g_app->push(makePlaylists()); });
-    header("Listening");
+    add(tr("common.playlists"), tiles::playlists, playlists ? std::to_string(playlists) : "", true, true, [] { g_app->push(makePlaylists()); });
+    header(tr("library.listening"));
     size_t most = g_library.mostPlayed(1).size(), rated = g_library.topRated().size();
-    add("Recently added", tiles::recent, "", true, songs != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Recently added", recent(), false, true)));
+    add(tr("library.recentlyAdded"), tiles::recent, "", true, songs != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(tr("library.recentlyAdded"), recent(), false, true)));
     });
-    add("Most played", tiles::mostPlayed, "", true, most != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Most played", g_library.mostPlayed(), false, true)));
+    add(tr("library.mostPlayed"), tiles::mostPlayed, "", true, most != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(tr("library.mostPlayed"), g_library.mostPlayed(), false, true)));
     });
-    add("Recently played", tiles::played, "", true, most != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Recently played", g_library.recentlyPlayed(), false, true)));
+    add(tr("library.recentlyPlayed"), tiles::played, "", true, most != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(tr("library.recentlyPlayed"), g_library.recentlyPlayed(), false, true)));
     });
-    add("Top rated", tiles::topRated, rated ? std::to_string(rated) : "", true, rated != 0, [] {
-      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen("Top rated", g_library.topRated(), false, true)));
+    add(tr("library.topRated"), tiles::topRated, rated ? std::to_string(rated) : "", true, rated != 0, [] {
+      g_app->push(std::unique_ptr<Screen>(new LocalSongsScreen(tr("library.topRated"), g_library.topRated(), false, true)));
     });
-    header("The card");
+    header(tr("library.theCard"));
     Row rescan;
-    rescan.title = "Rescan the card";
-    rescan.subtitle = "After copying files to it";
-    rescan.trailing = g_library.scanning() ? "Scanning\xe2\x80\xa6" : "";
+    rescan.title = tr("library.rescan");
+    rescan.subtitle = tr("library.rescanNote");
+    rescan.trailing = g_library.scanning() ? tr("library.scanning") : "";
     rescan.tile = &tiles::rescan;
     rescan.onSelect = [this] {
       if (g_library.scanning()) return;
@@ -564,8 +566,8 @@ class MusicSectionScreen : public ShellListScreen {
     };
     rows.push_back(std::move(rescan));
     Row organize;
-    organize.title = "Organize the card";
-    organize.subtitle = "Folders by artist and album, as Jellyfin expects";
+    organize.title = tr("organize.title");
+    organize.subtitle = tr("library.organizeNote");
     organize.tile = &tiles::organize;
     organize.chevron = true;
     organize.enabled = songs + g_library.videoCount() != 0;
@@ -594,24 +596,24 @@ class MusicSectionScreen : public ShellListScreen {
 // DeviceScreen: Library, in four: Music, Videos, Photos and the files themselves
 class DeviceScreen : public ShellListScreen {
  public:
-  DeviceScreen() : ShellListScreen("Library") { render(); }
+  DeviceScreen() : ShellListScreen(tr("common.library")) { render(); }
 
  private:
   void render() {
     size_t songs = g_library.songCount(), videos = g_library.videoCount();
     std::vector<Row> rows;
-    auto add = [&](const char* title, const Tile& tile, std::string subtitle, std::string trailing, std::function<void()> on) {
+    auto add = [&](const std::string& title, const Tile& tile, std::string subtitle, std::string trailing, std::function<void()> on) {
       Row r;
       r.title = title, r.tile = &tile, r.subtitle = std::move(subtitle), r.trailing = std::move(trailing), r.chevron = true;
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    add("Music", tiles::musicSection, "Songs, albums, artists, playlists", songs ? std::to_string(songs) : "",
+    add(tr("library.music"), tiles::musicSection, tr("library.musicNote"), songs ? std::to_string(songs) : "",
         [] { g_app->push(makeLibraryMusic()); });
-    add("Videos", tiles::videos, "", videos ? std::to_string(videos) : "",
+    add(tr("library.videos"), tiles::videos, "", videos ? std::to_string(videos) : "",
         [] { g_app->push(std::unique_ptr<Screen>(new VideosSectionScreen())); });
-    add("Photos", tiles::photos, "", "", [] { g_app->push(makePhotos()); });
-    add("Files", tiles::files, "Every folder on the card and the internal storage", "", [] { g_app->push(makeFiles()); });
+    add(tr("photos.title"), tiles::photos, "", "", [] { g_app->push(makePhotos()); });
+    add(tr("files.title"), tiles::files, tr("library.filesNote"), "", [] { g_app->push(makeFiles()); });
     list_.setRows(std::move(rows), true);
   }
   void onShow() override {

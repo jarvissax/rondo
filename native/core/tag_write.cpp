@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+#include "lang.h"
+
 #ifdef __APPLE__  // a host test: off_t is 64 bits on the Mac (32 on the Y1, hence the 64 calls)
 #define pread64 pread
 #define pwrite64 pwrite
@@ -89,7 +91,7 @@ std::string rewrite(const std::string& path, int fd, const Bytes& head, uint64_t
   size_t slash = path.rfind('/');
   std::string dir = slash == std::string::npos ? "." : path.substr(0, slash);
   struct statfs vs;
-  if (statfs(dir.c_str(), &vs) == 0 && uint64_t(vs.f_bavail) * uint64_t(vs.f_bsize) < total + (1 << 20)) return "not enough space on the card";
+  if (statfs(dir.c_str(), &vs) == 0 && uint64_t(vs.f_bavail) * uint64_t(vs.f_bsize) < total + (1 << 20)) return tr("tags.noSpace");
   std::string tmp = dir + "/.rondo-tags-" + path.substr(slash + 1);
   if (tmp.size() - dir.size() > 200) tmp = dir + "/.rondo-tags.tmp";
   int out = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0664);
@@ -125,11 +127,11 @@ struct VorbisField {
 
 std::string flac(const std::string& path, int fd, const TagChanges& c) {
   uint8_t h[10];
-  if (!readAt(fd, 0, h, 10)) return "not a FLAC file";
+  if (!readAt(fd, 0, h, 10)) return tr("tags.notFlac");
   uint64_t base = 0;
   if (!memcmp(h, "ID3", 3)) base = 10 + syncsafe(h + 6) + (h[5] & 0x10 ? 10 : 0);  // an ID3v2 tag before it, kept
   uint8_t magic[4];
-  if (!readAt(fd, base, magic, 4) || memcmp(magic, "fLaC", 4)) return "not a FLAC file";
+  if (!readAt(fd, base, magic, 4) || memcmp(magic, "fLaC", 4)) return tr("tags.notFlac");
   struct Block {
     int type;
     Bytes data;
@@ -140,23 +142,23 @@ std::string flac(const std::string& path, int fd, const TagChanges& c) {
   uint64_t at = base + 4;
   for (int n = 0;; n++) {
     uint8_t bh[4];
-    if (n > 1000 || !readAt(fd, at, bh, 4)) return "its tags aren't readable";
+    if (n > 1000 || !readAt(fd, at, bh, 4)) return tr("tags.unreadable");
     uint32_t len = uint32_t(bh[1]) << 16 | uint32_t(bh[2]) << 8 | bh[3];
     int type = bh[0] & 0x7f;
     if (type == 4 && !hasComment) {
       comment.resize(len);
-      if (!readAt(fd, at + 4, comment.data(), len)) return "its tags aren't readable";
+      if (!readAt(fd, at + 4, comment.data(), len)) return tr("tags.unreadable");
       hasComment = true;
     } else if (type != 1 && type != 4) {  // padding left out (made again), and a second comment block
       Block b{type, Bytes(len)};
-      if (len && !readAt(fd, at + 4, b.data.data(), len)) return "its tags aren't readable";
+      if (len && !readAt(fd, at + 4, b.data.data(), len)) return tr("tags.unreadable");
       blocks.push_back(std::move(b));
     }
     at += 4 + len;
     if (bh[0] & 0x80) break;
   }
   uint64_t audio = at;
-  if (blocks.empty() || blocks[0].type != 0) return "its tags aren't readable";
+  if (blocks.empty() || blocks[0].type != 0) return tr("tags.unreadable");
   // the comments: vendor, then KEY=value strings
   std::string vendor = "Rondo";
   std::vector<std::string> fields;
@@ -204,7 +206,7 @@ std::string flac(const std::string& path, int fd, const TagChanges& c) {
   append(vc, vendor);
   putLe32(vc, uint32_t(fields.size()));
   for (const std::string& f : fields) putLe32(vc, uint32_t(f.size())), append(vc, f);
-  if (vc.size() >= (1u << 24)) return "its tags would be too big";
+  if (vc.size() >= (1u << 24)) return tr("tags.tooBig");
   // STREAMINFO, the other blocks as they were, the comments, then padding
   auto build = [&](uint64_t padding, bool withPadding) {
     Bytes out;
@@ -231,7 +233,7 @@ std::string flac(const std::string& path, int fd, const TagChanges& c) {
   if (tight.size() == room) return inPlace(fd, base + 4, tight);
   if (tight.size() + 4 <= room && room - tight.size() - 4 < (1u << 24)) return inPlace(fd, base + 4, build(room - tight.size() - 4, true));
   Bytes head(base + 4);
-  if (!readAt(fd, 0, head.data(), head.size())) return "its tags aren't readable";
+  if (!readAt(fd, 0, head.data(), head.size())) return tr("tags.unreadable");
   append(head, build(16384, true));
   return rewrite(path, fd, head, audio);
 }
@@ -275,10 +277,10 @@ std::string id3(const std::string& path, int fd, const TagChanges& c) {
     int flags = h[5];
     uint32_t size = syncsafe(h + 6);
     old = 10 + uint64_t(size) + (version == 4 && (flags & 0x10) ? 10 : 0);
-    if (version < 3 || version > 4) return "its ID3v2." + std::to_string(version) + " tags are too old to save into";
-    if (flags & 0x80) return "its tags use ID3 unsynchronization, which Rondo can't save into";
+    if (version < 3 || version > 4) return tr("tags.id3TooOld", {{"version", version}});
+    if (flags & 0x80) return tr("tags.unsynchronized");
     Bytes tag(size);
-    if (size > (64u << 20) || !readAt(fd, 10, tag.data(), size)) return "its tags aren't readable";
+    if (size > (64u << 20) || !readAt(fd, 10, tag.data(), size)) return tr("tags.unreadable");
     size_t p = 0;
     if (flags & 0x40) p = version == 4 ? syncsafe(&tag[0]) : 4 + be32(&tag[0]);  // an extended header: left out
     while (p + 10 <= size && tag[p]) {
@@ -548,12 +550,12 @@ std::string mp4(const std::string& path, int fd, const TagChanges& c) {
     else if (tops[i].type == "moof") moof = true;
     else if (tops[i].type == "mdat" && mi != tops.size()) mdatAfter = true;
   }
-  if (mi == tops.size()) return "not an MP4 file Rondo can read";
+  if (mi == tops.size()) return tr("tags.notMp4");
   const Top& mv = tops[mi];
-  if (mv.size > (64u << 20)) return "its index is too big";
+  if (mv.size > (64u << 20)) return tr("tags.indexTooBig");
   Bytes moov(mv.size);
-  if (!readAt(fd, mv.at, moov.data(), moov.size())) return "its tags aren't readable";
-  if (be32(&moov[0]) == 1) return "its index is too big";
+  if (!readAt(fd, mv.at, moov.data(), moov.size())) return tr("tags.unreadable");
+  if (be32(&moov[0]) == 1) return tr("tags.indexTooBig");
   bool fragmented = moof;
   Bytes nm = newMoov(moov, c, fragmented);
   // room where moov is: moov, and a free box right after it
@@ -572,14 +574,14 @@ std::string mp4(const std::string& path, int fd, const TagChanges& c) {
     if (why.empty() && ftruncate64(fd, off64_t(mv.at + nm.size())) != 0) why = strerror(errno);
     return why;
   }
-  if (fragmented) return "it's a fragmented MP4, which Rondo can't save into";
+  if (fragmented) return tr("tags.fragmented");
   // moov before the sound: the file again, with every chunk offset moved
   uint64_t total = nm.size() + 4096;
   Bytes grown = padded(total);
   int64_t delta = int64_t(total) - int64_t(room);
-  if (!shiftChunks(grown, 8, nm.size(), delta, mv.at)) return "it's too big to save into";
+  if (!shiftChunks(grown, 8, nm.size(), delta, mv.at)) return tr("tags.fileTooBig");
   Bytes head(mv.at);
-  if (mv.at && !readAt(fd, 0, head.data(), head.size())) return "its tags aren't readable";
+  if (mv.at && !readAt(fd, 0, head.data(), head.size())) return tr("tags.unreadable");
   append(head, grown);
   return rewrite(path, fd, head, mv.at + room);
 }
@@ -593,17 +595,17 @@ bool canWriteTags(const std::string& path) {
 
 std::string writeTags(const std::string& path, const TagChanges& c) {
   std::string x = extOf(path);
-  if (!canWriteTags(path)) return "Rondo can't save tags into ." + x + " files yet";
+  if (!canWriteTags(path)) return tr("tags.kindNotYet", {{"ext", x}});
   int fd = open(path.c_str(), O_RDWR);
   if (fd < 0) return strerror(errno);
   uint8_t h[12] = {0};
   std::string why;
   bool got = readAt(fd, 0, h, sizeof(h));
-  if (!got) why = "the file is empty";
+  if (!got) why = tr("tags.empty");
   else if (x == "flac") why = flac(path, fd, c);
   else if (x == "mp3") why = id3(path, fd, c);
   else if (!memcmp(h + 4, "ftyp", 4)) why = mp4(path, fd, c);
-  else why = "Rondo can't save tags into this ." + x + " file";  // ADTS .aac has no tags of this kind
+  else why = tr("tags.thisKind", {{"ext", x}});  // ADTS .aac has no tags of this kind
   close(fd);
   return why;
 }

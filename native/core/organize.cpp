@@ -17,6 +17,7 @@
 #include <unordered_map>
 
 #include "fold.h"
+#include "lang.h"
 
 namespace rondo {
 
@@ -434,11 +435,12 @@ OrganizeResult applyOrganize(const OrganizePlan& plan, const std::string& card, 
   for (const OrganizeMove& m : plan.moves) {
     n++;
     if (!exists(m.from)) {
-      r.errors.push_back(baseOf(m.from) + ": not on the card any more");
+      r.errors.push_back(tr("organize.err.gone", {{"file", baseOf(m.from)}}));
     } else if (!makeDirs(dirOf(m.to))) {
-      r.errors.push_back(baseOf(m.from) + ": couldn't make " + dirOf(m.to) + " (" + strerror(errno) + ")");
+      std::string why = strerror(errno);
+      r.errors.push_back(tr("organize.err.cantMakeFolder", {{"file", baseOf(m.from)}, {"folder", dirOf(m.to)}, {"why", why}}));
     } else if (exists(m.to) && strcasecmp(m.from.c_str(), m.to.c_str()) != 0) {
-      r.errors.push_back(baseOf(m.from) + ": " + baseOf(m.to) + " is there already");
+      r.errors.push_back(tr("organize.err.taken", {{"file", baseOf(m.from)}, {"target", baseOf(m.to)}}));
     } else if (rename(m.from.c_str(), m.to.c_str()) != 0) {
       r.errors.push_back(baseOf(m.from) + ": " + strerror(errno));
     } else {

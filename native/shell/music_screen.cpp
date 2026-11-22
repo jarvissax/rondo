@@ -70,8 +70,8 @@ class MusicScreen : public TabbedListScreen {
  private:
   // Library only when the source has an account (Accounts.kt); signed out it's Home and search
   std::vector<std::string> wantedTabs() const override {
-    std::vector<std::string> t{"Home"};
-    if (g_prefs.accountMusic) t.push_back("Library");
+    std::vector<std::string> t{tr("music.home")};
+    if (g_prefs.accountMusic) t.push_back(tr("common.library"));
     return t;
   }
   void openSearch() override { g_app->push(makeMusicSearch()); }
@@ -130,7 +130,7 @@ class MusicScreen : public TabbedListScreen {
     items_.clear();
     next_.clear();
     loading_ = false;
-    list_.setMessage("Loading\xe2\x80\xa6");
+    list_.setMessage(tr("common.loading"));
     shelves_.clear();
     shelves_.active = focused_ < 0;
     std::string path = tab == 0 ? "/music/home" : "/music/library";
@@ -138,13 +138,13 @@ class MusicScreen : public TabbedListScreen {
     requests_.get(path, 120000, [this, tab, path, name](int status, const std::string& body) {
       if (tab != active_) return;
       if (status != 200) {
-        std::string problem = offlineOr("Couldn't load " + name + ": " + httpProblem(status, path));
+        std::string problem = offlineOr(tr("music.cantLoadTab", {{"tab", name}, {"problem", httpProblem(status, path)}}));
         if (tab != 0) return list_.setMessage(problem);
         // Home offline: its Downloads still there, to play what's on the card
         Shelf msg;
         msg.banner = true;
         Card c;
-        c.title = problem, c.subtitle = "Center tries again", c.tile = &tiles::rescan;
+        c.title = problem, c.subtitle = tr("music.centerTriesAgain"), c.tile = &tiles::rescan;
         c.onSelect = [this] { load(0); };
         msg.cards.push_back(std::move(c));
         shelves_.setShelves({downloadsShelf(), msg});
@@ -163,7 +163,7 @@ class MusicScreen : public TabbedListScreen {
         parseItems(replaceKey(body, "\"playlists\"", "\"items\""), page);
         Row h;
         h.header = true;
-        h.title = "Playlists";
+        h.title = tr("common.playlists");
         std::vector<Row> rows{h};
         items_ = page.items;
         for (Row& r : musicRows(page.items, [this] { return items_; })) rows.push_back(std::move(r));

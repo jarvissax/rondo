@@ -127,7 +127,7 @@ class ShortsScreen : public Screen {
     }
     e.c.layer(2);
     if (shown_.waiting && !moving) {
-      Label l = label(e, stuck_ ? "Can't play Shorts right now" : "Loading\xe2\x80\xa6", 12, false, float(bw - e.dp(16)));
+      Label l = label(e, stuck_ ? tr("shorts.cantPlay") : tr("common.loading"), 12, false, float(bw - e.dp(16)));
       drawLabel(e, l, centerText(0, float(bw), l.w), float((int(h) - l.h) / 2), e.p.darkMuted);
     }
     if (shown_.paused) {
@@ -261,8 +261,8 @@ class ShortsScreen : public Screen {
     float iw = right - left;
     int headH = headHeight(e);
     std::vector<Label> title = wrap(e, titleText, 15, true, iw, 4), sub = wrap(e, subText, 11, false, iw, 2);
-    Label hint1 = label(e, "Next / Prev: another short", 9, false, iw);
-    Label hint2 = label(e, "center: pause \xc2\xb7 wheel: volume", 9, false, iw);
+    Label hint1 = label(e, tr("shorts.hintNext"), 9, false, iw);
+    Label hint2 = label(e, tr("shorts.hintCenter"), 9, false, iw);
     auto height = [&](const std::vector<Label>& ls, float sp, bool bold) {
       int t = 0;
       for (const Label& l : ls) t += l.h;
@@ -289,14 +289,14 @@ class ShortsScreen : public Screen {
   }
 
   void load() {
-    title_ = "Loading Shorts\xe2\x80\xa6";
+    title_ = tr("shorts.loading");
     requests_.get("/video/shorts", 120000, [this](int status, const std::string& body) {
-      if (status != 200) return message("Couldn't load Shorts", offlineOr(httpProblem(status, "/video/shorts")));
+      if (status != 200) return message(tr("shorts.couldntLoad"), offlineOr(httpProblem(status, "/video/shorts")));
       ItemsPage page;
       parseItems(body, page);
       for (Item& i : page.items) items_.push_back(std::move(i));
       next_ = page.next;
-      if (items_.empty()) return message("No Shorts right now", "Try again later");
+      if (items_.empty()) return message(tr("shorts.none"), tr("shorts.tryLater"));
       if (index_ < 0) play(0, 1);
     });
   }

@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include "lang.h"
+
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -16,17 +18,19 @@ namespace rondo {
 
 const char* const kMenuIds[7] = {"nowPlaying", "device", "videos", "music", "whatsapp", "radio", "settings"};
 const float kTextScales[3] = {1.25f, 1.4f, 1.55f};
-const AccentPreset kAccentPresets[6] = {{"iPod Blue", "#1c5ccc"}, {"Rondo Red", "#ff3b4f"}, {"Mint", "#11a683"},
-                                        {"Violet", "#7b4fe0"},    {"Amber", "#e8860c"},     {"Graphite", "#4a4f59"}};
+const AccentPreset kAccentPresets[6] = {{"accent.ipodBlue", "#1c5ccc"}, {"accent.rondoRed", "#ff3b4f"}, {"accent.mint", "#11a683"},
+                                        {"accent.violet", "#7b4fe0"},    {"accent.amber", "#e8860c"},     {"accent.graphite", "#4a4f59"}};
 
-const char* menuLabel(const std::string& id) {
+std::string accentName(const AccentPreset& p) { return tr(p.name); }
+
+std::string menuLabel(const std::string& id) {
   if (id == "music") return "YouTube Music";
   if (id == "videos") return "YouTube";
-  if (id == "device") return "Library";
-  if (id == "nowPlaying") return "Now Playing";
+  if (id == "device") return tr("common.library");
+  if (id == "nowPlaying") return tr("menu.nowPlaying");
   if (id == "whatsapp") return "WhatsApp";
-  if (id == "radio") return "FM Radio";
-  if (id == "settings") return "Settings";
+  if (id == "radio") return tr("menu.fmRadio");
+  if (id == "settings") return tr("common.settings");
   return "";
 }
 

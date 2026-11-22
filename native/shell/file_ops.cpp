@@ -69,12 +69,12 @@ std::string freeName(const std::string& dir, const std::string& name) {
 }
 std::string problem(int err) {
   switch (err) {
-    case ENOSPC: return "not enough space";
-    case EROFS: return "the storage is read-only";
+    case ENOSPC: return tr("fileOps.problem.noSpace");
+    case EROFS: return tr("fileOps.problem.readOnly");
     case EACCES:
-    case EPERM: return "not allowed";
-    case ENOENT: return "it isn't there any more";
-    case ENAMETOOLONG: return "the name is too long";
+    case EPERM: return tr("fileOps.problem.notAllowed");
+    case ENOENT: return tr("fileOps.problem.gone");
+    case ENAMETOOLONG: return tr("fileOps.problem.nameTooLong");
     default: return strerror(err);
   }
 }
@@ -159,7 +159,7 @@ int copyTree(const std::string& from, const std::string& to) {
 
 }  // namespace
 
-std::string rootName(const std::string& root) { return root == kRoots[0] ? "Card" : "Internal storage"; }
+std::string rootName(const std::string& root) { return root == kRoots[0] ? tr("files.card") : tr("files.internalStorage"); }
 bool isRoot(const std::string& p) { return p == kRoots[0] || p == kRoots[1]; }
 bool inside(const std::string& p) { return p.find("..") == std::string::npos && rootOf(p) >= 0 && !isRoot(p); }
 bool isDir(const std::string& p) {
@@ -181,26 +181,26 @@ int64_t totalBytes(const std::string& root) {
 
 std::string makeFolder(const std::string& dir, const std::string& typed) {
   std::string name = entryName(typed);
-  if (name.empty()) return "Type a name";
-  if (!(isRoot(dir) || inside(dir)) || !isDir(dir)) return "That folder isn't there";
+  if (name.empty()) return tr("common.typeName");
+  if (!(isRoot(dir) || inside(dir)) || !isDir(dir)) return tr("fileOps.noFolder");
   std::string p = dir + "/" + name;
-  if (exists(p)) return "Something by that name is there already";
-  if (mkdir(p.c_str(), 0775) != 0) return "Couldn't make it: " + problem(errno);
+  if (exists(p)) return tr("fileOps.nameTaken");
+  if (mkdir(p.c_str(), 0775) != 0) return tr("fileOps.cantMake", {{"why", problem(errno)}});
   return "";
 }
 
 std::string renameEntry(const std::string& from, const std::string& typed, std::string* to) {
   std::string name = entryName(typed);
-  if (name.empty()) return "Type a name";
-  if (!inside(from) || !exists(from)) return "It isn't there any more";
+  if (name.empty()) return tr("common.typeName");
+  if (!inside(from) || !exists(from)) return tr("fileOps.gone");
   std::string dir = from.substr(0, from.rfind('/')), target = dir + "/" + name;
   if (target == from) {
     if (to) *to = from;
     return "";
   }
   // only the case changing (FAT keeps one of the two): that's this file, not another
-  if (strcasecmp(target.c_str(), from.c_str()) != 0 && exists(target)) return "Something by that name is there already";
-  if (rename(from.c_str(), target.c_str()) != 0) return "Couldn't rename it: " + problem(errno);
+  if (strcasecmp(target.c_str(), from.c_str()) != 0 && exists(target)) return tr("fileOps.nameTaken");
+  if (rename(from.c_str(), target.c_str()) != 0) return tr("fileOps.cantRename", {{"why", problem(errno)}});
   filesMoved({{from, target}});
   if (to) *to = target;
   return "";
@@ -238,7 +238,7 @@ bool transfer(std::vector<std::string> paths, const std::string& to, bool copy, 
   }
   auto result = std::make_shared<Result>();
   if (!(isRoot(to) || inside(to)) || !isDir(to)) {
-    result->errors.push_back("That folder isn't there");
+    result->errors.push_back(tr("fileOps.noFolder"));
     done(*result);
     return true;
   }
@@ -247,14 +247,14 @@ bool transfer(std::vector<std::string> paths, const std::string& to, bool copy, 
     if (!inside(from) || !exists(from)) continue;
     std::string name = nameOf(from);
     if (to == from || to.compare(0, from.size() + 1, from + "/") == 0) {
-      result->errors.push_back(name + ": can't go into itself");
+      result->errors.push_back(tr("fileOps.intoItself", {{"name", name}}));
       continue;
     }
     bool sameFolder = from.substr(0, from.rfind('/')) == to;
     if (!copy && sameFolder) continue;  // already there
     std::string target = to + "/" + (copy ? freeName(to, name) : name);
     if (target == to + "/" || (!copy && exists(target))) {
-      result->errors.push_back(name + ": something by that name is there already");
+      result->errors.push_back(tr("fileOps.nameTakenFor", {{"name", name}}));
       continue;
     }
     // a move on one storage: a rename, now
@@ -332,7 +332,8 @@ bool transfer(std::vector<std::string> paths, const std::string& to, bool copy, 
 std::string transferStatus() {
   std::lock_guard<std::mutex> l(g_mu);
   if (!g_busy) return "";
-  std::string s = std::string(g_copying ? "Copying " : "Moving ") + std::to_string(std::max(1, g_item)) + " of " + std::to_string(g_items);
+  int at = std::max(1, g_item);
+  std::string s = g_copying ? tr("fileOps.copying", {{"at", at}, {"total", g_items}}) : tr("fileOps.moving", {{"at", at}, {"total", g_items}});
   if (g_totalBytes > 0) s += " \xc2\xb7 " + std::to_string(int(g_doneBytes * 100 / g_totalBytes)) + "%";
   return s;
 }

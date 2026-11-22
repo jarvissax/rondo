@@ -75,7 +75,7 @@ ThermalScreen* g_thermalScreen = nullptr;
 // MediaTek's alarm did) and Shut down now
 class ThermalScreen : public WarningScreen {
  public:
-  ThermalScreen() : WarningScreen("Too hot", "The Y1 is too hot and has to cool down. It shuts down by itself in a moment.") {
+  ThermalScreen() : WarningScreen(tr("safety.tooHot"), tr("safety.tooHotText")) {
     g_thermalScreen = this;
     render();
   }
@@ -94,11 +94,11 @@ class ThermalScreen : public WarningScreen {
   void render() {
     shown_ = std::max(0, int((g_shutdownAt - now_ns() + kSec - 1) / kSec));
     Row cancel;
-    cancel.title = "Cancel";
-    cancel.subtitle = "Shuts down in " + std::to_string(shown_) + (shown_ == 1 ? " second" : " seconds") + " anyway";
+    cancel.title = tr("common.cancel");
+    cancel.subtitle = tr("safety.shutsDownIn", {{"count", shown_}});
     cancel.onSelect = [] { g_app->pop(); };
     Row now;
-    now.title = "Shut down now";
+    now.title = tr("safety.shutDownNow");
     now.tile = &tiles::power;
     now.onSelect = [] { g_shutdownAt = now_ns(); };
     list_.setRows({cancel, now}, true);  // Cancel first, as every question here: a stray press keeps things
@@ -108,18 +108,18 @@ class ThermalScreen : public WarningScreen {
 
 struct BatteryFault {
   int value;
-  const char* title;
+  const char* title;    // keys in lang/ (tr() where shown; the log names the title's key)
   const char* message;
   bool charger;  // closes by itself when the charger is unplugged
 };
 // MediaTek's five, in the Y1's words: its battery is built in, so "remove the battery" becomes what an
 // owner can do (unplug, let it cool, switch it off)
 constexpr BatteryFault kFaults[] = {
-    {1, "Charger voltage too high", "The charger gives the Y1 too much voltage. Unplug it and use another charger.", true},
-    {2, "Battery too hot", "The Y1's battery is too hot. Unplug the charger and let the Y1 cool down.", false},
-    {4, "Battery current too high", "The Y1's battery draws too much current. Unplug the charger and switch the Y1 off for a while.", false},
-    {8, "Battery voltage too high", "The Y1's battery voltage is too high. Unplug the charger.", false},
-    {16, "Charging takes too long", "The Y1 has been charging for too long. Unplug the charger, then plug it in again later.", true},
+    {1, "safety.chargerVoltage", "safety.chargerVoltageText", true},
+    {2, "safety.batteryHot", "safety.batteryHotText", false},
+    {4, "safety.batteryCurrent", "safety.batteryCurrentText", false},
+    {8, "safety.batteryVoltage", "safety.batteryVoltageText", false},
+    {16, "safety.chargingLong", "safety.chargingLongText", true},
 };
 bool g_dismissed[5] = {false, false, false, false, false};
 class BatteryWarningScreen;
@@ -128,15 +128,15 @@ BatteryWarningScreen* g_batteryScreen = nullptr;
 // BatteryWarningActivity: the fault's title, its message, Snooze and Dismiss
 class BatteryWarningScreen : public WarningScreen {
  public:
-  explicit BatteryWarningScreen(int type) : WarningScreen(kFaults[type].title, kFaults[type].message), type_(type) {
+  explicit BatteryWarningScreen(int type) : WarningScreen(tr(kFaults[type].title), tr(kFaults[type].message)), type_(type) {
     g_batteryScreen = this;
     Row snooze;
-    snooze.title = "Snooze";
-    snooze.subtitle = "Again in 10 s while it lasts";
+    snooze.title = tr("safety.snooze");
+    snooze.subtitle = tr("safety.snoozeNote");
     snooze.onSelect = [] { g_app->pop(); };
     Row dismiss;
-    dismiss.title = "Dismiss";
-    dismiss.subtitle = "Not again until Rondo restarts";
+    dismiss.title = tr("safety.dismiss");
+    dismiss.subtitle = tr("safety.dismissNote");
     dismiss.onSelect = [type] {
       g_dismissed[type] = true;
       g_app->pop();
@@ -222,7 +222,7 @@ bool safetyTick(int64_t now) {
     g_shutdownAt = 0;
     if (g_test) {
       fprintf(stderr, "rondo: the thermal test would shut down now\n");
-      g_app->toast("A real warning would shut down now");
+      g_app->toast(tr("safety.testShutdown"));
       if (topIs(g_thermalScreen)) g_app->pop();
     } else {
       shutDownNow("the chip must cool down");

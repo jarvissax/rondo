@@ -85,18 +85,18 @@ bool isContainer(const std::string& kind) { return kind == "playlist" || kind ==
 }  // namespace
 
 std::string httpProblem(int status, const std::string& path) {
-  if (status == 0) return directMode() ? "couldn't reach YouTube" : "couldn't reach the server";
+  if (status == 0) return directMode() ? tr("songList.noYouTube") : tr("songList.noServer");
   // 502 and 504: YouTube didn't answer the source (direct mode's own routes answer 502 when it can't
   // connect: "HTTP 502 for /music/home" told nobody anything)
-  if (status == 502 || status == 504) return directMode() ? "couldn't reach YouTube" : "the server couldn't reach YouTube (HTTP " + std::to_string(status) + ")";
-  return "HTTP " + std::to_string(status) + " for " + path;
+  if (status == 502 || status == 504) return directMode() ? tr("songList.noYouTube") : tr("songList.serverNoYouTube", {{"status", status}});
+  return tr("songList.httpStatus", {{"status", status}, {"path", path}});
 }
 
 std::string offlineOr(const std::string& problem) {
-  if (!directMode() && g_config.server.url.empty()) return "No server yet.\nConnect one in Settings \xe2\x80\xba Server.";
-  if (!g_app->status().online) return "No Wi-Fi connection.\nConnect in Settings \xe2\x80\xba Wi-Fi, then press center.";
+  if (!directMode() && g_config.server.url.empty()) return tr("songList.noServerYet");
+  if (!g_app->status().online) return tr("songList.noWifi");
   if (std::string old = serverUpdateNeeded(); !old.empty()) return old;  // a server too old for this Rondo
-  return problem + "\nPress center to try again";
+  return tr("songList.tryAgain", {{"problem", problem}});
 }
 
 void openMusicItem(const Item& item, const std::vector<Item>& siblings) {
@@ -165,12 +165,12 @@ std::vector<Row> videoRows(const std::vector<Item>& items) {
 }
 
 void askDownload(const Item& item) {
-  if (!downloadedFile(item.id).empty()) return g_app->toast("Already on the card");
+  if (!downloadedFile(item.id).empty()) return g_app->toast(tr("songList.alreadyOnCard"));
   int now = g_prefs.videoQuality ? g_prefs.videoQuality : 480;
   g_app->push(makeChoice(
-      "Download", {{"720p", "720"}, {"480p", "480"}, {"360p", "360"}}, [now] { return std::to_string(now); },
+      tr("songList.download"), {{"720p", "720"}, {"480p", "480"}, {"360p", "360"}}, [now] { return std::to_string(now); },
       [item](const std::string& v) { downloadVideo(item, atoi(v.c_str())); },
-      [](const std::string& v) { return std::string(v == "720" ? "the most room" : v == "360" ? "the least room" : ""); }));
+      [](const std::string& v) { return v == "720" ? tr("songList.mostRoom") : v == "360" ? tr("songList.leastRoom") : std::string(); }));
 }
 
 bool miniPlayerShown() {
@@ -343,7 +343,7 @@ namespace {
 // QueueScreen: Up next, with shuffle and repeat (Now Playing's options).
 class QueueScreen : public MusicListScreen {
  public:
-  QueueScreen() : MusicListScreen("Up next") {
+  QueueScreen() : MusicListScreen(tr("songList.upNext")) {
     PlayerState s = g_player.state();
     shuffle_ = s.shuffle != 0, repeat_ = s.repeat;
     render();
@@ -351,13 +351,13 @@ class QueueScreen : public MusicListScreen {
 
  private:
   void render() {
-    if (!g_player.active()) return list_.setMessage("Nothing playing");
+    if (!g_player.active()) return list_.setMessage(tr("songList.nothingPlaying"));
     PlayerState s = g_player.state();
     current_ = s.index;
     std::vector<Row> rows;
     Row sh;
-    sh.title = "Shuffle";
-    sh.trailing = shuffle_ ? "On" : "Off";
+    sh.title = tr("library.shuffle");
+    sh.trailing = shuffle_ ? tr("common.on") : tr("common.off");
     sh.tile = &tiles::shuffle;
     sh.onSelect = [this] {
       shuffle_ = !shuffle_;
@@ -366,8 +366,8 @@ class QueueScreen : public MusicListScreen {
     };
     rows.push_back(sh);
     Row rp;
-    rp.title = "Repeat";
-    rp.trailing = repeat_ == 1 ? "All" : repeat_ == 2 ? "One" : "Off";
+    rp.title = tr("songList.repeat");
+    rp.trailing = repeat_ == 1 ? tr("songList.repeatAll") : repeat_ == 2 ? tr("songList.repeatOne") : tr("common.off");
     rp.tile = &tiles::repeat;
     rp.onSelect = [this] {
       repeat_ = repeat_ == 0 ? 1 : repeat_ == 1 ? 2 : 0;
@@ -378,7 +378,7 @@ class QueueScreen : public MusicListScreen {
     const auto& q = g_player.queue();
     Row head;
     head.header = true;
-    head.title = "Queue \xc2\xb7 " + std::to_string(q.size()) + " songs";
+    head.title = tr("songList.queueHeader", {{"count", q.size()}});
     rows.push_back(head);
     for (size_t i = 0; i < q.size(); i++) {
       Row r;
@@ -400,7 +400,7 @@ class QueueScreen : public MusicListScreen {
       r.subtitle = song.subtitle;
       r.thumb = artOf(queue[k], 0);  // a streamed song's thumbnail, a card song's file
       if (int(k) == current_) {
-        r.trailing = "Playing";
+        r.trailing = tr("songList.playing");
       } else if (const Item* it = isStream(queue[k]) ? streamItem(queue[k]) : nullptr) {
         r.trailing = it->durationSec >= 0 ? formatTime(it->durationSec) : "";
       } else if (const Track* t = g_library.find(queue[k])) {

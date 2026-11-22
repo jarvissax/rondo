@@ -20,12 +20,12 @@ bool isAudio(uint32_t cod) { return (cod & 0x1f00) == 0x0400; }
 std::string kind(uint32_t cod) {
   switch (cod & 0x1ffc) {
     case 0x0418:  // headphones
-    case 0x0404: return "Headphones";  // a wearable headset
-    case 0x0408: return "Headset";     // hands-free
-    case 0x0414:                       // loudspeaker
-    case 0x041c: return "Speaker";     // portable audio
-    case 0x0420: return "Car audio";
-    default: return isAudio(cod) ? "Audio" : "Other device";
+    case 0x0404: return tr("bluetooth.kind.headphones");  // a wearable headset
+    case 0x0408: return tr("bluetooth.kind.headset");     // hands-free
+    case 0x0414:                                          // loudspeaker
+    case 0x041c: return tr("bluetooth.kind.speaker");     // portable audio
+    case 0x0420: return tr("bluetooth.kind.carAudio");
+    default: return isAudio(cod) ? tr("bluetooth.kind.audio") : tr("bluetooth.kind.other");
   }
 }
 std::string nameOf(const BtDevice& d) {
@@ -79,7 +79,7 @@ class BluetoothDeviceScreen : public BluetoothList {
     info.enabled = false;
     rows.push_back(info);
     Row c;
-    c.title = connected ? "Disconnect" : "Connect";
+    c.title = connected ? tr("bluetooth.device.disconnect") : tr("bluetooth.device.connect");
     c.onSelect = [a, connected] {
       if (connected) g_core.btDisconnect(a);
       else g_core.btConnect(a);
@@ -87,8 +87,8 @@ class BluetoothDeviceScreen : public BluetoothList {
     };
     rows.push_back(c);
     Row f;
-    f.title = "Forget this device";
-    f.subtitle = "Pair it again to use it";
+    f.title = tr("bluetooth.device.forget");
+    f.subtitle = tr("bluetooth.device.forgetNote");
     f.onSelect = [a] {
       g_core.btForget(a);
       g_app->pop();
@@ -113,13 +113,16 @@ class BluetoothScreen : public BluetoothList {
 
  protected:
   void render(const CoreState& s) override {
-    if (s.btPower < 0) return list_.setMessage("This Y1 has no Bluetooth");
+    if (s.btPower < 0) return list_.setMessage(tr("bluetooth.none"));
     bool on = s.btPower == 2;
     std::vector<Row> rows;
     Row power;
     power.title = "Bluetooth";
     power.tile = &tiles::bluetooth;
-    power.trailing = s.btPower == 1 ? "Turning on\xe2\x80\xa6" : s.btPower == 3 ? "Turning off\xe2\x80\xa6" : on ? "On" : "Off";
+    power.trailing = s.btPower == 1   ? tr("bluetooth.turningOn")
+                     : s.btPower == 3 ? tr("bluetooth.turningOff")
+                     : on             ? tr("common.on")
+                                      : tr("common.off");
     int state = s.btPower;
     power.onSelect = [state, on] {
       // a press while it is still turning is ignored
@@ -138,13 +141,13 @@ class BluetoothScreen : public BluetoothList {
         if (isAudio(a->cod) != isAudio(b->cod)) return isAudio(a->cod);
         return lower(nameOf(*a)) < lower(nameOf(*b));
       });
-      if (!bonded.empty()) rows.push_back(header("My devices"));
+      if (!bonded.empty()) rows.push_back(header(tr("bluetooth.myDevices")));
       for (const BtDevice* d : bonded) {
         Row r;
         r.title = nameOf(*d);
-        r.subtitle = d->a2dp == 2 ? "Connected \xc2\xb7 music plays here"
-                     : d->a2dp == 1 ? "Connecting\xe2\x80\xa6"
-                     : isAudio(d->cod) ? kind(d->cod) + " \xc2\xb7 not connected"
+        r.subtitle = d->a2dp == 2      ? tr("bluetooth.status.playingHere")
+                     : d->a2dp == 1    ? tr("bluetooth.status.connecting")
+                     : isAudio(d->cod) ? tr("bluetooth.status.notConnected", {{"kind", kind(d->cod)}})
                                        : kind(d->cod);
         std::string a = d->address, name = nameOf(*d);
         bool connected = d->a2dp == 2;
@@ -155,11 +158,11 @@ class BluetoothScreen : public BluetoothList {
         r.onLongSelect = [a, name] { g_app->push(std::unique_ptr<Screen>(new BluetoothDeviceScreen(a, name))); };
         rows.push_back(std::move(r));
       }
-      rows.push_back(header(s.btSearching ? "Other devices \xc2\xb7 searching\xe2\x80\xa6" : "Other devices"));
+      rows.push_back(header(s.btSearching ? tr("bluetooth.othersSearching") : tr("bluetooth.others")));
       if (others.empty()) {
         Row r;
-        r.title = s.btSearching ? "Looking for devices\xe2\x80\xa6" : "Search again";
-        r.subtitle = "Put your headphones in pairing mode";
+        r.title = s.btSearching ? tr("bluetooth.looking") : tr("bluetooth.searchAgain");
+        r.subtitle = tr("bluetooth.pairingHint");
         r.enabled = !s.btSearching;
         r.onSelect = [this] {
           g_core.btSearch(true);
@@ -170,7 +173,7 @@ class BluetoothScreen : public BluetoothList {
       for (const BtDevice* d : others) {
         Row r;
         r.title = nameOf(*d);
-        r.subtitle = d->pairing ? "Pairing\xe2\x80\xa6" : kind(d->cod);
+        r.subtitle = d->pairing ? tr("bluetooth.status.pairing") : kind(d->cod);
         std::string a = d->address;
         r.onSelect = [a] { g_core.btPair(a); };
         rows.push_back(std::move(r));
@@ -204,7 +207,7 @@ class BluetoothScreen : public BluetoothList {
 
 std::unique_ptr<Screen> makeBluetooth() { return std::unique_ptr<Screen>(new BluetoothScreen()); }
 
-// for the dashboard: Bt.name, Bt.kind and Bt.isAudio
+// for the dashboard: Bt.name, Bt.kind (in the language spoken) and Bt.isAudio
 std::string btName(const BtDevice& d) { return nameOf(d); }
 std::string btKind(uint32_t cod) { return kind(cod); }
 bool btIsAudio(uint32_t cod) { return isAudio(cod); }
@@ -213,10 +216,10 @@ bool btIsAudio(uint32_t cod) { return isAudio(cod); }
 std::string bluetoothState() {
   CoreState s = g_core.state();
   if (s.btPower < 0) return "\xe2\x80\x94";
-  if (s.btPower != 2) return "Off";
+  if (s.btPower != 2) return tr("common.off");
   for (int i = 0; i < s.btCount; i++)
     if (s.bt[i].a2dp == 2) return nameOf(s.bt[i]);
-  return "On";
+  return tr("common.on");
 }
 
 // From the loop: a headset's buttons (AVRCP, as 1.0.x's media session took them) and, as Android's

@@ -57,20 +57,19 @@ class MainMenuScreen : public Screen {
     builtSig_ = menuSig();
     struct E {
       const char* id;
-      const char* label;
       const Tile* tile;
     };
-    static const E kEntries[] = {{"music", "YouTube Music", &tiles::music}, {"videos", "YouTube", &tiles::video},
-                                 {"whatsapp", "WhatsApp", &tiles::whatsapp},
-                                 {"device", "Library", &tiles::device},     {"nowPlaying", "Now Playing", &tiles::nowPlaying},
-                                 {"radio", "FM Radio", &tiles::radio},      {"settings", "Settings", &tiles::settings}};
+    // the labels: menuLabel() (core/config.h), in the language spoken
+    static const E kEntries[] = {{"music", &tiles::music},   {"videos", &tiles::video},          {"whatsapp", &tiles::whatsapp},
+                                 {"device", &tiles::device}, {"nowPlaying", &tiles::nowPlaying}, {"radio", &tiles::radio},
+                                 {"settings", &tiles::settings}};
     std::vector<Row> rows;
     for (const MenuEntry& m : g_config.theme.menu) {
       if (!m.visible) continue;
       for (const E& e : kEntries) {
         if (m.id != e.id) continue;
         Row r;
-        r.title = e.label;
+        r.title = menuLabel(m.id);
         r.tile = e.tile;
         r.chevron = true;
         if (m.id == "device") r.onSelect = [] { g_app->push(makeDevice()); };
@@ -209,10 +208,10 @@ class MainMenuScreen : public Screen {
     std::string name = tile == &tiles::music       ? "YouTube Music"
                        : tile == &tiles::video      ? "YouTube"
                        : tile == &tiles::whatsapp   ? "WhatsApp"
-                       : tile == &tiles::device     ? "Library"
-                       : tile == &tiles::nowPlaying ? (fm.fmOn ? radioName : "Nothing playing")
-                       : tile == &tiles::radio      ? (fm.fmOn ? radioName : "FM Radio")
-                                                    : "Settings";
+                       : tile == &tiles::device     ? tr("common.library")
+                       : tile == &tiles::nowPlaying ? (fm.fmOn ? radioName : tr("nowPlaying.nothingPlaying"))
+                       : tile == &tiles::radio      ? (fm.fmOn ? radioName : tr("menu.fmRadio"))
+                                                    : tr("common.settings");
     Label title = label(e, name, 14, true, iw);
     int total = box + e.dp(9) + title.h;
     float top = iy + float((int(ih) - total) / 2);

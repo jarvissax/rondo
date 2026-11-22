@@ -16,6 +16,7 @@
 #include <yyjson.h>
 
 #include "fold.h"
+#include "lang.h"
 #include "library.h"
 #include "playlists.h"
 
@@ -138,40 +139,40 @@ bool SmartPlaylists::get(const std::string& name, SmartPlaylist& out) const {
 }
 
 std::string SmartPlaylists::problem(const SmartPlaylist& p) {
-  if (p.rules.empty()) return "Add a rule";
-  if (p.rules.size() > 12) return "At most 12 rules";
+  if (p.rules.empty()) return tr("smart.addRule");
+  if (p.rules.size() > 12) return tr("smart.tooManyRules");
   for (const SmartRule& r : p.rules) {
     bool ok = (kText.count(r.field) && kTextOps.count(r.op)) || (kNumber.count(r.field) && kNumberOps.count(r.op)) ||
               (kDate.count(r.field) && kDateOps.count(r.op));
-    if (!ok) return "A rule Rondo doesn't know: " + r.field + " " + r.op;
-    if (kText.count(r.field) && r.text.empty() && r.op != "is" && r.op != "isNot") return "A rule without text";
-    if (kDate.count(r.field) && r.number <= 0) return "A number of days above 0";
+    if (!ok) return tr("smart.unknownRule", {{"field", r.field}, {"op", r.op}});
+    if (kText.count(r.field) && r.text.empty() && r.op != "is" && r.op != "isNot") return tr("smart.noText");
+    if (kDate.count(r.field) && r.number <= 0) return tr("smart.daysAboveZero");
   }
-  if (!kSorts.count(p.sort)) return "An order Rondo doesn't know: " + p.sort;
-  if (p.limit < 0 || p.limit > 5000) return "A limit of 0 to 5000 songs";
+  if (!kSorts.count(p.sort)) return tr("smart.unknownSort", {{"sort", p.sort}});
+  if (p.limit < 0 || p.limit > 5000) return tr("smart.limitRange");
   return "";
 }
 
 std::string SmartPlaylists::save(SmartPlaylist p, const std::string& oldName) const {
   p.name = Playlists::clean(p.name);
-  if (p.name.empty()) return "Type a name";
+  if (p.name.empty()) return tr("common.typeName");
   std::string why = problem(p);
   if (!why.empty()) return why;
   std::string existing = fileOf(p.name);
   bool renaming = !oldName.empty() && strcasecmp(Playlists::clean(oldName).c_str(), p.name.c_str()) != 0;
-  if (renaming && !existing.empty()) return "A smart playlist by that name exists";
-  if (oldName.empty() && !existing.empty()) return "A smart playlist by that name exists";
+  if (renaming && !existing.empty()) return tr("smart.exists");
+  if (oldName.empty() && !existing.empty()) return tr("smart.exists");
   mkdir(dir_.c_str(), 0775);
   std::string file = dir_ + "/" + p.name + kSuffix, tmp = file + ".part";
   FILE* fp = fopen(tmp.c_str(), "wb");
-  if (!fp) return "Couldn't write to the card";
+  if (!fp) return tr("smart.cantWrite");
   std::string json = toJson(p);
   bool ok = fwrite(json.data(), 1, json.size(), fp) == json.size();
   ok = fflush(fp) == 0 && fsync(fileno(fp)) == 0 && ok;
   ok = fclose(fp) == 0 && ok;
   if (!ok || rename(tmp.c_str(), file.c_str()) != 0) {
     unlink(tmp.c_str());
-    return "Couldn't write to the card";
+    return tr("smart.cantWrite");
   }
   if (renaming) {
     std::string old = fileOf(oldName);
@@ -182,8 +183,8 @@ std::string SmartPlaylists::save(SmartPlaylist p, const std::string& oldName) co
 
 std::string SmartPlaylists::remove(const std::string& name) const {
   std::string f = fileOf(name);
-  if (f.empty()) return "There's no smart playlist by that name";
-  return unlink(f.c_str()) == 0 ? "" : "Couldn't delete it from the card";
+  if (f.empty()) return tr("smart.noSuch");
+  return unlink(f.c_str()) == 0 ? "" : tr("smart.cantDelete");
 }
 
 std::vector<const Track*> SmartPlaylists::songs(const SmartPlaylist& p, const Library& library) {

@@ -117,6 +117,22 @@ class App {
     began("back to");
     popping_ = true;
   }
+  // The language changed (Settings › Language, the dashboard): the screens open were made in the old
+  // one, so these take their place at once, without a slide. keepTop: the screen in front stays as it
+  // is (the dashboard's, whose page asked: its server must not stop), on top of them.
+  void restack(std::vector<std::unique_ptr<Screen>> fresh, bool keepTop) {
+    if (fresh.empty()) return;
+    finishTransition();
+    std::unique_ptr<Screen> top;
+    if (keepTop && !stack_.empty()) top = std::move(stack_.back()), stack_.pop_back();
+    else if (!stack_.empty()) stack_.back()->onHide();
+    stack_.clear();
+    for (auto& s : fresh) stack_.push_back(std::move(s));
+    if (top) stack_.push_back(std::move(top));
+    else stack_.back()->onShow();
+    transitions_++;  // its first frame prepared like a slide's
+    popping_ = false;
+  }
   // set by the loop: the palette and the warmed sizes follow the theme
   std::function<void()> onThemeChanged;
   std::function<void()> onAccelerationChanged;

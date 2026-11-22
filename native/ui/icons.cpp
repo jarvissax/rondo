@@ -484,6 +484,11 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.poly({6.5f, 12.5f, 11.5f, 12.5f}, false), p.poly({14, 12.5f, 17.5f, 12.5f}, false),
                 p.poly({6.5f, 16, 9.5f, 16}, false), p.poly({12, 16, 17.5f, 16}, false)}, 2);
       break;
+    case Icon::Globe:  // Settings › Language: a globe, its meridian and equator (the dashboard's i-globe)
+      p.stroke({p.circle(12, 12, 9)}, 2);
+      p.stroke({p.arc(7.8f, 3, 16.2f, 21, 0, 360)}, 1.8f);
+      p.stroke({p.poly({3, 12, 21, 12}, false)}, 1.8f);
+      break;
     case Icon::Smile:  // reacting: a smiling face
       p.stroke({p.circle(12, 12, 9.2f)}, 2);
       p.fill({p.circle(8.8f, 10, 1.5f), p.circle(15.2f, 10, 1.5f)});

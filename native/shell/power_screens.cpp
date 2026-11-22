@@ -76,7 +76,7 @@ PowerScreen* g_powerScreen = nullptr;  // the one open (no RTTI to ask the stack
 // PowerScreen: shut down or restart. Cancel is first, so a stray center press does nothing.
 class PowerScreen : public ShellListScreen {
  public:
-  PowerScreen() : ShellListScreen("Power") {
+  PowerScreen() : ShellListScreen(tr("power.title")) {
     g_powerScreen = this;
     render();
   }
@@ -111,18 +111,18 @@ class PowerScreen : public ShellListScreen {
   void render() {
     std::vector<Row> rows;
     Row cancel;
-    cancel.title = "Cancel";
+    cancel.title = tr("common.cancel");
     cancel.onSelect = [] { g_app->pop(); };
     rows.push_back(cancel);
     Row off;
-    off.title = "Shut down";
+    off.title = tr("power.shutDown");
     off.tile = &tiles::power;
-    off.onSelect = [this] { go("Shutting down\xe2\x80\xa6", false); };
+    off.onSelect = [this] { go(tr("power.shuttingDown"), false); };
     rows.push_back(off);
     Row again;
-    again.title = "Restart";
+    again.title = tr("power.restart");
     again.tile = &tiles::restart;
-    again.onSelect = [this] { go("Restarting\xe2\x80\xa6", true); };
+    again.onSelect = [this] { go(tr("power.restarting"), true); };
     rows.push_back(again);
     list_.setRows(std::move(rows));
   }
@@ -139,7 +139,7 @@ void shutDownFor(const char* why) {
   if (!p) {
     g_app->push(std::unique_ptr<Screen>(p = new PowerScreen()));
   }
-  p->go("Shutting down\xe2\x80\xa6", false);
+  p->go(tr("power.shuttingDown"), false);
 }
 
 }  // namespace
@@ -162,7 +162,7 @@ void powerAction(bool restart) {
   if (g_stage >= kOff) wake(now_ns());
   PowerScreen* p = powerScreenOnTop();
   if (!p) g_app->push(std::unique_ptr<Screen>(p = new PowerScreen()));
-  p->go(restart ? "Restarting\xe2\x80\xa6" : "Shutting down\xe2\x80\xa6", restart);
+  p->go(restart ? tr("power.restarting") : tr("power.shuttingDown"), restart);
 }
 
 // A wired headset's buttons (PlayerService.onMediaButton): they act on what plays whether the screen
@@ -302,7 +302,7 @@ bool powerTick(int64_t now) {
     // ACTION_BATTERY_LOW: crossing 15 % unplugged
     if (!b.plugged && b.level <= 15 && g_lastLevel > 15 && !g_lowWarned) {
       g_lowWarned = true;
-      g_app->toast("Battery low. Plug in to charge.");
+      g_app->toast(tr("power.batteryLow"));
       changed = true;
     }
     if (b.plugged || b.level > 15) g_lowWarned = false;

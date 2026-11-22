@@ -14,7 +14,7 @@ namespace {
 // among the others
 class DownloadsScreen : public MusicListScreen {
  public:
-  DownloadsScreen() : MusicListScreen("Downloads") {
+  DownloadsScreen() : MusicListScreen(tr("downloads.title")) {
     list_.style = RowStyle::Video;
     render();
   }
@@ -29,7 +29,7 @@ class DownloadsScreen : public MusicListScreen {
     const Row* sel = list_.selectedRow();
     ambient_.follow(e, sel ? sel->thumb : "", e.dp(104), e.dp(58));
     ambient_.draw(e, {0, 0, w, h});
-    darkHeader(e, w, "Downloads", HeaderLogo::Video);
+    darkHeader(e, w, tr("downloads.title"), HeaderLogo::Video);
     float top = float(e.dp(31));
     list_.layout(e, w, h - top);
     list_.draw(e, 0, top);
@@ -70,15 +70,15 @@ class DownloadsScreen : public MusicListScreen {
       r.onSelect = [item] { openVideo(item); };
       std::string file = it.id;
       r.onLongSelect = [file] {
-        g_app->push(makeChoice("Delete download", {{"Keep it", "keep"}, {"Delete it", "delete"}}, [] { return std::string("keep"); },
+        g_app->push(makeChoice(tr("downloads.deleteTitle"), {{tr("downloads.keepIt"), "keep"}, {tr("downloads.deleteIt"), "delete"}}, [] { return std::string("keep"); },
                                [file](const std::string& v) {
-                                 if (v == "delete" && deleteDownload(file)) g_app->toast("Deleted from the card");
+                                 if (v == "delete" && deleteDownload(file)) g_app->toast(tr("downloads.deleted"));
                                },
-                               [](const std::string& v) { return std::string(v == "delete" ? "and its subtitles" : ""); }));
+                               [](const std::string& v) { return v == "delete" ? tr("downloads.andSubtitles") : std::string(); }));
       };
       rows.push_back(std::move(r));
     }
-    if (rows.empty()) list_.setMessage("Nothing downloaded yet: hold center on a video to save it");
+    if (rows.empty()) list_.setMessage(tr("downloads.videosEmpty"));
     else list_.setRows(std::move(rows), true);
   }
   std::string key_;
@@ -87,18 +87,18 @@ class DownloadsScreen : public MusicListScreen {
 // Home's second row
 Row downloadsRow() {
   Row d;
-  d.title = "Downloads";
+  d.title = tr("downloads.title");
   int on = int(downloadedVideos().size()), going = 0, paused = 0;
   for (const DownloadJob& j : downloadJobs()) {
     going += !j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
     paused += !j.song && j.state == DownloadJob::Paused;
   }
-  std::string cardPart = on ? " \xc2\xb7 " + std::to_string(on) + " on the card" : "";
+  std::string cardPart = on ? " \xc2\xb7 " + tr("downloads.onCard", {{"count", on}}) : "";
   std::string held = downloadsHeld();  // why they wait: Wi-Fi, the card
-  d.subtitle = going    ? (held.empty() ? std::to_string(going) + " downloading" : held) + cardPart
-               : paused ? std::to_string(paused) + " paused" + cardPart
-               : on     ? std::to_string(on) + (on == 1 ? " video" : " videos") + " on the card, to watch offline"
-                        : "Videos saved to watch offline";
+  d.subtitle = going    ? (held.empty() ? tr("downloads.downloadingCount", {{"count", going}}) : held) + cardPart
+               : paused ? tr("downloads.pausedCount", {{"count", paused}}) + cardPart
+               : on     ? tr("downloads.videosOnCard", {{"count", on}})
+                        : tr("downloads.videosRowEmpty");
   d.tile = &tiles::downloads;
   d.onSelect = [] { g_app->push(std::unique_ptr<Screen>(new DownloadsScreen())); };
   return d;
@@ -116,7 +116,7 @@ class VideoScreen : public TabbedListScreen {
   void onShow() override {
     const std::vector<Row>& rows = list_.rows();
     for (size_t i = 0; i < rows.size() && i < 2; i++) {
-      if (rows[i].title != "Downloads" || rows[i].tile != &tiles::downloads) continue;
+      if (rows[i].title != tr("downloads.title") || rows[i].tile != &tiles::downloads) continue;
       Row now = downloadsRow();
       if (now.subtitle == rows[i].subtitle) return;
       std::vector<Row> copy = rows;
@@ -149,8 +149,8 @@ class VideoScreen : public TabbedListScreen {
  private:
   // Subscriptions and History only when the source has an account (Accounts.kt)
   std::vector<std::string> wantedTabs() const override {
-    std::vector<std::string> t{"Home"};
-    if (g_prefs.accountVideos) t.insert(t.end(), {"Subscriptions", "History"});
+    std::vector<std::string> t{tr("video.tabHome")};
+    if (g_prefs.accountVideos) t.insert(t.end(), {tr("video.tabSubscriptions"), tr("video.tabHistory")});
     return t;
   }
   void openSearch() override { g_app->push(makeVideoSearch()); }
@@ -172,17 +172,17 @@ class VideoScreen : public TabbedListScreen {
     requests_.cancelAll();
     next_.clear();
     loading_ = false;
-    list_.setMessage("Loading\xe2\x80\xa6");
+    list_.setMessage(tr("common.loading"));
     std::string path = feeds[tab], name = tabs_[size_t(tab)];
     requests_.get(path, 120000, [this, tab, path, name](int status, const std::string& body) {
       if (tab != active_) return;
       if (status != 200) {
-        std::string problem = offlineOr("Couldn't load " + name + ": " + httpProblem(status, path));
+        std::string problem = offlineOr(tr("video.couldntLoad", {{"name", name}, {"problem", httpProblem(status, path)}}));
         if (tab != 0) return list_.setMessage(problem);
         // Home: the downloads are there without a connection
         Row msg;
         msg.title = problem;
-        msg.subtitle = "Center tries again";
+        msg.subtitle = tr("video.centerRetries");
         msg.onSelect = [this] { load(0); };
         list_.setRows({downloadsRow(), msg});
         return;
@@ -195,7 +195,7 @@ class VideoScreen : public TabbedListScreen {
         // Home starts with Shorts, like the app's Shorts shelf (the header has no room for a tab)
         Row s;
         s.title = "Shorts";
-        s.subtitle = "Short videos, one after another";
+        s.subtitle = tr("video.shortsSubtitle");
         s.tile = &tiles::shorts;
         s.onSelect = [] { g_app->push(makeShorts()); };
         rows.push_back(s);

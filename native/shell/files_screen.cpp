@@ -33,12 +33,15 @@ std::string sizeText(int64_t n) {
   else snprintf(b, sizeof(b), "%.1f GB", n / 1e9);
   return b;
 }
+// "Nov  3, 2026" (strftime's "%b %e, %Y", the day padded to two), in the language spoken; a language that
+// starts with the day doesn't start with its padding
 std::string dayText(time_t t) {
   struct tm tm;
   localtime_r(&t, &tm);
-  char b[32];
-  strftime(b, sizeof(b), "%b %e, %Y", &tm);
-  return b;
+  char day[8];
+  snprintf(day, sizeof(day), "%2d", tm.tm_mday);
+  std::string s = tr("files.date", {{"month", tr("date.month" + std::to_string(tm.tm_mon + 1))}, {"day", day}, {"year", tm.tm_year + 1900}});
+  return s.substr(std::min(s.size(), s.find_first_not_of(' ')));
 }
 std::string extOf(const std::string& name) {
   size_t dot = name.rfind('.');
@@ -53,14 +56,14 @@ bool isVideoName(const std::string& n) {
 std::string nameOf(const std::string& p) { return p.substr(p.rfind('/') + 1); }
 std::string parentOf(const std::string& p) { return p.substr(0, p.rfind('/')); }
 std::string kindText(const std::string& name) {
-  if (isAudioExtension(extOf(name))) return "Song";
-  if (isVideoName(name)) return "Video";
-  if (ui::isPhotoName(name)) return "Photo";
+  if (isAudioExtension(extOf(name))) return tr("files.kind.song");
+  if (isVideoName(name)) return tr("files.kind.video");
+  if (ui::isPhotoName(name)) return tr("files.kind.photo");
   std::string x = extOf(name);
-  if (x == "lrc") return "Lyrics";
-  if (x == "srt" || x == "ass" || x == "vtt") return "Subtitles";
-  if (x == "m3u" || x == "m3u8") return "Playlist file";
-  return x.empty() ? "File" : x + " file";
+  if (x == "lrc") return tr("files.kind.lyrics");
+  if (x == "srt" || x == "ass" || x == "vtt") return tr("files.kind.subtitles");
+  if (x == "m3u" || x == "m3u8") return tr("files.kind.playlist");
+  return x.empty() ? tr("files.kind.file") : tr("files.kind.ext", {{"ext", x}});
 }
 
 struct Entry {
@@ -134,15 +137,17 @@ void openFile(const std::string& path) {
     }
     g_app->push(makePhotoViewer(photos, at));
   } else {
-    g_app->toast("Rondo can't open " + kindText(name) + "s");
+    g_app->toast(tr("files.cantOpen", {{"kind", kindText(name)}}));
   }
 }
 bool canOpen(const std::string& name, bool dir) {
   return dir || isAudioExtension(extOf(name)) || isVideoName(name) || ui::isPhotoName(name);
 }
-void report(const files::Result& r, const char* verb) {
-  if (!r.errors.empty()) g_app->toast(r.errors.front() + (r.errors.size() > 1 ? " (and " + std::to_string(r.errors.size() - 1) + " more)" : ""));
-  else if (r.done) g_app->toast(std::string(verb) + " " + std::to_string(r.done) + (r.done == 1 ? " item" : " items"));
+// doneKey: files.copied, files.moved or files.deleted ("Copied 3 items")
+void report(const files::Result& r, const char* doneKey) {
+  if (r.errors.size() > 1) g_app->toast(tr("files.errorAndMore", {{"error", r.errors.front()}, {"count", r.errors.size() - 1}}));
+  else if (!r.errors.empty()) g_app->toast(r.errors.front());
+  else if (r.done) g_app->toast(tr(doneKey, {{"count", r.done}}));
 }
 
 // Copy to…, Move to…: the folders of both storages, walked here (center goes in, Menu goes back up);
@@ -150,7 +155,7 @@ void report(const files::Result& r, const char* verb) {
 class PickFolderScreen : public ShellListScreen {
  public:
   PickFolderScreen(std::vector<std::string> paths, bool copy, std::string start)
-      : ShellListScreen(copy ? "Copy to" : "Move to"), paths_(std::move(paths)), copy_(copy), dir_(std::move(start)) {
+      : ShellListScreen(copy ? tr("files.copyTo") : tr("files.moveTo")), paths_(std::move(paths)), copy_(copy), dir_(std::move(start)) {
     render();
   }
   bool onAction(Action a, int steps) override {
@@ -171,7 +176,7 @@ class PickFolderScreen : public ShellListScreen {
         if (!files::isDir(r)) continue;
         Row row;
         row.title = files::rootName(r);
-        row.subtitle = sizeText(files::freeBytes(r)) + " free";
+        row.subtitle = tr("files.free", {{"size", sizeText(files::freeBytes(r))}});
         row.tile = std::string(r) == files::kRoots[0] ? &tiles::files : &tiles::system;
         row.chevron = true;
         std::string p = r;
@@ -180,14 +185,14 @@ class PickFolderScreen : public ShellListScreen {
       }
     } else {
       Row here;
-      here.title = std::string(copy_ ? "Copy here" : "Move here");
+      here.title = copy_ ? tr("files.copyHere") : tr("files.moveHere");
       here.subtitle = files::isRoot(dir_) ? files::rootName(dir_) : nameOf(dir_);
       here.tile = copy_ ? &tiles::copyTo : &tiles::moveTo;
       here.onSelect = [this] { put(); };
       rows.push_back(std::move(here));
       Row head;
       head.header = true;
-      head.title = "Folders";
+      head.title = tr("library.folders");
       rows.push_back(head);
       for (const Entry& e : listFolder(dir_)) {
         if (!e.dir) continue;
@@ -215,9 +220,9 @@ class PickFolderScreen : public ShellListScreen {
   void put() {
     std::string to = dir_;
     bool copy = copy_;
-    bool started = files::transfer(paths_, to, copy, [copy](const files::Result& r) { report(r, copy ? "Copied" : "Moved"); });
-    if (!started) return g_app->toast("Wait for the copy under way to finish");
-    if (!files::transferStatus().empty()) g_app->toast(copy ? "Copying in the background" : "Moving in the background");
+    bool started = files::transfer(paths_, to, copy, [copy](const files::Result& r) { report(r, copy ? "files.copied" : "files.moved"); });
+    if (!started) return g_app->toast(tr("files.waitForCopy"));
+    if (!files::transferStatus().empty()) g_app->toast(copy ? tr("files.copyingInBackground") : tr("files.movingInBackground"));
     g_app->pop();  // this
     g_app->pop();  // the item's menu
   }
@@ -239,46 +244,47 @@ class FileMenuScreen : public ShellListScreen {
     Row head;
     head.header = true;
     struct stat st;
-    head.title = dir ? "Folder" : kindText(name) + (stat(path_.c_str(), &st) == 0 ? " \xc2\xb7 " + sizeText(st.st_size) : "");
+    head.title = dir ? tr("files.folder") : kindText(name) + (stat(path_.c_str(), &st) == 0 ? " \xc2\xb7 " + sizeText(st.st_size) : "");
     rows.push_back(head);
-    auto add = [&](const char* title, const Tile& tile, bool chevron, std::function<void()> on) {
+    auto add = [&](const std::string& title, const Tile& tile, bool chevron, std::function<void()> on) {
       Row r;
       r.title = title, r.tile = &tile, r.chevron = chevron, r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
     std::string p = path_;
-    if (canOpen(name, dir)) add("Open", tiles::openFile, true, [p, dir] {
+    if (canOpen(name, dir)) add(tr("common.open"), tiles::openFile, true, [p, dir] {
         g_app->pop();
         if (dir) g_app->push(makeFiles(p));
         else openFile(p);
       });
-    add("Rename", tiles::renameTo, true, [p, name] {
-      g_app->push(makeTextEntry("Rename " + name, name, "Rename", 120, [p](const std::string& typed) { return files::renameEntry(p, typed); },
-                                [](const std::string&) { g_app->pop(); }));
+    add(tr("common.rename"), tiles::renameTo, true, [p, name] {
+      g_app->push(makeTextEntry(tr("files.renameTitle", {{"name", name}}), name, tr("common.rename"), 120,
+                                [p](const std::string& typed) { return files::renameEntry(p, typed); }, [](const std::string&) { g_app->pop(); }));
     });
-    add("Copy to\xe2\x80\xa6", tiles::copyTo, true, [p] { g_app->push(std::unique_ptr<Screen>(new PickFolderScreen({p}, true, parentOf(p)))); });
-    add("Move to\xe2\x80\xa6", tiles::moveTo, true, [p] { g_app->push(std::unique_ptr<Screen>(new PickFolderScreen({p}, false, parentOf(p)))); });
-    add("Delete", tiles::del, true, [p, name, dir] { g_app->push(confirmDelete(p, name, dir)); });
+    add(tr("files.copyToMenu"), tiles::copyTo, true, [p] { g_app->push(std::unique_ptr<Screen>(new PickFolderScreen({p}, true, parentOf(p)))); });
+    add(tr("files.moveToMenu"), tiles::moveTo, true, [p] { g_app->push(std::unique_ptr<Screen>(new PickFolderScreen({p}, false, parentOf(p)))); });
+    add(tr("common.delete"), tiles::del, true, [p, name, dir] { g_app->push(confirmDelete(p, name, dir)); });
     list_.setRows(std::move(rows), true);
   }
   // Are you sure? Cancel first, so a stray center press keeps it
   static std::unique_ptr<Screen> confirmDelete(const std::string& p, const std::string& name, bool dir) {
     struct Confirm : ShellListScreen {
-      Confirm(const std::string& p, const std::string& name, bool dir) : ShellListScreen(dir ? "Delete this folder?" : "Delete this file?") {
+      Confirm(const std::string& p, const std::string& name, bool dir)
+          : ShellListScreen(dir ? tr("files.deleteFolderQuestion") : tr("files.deleteFileQuestion")) {
         Row q;
         q.header = true;
-        q.title = "\xe2\x80\x9c" + name + "\xe2\x80\x9d" + (dir ? " and all it holds" : "") + " can't be brought back";
+        q.title = dir ? tr("files.deleteFolderNote", {{"name", name}}) : tr("files.deleteFileNote", {{"name", name}});
         Row cancel;
-        cancel.title = "Cancel";
+        cancel.title = tr("common.cancel");
         cancel.onSelect = [] { g_app->pop(); };
         Row del;
-        del.title = "Delete";
+        del.title = tr("common.delete");
         del.tile = &tiles::del;
         del.onSelect = [p] {
           files::Result r = files::remove({p});
           g_app->pop();  // this
           g_app->pop();  // the menu
-          report(r, "Deleted");
+          report(r, "files.deleted");
         };
         list_.setRows({q, cancel, del});
       }
@@ -323,7 +329,7 @@ Space spaceOf(const std::string& root) {
 class FilesScreen : public ShellListScreen {
  public:
   explicit FilesScreen(std::string dir)
-      : ShellListScreen(dir.empty() ? "Files" : files::isRoot(dir) ? files::rootName(dir) : nameOf(dir)), dir_(std::move(dir)) {
+      : ShellListScreen(dir.empty() ? tr("files.title") : files::isRoot(dir) ? files::rootName(dir) : nameOf(dir)), dir_(std::move(dir)) {
     render();
   }
   void onShow() override {  // back from a rename, a delete, a copy (opening, it's drawn already)
@@ -356,31 +362,30 @@ class FilesScreen : public ShellListScreen {
         Row row;
         row.title = files::rootName(r);
         Space sp = spaceOf(r);
-        row.subtitle = sp.at ? sizeText(sp.free) + " free of " + sizeText(sp.total) : std::string(" ");
+        row.subtitle = sp.at ? tr("files.freeOf", {{"free", sizeText(sp.free)}, {"total", sizeText(sp.total)}}) : std::string(" ");
         row.tile = std::string(r) == files::kRoots[0] ? &tiles::files : &tiles::system;
         row.chevron = true;
         std::string p = r;
         row.onSelect = [p] { g_app->push(makeFiles(p)); };
         rows.push_back(std::move(row));
       }
-      if (rows.empty()) return list_.setMessage("No card or internal storage.\nIs the USB drive on?");
+      if (rows.empty()) return list_.setMessage(tr("files.noStorage"));
       list_.setRows(std::move(rows), true);
       return;
     }
     Row add;
-    add.title = "New folder";
+    add.title = tr("files.newFolder");
     add.tile = &tiles::newFolder;
     std::string dir = dir_;
     add.onSelect = [dir] {
-      g_app->push(makeTextEntry("New folder", "", "Make", 120, [dir](const std::string& typed) { return files::makeFolder(dir, typed); },
-                                [](const std::string&) {}));
+      g_app->push(makeTextEntry(tr("files.newFolder"), "", tr("files.make"), 120,
+                                [dir](const std::string& typed) { return files::makeFolder(dir, typed); }, [](const std::string&) {}));
     };
     rows.push_back(std::move(add));
     std::vector<Entry> entries = listFolder(dir_);
     Row head;
     head.header = true;
-    head.title = entries.empty() ? "An empty folder"
-                                 : std::to_string(entries.size()) + (entries.size() == 1 ? " item" : " items") + " \xc2\xb7 hold center for more";
+    head.title = entries.empty() ? tr("files.emptyFolder") : tr("files.itemsHeader", {{"count", entries.size()}});
     rows.push_back(head);
     for (const Entry& e : entries) {
       Row r;

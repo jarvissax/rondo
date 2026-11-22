@@ -10,7 +10,7 @@
 namespace rondo::shell::files {
 
 extern const char* const kRoots[2];  // the card, the internal storage
-std::string rootName(const std::string& root);  // "Card", "Internal storage"
+std::string rootName(const std::string& root);  // "Card", "Internal storage" (in the language spoken)
 bool isRoot(const std::string& path);
 bool inside(const std::string& path);  // under a root (not a root itself), no ".."
 bool isDir(const std::string& path);

@@ -15,7 +15,7 @@ namespace rondo::shell {
 
 
 struct SubTrack {
-  std::string id, lang, name;  // name: what the panel calls it ("English", "Azerbaijani (auto-generated)")
+  std::string id, lang, name;  // name: what the panel calls it ("English", "Azerbaijani (auto-generated)"; a card file's in the language spoken)
   bool autoGen = false;        // YouTube's speech recognition (or a file marked .auto)
   std::string file;            // a card video's: the file ("": YouTube's, /captions/<video>/<id>)
 };
@@ -26,9 +26,10 @@ std::vector<SubTrack> subtitleFiles(const std::string& videoPath);
 // speech recognition's), else the video's own first, else the first; -1 when there are none
 int pickTrack(const std::vector<SubTrack>& tracks);
 
-// The look's choices (prefs.h keeps the index of each): the same names on the Y1 and the dashboard
+// The look's choices (prefs.h keeps the index of each): the same names on the Y1 and the dashboard. The
+// names are keys in lang/ ("subtitles.colorWhite"): tr() them where they're shown.
 struct SubColor {
-  const char* name;
+  const char* name;  // its name's key
   uint32_t rgb;
 };
 extern const SubColor kSubColors[8];  // White, Yellow, Green, Cyan, Blue, Magenta, Red, Black

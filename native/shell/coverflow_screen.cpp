@@ -55,7 +55,7 @@ class CoverFlowScreen : public Screen {
     e.c.fill({0, 0, w, h}, rgb(0x000000));
     e.c.fillGradient({0, 0, w, h * 0.62f}, rgb(0x15161a), rgb(0x000000));
     if (albums_.empty()) {
-      Label l = label(e, "No albums on the card", 15, false, w);
+      Label l = label(e, tr("coverFlow.noAlbums"), 15, false, w);
       drawLabel(e, l, (w - l.w) / 2, (h - l.h) / 2, whiteA(180));
       return;
     }
@@ -83,7 +83,7 @@ class CoverFlowScreen : public Screen {
     std::string by = t ? (!t->albumArtist.empty() ? t->albumArtist : t->artist) : "";
     int year = Library::yearOf(g.second);
     if (year) by += (by.empty() ? "" : " \xc2\xb7 ") + std::to_string(year);
-    by += (by.empty() ? "" : "   \xc2\xb7   ") + std::to_string(std::max(0, std::min(n - 1, target_)) + 1) + " of " + std::to_string(n);
+    by += (by.empty() ? "" : "   \xc2\xb7   ") + tr("coverFlow.position", {{"at", std::max(0, std::min(n - 1, target_)) + 1}, {"total", n}});
     Label title = label(e, g.first, 15, true, w - e.dp(24));
     Label sub = label(e, by, 12, false, w - e.dp(24));
     float ty = h - float(e.dp(10)) - title.h - sub.h - e.dp(2);

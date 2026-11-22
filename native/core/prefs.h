@@ -32,6 +32,9 @@ struct Prefs {
   // separated by spaces (ui/emoji.h)
   int emojiTone = 0;
   std::string emojiRecent;
+  // the language Rondo speaks (lang/<code>.json); "" until one is picked: the first boot's picker shows
+  // while it is empty, and Rondo speaks English meanwhile
+  std::string language;
 };
 
 // a language code kept as it can be written (letters, digits, - and _)

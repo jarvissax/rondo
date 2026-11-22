@@ -38,6 +38,7 @@
 #include "../platform/power.h"
 #include "../platform/video_frame.h"
 #include "../ui/image.h"
+#include "../core/lang.h"
 #include "app.h"
 #include "dashboard.h"
 #include "file_ops.h"
@@ -389,7 +390,7 @@ Response youtubeTv(const std::string& action) {
   if (!direct) return json("{\"mode\":\"server\"}");
   std::string body;
   int st = coreCall(false, action.empty() ? "/tv" : "/tv/" + action, "", body, 40000);
-  if (st != 200 || body.size() < 2 || body[0] != '{') return error(502, "Couldn't ask YouTube. Is the Rondo online?");
+  if (st != 200 || body.size() < 2 || body[0] != '{') return error(502, tr("api.youtube.noAnswer"));
   // signed in or out since the last look: what was cached for the other account goes
   static int lastIn = -1;
   int in = body.find("\"signedIn\":true") != std::string::npos;
@@ -605,6 +606,8 @@ Response Server::index() {
     if (at != std::string::npos) html.replace(at, from.size(), to);
   };
   stampIn("href=\"app.css\"", "href=\"app.css?v=" + stamp + "\"");
+  // the page speaks the Rondo's language (app.js loads /lang/<it>.json)
+  stampIn("<html lang=\"en\">", "<html lang=\"" + lang::current() + "\">");
   stampIn("src=\"app.js\"", "src=\"app.js?v=" + stamp + "\"");
   Response res;
   res.type = "text/html; charset=utf-8";
@@ -637,6 +640,14 @@ Response Server::serve(Request& r) {
   const std::string& u = r.path;
   if (u.compare(0, 5, "/api/") == 0) return api(r, u.substr(4));
   if (u.compare(0, 7, "/fonts/") == 0) return file("fonts/" + u.substr(7));
+  // the page's texts in a language, English's where it has none (lang/*.json's "dashboard")
+  if (u.compare(0, 6, "/lang/") == 0 && u.size() > 11 && u.compare(u.size() - 5, 5, ".json") == 0) {
+    Response res;
+    res.type = "application/json; charset=utf-8";
+    res.body = lang::pageStrings("dashboard", u.substr(6, u.size() - 11));
+    res.headers.push_back({"Cache-Control", "no-cache"});
+    return res;
+  }
   if (u == "/" || u.empty() || u == "/index.html") return index();
   return file("dashboard" + u);
 }
@@ -864,7 +875,7 @@ Response Server::status() {
         std::string mac = aboutMac();
         *about = obj({{"mac", mac.empty() ? kNull : str(mac)},
                       {"timeZone", str(aboutTimeZone())},
-                      {"connectTo", str(directMode() ? "Directly to YouTube" : g_config.server.url.empty() ? "Not set up" : g_config.server.url)}});
+                      {"connectTo", str(directMode() ? tr("api.about.direct") : g_config.server.url.empty() ? tr("api.about.notSetUp") : g_config.server.url)}});
       }))
     return error(500, "device busy");
   return json(obj({{"device", device}, {"battery", battery}, {"storage", storage}, {"wifi", *wifi}, {"about", *about}, {"player", *player}}));
@@ -1330,15 +1341,16 @@ std::string playlistIdIn(const std::string& text) {
 
 std::string subtitleChoicesJson() {
   std::vector<std::string> sizes, colors, edges, langs;
-  for (const char* n : kSubSizes) sizes.push_back(str(n));
+  // the names in the Rondo's language (subtitles.h holds their keys)
+  for (const char* n : kSubSizes) sizes.push_back(str(tr(n)));
   for (const SubColor& c : kSubColors) {
     char hex[8];
     snprintf(hex, sizeof(hex), "#%06x", unsigned(c.rgb));
-    colors.push_back(obj({{"name", str(c.name)}, {"hex", str(hex)}}));
+    colors.push_back(obj({{"name", str(tr(c.name))}, {"hex", str(hex)}}));
   }
-  for (const char* n : kSubEdges) edges.push_back(str(n));
+  for (const char* n : kSubEdges) edges.push_back(str(tr(n)));
   for (const char* l : {"", "en", "az", "tr", "ru", "de", "fr", "es", "it", "pt", "ar", "fa", "uk", "ja", "ko", "zh", "hi"})
-    langs.push_back(obj({{"code", str(l)}, {"name", str(*l ? languageName(l) : "The video's own")}}));
+    langs.push_back(obj({{"code", str(l)}, {"name", str(*l ? languageName(l) : tr("subtitles.videosOwn"))}}));
   return obj({{"sizes", arr(sizes)}, {"colors", arr(colors)}, {"edges", arr(edges)}, {"languages", arr(langs)}});
 }
 
@@ -1363,7 +1375,9 @@ std::string settingsJson() {
               {"subBack", num(int64_t(g_prefs.subBack))},
               {"subBackOpacity", num(int64_t(g_prefs.subBackOpacity))},
               {"subEdge", num(int64_t(g_prefs.subEdge))},
-              {"subChoices", subtitleChoicesJson()}});
+              {"subChoices", subtitleChoicesJson()},
+              // Settings › Language (the page's own list of them comes with its texts)
+              {"language", str(lang::current())}});
 }
 
 std::string putSettings(const Body& b) {
@@ -1386,8 +1400,8 @@ std::string putSettings(const Body& b) {
   if (b.flag("clickSound", f)) g_prefs.clickSound = f;
   // subtitles: on or off, the language, the look (each in its range), or YouTube's look again
   if (b.flag("subtitles", f)) g_prefs.subtitles = f;
-  std::string lang;
-  if (b.text("subLang", lang)) g_prefs.subLang = cleanLang(lang);
+  std::string code;
+  if (b.text("subLang", code)) g_prefs.subLang = cleanLang(code);
   auto pick = [&](const char* k, int& out, int lo, int hi) {
     if (b.integer(k, v)) out = int(std::max<int64_t>(lo, std::min<int64_t>(hi, v)));
   };
@@ -1398,6 +1412,9 @@ std::string putSettings(const Body& b) {
   pick("subBackOpacity", g_prefs.subBackOpacity, 0, 100);
   pick("subEdge", g_prefs.subEdge, 0, 4);
   if (b.flag("subReset", f) && f) resetSubtitleStyle();
+  // the language: the Rondo's, and so this page's (it loads again)
+  if (b.text("language", code) && code != lang::current() && !lang::nameOf(cleanLang(code)).empty())
+    setLanguage(cleanLang(code), LanguageFrom::Dashboard);
   savePrefsNow();
   bool changed = false;
   if (b.flag("lyricsOnOpen", f)) g_config.behavior.lyricsOnOpen = f, changed = true;
@@ -1420,7 +1437,7 @@ std::string themeJson() {
     if (m.id == "settings") f.push_back({"locked", "true"});
     menu.push_back(obj(f));
   }
-  for (const AccentPreset& p : kAccentPresets) presets.push_back(obj({{"name", str(p.name)}, {"accent", str(p.color)}}));
+  for (const AccentPreset& p : kAccentPresets) presets.push_back(obj({{"name", str(accentName(p))}, {"accent", str(p.color)}}));
   return obj({{"accent", str(t.accent)},
               {"appearance", str(t.appearance)},
               {"textScale", num(double(t.textScale))},
@@ -1605,7 +1622,7 @@ std::string filesJson(const std::string& dir) {
     if (dir != r && inside(dir)) parent = dir.substr(0, dir.rfind('/'));
   std::vector<std::string> roots;
   for (const char* r : kRoots)
-    if (isDirPath(r)) roots.push_back(obj({{"path", str(r)}, {"name", str(std::string(r) == kRoots[0] ? "Card" : "Internal storage")}}));
+    if (isDirPath(r)) roots.push_back(obj({{"path", str(r)}, {"name", str(files::rootName(r))}}));  // as Library › Files names them
   return obj({{"path", str(dir)}, {"parent", parent.empty() ? kNull : str(parent)}, {"entries", arr(entries)}, {"roots", arr(roots)}});
 }
 bool isRoot(const std::string& p) {
@@ -1728,9 +1745,18 @@ std::vector<std::string> songPaths(const Body& b, bool& ok) {
   return out;
 }
 
-// a Playlists problem: 409 for a name in use, else 400
-Response playlistResult(const std::string& problem, const std::string& name) {
-  if (!problem.empty()) return error(problem.compare(0, 15, "There's already") == 0 ? 409 : 400, problem);
+// whether `wanted` is another playlist's name than `self`'s ("": a new one), as create() and update()
+// find it: told from the playlists, not from the problem's words (those are in the Rondo's language)
+bool nameTaken(const std::string& wanted, const std::string& self) {
+  std::string c = Playlists::clean(wanted);
+  Playlist other, mine;
+  if (c.empty() || !g_playlists.get(c, other)) return false;
+  return self.empty() || (g_playlists.get(self, mine) && mine.name != other.name);
+}
+
+// a Playlists problem: 409 for a name in use (taken), else 400
+Response playlistResult(const std::string& problem, const std::string& name, bool taken = false) {
+  if (!problem.empty()) return error(taken ? 409 : 400, problem);
   Playlist p;
   if (!name.empty() && g_playlists.get(name, p)) return json(playlistJson(p));
   return okBody();
@@ -2047,7 +2073,7 @@ Response Server::api(Request& r, const std::string& path) {
     b->text("video", video), b->integer("quality", q), b->flag("song", song), b->flag("playlist", wantList);
     // a YouTube Music playlist: all its songs, and a playlist of them in Library (downloads.h)
     std::string list = playlistIdIn(video);
-    if (wantList && list.empty()) return error(400, "That isn't a playlist's link or id");
+    if (wantList && list.empty()) return error(400, tr("api.download.notPlaylist"));
     if (!list.empty()) {
       std::string title, body;
       if (coreCall(false, "/music/playlist/" + rondo::Api::escape(list), "", body, 60000) == 200)
@@ -2058,13 +2084,13 @@ Response Server::api(Request& r, const std::string& path) {
         }
       return onUi([list, title] {
         PlaylistDownload had;
-        if (playlistDownload(list, had) && had.loading) return error(409, "Its songs are being asked for already");
+        if (playlistDownload(list, had) && had.loading) return error(409, tr("api.download.listLoading"));
         downloadPlaylist(list, title.empty() ? (had.title.empty() ? "Playlist" : had.title) : title);
         return json(downloadsJson());
       });
     }
     id = videoIdIn(video);
-    if (id.empty()) return error(400, "That isn't a YouTube link, a playlist or a video id");
+    if (id.empty()) return error(400, tr("api.download.notLink"));
     if (song) {  // a YouTube Music song: its details for the list (the download asks again for its tags)
       Item item;
       item.kind = "song", item.id = id;
@@ -2081,9 +2107,9 @@ Response Server::api(Request& r, const std::string& path) {
           yyjson_doc_free(d);
         }
       return onUi([item] {
-        if (!downloadedSong(item.id).empty()) return error(409, "It's on the card already");
+        if (!downloadedSong(item.id).empty()) return error(409, tr("api.download.onCard"));
         for (const DownloadJob& j : downloadJobs())
-          if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, "It's downloading already");
+          if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, tr("api.download.already"));
         downloadSong(item);
         return json(downloadsJson());
       });
@@ -2099,9 +2125,9 @@ Response Server::api(Request& r, const std::string& path) {
     }
     item.thumb = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
     return onUi([item, quality] {
-      if (!downloadedFile(item.id).empty()) return error(409, "It's on the card already");
+      if (!downloadedFile(item.id).empty()) return error(409, tr("api.download.onCard"));
       for (const DownloadJob& j : downloadJobs())
-        if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, "It's downloading already");
+        if (j.id == item.id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return error(409, tr("api.download.already"));
       downloadVideo(item, quality);
       return json(downloadsJson());
     });
@@ -2154,8 +2180,8 @@ Response Server::api(Request& r, const std::string& path) {
     std::string q = r.param("q"), body;
     if (q.empty()) return error(400, "q");
     int st = coreCall(false, "/eq/search?q=" + rondo::Api::escape(q), "", body, 60000);
-    if (st == 404) return error(404, "This server can't look headphones up yet: update it");
-    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : "The server didn't answer");
+    if (st == 404) return error(404, tr("api.sound.matchOld"));
+    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : tr("common.serverNoAnswer"));
     return json(body);
   }
   if (path == "/sound/match" && m == "POST") {  // one model's correction, for an output
@@ -2163,9 +2189,9 @@ Response Server::api(Request& r, const std::string& path) {
     b->text("output", output), b->text("id", id), b->text("name", name), b->text("source", source);
     if (id.empty() || output.empty()) return error(400, "id");
     int st = coreCall(false, "/eq/preset?id=" + rondo::Api::escape(id), "", body, 60000);
-    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : "The server didn't answer");
+    if (st != 200) return error(502, st ? "HTTP " + std::to_string(st) : tr("common.serverNoAnswer"));
     return onUi([output, body, name, source] {
-      if (!soundSetMatch(output, body, name, source)) return error(502, "That model's correction didn't come");
+      if (!soundSetMatch(output, body, name, source)) return error(502, tr("api.sound.matchFailed"));
       return json(soundPageJson());
     });
   }
@@ -2243,7 +2269,7 @@ Response Server::api(Request& r, const std::string& path) {
     std::string text;
     if (m == "PUT") {
       b->text("cookies", text);
-      if (!direct::isCookiesText(text)) return error(400, "That isn\xe2\x80\x99t a cookies.txt file with youtube.com cookies. Export it again while youtube.com is open.");
+      if (!direct::isCookiesText(text)) return error(400, tr("api.youtube.notCookies"));
     }
     std::string ok = onUiValue<std::string>([text, m] {
       std::string file = g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "youtube-cookies.txt";
@@ -2256,7 +2282,7 @@ Response Server::api(Request& r, const std::string& path) {
         if (fd >= 0) w = close(fd) == 0 && w;
         if (!w || rename(tmp.c_str(), file.c_str()) != 0) {
           unlink(tmp.c_str());
-          return std::string("Couldn't save it on the Rondo");
+          return tr("api.youtube.cookiesNotSaved");
         }
       }
       accountChanged();  // the cached answers were the other account's
@@ -2280,7 +2306,7 @@ Response Server::api(Request& r, const std::string& path) {
   }
   if (path == "/update" && m == "GET")
     return json(obj({{"version", str(kVersion)}, {"canInstall", boolean(updatesAvailable())}, {"firmware", num(int64_t(firmwareLevel()))},
-                     {"problem", updatesAvailable() ? kNull : str("Updates need the Rondo firmware")}}));
+                     {"problem", updatesAvailable() ? kNull : str(tr("api.update.needsFirmware"))}}));
   if (path == "/update" && m == "PUT") {
     Response res = update(r);
     if (res.status != 200) res.close = true;
@@ -2364,16 +2390,21 @@ Response Server::api(Request& r, const std::string& path) {
     return onUi([b] {
       std::string dir, name;
       b->text("path", dir), b->text("name", name);
+      // 404 when the folder isn't there, as makeFolder finds it (its words are in the Rondo's language)
+      bool gone = !files::entryName(name).empty() && !((files::isRoot(dir) || files::inside(dir)) && files::isDir(dir));
       std::string why = files::makeFolder(dir, name);
-      if (!why.empty()) return error(why == "That folder isn't there" ? 404 : 409, why);
+      if (!why.empty()) return error(gone ? 404 : 409, why);
       return json(filesJson(dir));
     });
   if (path == "/files/rename" && m == "POST")  // a file or folder, in its folder
     return onUi([b] {
       std::string from, name;
       b->text("path", from), b->text("name", name);
+      // 404 when it isn't there any more, as renameEntry finds it (its words are in the Rondo's language)
+      struct stat st;
+      bool gone = !files::entryName(name).empty() && !(files::inside(from) && lstat(from.c_str(), &st) == 0);
       std::string why = files::renameEntry(from, name);
-      if (!why.empty()) return error(why == "It isn't there any more" ? 404 : 409, why);
+      if (!why.empty()) return error(gone ? 404 : 409, why);
       return json(filesJson(from.substr(0, from.rfind('/'))));
     });
   // files and folders into another folder: at once on one storage; between the card and the internal
@@ -2389,7 +2420,7 @@ Response Server::api(Request& r, const std::string& path) {
       auto answer = std::make_shared<files::Result>();
       auto finished = std::make_shared<bool>(false);
       bool started = files::transfer(paths, to, copy, [answer, finished](const files::Result& r) { *answer = r, *finished = true; });
-      if (!started) return error(409, "Wait for the copy under way to finish");
+      if (!started) return error(409, tr("api.files.busy"));
       std::vector<std::string> errs;
       for (const std::string& e : answer->errors) errs.push_back(str(e));
       bool background = !*finished;  // a copy on its thread: done later
@@ -2498,19 +2529,19 @@ Response Server::api(Request& r, const std::string& path) {
       if (m == "POST") {
         b->text("name", newName);
         problem = g_playlists.create(newName, hasPaths ? paths : std::vector<std::string>());
-        return playlistResult(problem, Playlists::clean(newName));
+        return playlistResult(problem, Playlists::clean(newName), !problem.empty() && nameTaken(newName, ""));
       }
       bool youtube = name.compare(0, strlen(Playlists::kYouTube) + 1, std::string(Playlists::kYouTube) + "/") == 0;
       if (m == "PUT") {
-        if (youtube) return error(409, "It follows the playlist on YouTube Music: update its download instead");
+        if (youtube) return error(409, tr("api.playlists.followsYouTube"));
         bool renamed = b->text("name", newName);
         problem = g_playlists.update(name, renamed ? &newName : nullptr, hasPaths ? &paths : nullptr);
-        return playlistResult(problem, renamed ? Playlists::clean(newName) : name);
+        return playlistResult(problem, renamed ? Playlists::clean(newName) : name, !problem.empty() && renamed && nameTaken(newName, name));
       }
       if (youtube) {  // songs=1: its songs go too (those nothing else keeps)
         Playlist had;
-        if (!g_playlists.get(name, had)) return playlistResult("That playlist is gone", "");
-        return playlistResult(deleteLibraryPlaylist(name, songsToo) ? "" : "Couldn't delete it", "");
+        if (!g_playlists.get(name, had)) return playlistResult(tr("api.playlists.gone"), "");
+        return playlistResult(deleteLibraryPlaylist(name, songsToo) ? "" : tr("api.playlists.notDeleted"), "");
       }
       problem = g_playlists.remove(name);
       return playlistResult(problem, "");

@@ -13,6 +13,7 @@
 #include <unordered_set>
 
 #include "fold.h"
+#include "lang.h"
 #include "library.h"
 
 namespace rondo {
@@ -251,40 +252,40 @@ bool Playlists::write(const std::string& file, const std::vector<std::string>& p
 
 std::string Playlists::create(const std::string& name, const std::vector<std::string>& paths) {
   std::string c = clean(name);
-  if (c.empty()) return "Give it a name";
-  if (!fileOf(c).empty()) return "There's already a playlist called \xe2\x80\x9c" + c + "\xe2\x80\x9d";
+  if (c.empty()) return tr("playlists.err.noName");
+  if (!fileOf(c).empty()) return tr("playlists.err.exists", {{"name", c}});
   mkdir(dir_.c_str(), 0775);
   struct stat st;
-  if (stat(dir_.c_str(), &st) != 0) return "The card isn't available";
-  return write(dir_ + "/" + c + ".m3u8", paths) ? "" : "Couldn't save the playlist";
+  if (stat(dir_.c_str(), &st) != 0) return tr("playlists.err.noCard");
+  return write(dir_ + "/" + c + ".m3u8", paths) ? "" : tr("playlists.err.cantSave");
 }
 
 std::string Playlists::update(const std::string& name, const std::string* newName, const std::vector<std::string>* paths) {
   std::string file = fileOf(name);
-  if (file.empty()) return "That playlist is gone";
+  if (file.empty()) return tr("playlists.err.gone");
   std::vector<std::string> songs = paths ? *paths : read(file);
   std::string target = file;
   if (newName) {
     std::string c = clean(*newName);
-    if (c.empty()) return "Give it a name";
+    if (c.empty()) return tr("playlists.err.noName");
     bool youtube = file.compare(0, dir_.size() + 1 + strlen(kYouTube) + 1, dir_ + "/" + kYouTube + "/") == 0;  // stays in its folder
     std::string other = fileOf(youtube ? youTubeKey(c) : c);
-    if (!other.empty() && other != file) return "There's already a playlist called \xe2\x80\x9c" + c + "\xe2\x80\x9d";
+    if (!other.empty() && other != file) return tr("playlists.err.exists", {{"name", c}});
     target = file.substr(0, file.rfind('/')) + "/" + c + ".m3u8";
   }
-  if (target == file) return write(file, songs) ? "" : "Couldn't save the playlist";
+  if (target == file) return write(file, songs) ? "" : tr("playlists.err.cantSave");
   if (strcasecmp(target.c_str(), file.c_str()) == 0) {  // only the case changes: FAT sees one file
     unlink(file.c_str());
-    return write(target, songs) ? "" : "Couldn't save the playlist";
+    return write(target, songs) ? "" : tr("playlists.err.cantSave");
   }
-  if (!write(target, songs)) return "Couldn't save the playlist";
+  if (!write(target, songs)) return tr("playlists.err.cantSave");
   unlink(file.c_str());
   return "";
 }
 
 std::string Playlists::add(const std::string& name, const std::vector<std::string>& paths) {
   Playlist p;
-  if (!get(name, p)) return "That playlist is gone";
+  if (!get(name, p)) return tr("playlists.err.gone");
   for (const auto& s : paths)
     if (std::find(p.paths.begin(), p.paths.end(), s) == p.paths.end()) p.paths.push_back(s);
   return update(name, nullptr, &p.paths);
@@ -293,7 +294,7 @@ std::string Playlists::add(const std::string& name, const std::vector<std::strin
 std::string Playlists::remove(const std::string& name) {
   std::string file = fileOf(name);
   if (file.empty()) return "";
-  return unlink(file.c_str()) == 0 ? "" : "Couldn't delete it";
+  return unlink(file.c_str()) == 0 ? "" : tr("playlists.err.cantDelete");
 }
 
 void Playlists::forget(const std::string& path) {

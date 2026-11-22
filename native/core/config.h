@@ -55,13 +55,14 @@ struct Config {
 
 // The main menu ids in their default order, and their labels.
 extern const char* const kMenuIds[7];
-const char* menuLabel(const std::string& id);
+std::string menuLabel(const std::string& id);
 extern const float kTextScales[3];
 struct AccentPreset {
-  const char* name;
+  const char* name;  // its name's key in lang/ (accentName() is the name in the language spoken)
   const char* color;
 };
 extern const AccentPreset kAccentPresets[6];
+std::string accentName(const AccentPreset& p);
 
 // Every menu id once, Settings visible, a valid accent, a known text scale (Config.kt sanitize()).
 void sanitize(Theme& t);

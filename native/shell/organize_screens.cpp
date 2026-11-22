@@ -108,15 +108,15 @@ std::vector<std::pair<std::string, OrganizePlan>> organizePlans(const OrganizeNa
 
 // "" when started, else why not
 std::string organizeStart(const OrganizeNames& names) {
-  if (g_library.scanning()) return "The card is being read: try again in a moment";
-  if (fillInWriting()) return "The dashboard's Fill in is saving into the songs: try again when it's done";
+  if (g_library.scanning()) return tr("organize.cardBusy");
+  if (fillInWriting()) return tr("organize.fillInBusy");
   std::vector<std::pair<std::string, OrganizePlan>> plans = organizePlans(names);
   int total = 0;
   for (auto& p : plans) total += int(p.second.moves.size());
   {
     std::lock_guard<std::mutex> l(g_job.mu);
-    if (g_job.running) return "Organizing already";
-    if (!total) return "Everything is where it belongs";
+    if (g_job.running) return tr("organize.already");
+    if (!total) return tr("organize.allInPlace");
     g_job.running = true, g_job.finished = false, g_job.done = 0, g_job.total = total, g_job.result = OrganizeResult();
   }
   auto work = new std::vector<std::pair<std::string, OrganizePlan>>(std::move(plans));
@@ -167,7 +167,7 @@ std::string shortPath(const std::string& p) {
 // the moves themselves, file by file
 class MovesScreen : public ShellListScreen {
  public:
-  explicit MovesScreen(std::vector<OrganizeMove> moves) : ShellListScreen("The moves") {
+  explicit MovesScreen(std::vector<OrganizeMove> moves) : ShellListScreen(tr("organize.moves")) {
     std::vector<Row> rows;
     for (const OrganizeMove& m : moves) {
       Row r;
@@ -183,7 +183,7 @@ class MovesScreen : public ShellListScreen {
 class OrganizingScreen : public ShellListScreen {
  public:
   // pops: the screens Done closes (this one, and the summary when it came from there)
-  explicit OrganizingScreen(int pops = 2) : ShellListScreen("Organizing"), pops_(pops) { render(); }
+  explicit OrganizingScreen(int pops = 2) : ShellListScreen(tr("organize.organizing")), pops_(pops) { render(); }
   bool onAction(Action a, int steps) override {
     if (organizeStatus().running) return true;  // nothing until the moves are done
     return ShellListScreen::onAction(a, steps);
@@ -200,13 +200,14 @@ class OrganizingScreen : public ShellListScreen {
     OrganizeStatus s = organizeStatus();
     shownDone_ = s.done, shownRunning_ = s.running;
     if (s.running) {
-      list_.setMessage("Moving " + std::to_string(s.done) + " of " + std::to_string(s.total) + "\xe2\x80\xa6\nKeep Rondo on.");
+      list_.setMessage(tr("organize.moving", {{"done", s.done}, {"total", s.total}}));
       return;
     }
     std::vector<Row> rows;
     Row h;
     h.header = true;
-    h.title = std::to_string(s.moved) + " files moved" + (s.errors.empty() ? "" : ", " + std::to_string(s.errors.size()) + " couldn't be");
+    h.title = tr("organize.filesMoved", {{"count", s.moved}}) +
+              (s.errors.empty() ? "" : ", " + tr("organize.couldntBe", {{"count", s.errors.size()}}));
     rows.push_back(h);
     for (size_t i = 0; i < s.errors.size() && i < 30; i++) {
       Row r;
@@ -215,7 +216,7 @@ class OrganizingScreen : public ShellListScreen {
       rows.push_back(r);
     }
     Row ok;
-    ok.title = "Done";
+    ok.title = tr("organize.done");
     int pops = pops_;
     ok.onSelect = [pops] {
       for (int i = 0; i < pops; i++) g_app->pop();
@@ -230,16 +231,16 @@ class OrganizingScreen : public ShellListScreen {
 
 class OrganizeConfirmScreen : public ShellListScreen {
  public:
-  explicit OrganizeConfirmScreen(int files) : ShellListScreen("Organize the card") {
+  explicit OrganizeConfirmScreen(int files) : ShellListScreen(tr("organize.title")) {
     Row q;
     q.header = true;
-    q.title = "Move " + std::to_string(files) + " files?";
+    q.title = tr("organize.moveQuestion", {{"count", files}});
     Row cancel;
-    cancel.title = "Cancel";
+    cancel.title = tr("common.cancel");
     cancel.onSelect = [] { g_app->pop(); };
     Row go;
-    go.title = "Organize";
-    go.subtitle = "Playlists, plays and ratings go along";
+    go.title = tr("organize.organize");
+    go.subtitle = tr("organize.goAlong");
     go.tile = &tiles::organize;
     go.onSelect = [] {
       std::string why = organizeStart();
@@ -253,7 +254,7 @@ class OrganizeConfirmScreen : public ShellListScreen {
 
 class OrganizeScreen : public ShellListScreen {
  public:
-  OrganizeScreen() : ShellListScreen("Organize the card") { render(); }
+  OrganizeScreen() : ShellListScreen(tr("organize.title")) { render(); }
   // worked out again only when the library changed (back from the moves' list it hasn't)
   void onShow() override {
     if (generation_ != g_library.generation()) render();
@@ -278,22 +279,22 @@ class OrganizeScreen : public ShellListScreen {
     };
     Row h;
     h.header = true;
-    h.title = moves.empty() ? "Everything is where it belongs" : "Folders as Jellyfin expects them";
+    h.title = moves.empty() ? tr("organize.allInPlace") : tr("organize.asJellyfin");
     rows.push_back(h);
-    info("Songs", "Music/Artist/Album (Year)/01 - Title", std::to_string(songs));
-    info("Videos", "Videos/Shows/Series (Years)/Season 01 or Videos/Movies", std::to_string(videos));
-    if (sidecars) info("Lyrics and subtitles", "With their songs and videos", std::to_string(sidecars));
-    if (covers) info("Folder pictures", "With their albums", std::to_string(covers));
-    if (there) info("Already in place", "", std::to_string(there));
+    info(tr("library.songs"), tr("organize.songsLayout"), std::to_string(songs));
+    info(tr("library.videos"), tr("organize.videosLayout"), std::to_string(videos));
+    if (sidecars) info(tr("organize.sidecars"), tr("organize.sidecarsNote"), std::to_string(sidecars));
+    if (covers) info(tr("organize.covers"), tr("organize.coversNote"), std::to_string(covers));
+    if (there) info(tr("organize.alreadyThere"), "", std::to_string(there));
     if (!moves.empty()) {
       Row see;
-      see.title = "See the moves";
+      see.title = tr("organize.seeMoves");
       see.chevron = true;
       see.onSelect = [moves] { g_app->push(std::unique_ptr<Screen>(new MovesScreen(moves))); };
       rows.push_back(see);
       Row go;
-      go.title = "Organize";
-      go.subtitle = "Moves the files on the card";
+      go.title = tr("organize.organize");
+      go.subtitle = tr("organize.movesFiles");
       go.tile = &tiles::organize;
       go.chevron = true;
       int n = int(moves.size());

@@ -1,5 +1,7 @@
 #include "kit.h"
 
+#include "../core/lang.h"
+
 #include "../core/fold.h"
 
 #include <stdio.h>
@@ -113,6 +115,7 @@ const Tile sound{Icon::Volume, rgb(0x7be07b), rgb(0x26a83b)};  // Click sound
 const Tile clock{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile update{Icon::Download, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile about{Icon::Info, rgb(0xb8bcc4), rgb(0x6f747d)};
+const Tile language{Icon::Globe, rgb(0x4fc3f7), rgb(0x0288d1)};  // Settings › Language
 const Tile power{Icon::Power, rgb(0xff7a7a), rgb(0xe0283c)};
 const Tile restart{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
 // Library: its sections
@@ -212,20 +215,23 @@ std::string clockTime(time_t t, bool clock24) {
   struct tm tm;
   localtime_r(&t, &tm);
   char b[16];
-  if (clock24) snprintf(b, sizeof(b), "%02d:%02d", tm.tm_hour, tm.tm_min);
-  else snprintf(b, sizeof(b), "%d:%02d %s", tm.tm_hour % 12 ? tm.tm_hour % 12 : 12, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
-  return b;
+  if (clock24) {
+    snprintf(b, sizeof(b), "%02d:%02d", tm.tm_hour, tm.tm_min);
+    return b;
+  }
+  snprintf(b, sizeof(b), "%02d", tm.tm_min);
+  return tr("time.twelveHour", {{"hour", tm.tm_hour % 12 ? tm.tm_hour % 12 : 12}, {"minute", b},
+                                {"ampm", tr(tm.tm_hour < 12 ? "time.am" : "time.pm")}});
 }
 
 std::string clockDate(time_t t, bool weekdayAndYear) {
-  static const char* kDays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-  static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
   struct tm tm;
   localtime_r(&t, &tm);
-  char b[32];
-  if (weekdayAndYear) snprintf(b, sizeof(b), "%s, %s %d, %d", kDays[tm.tm_wday], kMonths[tm.tm_mon], tm.tm_mday, tm.tm_year + 1900);
-  else snprintf(b, sizeof(b), "%s %d", kMonths[tm.tm_mon], tm.tm_mday);
-  return b;
+  // the names in the language spoken: date.day0 (Sunday) to date.day6, date.month1 to date.month12
+  std::string month = tr("date.month" + std::to_string(tm.tm_mon + 1));
+  if (!weekdayAndYear) return tr("date.short", {{"month", month}, {"day", tm.tm_mday}});
+  return tr("date.long", {{"weekday", tr("date.day" + std::to_string(tm.tm_wday))}, {"month", month}, {"day", tm.tm_mday},
+                          {"year", std::to_string(tm.tm_year + 1900)}});
 }
 
 void readClock(Status& s, bool clock24) {
@@ -306,7 +312,7 @@ int RowList::firstSelectable() const {
 void RowList::setRows(std::vector<Row> rows, bool keepSelection) {
   int previous = selected_;
   rows_ = std::move(rows);
-  message_ = rows_.empty() ? "Nothing here yet" : "";
+  message_ = rows_.empty() ? tr("common.nothingHere") : "";
   selected_ = keepSelection && selectable(previous) ? previous : firstSelectable();
   top_.clear();
   placed_ = false;
@@ -481,8 +487,8 @@ void RowList::draw(Env& e, float x, float y) {
     int padL = e.dp(8), padR = e.dp(10);
     bool hasTile = r.tile || !r.thumb.empty();
     int tileW = hasTile ? e.dp(26) + e.dp(9) : 0;
-    Label tr = label(e, r.trailing, 12, false);
-    int trailW = e.dp(6) + tr.w;
+    Label trail = label(e, r.trailing, 12, false);
+    int trailW = e.dp(6) + trail.w;
     int chevW = r.chevron ? e.dp(5) + e.dp(8) : 0;
     float colW = w_ - padL - padR - tileW - trailW - chevW;
     Label tl = label(e, r.title, r.subtitle.empty() ? 15 : 13.5f, sel > 0.5f, colW);
@@ -509,8 +515,8 @@ void RowList::draw(Env& e, float x, float y) {
     Color ink = mix(r.enabled ? p.text : p.disabled, p.white, sel);
     drawLabel(e, tl, tx, colTop, ink);
     if (!r.subtitle.empty()) drawLabel(e, sl, tx, colTop + tl.h + e.dp(1), mix(p.muted, 0xdcffffff, sel));
-    float trx = x + w_ - padR - chevW - tr.w;
-    drawLabel(e, tr, trx, top + float((int(H) - tr.h) / 2), mix(r.enabled ? p.muted : p.disabled, p.white, sel));
+    float trx = x + w_ - padR - chevW - trail.w;
+    drawLabel(e, trail, trx, top + float((int(H) - trail.h) / 2), mix(r.enabled ? p.muted : p.disabled, p.white, sel));
     if (r.chevron) {
       int cw = e.dp(8), ch = e.dp(12);
       e.icons.draw(c, Icon::Chevron, {x + w_ - padR - cw, top + float((int(H) - ch) / 2), float(cw), float(ch)},
@@ -600,9 +606,9 @@ void RowList::drawMusic(Env& e, float x, float y) {
       end -= e.dp(5);
     }
     if (!r.trailing.empty()) {
-      Label tr = label(e, r.trailing, 11, false);
-      end -= tr.w;
-      drawLabel(e, tr, end, ctop + float((ch - tr.h) / 2), mix(p.darkMuted, p.focusMuted, sel));
+      Label trail = label(e, r.trailing, 11, false);
+      end -= trail.w;
+      drawLabel(e, trail, end, ctop + float((ch - trail.h) / 2), mix(p.darkMuted, p.focusMuted, sel));
       end -= e.dp(6);
     }
     float colW = end - colX;

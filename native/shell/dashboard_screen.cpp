@@ -34,7 +34,7 @@ class DashboardScreen : public Screen {
     stop();
     destroyTexture(qr_);
   }
-  std::string title() const override { return "Dashboard"; }
+  std::string title() const override { return tr("dashboardScreen.title"); }
   void onShow() override { start(); }
   void onHide() override { stop(); }
   bool keepScreenOn() const override { return dashboardRunning(); }
@@ -66,7 +66,7 @@ class DashboardScreen : public Screen {
     e.c.layer(0);
     e.c.fill({0, 0, w, h}, p.shellBg);
     // the note at the bottom, on the header's color
-    Label hint = label(e, "Keep this screen open while you use the dashboard \xc2\xb7 Menu stops it", 10, false, w);
+    Label hint = label(e, tr("dashboardScreen.hint"), 10, false, w);
     float hintH = float(hint.h + 2 * e.dp(5));
     e.c.fill({0, h - hintH, w, hintH}, p.header);
     e.c.layer(1);
@@ -74,9 +74,7 @@ class DashboardScreen : public Screen {
     float area = h - hintH;
     std::string ip = ipAddress();
     if (!dashboardRunning() || ip.empty()) {
-      std::string m = ip.empty() ? "Connect to Wi-Fi first.\nPress center for Settings \xe2\x80\xba Wi-Fi."
-                      : stoppedIdle_ ? "The dashboard stopped after 15 minutes without use.\nPress center to start it again."
-                                     : "The dashboard could not start.\nPress center to try again.";
+      std::string m = ip.empty() ? tr("dashboardScreen.noWifi") : stoppedIdle_ ? tr("dashboardScreen.stoppedIdle") : tr("dashboardScreen.cantStart");
       // a TextView of up to four lines, centered both ways, 20 dp in from the sides
       float tw = w - 2 * e.dp(20);
       std::vector<Label> lines;
@@ -113,9 +111,9 @@ class DashboardScreen : public Screen {
       e.c.image(qr_, {float(padX + qrPad), qrY + qrPad, float(qrSize - 2 * qrPad), float(qrSize - 2 * qrPad)}, {0, 0, 1, 1});
     }
     float cx = float(padX + qrSize + e.dp(14)), cw = w - padX - cx;
-    Label open = label(e, "OPEN ON YOUR PHONE OR COMPUTER", 10, true, cw);
+    Label open = label(e, tr("dashboardScreen.open"), 10, true, cw);
     Label address = label(e, url, 15, true, cw);
-    Label pairing = label(e, "PAIRING CODE", 10, true, cw);
+    Label pairing = label(e, tr("dashboardScreen.pairingCode"), 10, true, cw);
     // 4.2 has no letterSpacing: spaces spread the digits
     std::string c = dashboardCode(), spaced;
     for (size_t i = 0; i < c.size(); i++) spaced += std::string(i == 0 ? "" : i % 3 == 0 ? "  " : " ") + c[i];
@@ -150,7 +148,7 @@ class DashboardScreen : public Screen {
   void stop() { dashboardStop(); }
   std::string stateText() const {
     int n = dashboardBrowsers();
-    return n == 0 ? "Waiting for a browser\xe2\x80\xa6" : n == 1 ? "1 browser connected" : std::to_string(n) + " browsers connected";
+    return n == 0 ? tr("dashboardScreen.waiting") : tr("dashboardScreen.browsers", {{"count", n}});
   }
   std::string signature() const {
     return ipAddress() + "|" + (dashboardRunning() ? "1" : "0") + (stoppedIdle_ ? "1" : "0") + "|" + dashboardCode() + "|" +

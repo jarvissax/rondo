@@ -1,6 +1,8 @@
 // Subtitle files; see subtitle_file.h.
 #include "subtitle_file.h"
 
+#include "lang.h"
+
 #include <string.h>
 #include <strings.h>
 
@@ -229,7 +231,8 @@ void parseSsa(const std::vector<std::string>& lines, std::vector<Cue>& cues) {
 }  // namespace
 
 namespace {
-// two-letter codes first: a three-letter one's entry leads to its language's two-letter one
+// two-letter codes first: a three-letter one's entry leads to its language's two-letter one. The names
+// are English, as files name them ("Movie.English.srt"); what Rondo shows is languageName.<code>.
 const SubLang kLanguages[] = {
     {"en", "English"},     {"az", "Azerbaijani"}, {"tr", "Turkish"},   {"ru", "Russian"},    {"de", "German"},
     {"fr", "French"},      {"es", "Spanish"},     {"it", "Italian"},   {"pt", "Portuguese"}, {"nl", "Dutch"},
@@ -283,7 +286,11 @@ std::vector<Cue> parseSubtitles(std::string body) {
 
 std::string languageName(const std::string& code) {
   const SubLang* l = findLanguage(code);
-  return l ? l->name : code;
+  if (!l) return code;
+  // languageName.en … languageName.hr, one for each two-letter code above; English's own name where no
+  // language is read (tr() gives back the key: the host tests)
+  std::string key = std::string("languageName.") + l->code, name = tr(key);
+  return name == key ? l->name : name;
 }
 
 }  // namespace rondo

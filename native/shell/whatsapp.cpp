@@ -301,7 +301,7 @@ void WaClient::loadStatus() {
     if (gen != generation_) return;
     if (status == 404) state_ = State::Old;
     else if (status == 0) state_ = state_ == State::Unknown ? State::Offline : state_;
-    else if (status == 401) problem_ = "The server didn\xe2\x80\x99t take this Rondo: connect it again in Settings \xe2\x80\xba Server";
+    else if (status == 401) problem_ = tr("whatsapp.serverRefused");
     if (status == 200) {
       yyjson_doc* d = yyjson_read(body.data(), body.size(), 0);
       std::string s = d ? sget(yyjson_doc_get_root(d), "state") : "";
@@ -320,7 +320,7 @@ void WaClient::loadChats() {
     if (status != 200) {
       if (status == 404) state_ = State::Old;
       else if (status == 0 && state_ == State::Unknown) state_ = State::Offline;
-      if (status != 404 && !chatsLoaded_) problem_ = status ? "Couldn\xe2\x80\x99t load your chats (HTTP " + std::to_string(status) + ")" : "";
+      if (status != 404 && !chatsLoaded_) problem_ = status ? tr("whatsapp.chatsFailed", {{"status", status}}) : "";
       changed();
       if (holds_ > 0 && status != 404) postToMain([this, gen] { if (gen == generation_ && holds_ > 0) loadChats(); }, 5000);
       return;
@@ -561,7 +561,7 @@ void WaClient::sendText(const std::string& jid, const std::string& text, const s
   if (!quoted.empty()) {
     if (const auto* all = messages(jid))
       for (const WaMessage& q : *all)
-        if (q.id == quoted) m.quoted = true, m.quote = {q.id, q.sender, q.fromMe ? "You" : q.name, q.kind, q.text};
+        if (q.id == quoted) m.quoted = true, m.quote = {q.id, q.sender, q.fromMe ? tr("whatsapp.you") : q.name, q.kind, q.text};
   }
   upsert(jid, m);
   changed();
@@ -659,9 +659,9 @@ void WaClient::react(const std::string& jid, const std::string& id, const std::s
     }
     upsert(jid, before);  // as it was
     changed();
-    g_app->toast(status == 404 ? "Reacting needs Rondo server 3.4.0: update it on its admin page"
-                 : status == 0 ? "The reaction didn\xe2\x80\x99t go: no connection"
-                               : "The reaction didn\xe2\x80\x99t go (HTTP " + std::to_string(status) + ")");
+    g_app->toast(status == 404 ? tr("whatsapp.react.needsServer")
+                 : status == 0 ? tr("whatsapp.react.noConnection")
+                               : tr("whatsapp.react.failed", {{"status", status}}));
   });
 }
 
@@ -679,7 +679,8 @@ void WaClient::sent(const std::string& jid, const std::string& localId, int stat
         yyjson_doc_free(e);
       }
     }
-    g_app->toast(why.empty() ? (status ? "Not sent (HTTP " + std::to_string(status) + ")" : "Not sent: no connection") : why);
+    // the server's own reason (its words, in English) when it gave one
+    g_app->toast(why.empty() ? (status ? tr("whatsapp.notSentHttp", {{"status", status}}) : tr("whatsapp.notSentNoConnection")) : why);
     return changed();
   }
   WaMessage m = parseMessage(yyjson_doc_get_root(d));
@@ -786,7 +787,7 @@ void WaClient::media(const std::string& jid, const WaMessage& m,
     utime(kept.c_str(), nullptr);  // used now: the last to go
     return done(kept, "");
   }
-  if (!cardThere()) return done("", "The card isn\xe2\x80\x99t there to keep it on");
+  if (!cardThere()) return done("", tr("whatsapp.media.noCard"));
   std::string key = jid + "\n" + m.id;
   auto& waiting = fetching_[key];
   waiting.push_back(std::move(done));
@@ -802,9 +803,9 @@ void WaClient::media(const std::string& jid, const WaMessage& m,
     auto waiting = std::move(fetching_[key]);
     fetching_.erase(key);
     std::string problem = status == 200 ? ""
-                          : status == 410 ? "WhatsApp doesn\xe2\x80\x99t have it any more"
-                          : status == 0   ? "Couldn\xe2\x80\x99t get it: no connection"
-                                          : "Couldn\xe2\x80\x99t get it (HTTP " + std::to_string(status) + ")";
+                          : status == 410 ? tr("whatsapp.media.gone")
+                          : status == 0   ? tr("whatsapp.media.noConnection")
+                                          : tr("whatsapp.media.failed", {{"status", status}});
     for (auto& f : waiting) f(status == 200 ? file : "", problem);
     changed();
     if (status == 200) std::thread(trimMedia).detach();
@@ -820,19 +821,21 @@ std::string WaClient::previewPath(const std::string& jid, const WaMessage& m) {
 }
 
 std::string WaClient::summary(const WaMessage& m) {
-  auto len = [](int s) { return s > 0 ? " " + formatTime(s) : std::string(); };
+  // a photo's or a video's words after what it is ("Photo: …")
+  auto captioned = [&](const std::string& what) { return m.text.empty() ? what : tr("whatsapp.summary.captioned", {{"what", what}, {"text", m.text}}); };
   if (m.kind == "text") return m.text;
-  if (m.kind == "image") return m.text.empty() ? "Photo" : "Photo: " + m.text;
-  if (m.kind == "video") return (m.gif ? std::string("GIF") : "Video" + len(m.seconds)) + (m.text.empty() ? "" : ": " + m.text);
-  if (m.kind == "voice") return "Voice message" + len(m.seconds);
-  if (m.kind == "audio") return "Audio" + len(m.seconds);
-  if (m.kind == "document") return "Document: " + (m.fileName.empty() ? m.text : m.fileName);
-  if (m.kind == "sticker") return "Sticker";
-  if (m.kind == "deleted") return "This message was deleted";
-  if (m.kind == "location") return "Location";
-  if (m.kind == "contact") return "Contact: " + m.text;
-  if (m.kind == "poll") return "Poll: " + m.text;
-  return m.text.empty() ? "A message this Rondo can\xe2\x80\x99t show" : m.text;
+  if (m.kind == "image") return captioned(tr("whatsapp.photo"));
+  if (m.kind == "video")
+    return captioned(m.gif ? std::string("GIF") : m.seconds > 0 ? tr("whatsapp.videoLength", {{"length", formatTime(m.seconds)}}) : tr("whatsapp.video"));
+  if (m.kind == "voice") return m.seconds > 0 ? tr("whatsapp.voiceMessageLength", {{"length", formatTime(m.seconds)}}) : tr("whatsapp.voiceMessage");
+  if (m.kind == "audio") return m.seconds > 0 ? tr("whatsapp.audioLength", {{"length", formatTime(m.seconds)}}) : tr("whatsapp.audio");
+  if (m.kind == "document") return tr("whatsapp.summary.document", {{"name", m.fileName.empty() ? m.text : m.fileName}});
+  if (m.kind == "sticker") return tr("whatsapp.sticker");
+  if (m.kind == "deleted") return tr("whatsapp.deleted");
+  if (m.kind == "location") return tr("whatsapp.summary.location");
+  if (m.kind == "contact") return tr("whatsapp.summary.contact", {{"name", m.text}});
+  if (m.kind == "poll") return tr("whatsapp.summary.poll", {{"question", m.text}});
+  return m.text.empty() ? tr("whatsapp.summary.unsupported") : m.text;
 }
 
 // ---- the card's copy ----

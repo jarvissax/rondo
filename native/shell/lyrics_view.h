@@ -48,7 +48,7 @@ class LyricsView {
   float offsetAt(int64_t now) const;
   void pass(Env& e, Rect r, int highlight, float alpha, float offset);
 
-  std::string message_ = "Finding lyrics\xe2\x80\xa6";
+  std::string message_ = tr("lyrics.finding");
   std::vector<Line> lines_;
   bool timed_ = false, manual_ = false, dirty_ = true, placed_ = false;
   float w_ = 0, h_ = 0, total_ = 0, gap_ = 12.6f, side_ = 22, lineSmall_ = 26, lineBig_ = 32, spacing_ = 24.6f;

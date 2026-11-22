@@ -44,7 +44,7 @@ std::string dataDir() { return g_prefsPath.substr(0, g_prefsPath.rfind('/')); }
 
 class SoftwareUpdateScreen : public ShellListScreen {
  public:
-  SoftwareUpdateScreen() : ShellListScreen("Software update") { check(); }
+  SoftwareUpdateScreen() : ShellListScreen(tr("update.title")) { check(); }
   ~SoftwareUpdateScreen() override { *alive_ = false; }
 
   bool tick(int64_t) override {
@@ -58,7 +58,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
       }
       if (c.downloadState == 3) {
         state_ = kFailed;
-        why_ = "The download didn't finish: " + (c.downloadStatus ? "HTTP " + std::to_string(c.downloadStatus) : std::string("no connection"));
+        why_ = tr("update.downloadFailed", {{"why", c.downloadStatus ? "HTTP " + std::to_string(c.downloadStatus) : tr("update.noConnection")}});
         render();
         return true;
       }
@@ -102,41 +102,42 @@ class SoftwareUpdateScreen : public ShellListScreen {
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
-    auto header = [&](const char* t) {
+    auto header = [&](const std::string& title) {
       Row h;
       h.header = true;
-      h.title = t;
+      h.title = title;
       rows.push_back(h);
     };
     // a Rondo put on past these checks (over adb) on a firmware older than it needs
     if (kFirmwareNeeded > firmwareLevel())
-      add("This Rondo needs a newer firmware", "Install Rondo with Innioasis Updater CE", &tiles::update, true, nullptr);
+      add(tr("update.needsFirmware"), tr("update.needsFirmwareNote"), &tiles::update, true, nullptr);
     switch (state_) {
-      case kChecking: add("Checking for updates\xe2\x80\xa6", now, &tiles::update, false, nullptr); break;
+      case kChecking: add(tr("update.checking"), now, &tiles::update, false, nullptr); break;
       case kFailed:
-        add("Couldn't check", why_, &tiles::update, true, nullptr);
-        add("Try again", "", nullptr, true, [this] { check(); });
+        add(tr("update.couldntCheck"), why_, &tiles::update, true, nullptr);
+        add(tr("update.tryAgain"), "", nullptr, true, [this] { check(); });
         break;
       case kUpToDate:
-        add(now, "This is the newest Rondo", &tiles::update, true, nullptr, "Up to date");
-        add("Check again", "", nullptr, true, [this] { check(); });
+        add(now, tr("update.newest"), &tiles::update, true, nullptr, tr("update.upToDate"));
+        add(tr("update.checkAgain"), "", nullptr, true, [this] { check(); });
         break;
       case kNeedsFirmware:
-        add("Rondo " + info_.version + " is out", std::string("It needs a new firmware \xc2\xb7 you have ") + kVersion, &tiles::update, true, nullptr);
-        header("Install it with Innioasis Updater CE");
-        add("On a computer", "Choose Y1, Type A, then Rondo", nullptr, true, nullptr);
-        add("Your settings", "Choose Keep Data, if the Updater offers it, to keep them", nullptr, true, nullptr);
+        add(tr("update.isOut", {{"version", info_.version}}), tr("update.needsNewFirmware", {{"version", kVersion}}), &tiles::update, true, nullptr);
+        header(tr("update.installWith"));
+        add(tr("update.onComputer"), tr("update.choose"), nullptr, true, nullptr);
+        add(tr("update.yourSettings"), tr("update.keepData"), nullptr, true, nullptr);
         break;
       case kAvailable:
-        add("Rondo " + info_.version + " is out", std::string("You have ") + kVersion + " \xc2\xb7 " + bytes(uint64_t(std::max<int64_t>(0, info_.size))),
-            &tiles::update, true, nullptr);
-        add("Install now", "Rondo restarts by itself; settings, Wi-Fi and music stay", nullptr, true, [this] { install(); });
+        add(tr("update.isOut", {{"version", info_.version}}),
+            tr("update.youHave", {{"version", kVersion}, {"size", bytes(uint64_t(std::max<int64_t>(0, info_.size)))}}), &tiles::update, true,
+            nullptr);
+        add(tr("update.installNow"), tr("update.installNote"), nullptr, true, [this] { install(); });
         break;
       case kDownloading:
-        add("Downloading\xe2\x80\xa6 " + std::to_string(percent_) + "%", "Keep the Y1 on Wi-Fi", &tiles::update, false, nullptr);
+        add(tr("update.downloading", {{"percent", percent_}}), tr("update.keepWifi"), &tiles::update, false, nullptr);
         break;
       case kInstalling:
-        add("Installing\xe2\x80\xa6", "Rondo restarts by itself in a few seconds", &tiles::update, false, nullptr);
+        add(tr("update.installing"), tr("update.restartSoon"), &tiles::update, false, nullptr);
         break;
     }
     list_.setRows(std::move(rows), true);
@@ -151,7 +152,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
       UpdateInfo info;
       if (status != 200 || !parseUpdate(body, info)) {
         state_ = kFailed;
-        why_ = g_app->status().online ? "GitHub didn't answer" : "No Wi-Fi connection";
+        why_ = g_app->status().online ? tr("update.githubNoAnswer") : tr("update.noWifi");
       } else if (!isNewerVersion(info.version, kVersion)) {
         state_ = kUpToDate;
       } else if (info.firmware > firmwareLevel()) {
@@ -166,7 +167,7 @@ class SoftwareUpdateScreen : public ShellListScreen {
   void install() {
     if (!updatesAvailable()) {
       state_ = kFailed;
-      why_ = "Updates need the Rondo firmware";
+      why_ = tr("update.needsRondoFirmware");
       return render();
     }
     state_ = kDownloading;

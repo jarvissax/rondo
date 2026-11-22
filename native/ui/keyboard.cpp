@@ -38,6 +38,34 @@ bool regional(uint32_t cp) { return cp >= 0x1f1e6 && cp <= 0x1f1ff; }
 bool clings(uint32_t cp) {
   return cp == 0xfe0f || cp == 0x200d || (cp >= 0x1f3fb && cp <= 0x1f3ff) || cp == 0x20e3 || (cp >= 0xe0020 && cp <= 0xe007f);
 }
+// a tab's name: emoji.cpp's groupName() in the language spoken (the emoji's own names stay English)
+std::string groupLabel(int g) {
+  switch (g) {
+    case 0: return tr("keyboard.group.recent");
+    case 1: return tr("keyboard.group.smileys");
+    case 2: return tr("keyboard.group.people");
+    case 3: return tr("keyboard.group.animals");
+    case 4: return tr("keyboard.group.food");
+    case 5: return tr("keyboard.group.travel");
+    case 6: return tr("keyboard.group.activities");
+    case 7: return tr("keyboard.group.objects");
+    case 8: return tr("keyboard.group.symbols");
+    case 9: return tr("keyboard.group.flags");
+    default: return emoji::groupName(g);
+  }
+}
+// a skin tone's name, capitalized (emoji.cpp's toneName(): none, light … dark)
+std::string toneLabel(int t) {
+  switch (t) {
+    case 0: return tr("keyboard.skin.none");
+    case 1: return tr("keyboard.skin.light");
+    case 2: return tr("keyboard.skin.mediumLight");
+    case 3: return tr("keyboard.skin.medium");
+    case 4: return tr("keyboard.skin.mediumDark");
+    case 5: return tr("keyboard.skin.dark");
+    default: return emoji::toneName(t);
+  }
+}
 constexpr float kOmega = 43;  // the selection glide
 int gridPx(int bigPx) { return int(roundf(bigPx * 1.2f)); }  // the emoji in the list: a fifth bigger than the keys' labels
 
@@ -108,28 +136,28 @@ void Keyboard::build(Layout l) {
       add(emoji::groupIcon(g), "", 0, g, 1, Kind::Tab);
       keys_.back().group = g;
     }
-    std::string tone = std::string(emoji::toneHand(emoji::tone())) + " Tone";
+    std::string tone = tr("keyboard.toneKey", {{"hand", emoji::toneHand(emoji::tone())}});
     if (pickOnly_) {
       int t = extra_.empty() ? 5 : 3;
       add(tone, "", 4, 0, t, Kind::Tone);
-      add("Find", "", 4, t, t, Kind::FindKey);
+      add(tr("keyboard.find"), "", 4, t, t, Kind::FindKey);
       if (!extra_.empty()) add(extra_, "", 4, 2 * t, 10 - 2 * t, Kind::Extra);
     } else {
       add(tone, "", 4, 0, 2, Kind::Tone);
-      add("Find", "", 4, 2, 1, Kind::FindKey);
+      add(tr("keyboard.find"), "", 4, 2, 1, Kind::FindKey);
       add("abc", kLower, 4, 3, 1, Kind::Special);
-      add("Space", " ", 4, 4, 2, Kind::Special);
-      add("Del", kDelete, 4, 6, 2, Kind::Special);
+      add(tr("keyboard.space"), " ", 4, 4, 2, Kind::Special);
+      add(tr("keyboard.del"), kDelete, 4, 6, 2, Kind::Special);
       add(action_, "", 4, 8, 2, Kind::Action);
     }
     return;
   }
   if (l == Layout::Find) {  // what matches on top (items_), the letters, the query
     row(1, "abcdefghij"), row(2, "klmnopqrst"), row(3, "uvwxyz");
-    add("Space", " ", 3, 6, 4, Kind::Special);
+    add(tr("keyboard.space"), " ", 3, 6, 4, Kind::Special);
     add(kSmile, "", 4, 0, 2, Kind::EmojiKey);
     add("", "", 4, 2, 6, Kind::Field);
-    add("Del", kDelete, 4, 8, 2, Kind::Special);
+    add(tr("keyboard.del"), kDelete, 4, 8, 2, Kind::Special);
     return;
   }
   if (l == Layout::Lower) row(0, "abcdefghij"), row(1, "klmnopqrst"), row(2, "uvwxyz.-_@");
@@ -145,11 +173,11 @@ void Keyboard::build(Layout l) {
   }
   if (emoji_) {  // the emoji's key takes a column of Space
     add(kSmile, "", 4, 3, 1, Kind::EmojiKey);
-    add("Space", " ", 4, 4, 2, Kind::Special);
+    add(tr("keyboard.space"), " ", 4, 4, 2, Kind::Special);
   } else {
-    add("Space", " ", 4, 3, 3, Kind::Special);
+    add(tr("keyboard.space"), " ", 4, 3, 3, Kind::Special);
   }
-  add("Del", kDelete, 4, 6, 2, Kind::Special);
+  add(tr("keyboard.del"), kDelete, 4, 6, 2, Kind::Special);
   add(action_, "", 4, 8, 2, Kind::Action);
 }
 
@@ -492,32 +520,27 @@ Keyboard::Result Keyboard::handle(Key key) {
 }
 
 Keyboard::Caption Keyboard::caption() const {
-  auto count = [](size_t n, const char* one, const char* many) { return std::to_string(n) + " " + (n == 1 ? one : many); };
   if (layout_ != Layout::Emoji && layout_ != Layout::Find) return {};
   if (inList_ && item_ < int(items_.size())) {
     const Item& it = items_[size_t(item_)];
     std::string name = emoji::nameOf(it.text);
-    return {name.empty() ? it.text : name, emoji::groupName(it.group)};
+    return {name.empty() ? it.text : name, groupLabel(it.group)};
   }
   const K& k = keys_[cursor_];
   if (layout_ == Layout::Find) {
-    if (query_.empty()) return {"Find an emoji", "type a word of its name: heart, cat, flag"};
-    if (items_.empty()) return {"Nothing found", "try another word"};
-    return {count(items_.size(), "emoji", "emoji") + " found", "Menu: up to them"};
+    if (query_.empty()) return {tr("keyboard.findEmoji"), tr("keyboard.findHint")};
+    if (items_.empty()) return {tr("keyboard.nothingFound"), tr("keyboard.tryAnother")};
+    return {tr("keyboard.foundCount", {{"count", items_.size()}}), tr("keyboard.upToThem")};
   }
   switch (k.kind) {
     case Kind::Tab: {
       size_t n = 0;
       for (const Item& it : items_) n += it.group == k.group;
-      if (k.group == 0 && !n) return {"Recent", "none yet: the ones you pick come here"};
-      return {emoji::groupName(k.group), count(n, "emoji", "emoji")};
+      if (k.group == 0 && !n) return {groupLabel(0), tr("keyboard.recentNone")};
+      return {groupLabel(k.group), tr("keyboard.emojiCount", {{"count", n}})};
     }
-    case Kind::Tone: {
-      std::string t = emoji::toneName(emoji::tone());
-      t[0] = char(toupper(t[0]));
-      return {"Skin tone: " + t, "center: the next one"};
-    }
-    case Kind::FindKey: return {"Find", "an emoji by its name"};
+    case Kind::Tone: return {tr("keyboard.skinTone", {{"tone", toneLabel(emoji::tone())}}), tr("keyboard.toneHint")};
+    case Kind::FindKey: return {tr("keyboard.find"), tr("keyboard.findKeyHint")};
     default: return {};
   }
 }
@@ -627,7 +650,7 @@ void Keyboard::draw(Canvas& c, Text& text, const Palette& p, Rect area, int bigP
       }
       std::string count = query_.empty() ? "" : std::to_string(items_.size());
       float cwid = count.empty() ? 0 : text.run(small, count).width + gap * 3;
-      const TextRun& q = text.run(small, query_.empty() ? std::string("name of an emoji") : query_ + "|", r.x + r.w - x - cwid - gap * 2);
+      const TextRun& q = text.run(small, query_.empty() ? tr("keyboard.findPlaceholder") : query_ + "|", r.x + r.w - x - cwid - gap * 2);
       float baseline = roundf(r.y + r.h / 2 + (text.ascent(small) - text.descent(small)) / 2);
       text.draw(c, q, roundf(x), baseline, query_.empty() ? L.muted : col);
       if (!count.empty()) {

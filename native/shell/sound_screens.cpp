@@ -35,13 +35,20 @@ Output currentOutput() {
   if (const char* o = getenv("RONDO_SOUND_OUTPUT")) {
     std::string v = o;
     if (v.compare(0, 3, "bt:") == 0) return {"bt:test", v.substr(3)};
-    if (v == "headphones") return {"headphones", "Headphones"};
+    if (v == "headphones") return {"headphones", tr("sound.output.headphones")};
   }
   CoreState s = g_core.state();
   for (int i = 0; i < s.btCount; i++)
     if (s.bt[i].a2dp == 2) return {std::string("bt:") + s.bt[i].address, btName(s.bt[i])};
-  if (power::headset() != 0) return {"headphones", "Headphones"};
-  return {"speaker", "Speaker"};
+  if (power::headset() != 0) return {"headphones", tr("sound.output.headphones")};
+  return {"speaker", tr("sound.output.speaker")};
+}
+
+// a user preset may not take a built-in one's name, in the language spoken or in English
+bool builtInName(const std::string& name) {
+  for (const EqPreset& e : eqPresets())
+    if (name == tr(e.name) || name == lang::trIn("en", e.name)) return true;
+  return false;
 }
 
 void load() {
@@ -99,13 +106,13 @@ void leveling(int64_t now) {
 
 std::string levelingNote() {
   PlayerState s = g_player.state();
-  if (!g_sound.leveling || s.loudnessTotal <= 0) return "Songs at one loudness, measured as they play";
-  std::string n = std::to_string(s.loudnessKnown) + " of " + std::to_string(s.loudnessTotal) + " songs measured";
-  if (s.loudnessKnown < s.loudnessTotal) n += power::battery().plugged ? ", measuring" : ", the rest while charging";
-  return n;
+  if (!g_sound.leveling || s.loudnessTotal <= 0) return tr("sound.leveling.note");
+  lang::Args n = {{"known", s.loudnessKnown}, {"count", s.loudnessTotal}};
+  if (s.loudnessKnown >= s.loudnessTotal) return tr("sound.leveling.measured", n);
+  return power::battery().plugged ? tr("sound.leveling.measuring", n) : tr("sound.leveling.restWhileCharging", n);
 }
 
-std::string boostName(int db) { return db ? "+" + std::to_string(db) + " dB" : "Off"; }
+std::string boostName(int db) { return db ? "+" + std::to_string(db) + " dB" : tr("common.off"); }
 
 std::string freqName(float f) {
   return f >= 1000 ? std::to_string(int(f / 1000)) + "k" : std::to_string(int(f));
@@ -120,7 +127,7 @@ class EqualizerScreen : public Screen {
     SoundProfile& p = profile(out_.key);
     gains_ = presetGains(g_sound, p);
   }
-  std::string title() const override { return "Equalizer"; }
+  std::string title() const override { return tr("sound.equalizer"); }
   void onHide() override { saveNow(); }
   bool onAction(Action a, int steps) override {
     switch (a) {
@@ -163,7 +170,7 @@ class EqualizerScreen : public Screen {
     drawLabel(e, where, float(pad), top, p.muted);
     drawLabel(e, value, w - pad - value.w, top, p.text);
     // a slider a band, as on the dashboard: its gain over it, its frequency under it, ±12 dB
-    Label hint = label(e, "wheel: gain \xc2\xb7 Prev/Next: band \xc2\xb7 center: save as preset \xc2\xb7 hold: flat", 9, false, w);
+    Label hint = label(e, tr("sound.eq.hint"), 9, false, w);
     Label freq = label(e, "16k", 10, false), gainL = label(e, "+12", 11, true);
     float gTop = top + where.h + e.dp(8) + gainL.h + e.dp(5), gBottom = h - hint.h - e.dp(8) - freq.h - e.dp(7);
     float gh = gBottom - gTop, colW = (w - 2 * pad) / kEqBands;
@@ -216,11 +223,10 @@ class EqualizerScreen : public Screen {
     std::array<float, kEqBands> gains = gains_;
     std::string key = out_.key;
     g_app->push(makeTextEntry(
-        "Name this preset", "", "Save", "Kept with the presets, for every output", 30, nullptr,
+        tr("sound.eq.nameTitle"), "", tr("common.save"), tr("sound.eq.nameNote"), 30, nullptr,
         [](const std::string& name, std::function<void(const std::string&)> answer) {
-          if (name.empty()) return answer("Type a name");
-          for (const EqPreset& e : eqPresets())
-            if (name == e.name) return answer("That's a built-in preset's name");
+          if (name.empty()) return answer(tr("common.typeName"));
+          if (builtInName(name)) return answer(tr("sound.eq.builtInName"));
           answer("");
         },
         [gains, key](const std::string& name) {
@@ -268,7 +274,7 @@ bool parseAutoEq(const std::string& body, SoundProfile& p) {
 // with the output.
 class HeadphoneMatchScreen : public ShellListScreen {
  public:
-  explicit HeadphoneMatchScreen(Output o) : ShellListScreen("Headphone match"), out_(std::move(o)) {
+  explicit HeadphoneMatchScreen(Output o) : ShellListScreen(tr("sound.match.title")), out_(std::move(o)) {
     if (out_.key.compare(0, 3, "bt:") == 0) lookUp(out_.label);
     else render();
   }
@@ -279,14 +285,14 @@ class HeadphoneMatchScreen : public ShellListScreen {
     std::string id, name, source;
   };
   void lookUp(const std::string& q) {
-    query_ = q, state_ = "Looking\xe2\x80\xa6", found_.clear();
+    query_ = q, state_ = tr("sound.match.looking"), found_.clear();
     render();
     auto alive = alive_;
     g_core.get("/eq/search?q=" + Api::escape(q), 60000, [this, alive](int status, const std::string& body) {
       if (!*alive) return;
       found_.clear();
-      if (status == 404) state_ = "This server can't look headphones up yet: update it";
-      else if (status != 200) state_ = "The server didn't answer";
+      if (status == 404) state_ = tr("sound.match.serverTooOld");
+      else if (status != 200) state_ = tr("common.serverNoAnswer");
       else if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
         size_t i, n;
         yyjson_val* e;
@@ -298,14 +304,14 @@ class HeadphoneMatchScreen : public ShellListScreen {
           found_.push_back({str("id"), str("name"), str("source")});
         }
         yyjson_doc_free(d);
-        state_ = found_.empty() ? "No model by that name" : "";
+        state_ = found_.empty() ? tr("sound.match.noModel") : "";
       }
       fresh_ = true;  // new answers: the first of them picked
       render();
     });
   }
   void pick(Found f) {  // a copy: the row holding it goes as the list is drawn again
-    state_ = "Getting " + f.name + "\xe2\x80\xa6", found_.clear();
+    state_ = tr("sound.match.getting", {{"name", f.name}}), found_.clear();
     render();
     auto alive = alive_;
     std::string key = out_.key;
@@ -323,7 +329,7 @@ class HeadphoneMatchScreen : public ShellListScreen {
         g_app->pop();
         return;
       }
-      state_ = status == 0 ? "The server didn't answer" : "That model's correction didn't come";
+      state_ = status == 0 ? tr("common.serverNoAnswer") : tr("sound.match.noCorrection");
       render();
     });
   }
@@ -333,8 +339,8 @@ class HeadphoneMatchScreen : public ShellListScreen {
     if (!p.autoEq.empty()) {
       Row now;
       now.title = p.autoEqName;
-      now.subtitle = "In use, measured by " + p.autoEqSource;
-      now.trailing = p.preset == "autoeq" ? "Current" : "";
+      now.subtitle = tr("sound.match.inUse", {{"source", p.autoEqSource}});
+      now.trailing = p.preset == "autoeq" ? tr("common.current") : "";
       std::string key = out_.key;
       now.onSelect = [key] {
         profile(key).preset = "autoeq";
@@ -346,7 +352,7 @@ class HeadphoneMatchScreen : public ShellListScreen {
     if (!query_.empty()) {
       Row h;
       h.header = true;
-      h.title = "For \xe2\x80\x9c" + query_ + "\xe2\x80\x9d";
+      h.title = tr("sound.match.forQuery", {{"query", query_}});
       rows.push_back(h);
     }
     if (!state_.empty()) {
@@ -358,19 +364,19 @@ class HeadphoneMatchScreen : public ShellListScreen {
     for (const Found& f : found_) {
       Row r;
       r.title = f.name;
-      r.subtitle = "Measured by " + f.source;
+      r.subtitle = tr("sound.match.measuredBy", {{"source", f.source}});
       r.onSelect = [this, f] { pick(f); };
       rows.push_back(r);
     }
     Row search;
-    search.title = "Search by model";
-    search.subtitle = "From AutoEq's measurements of about 9,000 headphones";
+    search.title = tr("sound.match.search");
+    search.subtitle = tr("sound.match.searchNote");
     search.chevron = true;
     auto alive = alive_;
     search.onSelect = [this, alive] {
       g_app->push(makeTextEntry(
-          "Headphone model", query_, "Search", "Like Sennheiser HD 650 or AirPods Pro", 60, nullptr,
-          [](const std::string& q, std::function<void(const std::string&)> answer) { answer(q.empty() ? "Type a model" : ""); },
+          tr("sound.match.model"), query_, tr("sound.match.searchAction"), tr("sound.match.modelNote"), 60, nullptr,
+          [](const std::string& q, std::function<void(const std::string&)> answer) { answer(q.empty() ? tr("sound.match.typeModel") : ""); },
           [this, alive](const std::string& q) {
             if (*alive) lookUp(q);
           }, false));
@@ -388,7 +394,7 @@ class HeadphoneMatchScreen : public ShellListScreen {
 
 class SoundScreen : public ShellListScreen {
  public:
-  SoundScreen() : ShellListScreen("Sound") { render(); }
+  SoundScreen() : ShellListScreen(tr("sound.title")) { render(); }
   void onShow() override {
     out_ = currentOutput();
     render();
@@ -412,83 +418,83 @@ class SoundScreen : public ShellListScreen {
     std::string key = out_.key;
     std::vector<Row> rows;
     Row on;
-    on.title = "Playing on";
-    on.subtitle = "Each output keeps its own sound";
+    on.title = tr("sound.playingOn");
+    on.subtitle = tr("sound.playingOnNote");
     on.trailing = out_.label;
     on.tile = &tiles::output;
     on.enabled = false;
     rows.push_back(on);
     Row eq;
-    eq.title = "Equalizer";
+    eq.title = tr("sound.equalizer");
     eq.tile = &tiles::eqPreset;
     eq.trailing = presetName(g_sound, p);
     eq.chevron = true;
     eq.onSelect = [key] {
       std::vector<std::pair<std::string, std::string>> c;
-      for (const EqPreset& e : eqPresets()) c.push_back({e.name, e.id});
+      for (const EqPreset& e : eqPresets()) c.push_back({tr(e.name), e.id});
       for (const UserPreset& u : g_sound.userPresets) c.push_back({u.name, "user:" + u.name});
       if (!profile(key).autoEq.empty()) c.push_back({profile(key).autoEqName, "autoeq"});
-      c.push_back({"Custom", "custom"});
+      c.push_back({tr("sound.preset.custom"), "custom"});
       g_app->push(makeChoice(
-          "Equalizer", c, [key] { return profile(key).preset; },
+          tr("sound.equalizer"), c, [key] { return profile(key).preset; },
           [key](const std::string& v) {
             profile(key).preset = v;
             changed();
           },
           [](const std::string& v) {
             for (const EqPreset& e : eqPresets())
-              if (v == e.id) return std::string(e.note);
-            return std::string(v == "custom" ? "your own bands" : v == "autoeq" ? "headphone match" : "");
+              if (v == e.id) return e.note[0] ? tr(e.note) : std::string();
+            return v == "custom" ? tr("sound.presetNote.custom") : v == "autoeq" ? tr("sound.presetNote.autoEq") : std::string();
           }));
     };
     rows.push_back(eq);
     Row edit;
-    edit.title = "Edit equalizer";
+    edit.title = tr("sound.editEq");
     edit.tile = &tiles::eqEdit;
-    edit.subtitle = "Ten bands of your own";
+    edit.subtitle = tr("sound.editEqNote");
     edit.chevron = true;
     Output o = out_;
     edit.onSelect = [o] { g_app->push(std::unique_ptr<Screen>(new EqualizerScreen(o))); };
     rows.push_back(edit);
     if (key != "speaker") {  // headphones, wired or Bluetooth
       Row match;
-      match.title = "Headphone match";
+      match.title = tr("sound.match.title");
       match.tile = &tiles::match;
-      match.subtitle = p.autoEq.empty() ? "A correction for your model (AutoEq)" : p.autoEqName;
+      match.subtitle = p.autoEq.empty() ? tr("sound.match.rowNote") : p.autoEqName;
       match.chevron = true;
       match.onSelect = [o] { g_app->push(std::unique_ptr<Screen>(new HeadphoneMatchScreen(o))); };
       rows.push_back(match);
     }
     Row boost;
-    boost.title = "Loudness boost";
+    boost.title = tr("sound.boost.title");
     boost.tile = &tiles::boost;
-    boost.subtitle = "Louder; the peaks are held, never clipped";
+    boost.subtitle = tr("sound.boost.note");
     boost.trailing = boostName(p.boostDb);
     boost.chevron = true;
     boost.onSelect = [key] {
       std::vector<std::pair<std::string, std::string>> c;
       for (int db : {0, 3, 6, 9, 12}) c.push_back({boostName(db), std::to_string(db)});
       g_app->push(makeChoice(
-          "Loudness boost", c, [key] { return std::to_string(profile(key).boostDb); },
+          tr("sound.boost.title"), c, [key] { return std::to_string(profile(key).boostDb); },
           [key](const std::string& v) {
             profile(key).boostDb = atoi(v.c_str());
             changed();
           },
           [](const std::string& v) {
-            return std::string(v == "0" ? "as it comes" : v == "12" ? "the loudest, the least dynamic" : "");
+            return v == "0" ? tr("sound.asItComes") : v == "12" ? tr("sound.boost.noteMax") : std::string();
           }));
     };
     rows.push_back(boost);
     Row h;
     h.header = true;
-    h.title = "Every output";
+    h.title = tr("sound.everyOutput");
     rows.push_back(h);
     Row level;
-    level.title = "Volume leveling";
+    level.title = tr("sound.leveling.title");
     level.tile = &tiles::leveling;
     note_ = levelingNote();
     level.subtitle = note_;
-    level.trailing = g_sound.leveling ? "On" : "Off";
+    level.trailing = g_sound.leveling ? tr("common.on") : tr("common.off");
     level.onSelect = [this] {
       g_sound.leveling = !g_sound.leveling;
       changed();
@@ -497,23 +503,24 @@ class SoundScreen : public ShellListScreen {
     rows.push_back(level);
     PlayerState ps = g_player.state();
     if (ps.amplifier >= 0) {  // the Y1's own amplifier (player/amplifier.h)
-      static const char* const kNames[4] = {"Standard", "+2 dB", "+4 dB", "+6 dB"};
+      // the amplifier's steps: Standard, +2 dB, +4 dB, +6 dB
+      auto stepName = [](int i) { return i ? "+" + std::to_string(2 * i) + " dB" : tr("sound.amp.standard"); };
       Row amp;
-      amp.title = "Amplifier";
+      amp.title = tr("sound.amp.title");
       amp.tile = &tiles::amplifier;
-      amp.subtitle = "The Y1's own, for headphones and the speaker";
-      amp.trailing = kNames[std::max(0, std::min(3, int(ps.amplifier)))];
+      amp.subtitle = tr("sound.amp.note");
+      amp.trailing = stepName(std::max(0, std::min(3, int(ps.amplifier))));
       amp.chevron = true;
-      amp.onSelect = [] {
+      amp.onSelect = [stepName] {
         std::vector<std::pair<std::string, std::string>> c;
-        for (int i = 0; i < 4; i++) c.push_back({kNames[i], std::to_string(i)});
+        for (int i = 0; i < 4; i++) c.push_back({stepName(i), std::to_string(i)});
         g_app->push(makeChoice(
-            "Amplifier", c, [] { return std::to_string(g_player.state().amplifier); },
+            tr("sound.amp.title"), c, [] { return std::to_string(g_player.state().amplifier); },
             [](const std::string& v) {
               g_player.amplifier(atoi(v.c_str()), g_prefsPath.substr(0, g_prefsPath.rfind('/') + 1) + "amplifier-shipped.bin");
             },
             [](const std::string& v) {
-              return std::string(v == "0" ? "as the Y1 ships, the cleanest" : v == "3" ? "the loudest, more hiss" : "");
+              return v == "0" ? tr("sound.amp.noteStandard") : v == "3" ? tr("sound.amp.noteMax") : std::string();
             }));
       };
       rows.push_back(amp);
@@ -522,22 +529,22 @@ class SoundScreen : public ShellListScreen {
       int maxVol = ps.volumeMax > 0 ? ps.volumeMax : 13;
       int limit = std::max(0, std::min(maxVol, int(ps.volumeLimit)));
       Row lim;
-      lim.title = "Volume limit";
+      lim.title = tr("sound.limit.title");
       lim.tile = &tiles::limit;
-      lim.subtitle = "The loudest the wheel goes, on every output";
-      lim.trailing = limit >= maxVol ? "No limit" : std::to_string(limit) + " of " + std::to_string(maxVol);
+      lim.subtitle = tr("sound.limit.note");
+      lim.trailing = limit >= maxVol ? tr("sound.limit.none") : tr("sound.limit.step", {{"step", limit}, {"max", maxVol}});
       lim.chevron = true;
       lim.onSelect = [maxVol] {
         std::vector<std::pair<std::string, std::string>> c;
-        c.push_back({"No limit", std::to_string(maxVol)});
-        for (int v = maxVol - 1; v >= 1; v--) c.push_back({std::to_string(v) + " of " + std::to_string(maxVol), std::to_string(v)});
+        c.push_back({tr("sound.limit.none"), std::to_string(maxVol)});
+        for (int v = maxVol - 1; v >= 1; v--) c.push_back({tr("sound.limit.step", {{"step", v}, {"max", maxVol}}), std::to_string(v)});
         g_app->push(makeChoice(
-            "Volume limit", c,
+            tr("sound.limit.title"), c,
             [maxVol] { return std::to_string(std::max(0, std::min(maxVol, int(g_player.state().volumeLimit)))); },
             [](const std::string& v) { g_player.setVolumeLimit(atoi(v.c_str())); },
             [maxVol](const std::string& v) {
               int n = atoi(v.c_str());
-              return std::string(n >= maxVol ? "the wheel goes all the way" : n <= maxVol / 3 ? "quiet: kind to ears" : "");
+              return n >= maxVol ? tr("sound.limit.noteNone") : n <= maxVol / 3 ? tr("sound.limit.noteQuiet") : std::string();
             }));
       };
       rows.push_back(lim);
@@ -583,12 +590,12 @@ std::string soundJson() {
   load();
   Output cur = currentOutput();
   // every output Rondo knows: the speaker, wired headphones, the paired Bluetooth devices, any kept
-  std::vector<Output> outs = {{"speaker", "Speaker"}, {"headphones", "Headphones"}};
+  std::vector<Output> outs = {{"speaker", tr("sound.output.speaker")}, {"headphones", tr("sound.output.headphones")}};
   CoreState cs = g_core.state();
   for (int i = 0; i < cs.btCount; i++)
     if (cs.bt[i].paired)  // one that never told its name: by the end of its address
       outs.push_back({std::string("bt:") + cs.bt[i].address,
-                      cs.bt[i].name[0] ? btName(cs.bt[i]) : "Bluetooth device \xc2\xb7 " + std::string(cs.bt[i].address).substr(12)});
+                      cs.bt[i].name[0] ? btName(cs.bt[i]) : tr("sound.output.btDevice", {{"address", std::string(cs.bt[i].address).substr(12)}})});
   for (const auto& kv : g_sound.outputs) {
     bool known = false;
     for (const Output& o : outs) known |= o.key == kv.first;
@@ -607,7 +614,7 @@ std::string soundJson() {
   for (const EqPreset& e : eqPresets()) {
     SoundProfile probe;
     probe.preset = e.id;
-    o += std::string(first ? "" : ",") + "{\"id\":" + jstr(e.id) + ",\"name\":" + jstr(e.name) + ",\"note\":" + jstr(e.note) +
+    o += std::string(first ? "" : ",") + "{\"id\":" + jstr(e.id) + ",\"name\":" + jstr(tr(e.name)) + ",\"note\":" + jstr(e.note[0] ? tr(e.note) : "") +
          ",\"gains\":" + gainsJson(presetGains(g_sound, probe)) + "}";
     first = false;
   }
@@ -671,9 +678,8 @@ void soundSetLeveling(bool on) {
 // "" when saved, else why not
 std::string soundSaveUserPreset(const std::string& output, const std::string& name, const std::array<float, kEqBands>& gains) {
   load();
-  if (name.empty() || name.size() > 30) return "Type a name of up to 30 characters";
-  for (const EqPreset& e : eqPresets())
-    if (name == e.name) return "That's a built-in preset's name";
+  if (name.empty() || name.size() > 30) return tr("sound.eq.nameTooLong");
+  if (builtInName(name)) return tr("sound.eq.builtInName");
   std::array<float, kEqBands> g;
   for (int i = 0; i < kEqBands; i++) g[i] = std::max(-12.f, std::min(12.f, gains[i]));
   bool found = false;

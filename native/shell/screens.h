@@ -41,7 +41,14 @@ OrganizeStatus organizeStatus();
 void filesMoved(const std::vector<std::pair<std::string, std::string>>& moves);
 // A list of card songs (Select plays them all from there; held, a song's menu), as Songs shows them
 std::unique_ptr<Screen> makeSongList(const std::string& title, std::vector<const Track*> songs);  // Library › Folders: the card as it is
-std::unique_ptr<Screen> makeSettings();
+// focus: the row to start on ("language", "dashboard"), else the first
+std::unique_ptr<Screen> makeSettings(const std::string& focus = "");
+// Settings › Language and the first start's picker (language_screen.cpp). setLanguage speaks code from
+// now on, keeps it, and makes the screens open again in it: back to Settings › Language, to the main
+// menu (the first start), or under the dashboard's screen (its page asked)
+enum class LanguageFrom { Settings, FirstBoot, Dashboard };
+std::unique_ptr<Screen> makeLanguage(bool firstBoot);
+void setLanguage(const std::string& code, LanguageFrom from);
 // YouTube Music (music_screen.cpp) and its search
 std::unique_ptr<Screen> makeMusic();
 std::unique_ptr<Screen> makeMusicSearch();

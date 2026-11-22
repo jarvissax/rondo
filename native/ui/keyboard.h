@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/lang.h"
 #include "../platform/platform.h"
 #include "motion.h"
 #include "text.h"
@@ -31,7 +32,7 @@ class Keyboard {
   // Music (round keys, the white pill, YouTube red), WhatsApp (its greens, Send as the paper plane)
   enum class Style { Shell, YouTube, WhatsApp };
 
-  explicit Keyboard(std::string actionLabel = "Search", Style style = Style::Shell, bool emoji = true);
+  explicit Keyboard(std::string actionLabel = tr("keyboard.search"), Style style = Style::Shell, bool emoji = true);
   // Emoji only (WhatsApp's reactions): opens on the emoji, center on one is Result::Picked, Menu on the
   // tabs Result::Close; extra (if any) is a key beside the tone's (Take back) that is Result::Action
   static Keyboard picker(Style style, std::string extra = "");

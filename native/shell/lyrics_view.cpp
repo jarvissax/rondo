@@ -55,7 +55,7 @@ void LyricsView::show(const Lyrics& l) {
       lines_.push_back({0, line, {}, {}, 0, 0});
     }
   }
-  if (lines_.empty()) message_ = l.instrumental ? "Instrumental" : "No lyrics found for this song";
+  if (lines_.empty()) message_ = l.instrumental ? tr("lyrics.instrumental") : tr("lyrics.none");
   current_ = -1;
   fading_ = -2;
   animStart_ = 0;
@@ -209,7 +209,7 @@ void LyricsView::draw(Env& e, Rect r, int64_t pos, int64_t dur) {
   if (!env_) env_.reset(new Env(e));
   if (w_ != r.w || h_ != r.h) startLayout(r.w, r.h);
   if (!message_.empty() || dirty_) {
-    const std::string msg = !message_.empty() ? message_ : std::string("Finding lyrics\xe2\x80\xa6");
+    const std::string msg = !message_.empty() ? message_ : tr("lyrics.finding");
     // the message as a StaticLayout: left-aligned at the side, in the middle of the height
     float tw = r.w - 2 * float(e.dp(16));
     int lh = e.text.lineHeight(e.font(15, false));
