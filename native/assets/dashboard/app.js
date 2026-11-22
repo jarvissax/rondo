@@ -2501,8 +2501,8 @@ $('#dlBody').addEventListener('click', async (e) => {
     else S.dlQuality = JSON.parse(b.dataset.v);
     return;
   }
-  const t = (k) => e.target.closest(`[data-dl-${k}]`);
-  const cancel = t('cancel'), retry = t('retry'), del = t('delete'), pause = t('pause'), resume = t('resume'), all = t('all'), update = t('update'), list = t('list');
+  const hit = (k) => e.target.closest(`[data-dl-${k}]`);
+  const cancel = hit('cancel'), retry = hit('retry'), del = hit('delete'), pause = hit('pause'), resume = hit('resume'), all = hit('all'), update = hit('update'), list = hit('list');
   try {
     if (cancel) S.downloads = await api('POST', '/api/downloads/cancel', { id: cancel.dataset.dlCancel });
     else if (retry) S.downloads = await api('POST', '/api/downloads/retry', { id: retry.dataset.dlRetry });

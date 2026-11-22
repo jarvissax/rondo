@@ -1,4 +1,4 @@
-# Checks the versions, tests the server and builds the update page on every push to a branch and every
+# Checks the versions and the languages, tests the server and builds the update page on every push to a branch and every
 # pull request (a release's tag points at a commit already checked on main: release.yml and
 # server-release.yml check it again their own way). Runners are pinned to an Ubuntu release (not
 # ubuntu-latest) so a new image arrives on purpose, not by itself.
@@ -17,6 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: tools/set-version.sh --check
+
+  # every language has every text, with English's blanks (tools/lang/check.mjs, docs/translating.md)
+  lang:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node tools/lang/check.mjs
 
   server:
     runs-on: ubuntu-26.04
