@@ -104,7 +104,7 @@ class ApiWorkers {
       // the answers on disk are this server's and this token's: another pairing starts it empty
       mkdir(disk_.c_str(), 0700);
       char owner[24];
-      // English's mark as before 4.0.4 (its answers stay); another language's its own
+      // English's mark as before 4.1.0 (its answers stay); another language's its own
       snprintf(owner, sizeof(owner), "%016llx", (unsigned long long)fnv(base + '\n' + token + (language == "en" ? "" : "\n" + language)));
       std::string mark = disk_ + "/server", had;
       if (FILE* f = fopen(mark.c_str(), "r")) {

@@ -5,7 +5,11 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## Unreleased
+## 4.1.0 (November 22, 2026)
+
+An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+4.0.3 does; YouTube through your server comes in your language with server 3.6.0.
 
 ### New
 
@@ -15,10 +19,9 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
   updated from an earlier version asks once too. The dashboard speaks the Y1's language and can
   change it from its Settings page. English stays the default.
 - **YouTube and YouTube Music in your language too:** what YouTube itself writes (home and shelf
-  names, view counts, "2 days ago", playlist names) comes in the language Rondo speaks. Search stays
-  in English, so it finds what it always found. Directly from
-  the Y1 at once; through your Rondo server once it runs the next server release (an older one keeps
-  answering in English).
+  names, view counts, "2 days ago", playlist names) comes in the language Rondo speaks: directly from
+  the Y1 at once, and through your Rondo server once it runs 3.6.0 (an older one keeps answering in
+  English). Search stays in English, so it finds what it always found.
 - **Every text in one file per language** (`lang/en.json`, `lang/es.json`): fixing a translation
   or adding a language is one file, and needs no Y1. [Translating Rondo](docs/translating.md) says
   how, including how to see the dashboard in your language on your own computer.
