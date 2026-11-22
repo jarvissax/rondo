@@ -76,7 +76,9 @@ The ground rules:
   `npm test` and `npm run typecheck` in `server/`. For the update page, `npm run build` in
   `web-updater/`.
 - **Match the code around you.** C++ in Rondo (`native/`), TypeScript on the server.
-  Comments say why, not what. Text the user sees is short, plain and in American English.
+  Comments say why, not what. Text the user sees is short, plain and in American English, and
+  lives in `lang/en.json` with its translations, never in the code
+  ([Translating Rondo](docs/translating.md) says how); `node tools/lang/check.mjs` has to pass.
 - **Never commit secrets:** `cookies.txt`, tokens, `.env` files or signing keys.
 
 ### Pull requests
@@ -87,6 +89,12 @@ The ground rules:
 - The checks on GitHub (the app build, the server tests, the installer build) have to pass.
 - Write commit messages as a short summary of the change, with details underneath if they're
   needed.
+
+## Translations
+
+Fixing a translation or adding a language is one file in `lang/` and needs no Y1:
+[Translating Rondo](docs/translating.md) has the steps, and how to see your change on the dashboard
+and the admin page on your own computer.
 
 ## Docs
 

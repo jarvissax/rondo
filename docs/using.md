@@ -307,7 +307,7 @@ turns the radio off.
 Settings has the **Dashboard** at the top, then **Connections** (Wi-Fi, Bluetooth), **Server**
 (your Rondo server), **YouTube** (where it comes from, the account, video quality), **Sound**,
 **Display** (theme, brightness, screen off, subtitles, lyrics), **Controls** (the wheel) and
-**System** (date and time, updates, About, shut down).
+**System** (date and time, updates, About, shut down), and **Language** at the bottom.
 
 | Setting | |
 | --- | --- |
@@ -330,6 +330,7 @@ Settings has the **Dashboard** at the top, then **Connections** (Wi-Fi, Bluetoot
 | **System › Software update** | Checks GitHub for a newer Rondo and installs it over Wi-Fi, keeping everything, or says when a release needs Innioasis Updater CE ([more](install.md#updating-rondo)). No server needed. |
 | **System › About** | Rondo's version, the battery, free space on the card and the internal storage, Wi-Fi, the IP and MAC addresses, the time zone and where YouTube comes from. |
 | **System › Shut down** | Shut down or restart. Holding the Power button opens the same choices. |
+| **Language** | English or Español, each in its own name. The change is at once, everywhere (no restart), and the dashboard follows it. The very first start asks for it before anything else. To help translate, see [Translating Rondo](translating.md). |
 
 <p align="center">
   <img src="images/theme.png" width="360" alt="Settings › Display › Theme">

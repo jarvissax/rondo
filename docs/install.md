@@ -73,6 +73,9 @@ Connect to**; the server stays connected in **Settings › Server**.
 
 ## First start
 
+Rondo first asks for its language (English or Español): turn the wheel to yours and press center.
+**Settings › Language** changes it later.
+
 1. **Wi-Fi:** Settings › Connections › Wi-Fi. Turn the wheel to pick your network and type the
    password on the on-screen keyboard. Only 2.4 GHz networks show up.
 2. **Your music:** plug the Y1 into your computer. Rondo asks whether to use it as a **USB drive**;

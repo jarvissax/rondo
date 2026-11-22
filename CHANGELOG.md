@@ -5,6 +5,19 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## Unreleased
+
+### New
+
+- **Rondo speaks Spanish** ([#5](https://github.com/jarvissax/rondo/issues/5)), and any language
+  someone adds. The very first start asks for the language before anything else, as the stock
+  firmware does; Settings › Language changes it at any time, at once, without a restart. A Rondo
+  updated from an earlier version asks once too. The dashboard speaks the Y1's language and can
+  change it from its Settings page. English stays the default.
+- **Every text in one file per language** (`lang/en.json`, `lang/es.json`): fixing a translation
+  or adding a language is one file, and needs no Y1. [Translating Rondo](docs/translating.md) says
+  how, including how to see the dashboard in your language on your own computer.
+
 ## 4.0.3 (November 21, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the

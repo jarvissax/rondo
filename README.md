@@ -241,6 +241,7 @@ chats, contacts and media, and sends what you write or record.
 | `infra/` | Docker and Caddy files for running the server |
 | `web-updater/` | The update page (WebUSB), published on GitHub Pages |
 | `tools/` | The native build and bundle scripts, mock servers for UI work, the boot screen generator, the version script |
+| `lang/` | Every text Rondo shows, one file per language ([Translating Rondo](docs/translating.md)) |
 | `docs/` | Guides, plus [notes on the Y1's internals](docs/device/README.md) and [API references](docs/dev/) |
 
 Every release is built the same way: the signed Rondo bundle goes up, and GitHub Actions builds
@@ -257,6 +258,8 @@ If you try Rondo on your Y1, I'd love to hear how it went, good or bad.
   something you'd like Rondo to do.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** says what feedback helps most, how to get Rondo's log,
   and how to work on the code.
+- **[Translating Rondo](docs/translating.md)**: Rondo speaks English and Spanish, one file per
+  language in `lang/`. Fixing a translation or adding a language needs no Y1 and no build.
 
 ## Thanks
 
