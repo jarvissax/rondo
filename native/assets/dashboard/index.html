@@ -71,6 +71,9 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M16.6 5.4a8 8 0 1 1-9.2 0M12 2.5v9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
     <symbol id="i-playlist" viewBox="0 0 24 24"><path d="M3 5.5h12M3 10.5h12M3 15.5h7M20 7v11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="17" cy="18" r="3" fill="currentColor"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2.5 5.5L11 7.2V20.5L2.5 18.8ZM21.5 5.5L13 7.2V20.5L21.5 18.8Z" fill="currentColor"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 2.5H18V21.5L12 16.8L6 21.5Z" fill="currentColor"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M16.5 4.2A9 9 0 1 0 16.5 19.8A7.94 7.94 0 0 1 16.5 4.2Z" fill="currentColor"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9v6l5-3z" fill="currentColor"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8L14.59 9.24L21.51 9.71L16.18 14.16L17.88 20.89L12 17.2L6.12 20.89L7.82 14.16L2.49 9.71L9.41 9.24Z" fill="currentColor"/></symbol>
     <symbol id="i-photo" viewBox="0 0 24 24"><path d="M5 4.5H19A2.5 2.5 0 0 1 21.5 7V17A2.5 2.5 0 0 1 19 19.5H5A2.5 2.5 0 0 1 2.5 17V7A2.5 2.5 0 0 1 5 4.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17.2L10 10.5L13.5 14.8L15.6 12.6L19 17.2Z" fill="currentColor"/><circle cx="16" cy="8.8" r="1.8" fill="currentColor"/></symbol>
@@ -197,6 +200,7 @@
           <button class="ctl ctl-main" type="button" data-act="toggle" id="npToggle" aria-label="Play" data-i18n-attr="aria-label:common.play"><svg class="i"><use href="#i-play"/></svg></button>
           <button class="ctl" type="button" data-act="next" aria-label="Next" data-i18n-attr="aria-label:overview.next"><svg class="i"><use href="#i-next"/></svg></button>
         </div>
+        <div class="np-extras" id="npExtras" hidden></div>
         <div class="np-volume">
           <svg class="i"><use href="#i-volume"/></svg>
           <input type="range" class="vol" id="npVol" min="0" max="15" value="0" step="1" aria-label="Volume" data-i18n-attr="aria-label:overview.volume">
@@ -220,6 +224,8 @@
           <button class="btn" type="button" id="organizeBtn"><svg class="i"><use href="#i-folder"/></svg><span data-i18n="library.organize">Organize</span></button>
           <button class="btn" type="button" id="fillBtn"><svg class="i"><use href="#i-wand"/></svg><span data-i18n="library.fillIn">Fill in</span></button>
           <button class="btn btn-primary" type="button" id="uploadBtn"><svg class="i"><use href="#i-upload"/></svg><span data-i18n="library.upload">Upload</span></button>
+          <input type="file" id="bookFiles" multiple hidden accept="audio/*,.m4b,.m4a,.mp3,.aac,.ogg,.opus,.flac,.wav,.jpg,.jpeg,.png">
+          <input type="file" id="bookFolder" multiple hidden webkitdirectory>
           <input type="file" id="fileInput" multiple hidden accept="audio/*,.flac,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.w64,.aif,.aiff,.aifc,.wma,.ape,.wv,.ac3,.eac3,.ec3,.dts,.mka,.dsf,.dff,.tta,.tak,.mpc,.amr,.awb,.mp2,.caf,.au,.mp4,.m4v,.mkv,.3gp,.webm,.jpg,.jpeg,.png,.webp,.gif,.bmp,.lrc">
         </div>
       </header>
@@ -230,6 +236,7 @@
         <div class="seg seg-sections" role="radiogroup" aria-label="Library" data-i18n-attr="aria-label:common.library" id="libSection">
           <button type="button" role="radio" data-section="music" aria-checked="true"><svg class="i"><use href="#i-headphones"/></svg><span data-i18n="library.music">Music</span></button>
           <button type="button" role="radio" data-section="videos" aria-checked="false"><svg class="i"><use href="#i-film"/></svg><span data-i18n="library.videos">Videos</span></button>
+          <button type="button" role="radio" data-section="books" aria-checked="false"><svg class="i"><use href="#i-book"/></svg><span data-i18n="books.title">Audiobooks</span></button>
           <button type="button" role="radio" data-section="photos" aria-checked="false"><svg class="i"><use href="#i-photo"/></svg><span data-i18n="library.photos">Photos</span></button>
           <button type="button" role="radio" data-section="files" aria-checked="false"><svg class="i"><use href="#i-file"/></svg><span data-i18n="library.files">Files</span></button>
         </div>

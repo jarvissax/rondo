@@ -459,7 +459,7 @@ function applyStatus(st, render = true) {
 function position() {
   const p = S.status?.player;
   if (!p) return 0;
-  const extra = p.playing ? performance.now() - S.statusAt : 0;
+  const extra = p.playing ? (performance.now() - S.statusAt) * (p.speed || 100) / 100 : 0;
   return Math.min(p.positionMs + extra, p.durationMs || Infinity);
 }
 
@@ -511,11 +511,16 @@ function renderPlayer() {
     $('#npTitle').textContent = t('overview.nothingPlaying');
     $('#npSub').textContent = t('overview.empty');
     setNpArt(null);
+    renderNpExtras(null);
     return;
   }
-  $('#npSrc').innerHTML = p.source === 'youtube' ? `${icon('play')}<span>YouTube</span>` : `${icon('folder')}<span>${te('common.library')}</span>`;
+  const bk = p.book;
+  $('#npSrc').innerHTML = bk ? `${icon('book')}<span>${te('books.audiobook')}</span>${bk.speed !== 100 ? `<span class="np-speed">${esc(speedText(bk.speed))}</span>` : ''}`
+    : p.source === 'youtube' ? `${icon('play')}<span>YouTube</span>` : `${icon('folder')}<span>${te('common.library')}</span>`;
   $('#npTitle').textContent = p.title || t('common.untitled');
-  $('#npSub').textContent = p.subtitle || '';
+  $('#npSub').textContent = bk ? [bk.author, bk.chapters ? bk.chapterTitle : '', bk.leftText].filter(Boolean).join(' · ') : p.subtitle || '';
+  renderNpExtras(p);
+  $('.np-art-glyph use').setAttribute('href', bk ? '#i-book' : '#i-note');  // what shows without artwork
   const tg = $('#npToggle');
   tg.innerHTML = icon(p.playing ? 'pause' : 'play');
   tg.setAttribute('aria-label', p.playing ? t('common.pause') : t('common.play'));
@@ -529,10 +534,66 @@ function renderPlayer() {
   setNpArt(p.art);
   renderProgress();
 }
+// an audiobook's player shows its chapter, in listening time at its speed (as the Rondo does)
+const bookPos = (p, pos) => (p.book ? Math.max(0, pos - p.book.chapterStartMs) * 100 / (p.speed || 100) : pos);
+const bookLen = (p) => (p.book ? Math.max(0, p.book.chapterEndMs - p.book.chapterStartMs) * 100 / (p.speed || 100) : p.durationMs || 0);
+function speedText(v) {
+  const n = v / 100;
+  return `${n.toLocaleString(L.code, { maximumFractionDigits: 2 })}×`;
+}
+function renderNpExtras(p) {
+  const box = $('#npExtras');
+  const bk = p?.book;
+  const sleepNow = p?.sleep ? (p.sleep.mode === 'minutes' ? 'running' : 'end') : 'off';
+  const opts = [['off', t('sleep.off')], ['15', t('sleep.minutes', { count: 15 })], ['30', t('sleep.minutes', { count: 30 })], ['45', t('sleep.minutes', { count: 45 })], ['60', t('sleep.minutes', { count: 60 })], ['end', p?.endName || t('sleep.end')]];
+  if (sleepNow === 'running') opts.unshift(['running', t('sleep.left', { time: p.sleep.label })]);
+  const sleep = `<label class="select"><select data-act="np-sleep" aria-label="${te('sleep.title')}">${opts.map(([v, l]) => `<option value="${v}"${v === sleepNow ? ' selected' : ''}>${esc(v === 'off' ? t('sleep.label', { state: l }) : l)}</option>`).join('')}</select>${icon('down')}</label>`;
+  let html = sleep;
+  if (bk) {
+    const speeds = (S.books?.speeds || [75, 100, 125, 150, 175, 200, 250, 300].map((v) => ({ value: v, text: speedText(v) })))
+      .map((o) => `<option value="${o.value}"${o.value === bk.speed ? ' selected' : ''}>${esc(t('books.speedIs', { speed: o.text }))}</option>`).join('');
+    html = `<label class="select"><select data-act="np-speed" aria-label="${te('books.speed')}">${speeds}</select>${icon('down')}</label>` + html +
+      `<button class="btn btn-sm" type="button" data-act="np-mark">${icon('bookmark')}<span>${te('books.addBookmark')}</span></button>` +
+      (bk.musicWaits ? `<button class="btn btn-sm" type="button" data-act="np-music">${icon('note')}<span>${te('books.backToMusic')}</span></button>` : '');
+  }
+  const key = html;
+  box.hidden = !p;
+  np.classList.toggle('has-extras', !!p);
+  if (box.dataset.key !== key && !box.contains(document.activeElement)) { box.dataset.key = key; box.innerHTML = html; }
+}
+$('#npExtras').addEventListener('change', async (e) => {
+  const sel = e.target;
+  const p = S.status?.player;
+  try {
+    if (sel.dataset.act === 'np-sleep' && sel.value !== 'running') {
+      const v = sel.value;
+      const res = await api('PUT', '/api/sleep', v === 'off' || v === 'end' ? { mode: v } : { mode: 'minutes', minutes: +v });
+      if (S.status) { S.status.player = res; S.statusAt = performance.now(); }
+      toast(v === 'off' ? t('sleep.stopped') : t('sleep.set'));
+    } else if (sel.dataset.act === 'np-speed' && p?.book) {
+      await api('PUT', '/api/books/speed', { key: p.book.key, speed: +sel.value });
+      poll();
+    }
+  } catch (err) {
+    if (err.status !== 401) toast(t('books.couldntDo', { reason: reason(err) }), 'err');
+  }
+  sel.blur();
+  renderPlayer();
+});
+$('#npExtras').addEventListener('click', async (e) => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act !== 'np-mark' && act !== 'np-music') return;
+  try {
+    if (act === 'np-mark') { await api('POST', '/api/books/bookmark', {}); toast(t('books.bookmarkAdded')); }
+    else { const res = await api('POST', '/api/books/music'); if (S.status) { S.status.player = res; S.statusAt = performance.now(); } renderPlayer(); renderMini(); }
+  } catch (err) {
+    if (err.status !== 401) toast(t('books.couldntDo', { reason: reason(err) }), 'err');
+  }
+});
 function renderProgress() {
   const p = S.status?.player;
   if (!p) return;
-  const pos = position(), dur = p.durationMs || 0;
+  const pos = bookPos(p, position()), dur = bookLen(p);
   if (!seeking && S.route === 'overview') {
     npSeek.value = dur ? Math.round((pos / dur) * 1000) : 0;
     setFill(npSeek);
@@ -595,7 +656,8 @@ async function playerAction(action, extra = {}) {
 npSeek.addEventListener('input', () => {
   seeking = true;
   setFill(npSeek);
-  const dur = S.status?.player?.durationMs || 0;
+  const p = S.status?.player;
+  const dur = p ? bookLen(p) : 0;  // an audiobook: its chapter, at its speed
   const pos = (npSeek.value / 1000) * dur;
   $('#npPos').textContent = fmtTime(pos);
   $('#npRem').textContent = `−${fmtTime(remainMs(dur, pos))}`;
@@ -603,7 +665,8 @@ npSeek.addEventListener('input', () => {
 npSeek.addEventListener('change', async () => {
   const p = S.status?.player;
   if (!p) { seeking = false; return; }
-  const pos = Math.round((npSeek.value / 1000) * p.durationMs);
+  const pos = p.book ? Math.round(p.book.chapterStartMs + (npSeek.value / 1000) * (p.book.chapterEndMs - p.book.chapterStartMs))
+    : Math.round((npSeek.value / 1000) * p.durationMs);
   p.positionMs = pos; S.statusAt = performance.now();
   await playerAction('seek', { positionMs: pos });
   seeking = false;
@@ -881,6 +944,14 @@ function renderLibrary() {
   showKinds();
   const pls = S.libKind === 'playlists', files = S.libKind === 'files', albumsTab = S.libKind === 'albums', photosTab = S.libKind === 'photos';
   libEl.classList.toggle('is-playlists', pls || files || albumsTab || photosTab);
+  if (S.libKind === 'books') {
+    libEl.classList.add('is-playlists');
+    $('#libSortWrap').hidden = true;
+    $('#libSearch').placeholder = t('books.search');
+    libList.setAttribute('aria-label', t('books.title'));
+    $('#view-library').classList.remove('is-empty');
+    return renderBooks();
+  }
   if (photosTab) {
     $('#libSortWrap').hidden = true;
     $('#libSearch').placeholder = t('library.searchPhotos');
@@ -1050,6 +1121,7 @@ function loadArtInto(el, size, counted = false) {
 
 libList.addEventListener('click', (e) => {
   if (S.libKind === 'playlists') return onPlaylistClick(e);
+  if (S.libKind === 'books') return onBooksClick(e);
   if (e.target.closest('[data-act="retry"]')) return loadLibrary();
   if (e.target.closest('[data-act="upload"]')) return $('#fileInput').click();
   const row = e.target.closest('.song');
@@ -1102,6 +1174,7 @@ function setKind(kind) {
   if (S.libKind === 'files') return loadFiles(S.filesDir);
   if (S.libKind === 'albums') S.cfAt = S.cfAt || 0;
   if (S.libKind === 'photos') return loadPhotos();
+  if (S.libKind === 'books') return loadBooks();
   renderLibrary();
   if (S.libKind === 'playlists') loadPlaylists().then(() => { if (S.libKind === 'playlists') renderLibrary(); });
 }
@@ -1488,6 +1561,7 @@ function watchScan(onDone) {
       prepLibrary();
       if (S.route === 'library') renderLibrary(); else renderLibrarySummary();
       if (S.uploads.length) renderUploads();
+      if (S.libKind === 'books') loadBooks(true);  // new books from the scan
       const added = lib.songs.length + lib.videos.length - before;
       toast(added > 0 ? t('library.updated', { count: added }) : t('library.upToDate'));
       onDone?.();
@@ -1497,6 +1571,127 @@ function watchScan(onDone) {
   };
   scanTimer = setTimeout(check, 1500);
 }
+
+// ---------- audiobooks (Library › Audiobooks on the Rondo: shell/books.h) ----------
+// the books with where each is, a book's chapters and bookmarks, its speed; uploads into Audiobooks/
+async function loadBooks(quiet = false) {
+  if (!quiet && !S.books) libList.innerHTML = '<div class="lib-skel"></div>'.repeat(3);
+  try {
+    S.books = await api('GET', '/api/books');
+    if (S.openBook) S.bookDetail = await api('GET', `/api/books/detail?key=${encodeURIComponent(S.openBook)}`);
+  } catch (e) {
+    if (e.status === 401) return;
+    if (!S.books) libList.innerHTML = `<div class="lib-empty"><h3>${te('books.couldntRead')}</h3><p>${esc(reason(e))}</p></div>`;
+    return;
+  }
+  if (S.libKind === 'books') renderLibrary();
+}
+const bookSub = (b) => [b.author, b.status].filter(Boolean).join(' · ');
+const bookProgress = (b) => (b.started && !b.finished && b.durationMs ? `<span class="bk-prog"><span style="--p:${Math.min(100, (b.positionMs / b.durationMs) * 100).toFixed(1)}%"></span></span>` : '');
+function bookRowHtml(b) {
+  return `<div class="song bk-row${b.playing ? ' is-playing' : ''}" role="listitem" data-book="${esc(b.key)}">
+    <span class="art" data-art="${esc(b.cover)}">${icon('book')}</span>
+    <span class="s-main"><span class="s-title">${esc(b.title)}${b.started ? '' : `<span class="bk-dot" title="${te('books.notStarted')}"></span>`}</span><span class="s-sub">${esc(bookSub(b))}</span>${bookProgress(b)}</span>
+    <span class="s-acts"><button class="ib ib-sm" type="button" data-act="bk-play" aria-label="${te('common.playNameOnRondo', { name: b.title })}">${icon(b.playing && !b.paused ? 'pause' : 'play')}</button><button class="ib ib-sm" type="button" data-act="bk-open" aria-label="${te('books.openName', { name: b.title })}">${icon('chevron')}</button></span></div>`;
+}
+function renderBooks() {
+  if (!S.books) { loadBooks(); return; }
+  if (S.openBook) return renderBook();
+  const all = S.books.books, q = fold(S.libQuery.trim());
+  const shown = q ? all.filter((b) => q.split(/\s+/).every((w) => fold(`${b.title} ${b.author} ${b.narrator}`).includes(w))) : all;
+  $('#libSummary').textContent = S.books.scanning ? t('library.scanning') : all.length ? t('books.summary', { count: all.length }) : t('books.summaryNone');
+  const going = shown.filter((b) => b.started && !b.finished).sort((a, b) => b.lastPlayed - a.lastPlayed);
+  const upload = `<div class="bk-upload"><button class="btn btn-sm" type="button" data-act="bk-files">${icon('upload')}<span>${te('books.uploadFiles')}</span></button><button class="btn btn-sm" type="button" data-act="bk-folder">${icon('folder')}<span>${te('books.uploadFolder')}</span></button></div>`;
+  let html = upload;
+  if (!all.length) html += `<div class="lib-empty"><h3>${te('books.none')}</h3><p>${te('books.noneText', { folder: fileName(S.books.folder) })}</p></div>`;
+  else if (!shown.length) html += `<div class="lib-empty"><h3>${te('common.noMatches')}</h3><p>${te('books.noMatch', { query: S.libQuery.trim() })}</p></div>`;
+  if (going.length) html += `<div class="lhdr" role="heading" aria-level="3">${te('books.continue')}</div>` + going.map(bookRowHtml).join('');
+  if (shown.length) html += `<div class="lhdr" role="heading" aria-level="3">${te('books.all')}<small>${te('books.count', { count: shown.length })}</small></div>` + shown.map(bookRowHtml).join('');
+  libList.innerHTML = html;
+  $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
+}
+function renderBook() {
+  const b = S.bookDetail;
+  if (!b || b.key !== S.openBook) { libList.innerHTML = '<div class="lib-skel"></div>'.repeat(3); return loadBooks(true); }
+  $('#libSummary').textContent = t('books.onCard');
+  const speeds = (S.books?.speeds || []).map((o) => `<option value="${o.value}"${o.value === b.speed ? ' selected' : ''}>${esc(o.value === 100 ? t('books.speedNormal', { speed: o.text }) : o.text)}</option>`).join('');
+  const main = b.playing && !b.paused ? '' : `<button class="btn btn-primary btn-sm" type="button" data-act="bk-resume">${icon('play')}<span>${te(b.finished ? 'books.startAgain' : b.started ? 'books.resume' : 'books.start')}</span></button>`;
+  const again = b.started && !b.finished ? `<button class="btn btn-sm" type="button" data-act="bk-start">${icon('refresh')}<span>${te('books.startAgain')}</span></button>` : '';
+  const mark = b.playing ? `<button class="btn btn-sm" type="button" data-act="bk-mark">${icon('bookmark')}<span>${te('books.addBookmark')}</span></button>` : '';
+  const done = `<button class="btn btn-sm" type="button" data-act="bk-finished">${icon('check')}<span>${te(b.finished ? 'books.markUnfinished' : 'books.markFinished')}</span></button>`;
+  const facts = [b.author, b.narrator ? t('books.readBy', { name: b.narrator }) : '', b.chapters ? t('books.lengthChapters', { length: b.lengthText, count: b.chapters }) : b.lengthText].filter(Boolean).join(' · ');
+  const chapters = (b.chapterList || []).map((c, i) => `<div class="song bk-ch${i === b.current ? ' is-current' : ''}" role="listitem" data-ch="${i}"><span class="art">${i + 1}</span>
+      <span class="s-main"><span class="s-title">${esc(c.title)}</span><span class="s-sub">${fmtTime(c.startMs)}</span></span><span class="s-time">${fmtTime(c.lengthMs)}</span><span class="s-acts"><button class="ib ib-sm" type="button" data-act="bk-ch" aria-label="${te('books.playChapter', { name: c.title })}">${icon('play')}</button></span></div>`).join('');
+  const marks = (b.bookmarkList || []).map((m) => `<div class="song bk-bm" role="listitem" data-created="${m.created}"><span class="art">${icon('bookmark')}</span>
+      <span class="s-main"><span class="s-title">${esc(m.chapter ? t('books.bookmarkAt', { chapter: m.chapter, time: fmtTime(m.inChapterMs) }) : fmtTime(m.positionMs))}</span><span class="s-sub">${esc(new Date(m.created).toLocaleString(L.code, { dateStyle: 'medium', timeStyle: 'short' }))}</span></span>
+      <span class="s-acts"><button class="ib ib-sm" type="button" data-act="bk-bm" aria-label="${te('books.playBookmark')}">${icon('play')}</button><button class="ib ib-sm" type="button" data-act="bk-bm-del" aria-label="${te('books.deleteBookmark')}">${icon('trash')}</button></span></div>`).join('');
+  libList.innerHTML = `<div class="pl-head bk-head">
+      <button class="btn btn-sm btn-quiet" type="button" data-act="bk-back" style="grid-column:1/-1;justify-self:start">${icon('chevron', 'i flip')}<span>${te('books.title')}</span></button>
+      <span class="art bk-cover" data-art="${esc(b.cover)}">${icon('book')}</span>
+      <div><h2>${esc(b.title)}</h2><p>${esc(facts)}</p><p>${esc(b.status)}${b.started && !b.finished && b.durationMs ? '' : ''}</p>${bookProgress(b)}</div>
+      <div class="pl-acts bk-acts">${main}${again}${mark}<label class="select"><span class="sr-only">${te('books.speed')}</span><select data-act="bk-speed" aria-label="${te('books.speed')}">${speeds}</select>${icon('down')}</label>${done}</div></div>` +
+    (chapters ? `<div class="lhdr" role="heading" aria-level="3">${te('books.chapters')}<small>${te('books.chapterCount', { count: b.chapterList.length })}</small></div>${chapters}` : '') +
+    `<div class="lhdr" role="heading" aria-level="3">${te('books.bookmarks')}</div>` +
+    (marks || `<div class="lib-empty"><p>${te(b.playing ? 'books.noBookmarksPlaying' : 'books.noBookmarks')}</p></div>`);
+  $$('.art[data-art]:not([data-q])', libList).forEach((el) => { el.dataset.q = '1'; artIO.observe(el); });
+}
+async function bookAct(method, path, body, done) {
+  try {
+    const res = await api(method, path, body);
+    if (res?.player !== undefined && S.status) { S.status.player = res.player; S.statusAt = performance.now(); renderMini(); }
+    if (res?.book) S.bookDetail = res.book;
+    else if (res?.key) S.bookDetail = res;
+    if (done) toast(done);
+    loadBooks(true);
+  } catch (e) {
+    if (e.status !== 401) toast(t('books.couldntDo', { reason: reason(e) }), 'err');
+  }
+}
+function onBooksClick(e) {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'bk-files') return $('#bookFiles').click();
+  if (act === 'bk-folder') return $('#bookFolder').click();
+  if (act === 'bk-back') { S.openBook = null; S.bookDetail = null; return renderBooks(); }
+  const row = e.target.closest('[data-book]');
+  if (row) {
+    const b = S.books.books.find((x) => x.key === row.dataset.book);
+    if (act === 'bk-play') {
+      if (b?.playing) return playerAction('toggle').then(() => loadBooks(true));
+      return bookAct('POST', '/api/books/play', { key: row.dataset.book, from: 'resume' }, t('books.playing', { name: b?.title || '' }));
+    }
+    S.openBook = row.dataset.book;
+    S.bookDetail = null;
+    window.scrollTo({ top: Math.min(window.scrollY, libEl.offsetTop - 80) });
+    return renderBook();
+  }
+  const b = S.bookDetail;
+  if (!b) return;
+  if (act === 'bk-resume') return bookAct('POST', '/api/books/play', { key: b.key, from: b.finished ? 'start' : 'resume' }, t('books.playing', { name: b.title }));
+  if (act === 'bk-start') return bookAct('POST', '/api/books/play', { key: b.key, from: 'start' }, t('books.playing', { name: b.title }));
+  if (act === 'bk-finished') return bookAct('PUT', '/api/books/finished', { key: b.key, finished: !b.finished });
+  if (act === 'bk-mark') return bookAct('POST', '/api/books/bookmark', {}, t('books.bookmarkAdded'));
+  const ch = e.target.closest('[data-ch]');
+  if (ch) return bookAct('POST', '/api/books/play', { key: b.key, from: 'chapter', index: +ch.dataset.ch }, t('books.playing', { name: b.title }));
+  const bm = e.target.closest('[data-created]');
+  if (bm && act === 'bk-bm-del') return bookAct('DELETE', `/api/books/bookmark?key=${encodeURIComponent(b.key)}&created=${bm.dataset.created}`);
+  if (bm) return bookAct('POST', '/api/books/play', { key: b.key, from: 'bookmark', created: +bm.dataset.created }, t('books.playing', { name: b.title }));
+}
+libList.addEventListener('change', (e) => {
+  const sel = e.target.closest('[data-act="bk-speed"]');
+  if (sel && S.bookDetail) bookAct('PUT', '/api/books/speed', { key: S.bookDetail.key, speed: +sel.value });
+});
+// a book's files: right into Audiobooks (an .m4b is a book by itself); a folder: into Audiobooks as it is
+$('#bookFiles').addEventListener('change', (e) => { enqueue([...e.target.files], S.books?.folder); e.target.value = ''; });
+$('#bookFolder').addEventListener('change', (e) => {
+  const by = new Map();
+  for (const f of e.target.files) {
+    const rel = (f.webkitRelativePath || f.name).split('/').slice(0, -1).join('/');
+    if (!by.has(rel)) by.set(rel, []);
+    by.get(rel).push(f);
+  }
+  for (const [rel, files] of by) enqueue(files, rel ? `${S.books?.folder}/${rel}` : S.books?.folder);
+  e.target.value = '';
+});
 
 // ---------- uploads ----------
 let upId = 0;

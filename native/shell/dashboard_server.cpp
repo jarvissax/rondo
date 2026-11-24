@@ -40,6 +40,7 @@
 #include "../ui/image.h"
 #include "../core/lang.h"
 #include "app.h"
+#include "books.h"
 #include "dashboard.h"
 #include "file_ops.h"
 #include "../direct/innertube.h"
@@ -833,9 +834,40 @@ std::string playerJson(const std::string& queued = "", Asked asked = {}) {  // U
     title = it->title, subtitle = it->subtitle, thumb = it->thumb;
   }
   int64_t position = s.positionMs;
-  if (s.playing && s.publishedNs) position += (monoNs() - s.publishedNs) / 1000000;
+  if (s.playing && s.publishedNs) position += (monoNs() - s.publishedNs) / 1000000 * (s.speed > 0 ? s.speed : 100) / 100;
   if (s.durationMs > 0) position = std::min(position, s.durationMs);
-  return obj({{"title", str(title)},
+  // an audiobook: its chapter (what the bar covers), its time left and speed (shell/books.h)
+  std::string book = kNull;
+  if (const BookPlay* b = queued.empty() ? bookNow() : nullptr) {
+    Place at{s.index, position};
+    int c = chapterAt(b->chapters, at);
+    int64_t lo = 0, hi = s.durationMs;
+    if (!b->skips && c >= 0 && b->chapters[size_t(c)].file == s.index) lo = b->chapters[size_t(c)].startMs, hi = b->chapters[size_t(c)].endMs;
+    int64_t bookAt = bookMsOf(b->fileMs, at);
+    book = obj({{"key", str(b->key)},
+                {"title", str(b->title)},
+                {"author", str(b->author)},
+                {"chapter", num(int64_t(c))},
+                {"chapters", num(int64_t(b->skips ? 0 : b->chapters.size()))},
+                {"chapterTitle", str(b->skips ? "" : chapterName(*b, c))},
+                {"chapterStartMs", num(lo)},
+                {"chapterEndMs", num(hi)},
+                {"positionMs", num(bookAt)},
+                {"durationMs", num(b->lengthMs)},
+                {"leftText", str(tr("book.left", {{"time", listenTime(std::max<int64_t>(0, b->lengthMs - bookAt), s.speed > 0 ? s.speed : 100)}}))},
+                {"speed", num(int64_t(s.speed > 0 ? s.speed : 100))},
+                {"musicWaits", boolean(musicLent())}});
+  }
+  SleepMode sm = sleepMode();
+  std::string sleep = sm == SleepMode::Off ? kNull
+                                           : obj({{"mode", str(sm == SleepMode::Minutes ? "minutes" : "end")},
+                                                  {"leftMs", num(sleepLeftMs())},
+                                                  {"label", str(sm == SleepMode::Minutes ? sleepMark() : sleepEndName())}});
+  return obj({{"book", book},
+              {"sleep", sleep},
+              {"endName", str(sleepEndName())},
+              {"speed", num(int64_t(s.speed > 0 ? s.speed : 100))},
+              {"title", str(title)},
               {"subtitle", str(subtitle)},
               {"path", local ? str(path) : kNull},
               {"art", local ? str("/api/art?path=" + encode(path) + "&size=300") : !thumb.empty() ? str("/api/thumb?path=" + encode(thumb)) : kNull},
@@ -1115,6 +1147,8 @@ Response Server::update(Request& r) {
   postToMain([] {
     if (g_player.state().playing) g_player.pause();
     resumeSaveNow();
+    booksSaveNow();
+    g_library.flush(1000);
     requestRestart();
   }, 1500);  // the answer reaches the page first
   return json(obj({{"version", str(version)}}));
@@ -1493,6 +1527,116 @@ std::string librarySongJson(const Track& t) {
               {"size", num(t.size)},
               {"modified", num(t.modified)},
               {"art", "true"}});
+}
+
+// ---- audiobooks (shell/books.h) ----
+
+// where the dashboard puts a book: the card's Audiobooks folder, in whatever case it is, else a new one
+std::string audiobooksFolder() {
+  std::string root = cardRoot().empty() ? kRoots[0] : cardRoot();
+  if (DIR* d = opendir(root.c_str())) {
+    std::string found;
+    while (dirent* e = readdir(d))
+      if (e->d_name[0] != '.' && inBookFolder(root + "/" + e->d_name + "/x") && isDir(root + "/" + e->d_name)) found = e->d_name;
+    closedir(d);
+    if (!found.empty()) return root + "/" + found;
+  }
+  return root + "/Audiobooks";
+}
+
+std::string bookSummaryJson(const Book& b) {
+  BookPlay d = bookDetails(b);
+  BookProgress p = bookProgress(b, d);
+  const BookPlay* now = bookNow();
+  PlayerState s = g_player.state();
+  bool playing = now && now->key == b.key;
+  std::string left = p.finished ? tr("book.finished")
+                     : p.started ? tr("book.left", {{"time", listenTime(std::max<int64_t>(0, d.lengthMs - p.ms), p.speed)}})
+                                 : listenTime(d.lengthMs, 100);
+  return obj({{"key", str(b.key)},
+              {"title", str(b.title)},
+              {"author", str(b.author)},
+              {"narrator", str(d.narrator)},
+              {"cover", str(b.files.front()->path)},  // its first file: the artwork's (GET /api/art)
+              {"art", str("/api/art?path=" + encode(b.files.front()->path) + "&size=300")},
+              {"durationMs", num(d.lengthMs)},
+              {"positionMs", num(p.ms)},
+              {"started", boolean(p.started)},
+              {"finished", boolean(p.finished)},
+              {"lastPlayed", num(p.lastPlayed)},
+              {"speed", num(int64_t(p.speed))},
+              {"speedText", str(speedLabel(p.speed))},
+              {"status", str(left)},
+              {"lengthText", str(listenTime(d.lengthMs, 100))},
+              {"chapters", num(int64_t(d.skips ? 0 : d.chapters.size()))},
+              {"bookmarks", num(int64_t(g_library.bookmarks(b.key).size()))},
+              {"files", num(int64_t(b.files.size()))},
+              {"playing", boolean(playing)},
+              {"paused", boolean(playing && !s.playing)}});
+}
+
+std::string booksJson() {
+  std::vector<std::string> books;
+  for (const Book& b : g_library.books()) books.push_back(bookSummaryJson(b));
+  std::vector<std::string> speeds;
+  for (int v : kSpeeds) speeds.push_back(obj({{"value", num(int64_t(v))}, {"text", str(speedLabel(v))}}));
+  return obj({{"books", arr(books)}, {"scanning", boolean(g_library.scanning())}, {"folder", str(audiobooksFolder())}, {"speeds", arr(speeds)}});
+}
+
+std::string bookDetailJson(const std::string& key) {
+  const Book* b = g_library.bookByKey(key);
+  if (!b) return kNull;
+  BookPlay d = bookDetails(*b);
+  BookProgress p = bookProgress(*b, d);
+  int current = chapterAt(d.chapters, p.place);
+  std::vector<std::string> chapters;
+  if (!d.skips)
+    for (size_t i = 0; i < d.chapters.size(); i++) {
+      const Chapter& c = d.chapters[i];
+      chapters.push_back(obj({{"title", str(chapterName(d, int(i)))}, {"startMs", num(c.bookStartMs)}, {"lengthMs", num(c.endMs - c.startMs)}}));
+    }
+  std::vector<Bookmark> marks = g_library.bookmarks(key);
+  std::sort(marks.begin(), marks.end(), [](const Bookmark& a, const Bookmark& b) { return a.created > b.created; });
+  std::vector<std::string> bm;
+  for (const Bookmark& m : marks) {
+    Place at{0, m.positionMs};
+    for (size_t i = 0; i < d.paths.size(); i++)
+      if (d.paths[i] == m.file) at.file = int(i);
+    int c = chapterAt(d.chapters, at);
+    int64_t inChapter = c >= 0 ? at.ms - d.chapters[size_t(c)].startMs : at.ms;
+    bm.push_back(obj({{"created", num(m.created)},
+                      {"positionMs", num(bookMsOf(d.fileMs, at))},
+                      {"chapter", str(d.skips ? "" : chapterName(d, c))},
+                      {"inChapterMs", num(std::max<int64_t>(0, inChapter))}}));
+  }
+  std::string summary = bookSummaryJson(*b);
+  summary.pop_back();  // the summary's fields, then these
+  return summary + ",\"chapterList\":" + arr(chapters) + ",\"current\":" + num(int64_t(p.started ? current : -1)) +
+         ",\"bookmarkList\":" + arr(bm) + "}";
+}
+
+// POST /api/books/play {key, from: "resume" | "start" | "chapter" | "bookmark" | "at", index, created, positionMs}
+Response playBookRequest(const Body& body) {
+  std::string key, from = "resume";
+  const Book* b = body.text("key", key) ? g_library.bookByKey(key) : nullptr;
+  if (!b) return error(404, "not found");
+  body.text("from", from);
+  BookPlay d = bookDetails(*b);
+  int64_t v = 0;
+  if (from == "start") playBookFrom(*b, {0, 0});
+  else if (from == "chapter" && body.integer("index", v) && v >= 0 && v < int64_t(d.chapters.size()))
+    playBookFrom(*b, {d.chapters[size_t(v)].file, d.chapters[size_t(v)].startMs});
+  else if (from == "bookmark" && body.integer("created", v)) {
+    for (const Bookmark& m : g_library.bookmarks(key))
+      if (m.created == v)
+        for (size_t i = 0; i < d.paths.size(); i++)
+          if (d.paths[i] == m.file) playBookFrom(*b, {int(i), m.positionMs});
+  } else if (from == "at" && body.integer("positionMs", v)) {
+    playBookFrom(*b, placeAt(d.fileMs, std::max<int64_t>(0, v)));
+  } else {
+    playBook(*b);
+  }
+  return json(obj({{"player", playerJson()}, {"book", bookDetailJson(key)}}));
 }
 
 std::string libraryJson() {
@@ -1993,13 +2137,13 @@ Response Server::api(Request& r, const std::string& path) {
       b->text("action", action);
       int64_t v;
       Asked asked;
-      if (action == "toggle") {
-        g_player.togglePlay();
+      if (action == "toggle") {  // an audiobook's resume, chapters (shell/books.h)
+        transportToggle();
         if (s.index >= 0) asked.playing = !s.playing;
       } else if (action == "next") {
-        g_player.next();
+        transportNext();
       } else if (action == "previous") {
-        g_player.previous();
+        transportPrev();
       } else if (action == "seek" && b->integer("positionMs", v)) {
         g_player.seekTo(v);
         asked.positionMs = std::max<int64_t>(0, v);
@@ -2058,6 +2202,62 @@ Response Server::api(Request& r, const std::string& path) {
       if (!g_library.setRating(p, int(stars))) return error(404, "not found");
       const Track* t = g_library.find(p);
       return json(t ? librarySongJson(*t) : "{}");
+    });
+  if (path == "/books" && m == "GET") return ui([] { return booksJson(); });
+  if (path == "/books/detail" && m == "GET") {
+    std::string key = r.param("key");
+    return ui([key] { return bookDetailJson(key); });
+  }
+  if (path == "/books/play" && m == "POST") return onUi([b] { return playBookRequest(*b); });
+  if (path == "/books/speed" && m == "PUT")
+    return onUi([b] {
+      std::string key;
+      int64_t v;
+      const Book* book = b->text("key", key) ? g_library.bookByKey(key) : nullptr;
+      if (!book || !b->integer("speed", v)) return error(400, "key, speed");
+      setBookSpeed(*book, int(v));
+      return json(bookDetailJson(key));
+    });
+  if (path == "/books/finished" && m == "PUT")
+    return onUi([b] {
+      std::string key;
+      bool f;
+      const Book* book = b->text("key", key) ? g_library.bookByKey(key) : nullptr;
+      if (!book || !b->flag("finished", f)) return error(400, "key, finished");
+      markBookFinished(*book, f);
+      return json(bookDetailJson(key));
+    });
+  if (path == "/books/bookmark" && m == "POST")  // where the book playing is
+    return onUi([] {
+      const BookPlay* now = bookNow();
+      if (!now || !addBookmarkNow()) return error(409, "not playing");
+      return json(bookDetailJson(now->key));
+    });
+  if (path == "/books/bookmark" && m == "DELETE") {
+    std::string key = r.param("key");
+    int64_t created = atoll(r.param("created").c_str());
+    return onUi([key, created] {
+      if (!g_library.bookByKey(key)) return error(404, "not found");
+      g_library.removeBookmark(key, created);
+      return json(bookDetailJson(key));
+    });
+  }
+  if (path == "/books/music" && m == "POST")  // Back to your music
+    return onUi([] {
+      backToMusic();
+      return json(playerJson());
+    });
+  if (path == "/sleep" && m == "PUT")
+    return onUi([b] {
+      std::string mode;
+      int64_t minutes = 0;
+      b->text("mode", mode);
+      b->integer("minutes", minutes);
+      if (mode == "minutes" && minutes > 0 && minutes <= 600) sleepStart(SleepMode::Minutes, int(minutes));
+      else if (mode == "end") sleepStart(SleepMode::EndOfItem);
+      else if (mode == "off") sleepStart(SleepMode::Off);
+      else return error(400, "mode");
+      return json(playerJson());
     });
   if (path == "/library/rescan" && m == "POST") {
     postToMain([] { rescan(); });

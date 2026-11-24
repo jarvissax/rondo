@@ -185,7 +185,7 @@ input { caret-color: var(--accent-hi); }
 .vh { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 12px 0 20px; }
 .vh h1 { font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -.015em; }
 .vh p { color: var(--text-2); margin-top: 6px; max-width: 60ch; }
-.vh-actions { display: flex; gap: 8px; }
+.vh-actions { display: flex; flex-wrap: wrap; gap: 8px; }  /* a phone: onto a second line, not past the screen */
 .gh { font-size: 17px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -.005em; }
 .help { color: var(--text-2); font-size: 14px; margin: -6px 0 14px; }
 .group + .help, .note + .help { margin-top: 14px; }  /* under a card, not a heading: apart from it */
@@ -497,8 +497,16 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .np-volume .vol { --fill: #fff; --track: rgb(255 255 255 / .24); }
 .np-volume output { min-width: 2ch; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .np-empty-btn { display: none; margin-top: 14px; }
+.np.has-extras { grid-template-areas: "art info" "progress progress" "controls controls" "extras extras" "volume volume"; }
+.np-extras { grid-area: extras; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.np-extras[hidden] { display: none; }
+.np-extras .select select { height: 34px; font-size: 13px; background-color: rgb(255 255 255 / .12); color: #fff; border-color: transparent; }
+.np-extras .select .i { color: rgb(255 255 255 / .75); }
+.np-extras .btn { height: 34px; font-size: 13px; background: rgb(255 255 255 / .12); color: #fff; border-color: transparent; }
+.np-extras .btn:hover { background: rgb(255 255 255 / .2); }
+.np-speed { display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px; border-radius: 5px; background: #fff; color: #0a0a0b; font-size: 11px; font-weight: 700; }
 .np.is-empty { grid-template-areas: "art info"; }
-.np.is-empty .np-progress, .np.is-empty .np-controls, .np.is-empty .np-volume { display: none; }
+.np.is-empty .np-progress, .np.is-empty .np-controls, .np.is-empty .np-volume, .np.is-empty .np-extras { display: none; }
 .np.is-empty .np-empty-btn { display: inline-flex; }
 .np.is-empty .np-sub { white-space: normal; color: rgb(255 255 255 / .72); }
 .np.is-empty .np-title { font-size: 18px; }
@@ -509,6 +517,16 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .lib-bar .seg { grid-column: 1 / -1; display: flex; }
 .lib-bar .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .lib-bar .seg .i { width: 17px; height: 17px; }
+/* the sections: each as wide as its name (Audiobooks is long); a phone shows the chosen one's name
+   and the others' icons (their names kept for screen readers) */
+.lib-bar .seg-sections button { flex: 1 1 auto; position: relative; }
+@media (max-width: 599px) {
+  .lib-bar .seg-sections button { padding: 0 10px; }
+  .lib-bar .seg-sections button[aria-checked="false"] { flex: 0 1 auto; min-width: 44px; }
+  .lib-bar .seg-sections button[aria-checked="false"] span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+}
 .lib-bar .seg-sub { justify-self: start; display: inline-flex; }
 .lib-bar .seg-sub[hidden], .lib-bar #shuffleBtn[hidden] { display: none; }
 .lib-bar .seg-sub button { padding-inline: 14px; }
@@ -543,6 +561,19 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .s-artist, .s-album, .s-size { display: none; }
 .s-time { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .s-acts { display: flex; }
+/* audiobooks: the unplayed dot, the progress under a book, a book's own page */
+.bk-dot { display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 50%; background: var(--accent-hi, #4f8ef7); vertical-align: middle; }
+.bk-prog { display: block; height: 3px; margin-top: 6px; max-width: 220px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.bk-prog > span { display: block; height: 100%; width: var(--p, 0%); background: var(--text-2); border-radius: 2px; }
+.bk-head { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: start; }
+.bk-head .bk-cover { width: 96px; height: 96px; border-radius: 8px; }
+.bk-head .bk-cover .i { width: 34px; height: 34px; }
+.bk-head h2 { margin-top: 2px; }
+.bk-acts { grid-column: 1 / -1; }
+.bk-acts .select { display: inline-flex; }
+.bk-acts .select select { height: 32px; font-size: 13px; }
+.bk-upload { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+.song.is-current .s-title { color: var(--accent-hi, #4f8ef7); font-weight: 600; }
 .song.is-playing .s-title { color: var(--accent-hi); font-weight: 600; }
 .song.is-playing .art::after {
   content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / .45) center / 20px no-repeat;
@@ -917,6 +948,7 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   .lib-bar { grid-template-columns: minmax(0, 1fr) auto auto; }
   .lib-bar .seg { grid-column: 1 / -1; display: inline-flex; justify-self: start; }
   .lib-bar .seg button { min-width: 92px; }
+  .lib-bar .seg-sections button { flex: 0 0 auto; }
   .lib-head {
     position: sticky; top: 0; z-index: 3;
     display: grid; grid-template-columns: 44px minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1.4fr) 52px 84px; gap: 12px;
@@ -980,6 +1012,9 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
 .lib.is-playlists .lib-head { display: none; }
 .lib .song.pl-row { grid-template-columns: 44px minmax(0, 1fr) auto; cursor: pointer; }
 .lib .song.pl-song { grid-template-columns: 44px minmax(0, 1fr) auto auto; cursor: pointer; }
+.lib .song.bk-row, .lib .song.bk-bm { grid-template-columns: 44px minmax(0, 1fr) auto; cursor: pointer; }
+.lib .song.bk-ch { grid-template-columns: 44px minmax(0, 1fr) auto auto; cursor: pointer; }
+.lib .song.bk-ch .art { font-size: 14px; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .pl-new .s-title { color: var(--accent-hi); font-weight: 600; }
 .art-add { background: rgb(255 255 255 / .06); color: var(--accent-hi); }
 .song.is-missing { opacity: .55; cursor: default; }
@@ -1001,6 +1036,9 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   .lib .song.pl-row { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .lib .song.pl-song { grid-template-columns: 44px minmax(0, 1fr) 52px auto; }
   .lib .song.pl-row .s-sub, .lib .song.pl-song .s-sub { display: block; }
+  .lib .song.bk-row, .lib .song.bk-bm { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .lib .song.bk-ch { grid-template-columns: 44px minmax(0, 1fr) 52px auto; }
+  .lib .song.bk-row .s-sub, .lib .song.bk-ch .s-sub, .lib .song.bk-bm .s-sub { display: block; }
 }
 
 /* a newer Rondo is out (Overview › Device) */
