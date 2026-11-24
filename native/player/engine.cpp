@@ -987,12 +987,17 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
   }
   // Filling the whole ring at once, right as a song starts (and Now Playing slides in), took the CPU
   // from the UI for a refresh. With a second buffered the decoder steps back below the UI's priority,
-  // and comes forward again under half a second.
+  // and comes forward again under half a second. Seconds of the file's time, that is: an audiobook at
+  // 3x filled a second of sound as three of the file through Sonic, and a chapter's jump kept both
+  // cores busy long enough for the GPU to miss two refreshes (Nov 24). Never less than a third of a
+  // second of sound to step back at, and a quarter to come forward at, whatever the speed.
   uint64_t buffered = writeAt_ - readAt_;
-  if (eager_ && buffered >= uint64_t(kRate)) {
+  uint64_t full = std::max<uint64_t>(uint64_t(kRate) * 100 / uint64_t(speed_), uint64_t(kRate / 3));
+  uint64_t low = std::max<uint64_t>(uint64_t(kRate) * 50 / uint64_t(speed_), uint64_t(kRate / 4));
+  if (eager_ && buffered >= full) {
     setpriority(PRIO_PROCESS, 0, 10);
     eager_ = false;
-  } else if (!eager_ && buffered < uint64_t(kRate / 2)) {
+  } else if (!eager_ && buffered < low) {
     setpriority(PRIO_PROCESS, 0, -4);
     eager_ = true;
   }
