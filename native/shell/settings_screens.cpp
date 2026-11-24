@@ -891,11 +891,11 @@ class SettingsScreen : public ShellListScreen {
     rows.push_back(settingRow(tr("settings.display.title"), accentName(g_config.theme.accent), tiles::display, true,
                               [] { pushGroup(tr("settings.display.title"), displayRows); }));
     rows.push_back(settingRow(tr("settings.controls.title"), "", tiles::controls, true, [] { pushGroup(tr("settings.controls.title"), controlsRows); }));
+    rows.push_back(settingRow(tr("settings.language"), lang::nameOf(lang::current()), tiles::language, true,
+                              [] { g_app->push(makeLanguage(false)); }));
     rows.push_back(settingRow(tr("settings.system"),
                               g_latestVersion.empty() ? std::string("Rondo ") + kVersion : tr("settings.versionOut", {{"version", g_latestVersion}}),
                               tiles::system, true, [] { pushGroup(tr("settings.system"), systemRows); }));
-    rows.push_back(settingRow(tr("settings.language"), lang::nameOf(lang::current()), tiles::language, true,
-                              [] { g_app->push(makeLanguage(false)); }));
     list_.setRows(std::move(rows), true);
   }
   // on opening Settings (and back to it): the Server row says Checking… until the server answers
