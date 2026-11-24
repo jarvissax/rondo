@@ -1590,7 +1590,7 @@ const bookSub = (b) => [b.author, b.status].filter(Boolean).join(' · ');
 const bookProgress = (b) => (b.started && !b.finished && b.durationMs ? `<span class="bk-prog"><span style="--p:${Math.min(100, (b.positionMs / b.durationMs) * 100).toFixed(1)}%"></span></span>` : '');
 function bookRowHtml(b) {
   return `<div class="song bk-row${b.playing ? ' is-playing' : ''}" role="listitem" data-book="${esc(b.key)}">
-    <span class="art" data-art="${esc(b.cover)}">${icon('book')}</span>
+    <span class="art" data-art="${esc(b.cover)}"${b.coverIsPhoto ? ' data-photo="1"' : ''}>${icon('book')}</span>
     <span class="s-main"><span class="s-title">${esc(b.title)}${b.started ? '' : `<span class="bk-dot" title="${te('books.notStarted')}"></span>`}</span><span class="s-sub">${esc(bookSub(b))}</span>${bookProgress(b)}</span>
     <span class="s-acts"><button class="ib ib-sm" type="button" data-act="bk-play" aria-label="${te('common.playNameOnRondo', { name: b.title })}">${icon(b.playing && !b.paused ? 'pause' : 'play')}</button><button class="ib ib-sm" type="button" data-act="bk-open" aria-label="${te('books.openName', { name: b.title })}">${icon('chevron')}</button></span></div>`;
 }
@@ -1627,7 +1627,7 @@ function renderBook() {
       <span class="s-acts"><button class="ib ib-sm" type="button" data-act="bk-bm" aria-label="${te('books.playBookmark')}">${icon('play')}</button><button class="ib ib-sm" type="button" data-act="bk-bm-del" aria-label="${te('books.deleteBookmark')}">${icon('trash')}</button></span></div>`).join('');
   libList.innerHTML = `<div class="pl-head bk-head">
       <button class="btn btn-sm btn-quiet" type="button" data-act="bk-back" style="grid-column:1/-1;justify-self:start">${icon('chevron', 'i flip')}<span>${te('books.title')}</span></button>
-      <span class="art bk-cover" data-art="${esc(b.cover)}">${icon('book')}</span>
+      <span class="art bk-cover" data-art="${esc(b.cover)}"${b.coverIsPhoto ? ' data-photo="1"' : ''}>${icon('book')}</span>
       <div><h2>${esc(b.title)}</h2><p>${esc(facts)}</p><p>${esc(b.status)}${b.started && !b.finished && b.durationMs ? '' : ''}</p>${bookProgress(b)}</div>
       <div class="pl-acts bk-acts">${main}${again}${mark}<label class="select"><span class="sr-only">${te('books.speed')}</span><select data-act="bk-speed" aria-label="${te('books.speed')}">${speeds}</select>${icon('down')}</label>${done}</div></div>` +
     (chapters ? `<div class="lhdr" role="heading" aria-level="3">${te('books.chapters')}<small>${te('books.chapterCount', { count: b.chapterList.length })}</small></div>${chapters}` : '') +

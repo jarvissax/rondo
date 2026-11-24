@@ -50,6 +50,9 @@ struct Book {
   std::string title, author;
   std::vector<const Track*> files;
   int64_t durationMs = 0;  // the files' lengths added up
+  // its artwork: the first file (its picture, else one beside it), or for a book whose files are in
+  // disc folders ("CD 1") the cover.jpg or folder.jpg in the book's own folder
+  std::string cover;
 };
 
 // Where a book was left, how fast it plays, whether it's finished (kept in the library's database)

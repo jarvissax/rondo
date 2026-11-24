@@ -146,7 +146,8 @@ with it at once.
 - files whose genre tag is *Audiobook*.
 
 A folder of files is one book, in disc, track and name order; each file is a chapter. Disc folders
-(`CD 1`, `Disc 2`) inside a book's folder are part of it. An `.m4b`, or any file with chapters of
+(`CD 1`, `Disc 2`) inside a book's folder are part of it, and a `cover.jpg` (or `folder.jpg`) in the
+book's folder is its cover. An `.m4b`, or any file with chapters of
 its own, is a book by itself. Books stay out of Songs, Shuffle songs, Artists, Albums, Genres, the
 smart lists and Organize. Library's Search finds them by title and author. Books from Audible or
 Apple Books that are copy-protected (`.aa`, `.aax`) can't play; ones you converted to `.m4b` can.

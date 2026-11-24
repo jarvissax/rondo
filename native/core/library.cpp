@@ -886,6 +886,14 @@ void Library::index() const {
     for (const BookFile& f : g.files)
       if (auto it = byPath_.find(f.path); it != byPath_.end()) b.files.push_back(it->second);
     if (b.files.empty()) continue;
+    b.cover = b.files.front()->path;
+    std::string first = b.cover.substr(0, b.cover.rfind('/'));
+    if (first != b.key && b.key != b.cover)  // its files in disc folders: the picture in the book's folder
+      for (const char* name : {"cover.jpg", "folder.jpg", "Cover.jpg", "Folder.jpg", "front.jpg", "cover.png", "folder.png"})
+        if (access((b.key + "/" + name).c_str(), R_OK) == 0) {
+          b.cover = b.key + "/" + name;
+          break;
+        }
     bookByKey_[b.key] = books_.size();
     for (const Track* t : b.files) bookOfPath_[t->path] = books_.size();
     bookKeys_.push_back(fold(b.title + " " + b.author));

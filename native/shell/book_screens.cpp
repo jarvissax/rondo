@@ -72,7 +72,7 @@ class BooksScreen : public ShellListScreen {
       Row r;
       r.title = e.book->title;
       r.subtitle = e.subtitle;
-      r.thumb = e.book->files.front()->path;
+      r.thumb = e.book->cover;
       r.dot = !e.p.started;
       std::string key = e.book->key;
       r.onSelect = [key] { g_app->push(makeBook(key)); };
@@ -136,7 +136,7 @@ class BookScreen : public Screen {
       Rect ar{float(pad), float(pad), float(art), float(art)};
       e.c.layer(2);
       float a = 1;
-      const Texture* tex = e.covers.get(b->files.front()->path, art, art, 0, e.now, &a);
+      const Texture* tex = e.covers.get(b->cover, art, art, 0, e.now, &a);
       if (!tex || a < 1) {
         e.c.shape(ar, e.dpf(5), p.rowLine);
         int g = e.dp(30);

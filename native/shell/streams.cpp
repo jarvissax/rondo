@@ -56,7 +56,10 @@ std::string largeThumb(const std::string& thumb, int size) {
 }
 
 std::string artOf(const std::string& path, int size) {
-  if (!isStream(path)) return path;
+  if (!isStream(path)) {
+    if (const Book* b = g_library.bookOf(path)) return b->cover;  // an audiobook's file: the book's picture
+    return path;
+  }
   const Item* it = streamItem(path);
   return it ? (size > 0 ? largeThumb(it->thumb, size) : it->thumb) : "";
 }

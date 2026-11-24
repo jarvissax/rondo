@@ -454,7 +454,7 @@ class LibrarySearchScreen : public Screen {
         Row r;
         r.title = b->title;
         r.subtitle = b->author;
-        r.thumb = b->files.front()->path;
+        r.thumb = b->cover;
         r.chevron = true;
         std::string key = b->key;
         r.onSelect = [key] { g_app->push(makeBook(key)); };

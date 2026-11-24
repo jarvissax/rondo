@@ -826,6 +826,9 @@ std::string playerJson(const std::string& queued = "", Asked asked = {}) {  // U
     s.durationMs = t && t->durationSec > 0 ? int64_t(t->durationSec) * 1000 : 0;
   }
   bool local = !isStream(path);  // streams are /s/<id>/<itag> in both modes: not a card file
+  // a card file's picture; an audiobook's is the book's (it may be a picture in its folder)
+  std::string art = local ? artOf(path, 0) : std::string();
+  std::string localArt = ui::isPhotoName(art) ? "/api/photo?path=" + encode(art) + "&size=300" : "/api/art?path=" + encode(art) + "&size=300";
   std::string title, subtitle, thumb;
   if (local) {
     SongInfo i = songInfo(path);
@@ -870,7 +873,7 @@ std::string playerJson(const std::string& queued = "", Asked asked = {}) {  // U
               {"title", str(title)},
               {"subtitle", str(subtitle)},
               {"path", local ? str(path) : kNull},
-              {"art", local ? str("/api/art?path=" + encode(path) + "&size=300") : !thumb.empty() ? str("/api/thumb?path=" + encode(thumb)) : kNull},
+              {"art", local ? str(localArt) : !thumb.empty() ? str("/api/thumb?path=" + encode(thumb)) : kNull},
               {"source", str(local ? "device" : "youtube")},
               {"playing", boolean(s.playing)},
               {"positionMs", num(position)},
@@ -1557,8 +1560,9 @@ std::string bookSummaryJson(const Book& b) {
               {"title", str(b.title)},
               {"author", str(b.author)},
               {"narrator", str(d.narrator)},
-              {"cover", str(b.files.front()->path)},  // its first file: the artwork's (GET /api/art)
-              {"art", str("/api/art?path=" + encode(b.files.front()->path) + "&size=300")},
+              // its artwork: a file's picture (GET /api/art), or a picture in the book's folder (/api/photo)
+              {"cover", str(b.cover)},
+              {"coverIsPhoto", boolean(ui::isPhotoName(b.cover))},
               {"durationMs", num(d.lengthMs)},
               {"positionMs", num(p.ms)},
               {"started", boolean(p.started)},
