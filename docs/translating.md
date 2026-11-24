@@ -1,7 +1,7 @@
 # Translating Rondo
 
-Rondo speaks English and Spanish. Every text it shows, on the Y1, on its dashboard and on the
-server's admin page, lives in one file per language in [`lang/`](../lang):
+Rondo speaks English and Spanish. Every text it shows, on the Y1, on its dashboard, on the
+server's admin page and on the update page, lives in one file per language in [`lang/`](../lang):
 
 | File | Language |
 | --- | --- |
@@ -23,15 +23,17 @@ admin page run on your computer with your changes.
     "library.songCount": { "one": "{count} canción", "other": "{count} canciones" }
   },
   "dashboard": { "…": "…" },
-  "admin": { "…": "…" }
+  "admin": { "…": "…" },
+  "updater": { "…": "…" }
 }
 ```
 
 - **`_name`** is the language's name in that language ("Español", "Deutsch"). The language pickers
   show it.
-- **Three sections**, one for each place Rondo shows text: `device` (the Y1 itself), `dashboard`
-  (the web page the Y1 serves while Settings › Dashboard is open) and `admin` (the Rondo server's
-  admin page).
+- **Four sections**, one for each place Rondo shows text: `device` (the Y1 itself), `dashboard`
+  (the web page the Y1 serves while Settings › Dashboard is open), `admin` (the Rondo server's
+  admin page) and `updater` (the update page,
+  [jarvissax.github.io/rondo](https://jarvissax.github.io/rondo/)).
 - **Keys** (`settings.language`) name a text and where it's used. They never change in a
   translation; only the text on the right does.
 - **Blanks** in braces, like `{count}`, `{name}` or `{total}`, are filled in by Rondo. Keep each
@@ -42,8 +44,8 @@ admin page run on your computer with your changes.
   [CLDR's list](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)
   (`zero`, `two`, `few`, `many`). Every plural text needs `other`. A form may leave `{count}` out
   (`"one": "Una canción"`).
-- **Markup**: a few dashboard and admin texts have `<b>…</b>`, `<i>`, `<code>` or `<br>` in
-  them. Keep the same tags, around the words that need them in your language.
+- **Markup**: a few dashboard, admin and update page texts have `<b>…</b>`, `<i>`, `<code>` or
+  `<br>` in them. Keep the same tags, around the words that need them in your language.
 - `\n` is a line break (a few texts on the Y1 have two lines). `…` is one character (the ellipsis),
   as are `’`, `“`, `”`, `·` and `›`.
 
@@ -74,9 +76,10 @@ Anything a language doesn't have yet shows in English, so a half-finished langua
 
 Two things need a developer, so mention them in the pull request if your language has them:
 
-- **Plural forms besides `one` and `other`.** The dashboard and the admin page take the rules from
-  the browser. The Y1 has its own table in `native/core/lang.cpp` (`pluralForm()`); it already
-  knows French, Russian, Ukrainian, Polish, Czech, Slovak and the languages without plurals.
+- **Plural forms besides `one` and `other`.** The dashboard, the admin page and the update page
+  take the rules from the browser. The Y1 has its own table in `native/core/lang.cpp`
+  (`pluralForm()`); it already knows French, Russian, Ukrainian, Polish, Czech, Slovak and the
+  languages without plurals.
 - **Writing that runs right to left** (Arabic, Persian, Hebrew). The Y1 lays text out left to right
   for now.
 
@@ -106,6 +109,15 @@ Open <http://localhost:8095/admin/> and choose the language under the sign-in fo
 with the password the terminal prints, under Admin account). It starts in your browser's language
 when Rondo has it.
 
+**The update page** (needs `npm ci` in `web-updater/` once):
+
+```bash
+cd web-updater && npm run dev
+```
+
+Open <http://localhost:8000> and choose the language at the top right. An edit in `lang/` rebuilds
+the page; reload to see it.
+
 **The Y1's own texts** need a Y1 to see in place (Settings › Language). Its screen is 480 × 360 and
 its rows are short: a text that doesn't fit ends in "…", so prefer the shorter way of saying it,
 especially for titles (about 22 characters) and the values at the right of a row (about 12).
@@ -121,10 +133,11 @@ Every text goes through the catalog; none is written in the code.
   where the shell shows them. The few words direct mode and the Rondo server put into YouTube's
   answers themselves (`feed.*`: "49 songs", "Liked Music") are in the `device` section too, said in
   the language each request names (`say()` in `native/direct/innertube.h` and `server/src/lang.ts`).
-- **The dashboard and the admin page** (JavaScript): `t('key', {count: n})` for text,
-  `te('key')` inside HTML templates (escaped), `th('key')` for a text with its own markup, and
+- **The dashboard, the admin page and the update page** (JavaScript): `t('key', {count: n})` for
+  text, `te('key')` inside HTML templates (escaped), `th('key')` for a text with its own markup, and
   `data-i18n="key"`, `data-i18n-html="key"`, `data-i18n-attr="aria-label:key"` in the HTML (keep the
-  English in the HTML too; the check makes sure it matches `lang/en.json`).
+  English in the HTML too; the check makes sure it matches `lang/en.json`). The update page's texts
+  are built into its script (`web-updater/build.mjs`), so it fetches none.
 - Add the English to `lang/en.json` and the text to every other language file. Build sentences as
   one text with blanks, never from pieces (`"{count} songs"`, not `n + " songs"`): word order
   differs between languages.

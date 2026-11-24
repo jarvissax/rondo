@@ -9,10 +9,13 @@ import { ReadableStream } from "@yume-chan/stream-extra";
 export const PACKAGE = "com.jarvissax.rondo";
 const TMP_APK = "/data/local/tmp/rondo-update.apk";
 
+// what went wrong, for the page to say in its language (main.js errorText()): its kind, and the
+// details that kind's text needs ({model}, {reason})
 export class UpdateError extends Error {
-  constructor(kind, message) {
-    super(message);
-    this.kind = kind; // "not-y1" | "no-firmware" | "other-build" | "older" | "install"
+  constructor(kind, details = {}) {
+    super(Object.keys(details).length ? `${kind} (${Object.values(details).join(", ")})` : kind);
+    this.kind = kind; // "not-y1" | "no-firmware" | "other-key" | "older" | "android-install" | "rondo-install" | "want-apk" | "want-bundle"
+    this.details = details;
   }
 }
 
@@ -39,10 +42,10 @@ const getProp = async (adb, key) => (await shell(adb, `getprop ${key}`)).trim();
 // native/core/version.h; the first Rondo firmware, 1.0.0, had no number)
 export async function checkDevice(adb) {
   const model = await getProp(adb, "ro.product.model");
-  if (model !== "Y1") throw new UpdateError("not-y1", `This device is a "${model || "unknown"}", not an Innioasis Y1.`);
+  if (model !== "Y1") throw new UpdateError("not-y1", { model });
   const build = await getProp(adb, "ro.build.display.id");
   if (!build.startsWith("Rondo")) {
-    throw new UpdateError("no-firmware", "This Y1 doesn't run the Rondo firmware yet. Install it with Innioasis Updater CE first (see the install guide), then come back for updates.");
+    throw new UpdateError("no-firmware");
   }
   const firmware = Number(await getProp(adb, "ro.rondo.firmware")) || 1;
   return { model, firmware, installed: firmware >= 2 ? await nativeVersion(adb) : await installedVersion(adb) };
@@ -83,10 +86,10 @@ export async function installApk(adb, bytes, onProgress = () => {}) {
   if (/Success/.test(out)) return;
   const reason = out.match(/Failure \[([A-Z_]+)\]/)?.[1] ?? out.trim().split("\n").pop();
   if (/INCONSISTENT_CERTIFICATES|UPDATE_INCOMPATIBLE/.test(reason)) {
-    throw new UpdateError("other-build", "That APK isn't a Rondo release: it's signed with a different key than the Rondo on this Y1.");
+    throw new UpdateError("other-key");
   }
-  if (/VERSION_DOWNGRADE/.test(reason)) throw new UpdateError("older", "That's an older Rondo than the one on this Y1.");
-  throw new UpdateError("install", `Android didn't install it (${reason}).`);
+  if (/VERSION_DOWNGRADE/.test(reason)) throw new UpdateError("older");
+  throw new UpdateError("android-install", { reason });
 }
 
 // Rondo 2.0: the bundle to /data/rondo, checked and put in place by Rondo, which then starts again on it
@@ -113,7 +116,7 @@ export async function installBundle(adb, bytes, onProgress = () => {}) {
   const ok = out.match(/installed (\S+)/);
   if (!ok) {
     const why = out.match(/not installed: (.*)/)?.[1] ?? out.trim().split("\n").pop();
-    throw new UpdateError("install", `Rondo didn't install it (${why}).`);
+    throw new UpdateError("rondo-install", { reason: why });
   }
   // the running Rondo ends; /system/rondo/start runs the new one at once
   await shell(adb, "kill $(cat /data/rondo/rondo.pid)");

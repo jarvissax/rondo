@@ -1,7 +1,8 @@
 // What a page loads for its texts (the dashboard from the Y1, the admin page from the server):
 // {code, name, languages: [{code, name}], strings: {key: text}}, the strings English's keys in the
 // language asked for, English's where it has none. For the mock servers (tools/dashboard-mock,
-// tools/admin-mock): read from lang/ on every request, so an edit shows on the next reload.
+// tools/admin-mock): read from lang/ on every request, so an edit shows on the next reload. The update
+// page's build (web-updater/build.mjs) bundles each language's "updater" section with it.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -4,7 +4,8 @@
 //   - plural texts have their "other" form (and English its "one");
 //   - every key the code asks for is in English: tr("…") on the Y1 (native/) and say("…") in what the
 //     server tells a Rondo (server/src/: its "device" section), t('…') / te('…') /
-//     th('…') and data-i18n* in the dashboard (native/assets/dashboard/) and the admin page (server/admin/);
+//     th('…') and data-i18n* in the dashboard (native/assets/dashboard/), the admin page (server/admin/)
+//     and the update page (web-updater/: index.html and src/);
 //   - the English written in those pages' HTML is the English in lang/en.json.
 // Node 22, no dependencies. Exits 1 on any error.
 //
@@ -16,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SECTIONS = ['device', 'dashboard', 'admin'];
+export const SECTIONS = ['device', 'dashboard', 'admin', 'updater'];
 const FORMS = ['zero', 'one', 'two', 'few', 'many', 'other'];
 const BLANK = /\{([A-Za-z0-9_]+)\}/g;
 const TAG = /<\/?[a-z][a-z0-9]*\b[^>]*>/gi;
@@ -28,7 +29,9 @@ const SOURCES = {
   device: { dirs: ['native/shell', 'native/core', 'native/player', 'native/services', 'native/direct', 'native/ui', 'native/apps/rondo'], ext: ['.cpp', '.h'] },
   dashboard: { files: ['native/assets/dashboard/app.js', 'native/assets/dashboard/index.html'] },
   admin: { files: ['server/admin/admin.js', 'server/admin/index.html'] },
+  updater: { files: ['web-updater/index.html'], dirs: ['web-updater/src'], ext: ['.js'] },
 };
+const WEB = ['dashboard', 'admin', 'updater'];
 
 const blanks = (s) => [...s.matchAll(BLANK)].map((m) => m[1]).sort();
 const tags = (s) => [...s.matchAll(TAG)].map((m) => m[0].toLowerCase().replace(/\s+/g, ' ')).sort();
@@ -63,7 +66,7 @@ function checkValue(where, v, errors, english) {
 
 // the keys each surface's code names
 function usedKeys(root) {
-  const used = { device: new Map(), dashboard: new Map(), admin: new Map() };
+  const used = Object.fromEntries(SECTIONS.map((sec) => [sec, new Map()]));
   const note = (sec, key, where) => { if (!used[sec].has(key)) used[sec].set(key, where); };
   const walk = (dir, ext, out) => {
     if (!fs.existsSync(dir)) return;
@@ -93,14 +96,17 @@ function usedKeys(root) {
     const text = uncomment(fs.readFileSync(f, 'utf8'));
     for (const m of text.matchAll(/\btr\(\s*"((?:[^"\\]|\\.)+)"(?!\s*\+)/g)) note('device', m[1], `${path.relative(root, f)}:${lineOf(text, m.index)}`);
   }
-  for (const sec of ['dashboard', 'admin']) {
-    for (const f of SOURCES[sec].files) {
+  for (const sec of WEB) {
+    const { files: listed = [], dirs = [], ext = [] } = SOURCES[sec];
+    const found = [];
+    for (const d of dirs) walk(path.join(root, d), ext, found);
+    for (const f of [...listed, ...found.sort().map((p) => path.relative(root, p))]) {
       const p = path.join(root, f);
       if (!fs.existsSync(p)) continue;
       // whole-line comments out (in the scripts: an example in one isn't a use)
       const text = fs.readFileSync(p, 'utf8').split('\n').map((l) => (/^\s*\/\//.test(l) ? '' : l)).join('\n');
       const at = (i) => `${f}:${lineOf(text, i)}`;
-      for (const m of text.matchAll(/\bt[eh]?\(\s*'([^']+)'(?!\s*\+)/g)) note(sec, m[1], at(m.index));
+      for (const m of text.matchAll(/\bt[eh]?\(\s*(['"])([^'"]+)\1(?!\s*\+)/g)) note(sec, m[2], at(m.index));
       for (const m of text.matchAll(/\bdata-i18n(?:-html)?="([^"]+)"/g)) note(sec, m[1], at(m.index));
       for (const m of text.matchAll(/\bdata-i18n-attr="([^"]+)"/g))
         for (const pair of m[1].split(';')) {
@@ -169,7 +175,7 @@ export function check({ root = ROOT, format = false, unused = false } = {}) {
   if (unused)
     for (const sec of SECTIONS)
       for (const k of Object.keys(en[sec])) if (!used[sec].has(k)) warnings.push(`lang/en.json ${sec}.${k}: no code names it literally`);
-  for (const sec of ['dashboard', 'admin']) checkHtml(root, sec, en[sec], errors);
+  for (const sec of WEB) checkHtml(root, sec, en[sec], errors);
 
   // each language against English
   const others = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && f !== 'en.json').sort();

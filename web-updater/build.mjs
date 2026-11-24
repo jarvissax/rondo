@@ -1,13 +1,35 @@
-// Builds the update page into dist/: the bundled script, the page, its style and font.
+// Builds the update page into dist/: the bundled script (with the page's texts in every language),
+// the page, its style and font.
 //   node build.mjs            build
 //   node build.mjs --serve    build, add the locally built bundle (tools/native/bundle.sh), and
-//                             serve on http://localhost:8000 (WebUSB works on localhost)
+//                             serve on http://localhost:8000 (WebUSB works on localhost); an edit
+//                             in lang/ rebuilds too
 import * as esbuild from "esbuild";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { languages, pageStrings } from "../tools/lang/page.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const out = new URL("dist/", import.meta.url).pathname;
 mkdirSync(out + "fonts", { recursive: true });
+
+// "rondo:lang" (src/lang.js): every language's "updater" section from lang/*.json, English where a
+// language has no text (docs/translating.md), so the page needs nothing from a server for its texts
+const langPlugin = {
+  name: "rondo-lang",
+  setup(build) {
+    build.onResolve({ filter: /^rondo:lang$/ }, () => ({ path: "lang", namespace: "rondo-lang" }));
+    build.onLoad({ filter: /.*/, namespace: "rondo-lang" }, () => {
+      const list = languages();
+      const strings = Object.fromEntries(list.map((l) => [l.code, pageStrings("updater", l.code).strings]));
+      return {
+        contents: JSON.stringify({ languages: list, strings }),
+        loader: "json",
+        watchDirs: [root + "lang"],
+        watchFiles: list.map((l) => root + `lang/${l.code}.json`),
+      };
+    });
+  },
+};
 
 const options = {
   entryPoints: ["src/main.js"],
@@ -17,6 +39,7 @@ const options = {
   minify: true,
   sourcemap: true,
   outfile: out + "app.js",
+  plugins: [langPlugin],
 };
 copyFileSync("index.html", out + "index.html");
 copyFileSync("style.css", out + "style.css");
