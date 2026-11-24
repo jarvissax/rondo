@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #include <algorithm>
+#include <cmath>
 
 #include "motion.h"
 
@@ -20,6 +21,17 @@ bool isVideoPath(const std::string& p) {
 }
 }  // namespace
 
+// A picture bigger than a shared slot holds (ImageLoader::kMaxSide squared) is decoded at the biggest
+// size of the same shape that fits, and drawn scaled up, rather than never coming (issue #7: Now
+// Playing's cover at the largest text size). A blurred one only uses w x h for its result.
+static void fitSlot(int& w, int& h) {
+  const long max = long(ImageLoader::kMaxSide) * ImageLoader::kMaxSide;
+  if (w <= 0 || h <= 0 || long(w) * h <= max) return;
+  float s = std::sqrt(float(max) / (float(w) * float(h)));
+  w = std::max(1, int(float(w) * s)), h = std::max(1, int(float(h) * s));
+  while (long(w) * h > max) w > h ? w-- : h--;
+}
+
 uint64_t Covers::keyOf(const std::string& path, int w, int h, int blur) {
   uint64_t k = 1469598103934665603ULL;
   for (char c : path) k = (k ^ uint8_t(c)) * 1099511628211ULL;
@@ -27,6 +39,7 @@ uint64_t Covers::keyOf(const std::string& path, int w, int h, int blur) {
 }
 
 const Texture* Covers::get(const std::string& path, int w, int h, int blur, int64_t now, float* alpha, int64_t retryNs) {
+  fitSlot(w, h);
   uint64_t key = keyOf(path, w, h, blur);
   Entry& e = map_[key];
   e.used = ++clock_;
@@ -61,7 +74,10 @@ const uint8_t* Covers::pixels(const std::string& path, int w, int h, int blur) {
   return e.state == kReady && e.cpuOnly ? e.cpu.data() : nullptr;
 }
 
-void Covers::prefetch(const std::string& path, int w, int h, int blur) { prefetch_.push_back({path, w, h, blur}); }
+void Covers::prefetch(const std::string& path, int w, int h, int blur) {
+  fitSlot(w, h);
+  prefetch_.push_back({path, w, h, blur});
+}
 
 bool Covers::sendPrefetches() {
   for (int n = 0; n < 64 && sent_ < prefetch_.size(); n++, sent_++) {

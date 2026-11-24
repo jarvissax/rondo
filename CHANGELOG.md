@@ -22,6 +22,9 @@ An update for the 4.0 firmware: Settings › System › Software update, the das
 
 ### Fixed
 
+- **Now Playing's cover with Large text** ([#7](https://github.com/jarvissax/rondo/issues/7)): at the
+  largest text size the cover never came, only the note in its place. It's there at every size now,
+  and on a Y1 that tried Large before, the covers come back by themselves.
 - **The guides named a Power button the Y1 doesn't have.** They now say how to turn it off.
 
 ## 4.1.0 (November 22, 2026)

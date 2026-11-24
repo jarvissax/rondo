@@ -46,7 +46,10 @@ void blur(Pixels& p, int radius, int passes);
 // The newest request is served first: on a list that is what is on screen.
 class ImageLoader {
  public:
-  static constexpr int kMaxSide = 202;  // a result's w x h x 4 fits one shared slot (160 KB)
+  // a result's w x h x 4 fits one shared slot (192 KB): 221 x 221, so Now Playing's cover (140 units)
+  // is whole at the largest text size (1.55: 217 px; until 4.1.1 the slot was 160 KB, 202 px, and that
+  // cover never came at Large, issue #7). Covers::get() fits a bigger request into it.
+  static constexpr int kMaxSide = 221;
 
   struct Request {
     uint64_t id;

@@ -329,7 +329,8 @@ void blur(Pixels& p, int r, int passes) {
 namespace {
 
 constexpr int kSlots = 32;
-constexpr size_t kSlotBytes = 160 << 10;
+constexpr size_t kSlotBytes = 192 << 10;  // ImageLoader::kMaxSide
+static_assert(size_t(ImageLoader::kMaxSide) * ImageLoader::kMaxSide * 4 <= kSlotBytes, "a result fits a slot");
 constexpr size_t kControlBytes = 4096;  // the shared block before the slots
 
 enum MsgType : uint32_t { kRequest = 1, kCancel, kRelease, kResult, kPrefetch, kConfigure };
@@ -417,11 +418,16 @@ struct Worker {
     CacheHeader h;
     int result = -1;
     bool marker = false;
-    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) && (!memcmp(h.magic, "RTH2", 4) || (marker = !memcmp(h.magic, "RTM3", 4))) &&
+    bool since411 = false;  // a "no picture" written by 4.1.1 or later (RTM4)
+    if (read(fd, &h, sizeof(h)) == ssize_t(sizeof(h)) &&
+        (!memcmp(h.magic, "RTH2", 4) || (marker = !memcmp(h.magic, "RTM3", 4) || (since411 = !memcmp(h.magic, "RTM4", 4)))) &&
         h.mtime == int64_t(st.st_mtime) && h.size == int64_t(st.st_size)) {
       if (h.w == 0) {
-        // an older "no picture" for a video: most were frames that never came (drmserver stopped, Nov 9)
-        result = marker || !isVideo(r.path) ? 0 : -1;
+        // an older "no picture" for a video: most were frames that never came (drmserver stopped, Nov 9).
+        // One bigger than the old slot (202 x 202) was a picture too big to decode then, not a missing one
+        // (issue #7: Now Playing's cover at Large text): decoded again.
+        bool tooBigThen = !since411 && size_t(r.w) * r.h > size_t(202) * 202;
+        result = (marker || !isVideo(r.path)) && !tooBigThen ? 0 : -1;
       } else if (h.w == r.w && h.h == r.h) {
         size_t n = size_t(h.w) * h.h * 4;
         result = !dst || read(fd, dst, n) == ssize_t(n) ? 1 : -1;
@@ -436,7 +442,7 @@ struct Worker {
     std::string path = cachePath(r), tmp = path + ".part";
     int fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) return;
-    CacheHeader h = {{'R', 'T', px ? 'H' : 'M', px ? '2' : '3'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
+    CacheHeader h = {{'R', 'T', px ? 'H' : 'M', px ? '2' : '4'}, px ? px->w : 0, px ? px->h : 0, r.blur, int64_t(st.st_mtime), int64_t(st.st_size)};
     bool ok = write(fd, &h, sizeof(h)) == ssize_t(sizeof(h));
     if (ok && px) ok = write(fd, px->rgba.data(), px->rgba.size()) == ssize_t(px->rgba.size());
     close(fd);
