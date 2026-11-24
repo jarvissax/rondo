@@ -53,13 +53,14 @@ the order and which entries show up.
   <img src="images/main-menu-light.png" width="360" alt="The main menu in the light look, YouTube Music highlighted">
 </p>
 
-## Library: music, videos, photos and files
+## Library: music, videos, audiobooks, photos and files
 
 Rondo looks through the whole microSD card (and the Y1's internal storage) for music, videos and
 photos. You don't need a special folder layout. Songs are listed by title, artist and album,
 using the files' tags. Without tags, a file named `Artist - Title.flac` is read the obvious way.
 
-Library has four parts: **Music**, **Videos**, **Photos** and **Files**.
+Library has five parts: **Music**, **Videos**, **Audiobooks** (see [Audiobooks](#audiobooks)),
+**Photos** and **Files**.
 
 **Music** starts with Shuffle songs and Search, then **Browse** (Songs, Artists, Album artists,
 Albums, Cover Flow, Genres), **Playlists**, **Listening** (Recently added, Most played,
@@ -129,6 +130,55 @@ Plug the Y1 into a computer and choose **Use as USB drive**: the microSD card sh
 computer like a memory stick. Copy files onto it, eject it on the computer, then choose **Turn off
 USB drive** on the Y1. While the card is on the computer, music from it is paused. Unplugging the
 cable gives the card back to the Y1 as well. The dashboard can also upload music over Wi-Fi.
+
+## Audiobooks
+
+**Library › Audiobooks** has the books on the card, with **Continue listening** (the books you've
+started, the last one first) above **all books**. Each shows its cover, author and time left (or
+**Finished**); a dot marks a book you haven't started. Center opens a book; hold center to go on
+with it at once.
+
+**What counts as a book:**
+
+- everything in an `Audiobooks` folder at the top of the card or the internal storage, in any
+  letter case. The stock firmware's folder is `Audiobooks` too, so books from it carry over;
+- any `.m4b` file, wherever it is;
+- files whose genre tag is *Audiobook*.
+
+A folder of files is one book, in disc, track and name order; each file is a chapter. Disc folders
+(`CD 1`, `Disc 2`) inside a book's folder are part of it. An `.m4b`, or any file with chapters of
+its own, is a book by itself. Books stay out of Songs, Shuffle songs, Artists, Albums, Genres, the
+smart lists and Organize. Library's Search finds them by title and author. Books from Audible or
+Apple Books that are copy-protected (`.aa`, `.aax`) can't play; ones you converted to `.m4b` can.
+
+**A book's screen** shows its cover, author, narrator and length, then **Resume** (or **Start**,
+or **Start again** once it's finished), **Chapters**, **Bookmarks**, **Speed** and **Mark as
+finished**.
+
+**While a book plays:**
+
+- **It remembers where you stopped**, always: every 10 seconds and whenever you pause, the screen
+  goes off or the Y1 turns off. After a pause it starts a little earlier, so you don't lose the
+  thread: about 2 seconds after a short pause, 5 after ten minutes, 10 after an hour, 30 after a
+  day.
+- **Next and Previous** move by chapter. Previous in a chapter's first 3 seconds goes to the
+  chapter before, otherwise to the start of this one. A book without chapters skips 30 seconds
+  forward and 15 back. **Hold Next or Previous** to scrub through the chapter.
+- **Now Playing** shows the book, its author, the chapter with its own time left, the time left
+  in the book, and a bar for the chapter. Center opens the chapters. Times are listening time at
+  the book's speed.
+- **Hold center** for the options: scrub, **Chapters**, **Add bookmark**, **Bookmarks**, **Speed**,
+  the **Sleep timer** and **Back to your music**.
+- **Speed:** 0.75× to 3×, with the voice's pitch kept. Each book keeps its own; a badge on Now
+  Playing shows it.
+- **Bookmarks** keep a place in a book. Center on one goes there; hold center to delete it.
+- **Your music waits.** A book plays as its own queue: the music you were playing comes back where
+  it was when the book ends (paused) or when you choose **Back to your music**. **Play next** and
+  **Add to queue** on a song add it to that music. Shuffle and repeat don't apply to books.
+- A book is **finished** in its last 30 seconds. Mark it finished or not on its screen.
+
+To get books onto the card, copy them into `Audiobooks` (as a USB drive, see
+[Adding music](#adding-music)), or upload them on the [dashboard](dashboard.md#library).
 
 ## YouTube Music and YouTube
 
@@ -262,7 +312,11 @@ two blue read (or played).
 - **Wheel:** volume. **Center:** switch between the cover and the lyrics.
 - **Next / Previous:** the next or the song before; the cover slides in from that side.
 - **Hold center** for options: scrub through the song, see what's up next, shuffle and repeat,
-  and for a song on the card its **rating**: center gives it one star more (after five, none).
+  for a song on the card its **rating** (center gives it one star more; after five, none), and
+  the **Sleep timer**.
+- **Sleep timer:** 15, 30, 45 or 60 minutes, or the end of the song (of the chapter, for an
+  audiobook). The sound fades out over the last 10 seconds, then pauses. A moon on Now Playing shows
+  it's running and how long is left.
 - **Hold Next / Previous** to scrub: the wheel then moves the position, and center jumps there.
   Menu cancels.
 
@@ -305,8 +359,8 @@ turns the radio off.
 
 Settings has the **Dashboard** at the top, then **Connections** (Wi-Fi, Bluetooth), **Server**
 (your Rondo server), **YouTube** (where it comes from, the account, video quality), **Sound**,
-**Display** (theme, brightness, screen off, subtitles, lyrics), **Controls** (the wheel) and
-**System** (date and time, updates, About, shut down), and **Language** at the bottom.
+**Display** (theme, brightness, screen off, subtitles, lyrics), **Controls** (the wheel),
+**Language**, and **System** (date and time, updates, About, shut down) at the bottom.
 
 | Setting | |
 | --- | --- |

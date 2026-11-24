@@ -158,3 +158,5 @@ Spanish is neutral Spanish, with *tú*, and the words Rondo uses for its own thi
 | the card | la tarjeta | | Dashboard | Panel |
 | Headphones | Auriculares | | Speaker | Altavoz |
 | Sign in | Iniciar sesión | | Pair | Vincular |
+| Audiobooks | Audiolibros | | Chapter | Capítulo |
+| Bookmark | Marcador | | Sleep timer | Temporizador |

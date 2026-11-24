@@ -5,6 +5,35 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## Not released yet
+
+### New
+
+- **Audiobooks** (Library › Audiobooks): the books on the card, **Continue listening** first, each
+  with its cover, author and time left. A book is everything in an `Audiobooks` folder (the stock
+  firmware's, so its books carry over), any `.m4b`, or files tagged *Audiobook*; a folder of files
+  is one book, its disc folders included. Books stay out of Songs, Shuffle songs, Artists, Albums,
+  Genres and Organize.
+  - **Where you stopped** is kept for every book, and a resume starts a few seconds earlier after
+    a pause (more after a long one).
+  - **Next and Previous move by chapter** (an `.m4b`'s chapters, or each file of a folder); a book
+    without chapters skips 30 seconds forward and 15 back.
+  - **Speed** from 0.75× to 3×, the voice's pitch kept, remembered per book.
+  - **Bookmarks**, **Mark as finished**, and Now Playing with the chapter and the time left in it
+    and in the book.
+  - **Your music waits:** a book plays as its own queue, and the music comes back where it was when
+    the book ends or with **Back to your music**.
+- **Sleep timer**, for music too, in Now Playing's options: 15 to 60 minutes, or the end of the
+  song or chapter, with a 10-second fade.
+- **The dashboard** has Audiobooks too (progress, chapters, bookmarks, speed, uploads into
+  `Audiobooks`), and the sleep timer on its Overview.
+
+### Changed
+
+- **Settings › Language** is now above System.
+- **The dashboard's Library on a phone:** its buttons wrap instead of running off the screen, and
+  the sections show their icons, the chosen one with its name.
+
 ## 4.1.1 (November 24, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the

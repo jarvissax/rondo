@@ -23,7 +23,8 @@ pairing for half a minute.
 
 ## Overview
 
-What's playing, with play/pause, skip and a volume slider, plus the battery, how full the card
+What's playing, with play/pause, skip and a volume slider, the **sleep timer**, plus the battery,
+how full the card
 is, the Wi-Fi network with the Y1's IP and MAC addresses, where YouTube comes from (directly or
 your server) and the time zone, and Rondo's version, with **Restart** and **Shut down** buttons.
 
@@ -40,8 +41,8 @@ tabs at the bottom are Overview, Library, Radio, YouTube and **Settings**, which
 
 ## Library
 
-Everything on the card, in four parts as on the Y1: **Music** (songs, albums and playlists),
-**Videos**, **Photos** and **Files**. Music has search, **Shuffle**, and sorting by title, artist,
+Everything on the card, in five parts as on the Y1: **Music** (songs, albums and playlists),
+**Videos**, **Audiobooks**, **Photos** and **Files**. Music has search, **Shuffle**, and sorting by title, artist,
 album, album artist, genre, year or date added, and by what you listen to: most played, recently
 played and rating. Albums are a Cover Flow: arrow keys, the mouse wheel or a drag move through the
 covers, and the album's songs are listed below. A song's details show its tags and plays, with
@@ -51,6 +52,13 @@ stars to rate it.
   Music, videos to Videos, photos to Pictures; **Organize** then puts them where Jellyfin expects
   them. Expect about 3 MB a second over the Y1's Wi-Fi.
 - **Play** a song on the Y1, or **delete** it.
+- **Audiobooks:** the books on the card, **Continue listening** first, each with its time left and
+  progress. Open one for **Resume** or **Start again**, its **speed**, **Mark as finished**, its
+  chapters (click one to play from it) and bookmarks (play from one, or delete it). **Upload book
+  files** puts files into the card's `Audiobooks` folder (an `.m4b` is a book by itself); **Upload a
+  book folder** copies a whole folder in, so its files are one book. While a book plays, the
+  Overview shows its chapter and time left, with its speed, **Add bookmark** and **Back to your
+  music**.
 - **Rescan** after copying files onto the card some other way.
 - **Photos:** every picture on the card by folder; click one to see it large, with the arrow keys,
   a slideshow (Space) and Download.

@@ -38,6 +38,10 @@ expect, after showing you every move, and the dashboard looks up a show's or a m
 fills in a song's missing genre, year and lyrics. Plugging the Y1 into a computer turns the card
 into a USB drive.
 
+**Audiobooks** have a place of their own, as on the stock firmware but further: each book remembers
+where you stopped, Next and Previous move by chapter, the speed goes from 0.75× to 3× with the
+voice's pitch kept, and there are bookmarks and a sleep timer. Your music waits while a book plays.
+
 <table>
   <tr>
     <td align="center"><img src="docs/images/library.png" width="260" alt="Library: Music, Videos, Photos and Files"><br>The library</td>
@@ -274,7 +278,7 @@ Rondo stands on other people's work:
   **[Inniclassic](https://github.com/FabianZettl/inniclassic)** launchers, which showed how the
   Y1's buttons behave.
 - On the Y1: **FFmpeg**, **curl**, **OpenSSL**, **FreeType**, **HarfBuzz**, **SQLite**,
-  **libpng**, **libjpeg-turbo**, **yyjson**, **nghttp2**, and the **Roboto** and **Noto Color
+  **libpng**, **libjpeg-turbo**, **yyjson**, **nghttp2**, **Sonic**, and the **Roboto** and **Noto Color
   Emoji** fonts. On the server: **youtubei.js**, **yt-dlp**, **Baileys**, **Fastify** and **sharp**.
   **[AutoEq](https://github.com/jaakkopasanen/AutoEq)**'s measurements are behind Headphone match,
   and **[LRCLIB](https://lrclib.net)** has many of the lyrics. See
