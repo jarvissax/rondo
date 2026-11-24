@@ -219,12 +219,17 @@ struct Voice {
   std::vector<std::string> queue;
   int index = -1, repeat = 0;
   bool playing = false, shuffle = false;
+  bool book = false;  // an audiobook was playing: books.h holds it, and gives it back after
   int64_t ms = 0, startedAt = 0;
 } g_voice;
 
 void voiceStop() {
   if (!g_voice.on) return;
   g_voice.on = false;
+  if (g_voice.book && booksGiveBack()) {  // the book where it was, its music still waiting
+    g_queueLent = false;
+    return;
+  }
   g_player.setRepeat(g_voice.repeat);
   g_player.setShuffle(g_voice.shuffle);
   if (!g_voice.queue.empty()) g_player.restoreQueue(g_voice.queue, g_voice.index, g_voice.ms, false);
@@ -236,7 +241,10 @@ void voicePlay(const std::string& jid, const std::string& id, const std::string&
   voiceStop();
   PlayerState s = g_player.state();
   Voice v;
-  if (g_player.active() && s.index >= 0 && !s.video && !s.fmOn) {
+  if (booksHold()) {  // an audiobook: held with its place and the music waiting for it
+    v.book = true;
+    v.playing = s.playing;
+  } else if (g_player.active() && s.index >= 0 && !s.video && !s.fmOn) {
     v.queue = g_player.queue();
     v.index = s.index;
     v.ms = PlayerHost::positionAt(s, now_ns());

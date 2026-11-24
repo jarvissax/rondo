@@ -42,6 +42,7 @@ struct Session {
   int64_t pausedWall = 0;  // ms since 1970 when it paused (0: playing, or not known)
   bool detailed = false;   // chapters from the library (a book restored at startup has only its files)
   bool finishedHandled = false;
+  bool held = false;  // a voice message has the player (booksHold): nothing saved, nothing ended meanwhile
 };
 Session g;
 
@@ -75,7 +76,7 @@ bool placeNow(Place& p, PlayerState* out = nullptr) {
 }
 
 void saveSession(bool force = false) {
-  if (!g.on) return;
+  if (!g.on || g.held) return;  // held: the player has a voice message, not the book
   Place p;
   PlayerState s;
   if (!placeNow(p, &s)) return;
@@ -136,7 +137,7 @@ bool queueIsBook() { return !g.book.paths.empty() && g_player.queue() == g.book.
 // The player puts in another queue (anything but a book): the book keeps its place, the music's
 // shuffle and repeat come back for what plays now
 void onReplace() {
-  if (!g.on) return;
+  if (!g.on || g.held) return;
   bool shuffle = g.musicShuffle;
   int repeat = g.musicRepeat;
   endSession();
@@ -415,7 +416,9 @@ void booksStart() {
 bool booksTick(int64_t now) {
   bool changed = false;
   PlayerState s = g_player.state();
-  if (g.on && !queueIsBook()) {
+  if (g.held) {
+    // a voice message has the player: the book and the music that waits are kept as they are
+  } else if (g.on && !queueIsBook()) {
     // something else took the queue without the player's hooks (it can't, but nothing is lost)
     g.on = false;
     g.lent = false;
@@ -427,7 +430,7 @@ bool booksTick(int64_t now) {
     writeSessionQueue();
     if (s.speed != g.speed) g_player.setSpeed(g.speed);
   }
-  if (g.on) {
+  if (g.on && !g.held) {
     if (!g.detailed)
       if (const Book* b = g_library.bookByKey(g.book.key)) {
         BookPlay d = bookDetails(*b);
@@ -559,6 +562,29 @@ bool booksQueueMoved(const std::vector<std::string>& queue) {
   if (const Book* b = g_library.bookOf(queue.front())) g.book.key = b->key;
   writeSessionQueue();
   g_player.playBook(queue, p.file, p.ms, s.playing != 0, g.speed);
+  return true;
+}
+
+bool booksHold() {
+  if (!bookNow()) return false;
+  saveSession(true);  // where it is, as the voice message starts
+  g.held = true;
+  return true;
+}
+
+bool booksGiveBack() {
+  if (!g.held) return false;
+  g.held = false;
+  if (!g.on) return false;
+  Place p;
+  if (const BookState* st = g_library.bookState(g.book.key))
+    for (size_t i = 0; i < g.book.paths.size(); i++)
+      if (g.book.paths[i] == st->file) p = {int(i), st->positionMs};
+  g_player.setShuffle(false);
+  g_player.setRepeat(0);
+  g_player.playBook(g.book.paths, p.file, p.ms, false, g.speed);
+  g.wasPlaying = false;
+  g.pausedWall = wallNowMs();
   return true;
 }
 

@@ -83,6 +83,11 @@ bool booksOwnQueue();  // the player's queue is a book's: resume.cpp leaves queu
 bool booksQueueMoved(const std::vector<std::string>& queue);
 // Play next / Add to queue while a book plays: into the music queue that waits (true: taken)
 bool booksTakeQueueAdd(const std::string& path, bool next);
+// A WhatsApp voice message plays in the queue's place for a moment (whatsapp_screens.cpp): the book
+// playing keeps its place and the music that waits for it (true: a book was playing, and is held);
+// booksGiveBack() puts it back in the player afterwards, paused (false: none was held)
+bool booksHold();
+bool booksGiveBack();
 
 // ---- the sleep timer (Now Playing's options) ----
 enum class SleepMode { Off, Minutes, EndOfItem };  // EndOfItem: the chapter (a book) or the song
