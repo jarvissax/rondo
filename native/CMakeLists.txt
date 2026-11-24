@@ -33,13 +33,13 @@ add_executable(vsync tools/vsync.cpp)
 
 # Third-party libraries, built for the Y1 by tools/native/deps.sh
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party/y1)
-foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson)
+foreach(lib freetype harfbuzz png16 turbojpeg sqlite3 yyjson sonic)
   add_library(tp_${lib} STATIC IMPORTED)
   set_target_properties(tp_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.a)
 endforeach()
 
 # The core (N2): settings, the card library, later the server client
-add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/smart.cpp core/organize.cpp core/tag_write.cpp core/lookup.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp core/subtitle_file.cpp core/lang.cpp)
+add_library(rondo_core STATIC core/config.cpp core/fold.cpp core/tags.cpp core/library.cpp core/playlists.cpp core/smart.cpp core/organize.cpp core/tag_write.cpp core/lookup.cpp core/lyrics.cpp core/prefs.cpp core/sound.cpp core/subtitle_file.cpp core/lang.cpp core/books.cpp)
 target_include_directories(rondo_core SYSTEM PUBLIC ${TP}/include)
 target_link_libraries(rondo_core PUBLIC tp_sqlite3 tp_yyjson dl)
 
@@ -94,7 +94,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/organize_screens.cpp shell/coverflow_screen.cpp shell/photo_screens.cpp shell/files_screen.cpp shell/file_ops.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp shell/subtitles.cpp shell/downloads.cpp shell/fill_in.cpp shell/shelves.cpp shell/whatsapp.cpp shell/whatsapp_screens.cpp shell/language_screen.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/organize_screens.cpp shell/coverflow_screen.cpp shell/photo_screens.cpp shell/files_screen.cpp shell/file_ops.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp shell/subtitles.cpp shell/downloads.cpp shell/fill_in.cpp shell/shelves.cpp shell/whatsapp.cpp shell/whatsapp_screens.cpp shell/language_screen.cpp shell/books.cpp shell/book_screens.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
@@ -108,7 +108,7 @@ endforeach()
 add_library(rondo_player STATIC player/engine.cpp player/probe.cpp player/host.cpp player/http_source.cpp player/video.cpp player/fm.cpp player/recorder.cpp player/click.cpp player/dsp.cpp player/loudness.cpp player/amplifier.cpp)
 y1_private(rondo_player)
 target_include_directories(rondo_player SYSTEM PRIVATE ${TP}/include)
-target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil OpenSLES y1_fmjni y1_media y1_stagefright y1_stagefright_foundation y1_gui y1_binder y1_utils rondo_net)
+target_link_libraries(rondo_player PUBLIC ff_avformat ff_avcodec ff_swresample ff_avutil tp_sonic OpenSLES y1_fmjni y1_media y1_stagefright y1_stagefright_foundation y1_gui y1_binder y1_utils rondo_net)
 target_link_libraries(rondo PRIVATE rondo_player)
 # development: the microphone recorded as voice messages do, with the headset's call state (tools/mictest.cpp)
 add_executable(mictest tools/mictest.cpp)

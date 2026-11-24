@@ -82,6 +82,8 @@ class SoftwareUpdateScreen : public ShellListScreen {
       // Rondo ends; init starts it again, and /system/rondo/start runs the new one
       printf("rondo: installed %s: restarting\n", installed_.c_str());
       resumeSaveNow();
+      booksSaveNow();
+      g_library.flush(1000);
       requestRestart();
       return true;
     }

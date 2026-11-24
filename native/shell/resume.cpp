@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "app.h"
+#include "books.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -50,6 +51,15 @@ bool writeFile(const std::string& path, const std::string& text) {
   return ok && rename(tmp.c_str(), path.c_str()) == 0;
 }
 
+// a queue entry as queue.txt keeps it (a streamed song with what the screens show of it)
+std::string queueLine(const std::string& p) {
+  std::string text = clean(p);
+  if (const Item* it = isStream(p) ? streamItem(p) : nullptr)
+    text += "\t" + clean(it->kind) + "\t" + clean(it->id) + "\t" + clean(it->title) + "\t" + clean(it->subtitle) + "\t" +
+            clean(it->thumb) + "\t" + std::to_string(it->durationSec);
+  return text + "\n";
+}
+
 std::vector<std::string> g_savedQueue;  // what queue.txt holds
 bool g_resumeWaiting = false;          // the queue is on a card not mounted yet
 std::string g_savedState;
@@ -60,19 +70,14 @@ int64_t g_stateAt = 0;
 bool g_queueLent = false;
 
 void resumeTick(int64_t now) {
-  if (g_queueLent || now - g_stateAt < 5 * kSec) return;
+  // a voice message or an audiobook plays in the queue's place: queue.txt keeps the music that waits
+  if (g_queueLent || booksOwnQueue() || now - g_stateAt < 5 * kSec) return;
   PlayerState s = g_player.state();
   if (s.video || s.fmOn || !g_player.active() || s.index < 0) return;
   const std::vector<std::string>& q = g_player.queue();
   if (q != g_savedQueue) {
     std::string text;
-    for (const std::string& p : q) {
-      text += clean(p);
-      if (const Item* it = isStream(p) ? streamItem(p) : nullptr)
-        text += "\t" + clean(it->kind) + "\t" + clean(it->id) + "\t" + clean(it->title) + "\t" + clean(it->subtitle) + "\t" +
-                clean(it->thumb) + "\t" + std::to_string(it->durationSec);
-      text += "\n";
-    }
+    for (const std::string& p : q) text += queueLine(p);
     if (writeFile(dir() + "queue.txt", text)) g_savedQueue = q;
   }
   char state[160];
@@ -90,7 +95,10 @@ void resumeSaveNow() {
   resumeTick(now_ns());
 }
 
-void resumeRestore() {
+namespace {
+// queue.txt and queue-state.txt back in the player: play -1 as after a restart (playing again only
+// after a crash or a quick restart), else paused (0) or playing (1)
+void restoreMusic(int play) {
   FILE* f = fopen((dir() + "queue-state.txt").c_str(), "r");
   if (!f) return;
   int index = -1, playing = 0, shuffle = 0, repeat = 0;
@@ -129,11 +137,68 @@ void resumeRestore() {
   g_resumeWaiting = false;
   g_savedQueue = paths;
   // playing again only after a crash or a quick restart (seconds ago); after a night off, paused
-  bool resume = playing && time(nullptr) - at < 20;
+  bool resume = play >= 0 ? play != 0 : playing && time(nullptr) - at < 20;
   g_player.setShuffle(shuffle != 0);
   g_player.setRepeat(repeat);
   g_player.restoreQueue(paths, index, ms, resume);
   printf("rondo: the queue is back: %zu songs, at %d, %lld ms%s\n", paths.size(), index, ms, resume ? ", playing" : "");
+}
+}  // namespace
+
+void resumeRestore() {
+  // an audiobook that was playing comes back first (the music stays in queue.txt, waiting for it)
+  BookResume b = booksRestore();
+  if (b == BookResume::Restored) return;
+  if (b == BookResume::Waiting) {
+    g_resumeWaiting = true;
+    return;
+  }
+  restoreMusic(-1);
+}
+
+void resumeMusic(bool play) {
+  g_savedQueue.clear();
+  g_savedState.clear();
+  restoreMusic(play ? 1 : 0);
+}
+
+void resumeForgetMusic() {
+  unlink((dir() + "queue.txt").c_str());
+  unlink((dir() + "queue-state.txt").c_str());
+  g_savedQueue.clear();
+  g_savedState.clear();
+}
+
+bool resumeHasMusic() { return access((dir() + "queue-state.txt").c_str(), R_OK) == 0; }
+
+bool resumeQueueAdd(const std::string& path, bool next) {
+  std::vector<std::string> lines;
+  if (FILE* q = fopen((dir() + "queue.txt").c_str(), "r")) {
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), q))
+      if (buf[0] && buf[0] != '\n') lines.push_back(buf);
+    fclose(q);
+  }
+  int index = -1;
+  if (FILE* f = fopen((dir() + "queue-state.txt").c_str(), "r")) {
+    if (fscanf(f, "%d", &index) != 1) index = -1;
+    fclose(f);
+  }
+  std::string line = queueLine(path);
+  bool fresh = lines.empty() || index < 0 || index >= int(lines.size());
+  if (fresh) lines.clear(), index = 0;
+  if (next && !fresh) lines.insert(lines.begin() + index + 1, line);
+  else lines.push_back(line);
+  std::string text;
+  for (const std::string& l : lines) text += l;
+  if (!writeFile(dir() + "queue.txt", text)) return false;
+  if (fresh) {
+    char st[64];
+    snprintf(st, sizeof(st), "0 0 0 0 0 %lld\n", (long long)time(nullptr));
+    writeFile(dir() + "queue-state.txt", st);
+  }
+  g_savedQueue.clear();
+  return true;
 }
 
 }  // namespace rondo::shell

@@ -232,11 +232,11 @@ void bluetoothTick() {
     keySerial = s.btKeySerial;
     PlayerState p = g_player.state();
     switch (s.btKey) {
-      case 0x44: if (!p.playing) g_player.togglePlay(); break;  // play
+      case 0x44: if (!p.playing) transportPlay(); break;  // play
       case 0x46:                                                 // pause
       case 0x45: if (p.playing) g_player.pause(); break;         // stop
-      case 0x4b: g_player.next(); break;
-      case 0x4c: g_player.previous(); break;
+      case 0x4b: transportNext(); break;
+      case 0x4c: transportPrev(); break;
       default: break;
     }
   }

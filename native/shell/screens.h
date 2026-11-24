@@ -19,6 +19,14 @@ std::unique_ptr<Screen> makePhotos();     // Library › Photos: the pictures on
 std::unique_ptr<Screen> makePhotoViewer(const std::vector<std::string>& paths, int at);  // these, full screen
 std::unique_ptr<Screen> makeFiles(const std::string& dir = "");  // Library › Files: a folder, or the storages
 std::unique_ptr<Screen> makeLibraryMusic();  // Library › Music: the songs every way
+// Library › Audiobooks (book_screens.cpp, books.h): the books; a book's screen (by its key); its chapters
+// and bookmarks (fromNowPlaying: a pick goes back to Now Playing); its speeds; the sleep timer
+std::unique_ptr<Screen> makeAudiobooks();
+std::unique_ptr<Screen> makeBook(const std::string& key);
+std::unique_ptr<Screen> makeChapters(const std::string& key, bool fromNowPlaying);
+std::unique_ptr<Screen> makeBookmarks(const std::string& key, bool fromNowPlaying);
+std::unique_ptr<Screen> makeBookSpeed(const std::string& key);
+std::unique_ptr<Screen> makeSleepTimer();
 const Tile& photoTile();
 // every photo on the card and the internal storage, the newest first: path, time (s); a thread's work
 void findPhotos(std::vector<std::pair<std::string, int64_t>>& out);
@@ -79,6 +87,12 @@ void resumeTick(int64_t now);
 extern bool g_queueLent;
 void resumeSaveNow();  // on the way out
 void resumeRestore();
+// the music queue that waits while an audiobook plays (shell/books.cpp): back in the player, playing or
+// paused; forgotten (nothing waits); whether there is one; a song added to it (Play next, Add to queue)
+void resumeMusic(bool play);
+void resumeForgetMusic();
+bool resumeHasMusic();
+bool resumeQueueAdd(const std::string& path, bool next);
 bool resumeWaitingForCard();  // the restore waits for the card (resumeRestore again once it is mounted)
 // music_screens.cpp: a playlist, album or artist row's screen; a song's menu
 void openMusicContainer(const Item& item);

@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "books.h"
 #include "tags.h"
 
 struct sqlite3;
@@ -35,9 +36,35 @@ struct Track {
   int64_t lastPlayed = 0;  // ms since 1970, 0: never
   int rating = 0;          // 0 (none) to 5 stars
   bool tagged = false;
+  // an audiobook's (core/books.h): in an Audiobooks folder, an .m4b, or tagged as one. Books stay out
+  // of songs, artists, albums, genres, the smart lists and Shuffle songs: Library › Audiobooks has them.
+  bool book = false;
   std::string key;  // fold() of what search matches
   bool dirty = true;
   bool gone = false;  // deleted from the card in this run: kept, so screens' pointers stay valid
+};
+
+// An audiobook on the card (Library › Audiobooks): its files in order (core/books.h's grouping)
+struct Book {
+  std::string key;  // its folder, or its file (a book by itself): what its place is kept by
+  std::string title, author;
+  std::vector<const Track*> files;
+  int64_t durationMs = 0;  // the files' lengths added up
+};
+
+// Where a book was left, how fast it plays, whether it's finished (kept in the library's database)
+struct BookState {
+  std::string key;
+  std::string file;       // the file it's at ("" never started)
+  int64_t positionMs = 0;  // in that file
+  int speed = 100;         // percent
+  bool finished = false;
+  int64_t lastPlayed = 0;  // ms since 1970, 0 never
+};
+struct Bookmark {
+  std::string key, file;
+  int64_t positionMs = 0;
+  int64_t created = 0;  // ms since 1970 (it's the bookmark's name too)
 };
 
 // a file the walk found
@@ -118,9 +145,32 @@ class Library {
   size_t albumArtistCount() const { index(); return albumArtists_.size(); }
   size_t genreCount() const { index(); return genres_.size(); }
 
+  // ---- audiobooks ----
+  // The books, by title. A book's pointer stays valid until the library changes (generation()).
+  const std::vector<Book>& books() const { index(); return books_; }
+  size_t bookCount() const { index(); return books_.size(); }
+  const Book* bookByKey(const std::string& key) const;
+  const Book* bookOf(const std::string& path) const;  // the book a file is in (null: none)
+  // what FFmpeg read of a book file: its chapters, length and narrator (null: not read yet)
+  const BookFileInfo* bookFileInfo(const std::string& path) const;
+  // where each book was left (null: never played), saved on the library's thread
+  const BookState* bookState(const std::string& key) const;
+  void setBookState(const BookState& s);
+  const std::vector<Bookmark>& bookmarks(const std::string& key) const;
+  void addBookmark(const Bookmark& b);
+  void removeBookmark(const std::string& key, int64_t created);
+  // a book's folder or file moved (Organize, the dashboard): its place and bookmarks follow
+  void bookMoved(const std::string& from, const std::string& to);
+  // grows with every change of a book's place, speed, finished mark or bookmarks (not generation():
+  // a place is saved every 10 s while a book plays, and the music lists needn't be built again)
+  uint64_t bookChanges() const { return bookChanges_; }
+  // waits (at most ms) until what was handed to the library's thread is written: before Rondo ends
+  void flush(int ms);
+
   struct Found {
     std::vector<Group> artists, albums;
     std::vector<const Track*> songs, videos;
+    std::vector<const Book*> books;
   };
   // Every word must be in the title, artist, album or file name, ignoring case and accents.
   Found search(const std::string& query) const;
@@ -142,6 +192,17 @@ class Library {
   mutable std::vector<const Track*> songs_, videos_;
   mutable std::vector<std::string> artistKeys_, albumKeys_;
   mutable std::unordered_map<std::string, const Track*> byPath_;
+  mutable std::vector<Book> books_;
+  mutable std::unordered_map<std::string, size_t> bookByKey_, bookOfPath_;
+  mutable std::vector<std::string> bookKeys_;  // fold() of each book's title and author, for search
+  std::unordered_map<std::string, BookFileInfo> bookInfo_;  // by path
+  std::unordered_map<std::string, std::pair<int64_t, int64_t>> bookInfoFor_;  // the size and time it was read at
+  std::vector<std::string> bookInfoDirty_;
+  std::unordered_map<std::string, BookState> bookStates_;
+  std::unordered_map<std::string, std::vector<Bookmark>> bookmarks_;
+  uint64_t bookChanges_ = 1;
+  void saveBookState(const BookState& s);
+  void saveBookmarks(const std::string& key);
   std::deque<Track> tracks_;
   std::vector<std::string> removed_;
   std::unique_ptr<Worker> worker_;

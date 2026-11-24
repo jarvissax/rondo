@@ -258,6 +258,7 @@ int main(int argc, char** argv) {
   // the music formats core/ reads no further than their names: FFmpeg reads their tags and covers
   setFallbackTagsReader(probeTags);
   setFallbackCoverReader(probeCover);
+  setBookReader(probeBookInfo);  // an audiobook file's chapters, read with its tags
   ui::setFrameGrabber(grabVideoFrame, prepareVideoFrames);  // card videos' artwork: a frame (in rondo-media)
   ImageLoader loader;
   // four decoders: two mostly wait on the network for remote artwork (direct mode fetches from Google)
@@ -311,6 +312,7 @@ int main(int argc, char** argv) {
   if (g_library.open(libraryDb) && g_library.tracks().empty()) g_library.importIndexJson(indexJson);
   int roots = g_library.presentRoots();  // which of the card and the internal storage are mounted now
   g_library.scanAsync();  // the card read again on the library's thread; what is indexed shows at once
+  booksStart();  // the audiobook restored with the queue gets its chapters; the player's hooks
   usb::watchCard();       // and mounted, when nobody has
   g_library.artists();  // builds the groups now, not when Library opens
   int64_t tLib = now_ns();
@@ -365,7 +367,10 @@ int main(int argc, char** argv) {
     if (base) rondo::haptics::vibrate(base + (spin < 3 ? 20 : spin < 7 ? 8 : spin < 15 ? 2 : 0));
     if (g_prefs.clickSound) g_player.click();
   };
-  g_onSleep = [&] { dispatch.cancel(); };
+  g_onSleep = [&] {
+    dispatch.cancel();
+    booksSaveNow();  // the audiobook's place, as the screen goes off
+  };
   Status status{false, readOnline(), readBattery(), "", ""};
   status.charging = power::battery().plugged;
   g_core.setOnline(status.online);  // no network: the server's requests answer at once (core.h)
@@ -489,6 +494,7 @@ int main(int argc, char** argv) {
     playStatsTick();
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
     if (safetyTick(now_ns())) changed = true;
+    if (booksTick(now_ns())) changed = true;  // the audiobook's place, its end, the sleep timer
     resumeTick(now_ns());  // the queue and where it is, for after a restart
     // a helper process that died (a crash): Rondo ends too, with the queue kept, and init starts it
     // again (back in about a second, playing on)
@@ -602,6 +608,7 @@ int main(int argc, char** argv) {
       if (int64_t wake = mainQueueWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = g_core.wakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       if (int64_t wake = aheadWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
+      if (int64_t wake = booksWakeAt()) timeout = std::max(0, std::min(timeout, int((wake - now_ns()) / kMs) + 1));
       int r = poll(p, 6, timeout);
       if (runMainQueue()) moving = true;  // the dashboard's requests, on this thread
       if (r > 0 && (p[4].revents & POLLIN)) {  // drawing may start again after a suspend
@@ -742,6 +749,8 @@ int main(int argc, char** argv) {
   }
   slowTraceFlush();
   resumeSaveNow();  // where the queue was, to the second
+  booksSaveNow();   // and the audiobook's place
+  g_library.flush(1000);
   printf("rondo: ending (%s%d)\n", g_signal ? "signal " : "code ", g_signal ? int(g_signal) : g_exitCode);
   log.report(stdout, csv);
   if (restoreAndroid && dev) {

@@ -248,7 +248,7 @@ class VideosSectionScreen : public ShellListScreen {
 std::vector<const Track*> recent() {
   std::vector<const Track*> v;
   for (const Track& t : g_library.tracks())
-    if (!t.video && !t.gone) v.push_back(&t);
+    if (!t.video && !t.gone && !t.book) v.push_back(&t);
   std::stable_sort(v.begin(), v.end(), [](const Track* a, const Track* b) { return a->modified > b->modified; });
   return v;
 }
@@ -329,7 +329,7 @@ class LibrarySearchScreen : public Screen {
  private:
   bool nothingFound() const {
     return found_.artists.empty() && found_.albums.empty() && found_.songs.empty() && found_.videos.empty() &&
-           playlists_.empty();
+           found_.books.empty() && playlists_.empty();
   }
   void search() {
     problem_.clear();
@@ -357,7 +357,9 @@ class LibrarySearchScreen : public Screen {
       if (scope_ != Scope::Albums) found_.albums.clear();
       if (scope_ != Scope::Songs) found_.songs.clear();
       if (scope_ != Scope::Videos) found_.videos.clear();
+      found_.books.clear();  // audiobooks in the whole library's search only
     }
+    if (!addTo_.empty()) found_.books.clear();
   }
   std::string summary() const {
     if (!problem_.empty()) return problem_;
@@ -375,6 +377,7 @@ class LibrarySearchScreen : public Screen {
     part(found_.songs.size(), "library.found.songs");
     if (addTo_.empty()) {
       part(found_.videos.size(), "library.found.videos");
+      part(found_.books.size(), "library.found.books");
       part(playlists_.size(), "library.found.playlists");
     }
     return s + " \xc2\xb7 " + (showing_ ? tr("library.found.backToTyping") : tr("library.found.showToSee"));
@@ -444,6 +447,17 @@ class LibrarySearchScreen : public Screen {
         r.thumb = t->path;
         Item item = cardVideo(*t);
         r.onSelect = [item] { openVideo(item); };
+        rows.push_back(std::move(r));
+      }
+      if (!found_.books.empty()) header(tr("books.title"));
+      for (const Book* b : found_.books) {  // a book's screen (Resume, Chapters…)
+        Row r;
+        r.title = b->title;
+        r.subtitle = b->author;
+        r.thumb = b->files.front()->path;
+        r.chevron = true;
+        std::string key = b->key;
+        r.onSelect = [key] { g_app->push(makeBook(key)); };
         rows.push_back(std::move(r));
       }
     }
@@ -593,7 +607,7 @@ class MusicSectionScreen : public ShellListScreen {
   uint64_t generation_ = 0;
 };
 
-// DeviceScreen: Library, in four: Music, Videos, Photos and the files themselves
+// DeviceScreen: Library, in five: Music, Videos, Audiobooks, Photos and the files themselves
 class DeviceScreen : public ShellListScreen {
  public:
   DeviceScreen() : ShellListScreen(tr("common.library")) { render(); }
@@ -612,6 +626,8 @@ class DeviceScreen : public ShellListScreen {
         [] { g_app->push(makeLibraryMusic()); });
     add(tr("library.videos"), tiles::videos, "", videos ? std::to_string(videos) : "",
         [] { g_app->push(std::unique_ptr<Screen>(new VideosSectionScreen())); });
+    size_t books = g_library.bookCount();
+    add(tr("books.title"), tiles::audiobooks, "", books ? std::to_string(books) : "", [] { g_app->push(makeAudiobooks()); });
     add(tr("photos.title"), tiles::photos, "", "", [] { g_app->push(makePhotos()); });
     add(tr("files.title"), tiles::files, tr("library.filesNote"), "", [] { g_app->push(makeFiles()); });
     list_.setRows(std::move(rows), true);

@@ -38,6 +38,7 @@ extern "C" {
 #include "../platform/aosp_end.h"
 
 #include <curl/curl.h>
+#include <sonic.h>
 
 #include <memory>
 
@@ -262,6 +263,18 @@ class Engine {
   int decodingPos_ = -1;
   bool pastHeard() const { return finishedSeq_ >= heardSeq_; }
   std::string error_;
+  // Spoken word's speed (kSpeed, kPlayBook; percent, 100 as recorded): the decoder runs what it decodes
+  // through Sonic, so the stream's frames hold the file's time this much faster. A change starts the
+  // stream again from where it is heard. Anything else put in the queue plays at 100.
+  int speed_ = 100;
+  // the stream's frames as the file's time (ms)
+  int64_t streamMs(uint64_t frames) const { return int64_t(frames) * 1000 * speed_ / (int64_t(kRate) * 100); }
+  // The sleep timer's fade (kFade): fadeLeft_ of fadeTotal_ frames to go, then silence (faded_) until a
+  // pause or a play
+  uint64_t fadeTotal_ = 0, fadeLeft_ = 0;
+  bool faded_ = false;
+  void endFade() { fadeTotal_ = fadeLeft_ = 0, faded_ = false; }
+  void applyFade(int16_t* b, int frames);
 
   // the ring: stream frames [readAt_, writeAt_) are decoded and not yet sent to OpenSL
   std::vector<int16_t> ring_ = std::vector<int16_t>(size_t(kRingFrames) * 2);
@@ -337,8 +350,8 @@ void Engine::publish() {
   s.count = int(items_.size());
   s.shuffle = shuffle_;
   s.repeat = repeat_;
-  int64_t played = int64_t(playedAt_ - heardFrom_) * 1000 / kRate + heardStartMs_;
-  if (playing_ && lastCallbackNs_ && !ended_) played += std::min<int64_t>((monoNs() - lastCallbackNs_) / 1000000, 46);
+  int64_t played = streamMs(playedAt_ - heardFrom_) + heardStartMs_;
+  if (playing_ && lastCallbackNs_ && !ended_) played += std::min<int64_t>((monoNs() - lastCallbackNs_) / 1000000, 46) * speed_ / 100;
   s.positionMs = std::max<int64_t>(0, std::min(played, heardDuration_ > 0 ? heardDuration_ : played));
   s.durationMs = heardDuration_;
   s.publishedNs = monoNs();
@@ -370,6 +383,8 @@ void Engine::publish() {
   snprintf(s.error, sizeof(s.error), "%s", error_.c_str());
   memcpy(s.codec, heardCodec_, sizeof(s.codec));
   s.recording = mic_.recording(), s.recordMs = mic_.ms(), s.recordLevel = mic_.level(), s.recordError = mic_.error();
+  s.speed = speed_;
+  s.fading = fadeTotal_ > 0 || faded_;
   size_t n = std::min(order_.size(), size_t(kMaxQueue));
   for (size_t i = 0; i < n; i++) s.order[i] = order_[i];
   __atomic_add_fetch(&s.seq, 1, __ATOMIC_ACQ_REL);  // even: consistent
@@ -458,10 +473,12 @@ void Engine::command(const std::vector<uint8_t>& m) {
   int64_t asked = logCommands ? monoNs() : 0;
   pthread_mutex_lock(&mu_);
   if (logCommands) printf("player: command %u (the lock after %.1f ms)\n", type, (monoNs() - asked) / 1e6);
-  int64_t heard = int64_t(playedAt_ - heardFrom_) * 1000 / kRate + heardStartMs_;
+  int64_t heard = streamMs(playedAt_ - heardFrom_) + heardStartMs_;
   switch (type) {
     case kPlayQueue: {
       if (videoOn_) videoOn_ = false, video_.stop();
+      speed_ = 100;
+      endFade();
       uint32_t start = 0;
       if (len >= 4) memcpy(&start, p, 4);
       items_.clear();
@@ -478,15 +495,22 @@ void Engine::command(const std::vector<uint8_t>& m) {
       restart(pos_, 0, true);
       break;
     }
-    case kRestoreQueue: {  // as kPlayQueue, from where it was, playing or not
-      if (len < 13) break;
+    case kRestoreQueue:  // as kPlayQueue, from where it was, playing or not
+    case kPlayBook: {    // the same at a speed
+      size_t head = type == kPlayBook ? 17 : 13;
+      if (len < head) break;
+      if (type == kPlayBook && videoOn_) videoOn_ = false, video_.stop();
       uint32_t start = 0;
       int64_t at = 0;
       memcpy(&start, p, 4);
       memcpy(&at, p + 4, 8);
       bool play = p[12] != 0;
+      int32_t speed = 100;
+      if (type == kPlayBook) memcpy(&speed, p + 13, 4);
+      speed_ = std::max(25, std::min(400, int(speed)));
+      endFade();
       items_.clear();
-      for (size_t i = 13; i < len;) {
+      for (size_t i = head; i < len;) {
         size_t end = i;
         while (end < len && p[end]) end++;
         items_.emplace_back((const char*)p + i, end - i);
@@ -501,8 +525,9 @@ void Engine::command(const std::vector<uint8_t>& m) {
     }
     case kToggle:
     case kPlay:
+      endFade();  // the sleep timer's fade (if any) ends: the sound is back
       if (failed_ && heardPos_ >= 0) {  // a stream that failed: again from where it stopped
-        int64_t at = heardStartMs_ + int64_t(playedAt_ - heardFrom_) * 1000 / kRate;
+        int64_t at = heardStartMs_ + streamMs(playedAt_ - heardFrom_);
         restart(heardPos_, std::max<int64_t>(0, at), true);
         break;
       }
@@ -537,6 +562,8 @@ void Engine::command(const std::vector<uint8_t>& m) {
       std::string sound = s.substr(0, z), pictures = z == std::string::npos ? "" : s.substr(z + 1);
       videoOn_ = false;
       video_.stop();
+      speed_ = 100;
+      endFade();
       items_ = {sound};
       order_ = {0};
       pos_ = 0;
@@ -708,7 +735,25 @@ void Engine::command(const std::vector<uint8_t>& m) {
         released_ = true;
       }
       break;
-    case kPause: setPlaying(false); break;
+    case kPause:
+      setPlaying(false);
+      endFade();  // silent already (the sleep timer): what plays next is heard again
+      break;
+    case kSpeed: {
+      int v = std::max(25, std::min(400, int(i32at(0))));
+      if (v == speed_) break;
+      speed_ = v;
+      // the stream holds the old speed's sound: decoded again from where it is heard (a moment's gap)
+      if (released_) break;  // nothing open until Play (it starts from releasedMs_)
+      if (heardPos_ >= 0 && !videoOn_ && !ended_) restart(heardPos_, heard, playing_);
+      break;
+    }
+    case kFade: {
+      int ms = i32at(0);
+      if (ms <= 0) endFade();
+      else if (!faded_) fadeTotal_ = fadeLeft_ = std::max<uint64_t>(1, uint64_t(ms) * kRate / 1000);
+      break;
+    }
     case kNext: {
       int n = heardPos_ + 1 < int(order_.size()) ? heardPos_ + 1 : repeat_ == 1 && !order_.empty() ? 0 : -1;
       if (n >= 0) restart(n, 0, true);
@@ -958,6 +1003,7 @@ bool Engine::write(const int16_t* pcm, int frames, uint32_t gen) {
 bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   std::string path = items_[size_t(order_[size_t(pos)])];
   bool video = videoOn_;
+  int speed = speed_;  // a change restarts the stream: this track keeps it to its end
   pthread_mutex_unlock(&mu_);
   AVFormatContext* fmt = nullptr;
   AVCodecContext* dec = nullptr;
@@ -1068,6 +1114,11 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   bool interrupted = false;
   bool measuring = ok && seekMs <= 0, reachedEnd = false;  // a song played from its start is measured
   if (measuring) meter_.reset();
+  // spoken word faster or slower (an audiobook's speed): Sonic after the resampler, before the ring
+  // (and Settings › Sound at the output); 100 % leaves it out
+  sonicStream sonic = ok && speed != 100 && !video ? sonicCreateStream(kRate, 2) : nullptr;
+  if (sonic) sonicSetSpeed(sonic, float(speed) / 100.f);
+  std::vector<int16_t> sped;
   auto emit = [&](AVFrame* f) {
     // after a seek, drop what comes before the target (the seek lands on the previous key frame)
     if (seekMs > 0 && f && f->pts != AV_NOPTS_VALUE) {
@@ -1078,12 +1129,28 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     if (max > int(out.size() / 2)) out.resize(size_t(max) * 2);
     uint8_t* o = reinterpret_cast<uint8_t*>(out.data());
     int n = swr_convert(swr, &o, max, f ? (const uint8_t**)f->extended_data : nullptr, f ? f->nb_samples : 0);
-    if (n <= 0) return true;
-    if (measuring) meter_.add(out.data(), n);
-    pthread_mutex_lock(&mu_);
-    bool kept = write(out.data(), n, gen);
-    pthread_mutex_unlock(&mu_);
-    return kept;
+    if (n > 0 && measuring) meter_.add(out.data(), n);
+    if (!sonic) {
+      if (n <= 0) return true;
+      pthread_mutex_lock(&mu_);
+      bool kept = write(out.data(), n, gen);
+      pthread_mutex_unlock(&mu_);
+      return kept;
+    }
+    if (n > 0) sonicWriteShortToStream(sonic, out.data(), n);
+    if (!f) sonicFlushStream(sonic);  // the track's end: what Sonic still holds comes out
+    for (;;) {
+      int avail = sonicSamplesAvailable(sonic);
+      if (avail <= 0) return true;
+      int take = std::min(avail, 8192);
+      if (sped.size() < size_t(take) * 2) sped.resize(size_t(take) * 2);
+      int got = sonicReadShortFromStream(sonic, sped.data(), take);
+      if (got <= 0) return true;
+      pthread_mutex_lock(&mu_);
+      bool kept = write(sped.data(), got, gen);
+      pthread_mutex_unlock(&mu_);
+      if (!kept) return false;
+    }
   };
   bool readFailed = false;
   while (ok && !interrupted) {
@@ -1112,6 +1179,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   }
   av_frame_free(&frame);
   av_packet_free(&pkt);
+  if (sonic) sonicDestroyStream(sonic);
   swr_free(&swr);
   avcodec_free_context(&dec);
   avformat_close_input(&fmt);
@@ -1244,7 +1312,7 @@ void Engine::decodeLoop() {
       if (streamFailed_) {  // stop where it failed (heard once what was read before plays out)
         streamFailed_ = false;
         opened = trackAt_ != UINT64_MAX;
-        int64_t at = opened ? seekMs + int64_t(writeAt_ - trackAt_) * 1000 / kRate : seekMs;
+        int64_t at = opened ? seekMs + streamMs(writeAt_ - trackAt_) : seekMs;
         markers_.push_back({opened ? writeAt_ : before, pos, 0, at, true});
         break;
       }
@@ -1366,12 +1434,29 @@ void Engine::fill(SLAndroidSimpleBufferQueueItf q) {
     dsp_.setTrackGain(g);
     dsp_.process(b, kBufferFrames);
   }
+  if (fadeTotal_ || faded_) applyFade(b, kBufferFrames);
   inFlight_.push_back({readAt_, readAt_ + uint64_t(n)});
   readAt_ += uint64_t(n);
   pthread_cond_broadcast(&cv_);
   publish();
   (*q)->Enqueue(q, b, sizeof(buffers_[0]));  // under the lock: a restart silences buffers in between
   pthread_mutex_unlock(&mu_);
+}
+
+// The sleep timer's fade: the gain falls along a square curve (it sounds even to the ear) to silence,
+// which stays until a pause or a play ends it (under mu_, in fill())
+void Engine::applyFade(int16_t* b, int frames) {
+  for (int k = 0; k < frames; k++) {
+    float g = 0;
+    if (!faded_ && fadeTotal_) {
+      float x = float(fadeLeft_) / float(fadeTotal_);
+      g = x * x;
+      if (fadeLeft_ > 0) fadeLeft_--;
+      if (fadeLeft_ == 0) faded_ = true;
+    }
+    b[k * 2] = int16_t(float(b[k * 2]) * g);
+    b[k * 2 + 1] = int16_t(float(b[k * 2 + 1]) * g);
+  }
 }
 
 void Engine::readVolume() {

@@ -10,6 +10,7 @@
 #include <sys/resource.h>
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <mutex>
@@ -19,6 +20,7 @@
 #include <sqlite3.h>
 #include <yyjson.h>
 
+#include "books.h"
 #include "clock.h"
 #include "fold.h"
 #include "tags.h"
@@ -70,9 +72,11 @@ std::string trim(const std::string& s) {
 
 std::string baseName(const std::string& path) { return path.substr(path.rfind('/') + 1); }
 
-// what search matches: a song's title, artist, album and file name; a video's title and file name
+// what search matches: a song's title, artist, album and file name; a video's title and file name. And
+// whether it is an audiobook's (core/books.h), which follows the path and the genre.
 void setKey(Track& t) {
   t.key = t.video ? fold(t.title + " " + baseName(t.path)) : fold(t.title + " " + t.artist + " " + t.album + " " + baseName(t.path));
+  t.book = !t.video && (bookCandidate(t.path) || isBookGenre(t.genre));
 }
 
 // "Artist - Title.flac"; a "01 " track prefix is dropped (LocalLibrary.fromName()).
@@ -127,7 +131,16 @@ struct TagResult {
   std::string path;
   int64_t size, modified;
   Tags tags;
+  bool hasBook = false;  // an audiobook's file: what FFmpeg read of it (its chapters, its length)
+  BookFileInfo book;
 };
+
+struct BookInfoRow {
+  std::string path;
+  int64_t size, modified;
+  BookFileInfo info;
+};
+bool writeBookInfo(sqlite3* db, const std::vector<BookInfoRow>& rows);
 
 }  // namespace
 
@@ -194,7 +207,8 @@ void Library::scanAsync() {
   auto known = std::make_shared<std::unordered_map<std::string, std::pair<int64_t, int64_t>>>();
   known->reserve(tracks_.size());
   for (const Track& t : tracks_)
-    if (!t.gone && t.tagged) (*known)[t.path] = {t.size, t.modified / 1000};
+    // a book's file whose chapters weren't read yet (from before Rondo knew books) is read again
+    if (!t.gone && t.tagged && !(t.book && !bookInfoFor_.count(t.path))) (*known)[t.path] = {t.size, t.modified / 1000};
   Worker* w = worker_.get();
   w->post([w, known] {
     // a root that isn't mounted (the card's mount still to come at boot, no card in) is an empty
@@ -220,7 +234,9 @@ void Library::scanAsync() {
     // the tags, 40 files at a time (LocalLibrary.kt's batches): the list redraws as they come
     std::vector<TagResult> batch;
     for (const FileEntry& f : need) {
-      batch.push_back({f.path, f.size, f.modified, rondo::readTags(f.path.c_str())});
+      batch.push_back({f.path, f.size, f.modified, rondo::readTags(f.path.c_str()), false, {}});
+      TagResult& r = batch.back();
+      if (!f.video && (bookCandidate(f.path) || isBookGenre(r.tags.genre))) r.hasBook = readBookInfo(f.path.c_str(), r.book);
       if (batch.size() == 40) {
         std::lock_guard<std::mutex> l(w->mu);
         w->batches.push_back(std::move(batch));
@@ -280,8 +296,14 @@ bool Library::applyScan() {
     for (TagResult& r : batch) {
       auto it = byPath.find(r.path);
       // the file as it was read (not changed again since)
-      if (it != byPath.end() && it->second->size == r.size && it->second->modified / 1000 == r.modified / 1000)
+      if (it != byPath.end() && it->second->size == r.size && it->second->modified / 1000 == r.modified / 1000) {
         applyTags(*it->second, r.tags);
+        if (r.hasBook) {
+          bookInfo_[r.path] = std::move(r.book);
+          bookInfoFor_[r.path] = {r.size, r.modified};
+          bookInfoDirty_.push_back(r.path);
+        }
+      }
     }
     indexed_ = false;
     generation_++;
@@ -300,9 +322,19 @@ void Library::saveAsync() {
     if (t.dirty) rows->push_back(t), t.dirty = false;
   auto removed = std::make_shared<std::vector<std::string>>(std::move(removed_));
   removed_.clear();
-  if (rows->empty() && removed->empty()) return;
+  auto books = std::make_shared<std::vector<BookInfoRow>>();
+  for (const std::string& p : bookInfoDirty_) {
+    auto it = bookInfo_.find(p);
+    auto at = bookInfoFor_.find(p);
+    if (it != bookInfo_.end() && at != bookInfoFor_.end()) books->push_back({p, at->second.first, at->second.second, it->second});
+  }
+  bookInfoDirty_.clear();
+  if (rows->empty() && removed->empty() && books->empty()) return;
   sqlite3* db = db_;
-  worker_->post([db, rows, removed] { writeRows(db, *rows, *removed); });
+  worker_->post([db, rows, removed, books] {
+    writeRows(db, *rows, *removed);
+    if (!books->empty()) writeBookInfo(db, *books);
+  });
 }
 
 bool Library::open(const char* path) {
@@ -311,7 +343,13 @@ bool Library::open(const char* path) {
                "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"
                "CREATE TABLE IF NOT EXISTS tracks (path TEXT PRIMARY KEY, size INTEGER, modified INTEGER,"
                " video INTEGER, title TEXT, artist TEXT, album TEXT, track INTEGER, duration INTEGER, tagged INTEGER);"
-               "CREATE TABLE IF NOT EXISTS stats (path TEXT PRIMARY KEY, plays INTEGER, last_played INTEGER, rating INTEGER);",
+               "CREATE TABLE IF NOT EXISTS stats (path TEXT PRIMARY KEY, plays INTEGER, last_played INTEGER, rating INTEGER);"
+               // audiobooks (core/books.h): what FFmpeg read of their files, where each book was left, bookmarks
+               "CREATE TABLE IF NOT EXISTS book_files (path TEXT PRIMARY KEY, size INTEGER, modified INTEGER, duration_ms INTEGER,"
+               " narrator TEXT, chapters TEXT);"
+               "CREATE TABLE IF NOT EXISTS book_state (key TEXT PRIMARY KEY, file TEXT, position INTEGER, speed INTEGER,"
+               " finished INTEGER, last_played INTEGER);"
+               "CREATE TABLE IF NOT EXISTS bookmarks (key TEXT, file TEXT, position INTEGER, created INTEGER);",
                nullptr, nullptr, nullptr);
   // version 2 (Nov 10): the album artist, genre, disc and year kept; every song's tags read again
   int version = 0;
@@ -361,6 +399,51 @@ bool Library::open(const char* path) {
       it->second->plays = sqlite3_column_int(st, 1);
       it->second->lastPlayed = sqlite3_column_int64(st, 2);
       it->second->rating = sqlite3_column_int(st, 3);
+    }
+    sqlite3_finalize(st);
+  }
+  // the audiobooks' files, places and bookmarks
+  if (sqlite3_prepare_v2(db_, "SELECT path, size, modified, duration_ms, narrator, chapters FROM book_files", -1, &st, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      std::string path = text(0);
+      BookFileInfo info;
+      info.durationMs = sqlite3_column_type(st, 3) == SQLITE_NULL ? -1 : sqlite3_column_int64(st, 3);
+      info.narrator = text(4);
+      info.chapters = decodeChapters(text(5));
+      bookInfoFor_[path] = {sqlite3_column_int64(st, 1), sqlite3_column_int64(st, 2)};
+      bookInfo_[path] = std::move(info);
+    }
+    sqlite3_finalize(st);
+  }
+  // a book file changed since it was read: read again by the next scan
+  for (auto it = bookInfoFor_.begin(); it != bookInfoFor_.end();) {
+    auto t = byPath.find(it->first);
+    if (t == byPath.end() || t->second->size != it->second.first || t->second->modified / 1000 != it->second.second / 1000) {
+      bookInfo_.erase(it->first);
+      it = bookInfoFor_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (sqlite3_prepare_v2(db_, "SELECT key, file, position, speed, finished, last_played FROM book_state", -1, &st, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      BookState b;
+      b.key = text(0), b.file = text(1);
+      b.positionMs = sqlite3_column_int64(st, 2);
+      b.speed = clampSpeed(sqlite3_column_int(st, 3));
+      b.finished = sqlite3_column_int(st, 4) != 0;
+      b.lastPlayed = sqlite3_column_int64(st, 5);
+      bookStates_[b.key] = b;
+    }
+    sqlite3_finalize(st);
+  }
+  if (sqlite3_prepare_v2(db_, "SELECT key, file, position, created FROM bookmarks ORDER BY created", -1, &st, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(st) == SQLITE_ROW) {
+      Bookmark b;
+      b.key = text(0), b.file = text(1);
+      b.positionMs = sqlite3_column_int64(st, 2);
+      b.created = sqlite3_column_int64(st, 3);
+      bookmarks_[b.key].push_back(b);
     }
     sqlite3_finalize(st);
   }
@@ -521,6 +604,28 @@ bool writeRows(sqlite3* db_, const std::vector<Track>& rows, const std::vector<s
   sqlite3_finalize(put);
   return sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) == SQLITE_OK;
 }
+
+bool writeBookInfo(sqlite3* db, const std::vector<BookInfoRow>& rows) {
+  if (!db) return false;
+  sqlite3_exec(db, "BEGIN", nullptr, nullptr, nullptr);
+  sqlite3_stmt* put = nullptr;
+  sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO book_files (path, size, modified, duration_ms, narrator, chapters) VALUES (?, ?, ?, ?, ?, ?)",
+                     -1, &put, nullptr);
+  for (const BookInfoRow& r : rows) {
+    std::string chapters = encodeChapters(r.info.chapters);
+    sqlite3_bind_text(put, 1, r.path.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(put, 2, r.size);
+    sqlite3_bind_int64(put, 3, r.modified);
+    if (r.info.durationMs >= 0) sqlite3_bind_int64(put, 4, r.info.durationMs);
+    else sqlite3_bind_null(put, 4);
+    sqlite3_bind_text(put, 5, r.info.narrator.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(put, 6, chapters.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(put);
+    sqlite3_reset(put);
+  }
+  sqlite3_finalize(put);
+  return sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr) == SQLITE_OK;
+}
 }  // namespace
 
 namespace {
@@ -604,7 +709,7 @@ namespace {
 std::vector<const Track*> songsWhere(const std::deque<Track>& tracks, const std::function<bool(const Track&)>& keep) {
   std::vector<const Track*> v;
   for (const Track& t : tracks)
-    if (!t.gone && !t.video && keep(t)) v.push_back(&t);
+    if (!t.gone && !t.video && !t.book && keep(t)) v.push_back(&t);
   return v;
 }
 }  // namespace
@@ -646,6 +751,13 @@ bool Library::moved(const std::string& from, const std::string& to) {
       t.path = to;
       t.dirty = true;
       setKey(t);
+      if (auto it = bookInfo_.find(from); it != bookInfo_.end()) {  // what was read of a book file follows it
+        bookInfo_[to] = std::move(it->second);
+        bookInfo_.erase(from);
+        bookInfoFor_[to] = bookInfoFor_[from];
+        bookInfoFor_.erase(from);
+        bookInfoDirty_.push_back(to);
+      }
       sqlite3* db = db_;
       worker_->post([db, from, to] {  // the stats row follows (written after the tracks: same thread)
         sqlite3_stmt* st = nullptr;
@@ -695,7 +807,7 @@ std::vector<Library::Group> group(const std::deque<Track>& tracks, By by) {
   std::unordered_map<std::string, size_t> at;
   std::vector<std::string> keys;  // lower() of each group's name, computed once
   for (const Track& t : tracks) {
-    if (t.gone || t.video || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
+    if (t.gone || t.video || t.book || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
     const std::string& artist = by == By::AlbumArtist && !t.albumArtist.empty() ? t.albumArtist : t.artist;
     // "Unknown artist" stays English here: it's the group's name, which opens, sorts and finds it; the
     // screens show it in the language spoken (shell/library_screens.cpp, groupTitle)
@@ -738,8 +850,23 @@ void Library::index() const {
   if (indexed_) return;
   songs_.clear();
   videos_.clear();
-  for (const Track& t : tracks_)
-    if (!t.gone) (t.video ? videos_ : songs_).push_back(&t);
+  std::vector<BookFile> bookFiles;
+  for (const Track& t : tracks_) {
+    if (t.gone) continue;
+    if (t.book) {
+      BookFile f;
+      f.path = t.path, f.title = t.title, f.album = t.album, f.artist = t.artist, f.albumArtist = t.albumArtist;
+      f.disc = t.disc, f.track = t.track;
+      auto info = bookInfo_.find(t.path);
+      f.durationMs = info != bookInfo_.end() && info->second.durationMs > 0 ? info->second.durationMs
+                     : t.durationSec >= 0                                   ? int64_t(t.durationSec) * 1000
+                                                                            : -1;
+      f.ownChapters = info != bookInfo_.end() && info->second.chapters.size() >= 2;
+      bookFiles.push_back(std::move(f));
+      continue;
+    }
+    (t.video ? videos_ : songs_).push_back(&t);
+  }
   byTitle(songs_);
   byTitle(videos_);
   artists_ = group(tracks_, By::Artist);
@@ -749,6 +876,21 @@ void Library::index() const {
   byPath_.clear();
   for (const Track& t : tracks_)
     if (!t.gone) byPath_[t.path] = &t;
+  books_.clear();
+  bookByKey_.clear();
+  bookOfPath_.clear();
+  bookKeys_.clear();
+  for (BookGroup& g : groupBooks(std::move(bookFiles))) {
+    Book b;
+    b.key = g.key, b.title = g.title, b.author = g.author, b.durationMs = g.durationMs;
+    for (const BookFile& f : g.files)
+      if (auto it = byPath_.find(f.path); it != byPath_.end()) b.files.push_back(it->second);
+    if (b.files.empty()) continue;
+    bookByKey_[b.key] = books_.size();
+    for (const Track* t : b.files) bookOfPath_[t->path] = books_.size();
+    bookKeys_.push_back(fold(b.title + " " + b.author));
+    books_.push_back(std::move(b));
+  }
   artistKeys_.clear();
   albumKeys_.clear();
   for (auto& g : artists_) artistKeys_.push_back(fold(g.first));
@@ -810,11 +952,177 @@ Library::Found Library::search(const std::string& query) const {
   for (size_t i = 0; i < albums_.size(); i++)
     if (hit(albumKeys_[i])) f.albums.push_back(albums_[i]);
   for (const Track& t : tracks_) {
-    if (!t.gone && hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
+    if (!t.gone && !t.book && hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
   }
+  for (size_t i = 0; i < books_.size(); i++)
+    if (hit(bookKeys_[i])) f.books.push_back(&books_[i]);
   byTitle(f.songs);
   byTitle(f.videos);
   return f;
+}
+
+// ---- audiobooks ----
+
+const Book* Library::bookByKey(const std::string& key) const {
+  index();
+  auto it = bookByKey_.find(key);
+  return it == bookByKey_.end() ? nullptr : &books_[it->second];
+}
+
+const Book* Library::bookOf(const std::string& path) const {
+  index();
+  auto it = bookOfPath_.find(path);
+  return it == bookOfPath_.end() ? nullptr : &books_[it->second];
+}
+
+const BookFileInfo* Library::bookFileInfo(const std::string& path) const {
+  auto it = bookInfo_.find(path);
+  return it == bookInfo_.end() ? nullptr : &it->second;
+}
+
+const BookState* Library::bookState(const std::string& key) const {
+  auto it = bookStates_.find(key);
+  return it == bookStates_.end() ? nullptr : &it->second;
+}
+
+void Library::setBookState(const BookState& s) {
+  bookStates_[s.key] = s;
+  saveBookState(s);
+  bookChanges_++;
+}
+
+void Library::saveBookState(const BookState& b) {
+  sqlite3* db = db_;
+  BookState s = b;
+  worker_->post([db, s] {
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO book_state (key, file, position, speed, finished, last_played) VALUES (?, ?, ?, ?, ?, ?)",
+                           -1, &st, nullptr) != SQLITE_OK)
+      return;
+    sqlite3_bind_text(st, 1, s.key.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(st, 2, s.file.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(st, 3, s.positionMs);
+    sqlite3_bind_int(st, 4, s.speed);
+    sqlite3_bind_int(st, 5, s.finished);
+    sqlite3_bind_int64(st, 6, s.lastPlayed);
+    sqlite3_step(st);
+    sqlite3_finalize(st);
+  });
+}
+
+const std::vector<Bookmark>& Library::bookmarks(const std::string& key) const {
+  static const std::vector<Bookmark> none;
+  auto it = bookmarks_.find(key);
+  return it == bookmarks_.end() ? none : it->second;
+}
+
+void Library::addBookmark(const Bookmark& b) {
+  bookmarks_[b.key].push_back(b);
+  saveBookmarks(b.key);
+  bookChanges_++;
+}
+
+void Library::removeBookmark(const std::string& key, int64_t created) {
+  auto it = bookmarks_.find(key);
+  if (it == bookmarks_.end()) return;
+  auto& v = it->second;
+  v.erase(std::remove_if(v.begin(), v.end(), [&](const Bookmark& b) { return b.created == created; }), v.end());
+  saveBookmarks(key);
+  bookChanges_++;
+}
+
+void Library::saveBookmarks(const std::string& key) {
+  sqlite3* db = db_;
+  std::vector<Bookmark> v = bookmarks(key);
+  worker_->post([db, key, v] {
+    sqlite3_exec(db, "BEGIN", nullptr, nullptr, nullptr);
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, "DELETE FROM bookmarks WHERE key = ?", -1, &st, nullptr) == SQLITE_OK) {
+      sqlite3_bind_text(st, 1, key.c_str(), -1, SQLITE_STATIC);
+      sqlite3_step(st);
+      sqlite3_finalize(st);
+    }
+    if (sqlite3_prepare_v2(db, "INSERT INTO bookmarks (key, file, position, created) VALUES (?, ?, ?, ?)", -1, &st, nullptr) == SQLITE_OK) {
+      for (const Bookmark& b : v) {
+        sqlite3_bind_text(st, 1, b.key.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(st, 2, b.file.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(st, 3, b.positionMs);
+        sqlite3_bind_int64(st, 4, b.created);
+        sqlite3_step(st);
+        sqlite3_reset(st);
+      }
+      sqlite3_finalize(st);
+    }
+    sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+  });
+}
+
+void Library::bookMoved(const std::string& from, const std::string& to) {
+  auto follow = [&](std::string& p) {
+    if (p == from) p = to;
+    else if (p.size() > from.size() && p.compare(0, from.size() + 1, from + "/") == 0) p = to + p.substr(from.size());
+  };
+  std::vector<std::string> keys;
+  for (auto& kv : bookStates_) keys.push_back(kv.first);
+  for (const std::string& k : keys) {
+    BookState s = bookStates_[k];
+    std::string nk = k;
+    follow(nk);
+    std::string before = s.file;
+    follow(s.file);
+    if (nk == k && s.file == before) continue;
+    s.key = nk;
+    bookStates_.erase(k);
+    bookStates_[nk] = s;
+    sqlite3* db = db_;
+    std::string old = k;
+    worker_->post([db, old] {
+      sqlite3_stmt* st = nullptr;
+      if (sqlite3_prepare_v2(db, "DELETE FROM book_state WHERE key = ?", -1, &st, nullptr) != SQLITE_OK) return;
+      sqlite3_bind_text(st, 1, old.c_str(), -1, SQLITE_STATIC);
+      sqlite3_step(st);
+      sqlite3_finalize(st);
+    });
+    saveBookState(s);
+  }
+  keys.clear();
+  for (auto& kv : bookmarks_) keys.push_back(kv.first);
+  for (const std::string& k : keys) {
+    std::vector<Bookmark> v = bookmarks_[k];
+    std::string nk = k;
+    follow(nk);
+    bool changed = nk != k;
+    for (Bookmark& b : v) {
+      std::string before = b.file;
+      follow(b.file);
+      b.key = nk;
+      changed |= b.file != before;
+    }
+    if (!changed) continue;
+    bookmarks_.erase(k);
+    bookmarks_[k].clear();
+    saveBookmarks(k);  // the old key's rows go
+    bookmarks_.erase(k);
+    bookmarks_[nk] = v;
+    saveBookmarks(nk);
+  }
+  bookChanges_++;
+}
+
+void Library::flush(int ms) {
+  struct Done {
+    std::mutex mu;
+    std::condition_variable cv;
+    bool done = false;
+  };
+  auto d = std::make_shared<Done>();
+  worker_->post([d] {
+    std::lock_guard<std::mutex> l(d->mu);
+    d->done = true;
+    d->cv.notify_all();
+  });
+  std::unique_lock<std::mutex> l(d->mu);
+  d->cv.wait_for(l, std::chrono::milliseconds(ms), [&] { return d->done; });
 }
 
 }  // namespace rondo

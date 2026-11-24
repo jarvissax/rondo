@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "../core/books.h"
 #include "../core/tags.h"
 
 namespace rondo {
@@ -14,5 +15,8 @@ namespace rondo {
 bool probeTags(const char* path, Tags& t);
 // an embedded JPEG or PNG
 bool probeCover(const char* path, std::vector<uint8_t>& out);
+// an audiobook file's chapters (MP4 chapters, ID3 CHAP), its length to the millisecond and its
+// narrator (core/books.h's BookReader)
+bool probeBookInfo(const char* path, BookFileInfo& out);
 
 }  // namespace rondo

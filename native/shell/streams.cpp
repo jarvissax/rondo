@@ -66,6 +66,7 @@ void rememberStream(const std::string& path, const Item& item) { registry()[path
 void playStreamsAppend(const Item& item, bool next) {
   std::string p = streamPath(item);
   registry()[p] = item;
+  if (booksTakeQueueAdd(p, next)) return g_app->toast(tr("book.queuedForAfter"));  // the music waiting for the book
   if (next) g_player.insertNext(p);
   else g_player.append(p);
 }

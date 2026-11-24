@@ -16,6 +16,7 @@
 #include "../core/prefs.h"
 #include "../player/player.h"
 #include "../services/core.h"
+#include "books.h"
 #include "dispatch.h"
 #include "kit.h"
 
@@ -141,16 +142,12 @@ class App {
     // the shell's global meanings (ShellActivity.onWheel)
     switch (a) {
       case Action::Back: pop(); break;
-      case Action::PlayPause: g_player.togglePlay(); break;
-      case Action::Next: g_player.next(); break;
-      case Action::Prev: g_player.previous(); break;
+      // an audiobook's chapters and its resume (shell/books.h), else the player's own
+      case Action::PlayPause: transportToggle(); break;
+      case Action::Next: transportNext(); break;
+      case Action::Prev: transportPrev(); break;
       case Action::LongNext:
-      case Action::LongPrev: {  // 2 % of the length per repeat, at least 10 s
-        int64_t d = g_player.state().durationMs;
-        int64_t step = std::max<int64_t>(10000, d / 50);
-        g_player.seekBy(a == Action::LongNext ? step : -step);
-        break;
-      }
+      case Action::LongPrev: transportHold(a == Action::LongNext ? 1 : -1); break;  // 2 % of a song per repeat (10 s at least)
       default: break;
     }
   }

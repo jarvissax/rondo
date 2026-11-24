@@ -23,6 +23,8 @@ enum class Icon : uint8_t {
   Star, Photo, File, Headphones, Film, People, Tag, Flame, History, Sparkle, Stack, Tree, Sliders, Gauge,
   Vibrate, Wheel, Chip, Key, Diamond, Queue, Seek, Download, Sync, Usb, Device, Broadcast, Library, Mic,
   Type, Menu, Wand, Bolt, Lock, Captions, Globe,
+  // audiobooks: Library's row, a bookmark, the sleep timer's moon
+  Book, Bookmark, Moon,
   // WhatsApp's: a chat, send, a message read (two ticks)
   Chat, Send, Ticks, Tick, Smile,
   // the brand logos, each in two colors (drawn as their two masks)

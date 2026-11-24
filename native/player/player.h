@@ -14,6 +14,7 @@
 #include <sys/types.h>
 
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,10 @@ struct PlayerState {
   int32_t recording;
   int64_t recordMs;
   int32_t recordLevel, recordError;
+  // spoken word (an audiobook): the speed, in percent (100 as recorded; positions are the file's own
+  // time, which moves this much faster than the clock); a fade under way or done (the sleep timer)
+  int32_t speed;
+  int32_t fading;
   int32_t order[kMaxQueue];
 };
 
@@ -80,6 +85,14 @@ class PlayerHost {
   void playQueue(const std::vector<std::string>& paths, int start);
   // the queue as Rondo left it (a restart, a crash): the song at `start` from `ms`, playing or paused
   void restoreQueue(const std::vector<std::string>& paths, int start, int64_t ms, bool play);
+  // An audiobook's files as the queue (shell/books.cpp): as restoreQueue, at a speed (percent). The
+  // other calls that put a new queue in (playQueue, restoreQueue, playVideo) play at 1x and call
+  // onReplace first (the book playing keeps its place).
+  void playBook(const std::vector<std::string>& paths, int start, int64_t ms, bool play, int speed);
+  void setSpeed(int percent);
+  // the sound fades out over ms and stays silent until a pause or a play (the sleep timer); 0: back at once
+  void fade(int ms);
+  std::function<void()> onReplace;
   void togglePlay();
   void play();
   void pause();
@@ -127,7 +140,8 @@ class PlayerHost {
   // The position now: positionMs moved on by the time since it was written, while sound comes out.
   static int64_t positionAt(const PlayerState& s, int64_t nowNs) {
     int64_t p = s.positionMs;
-    if (s.playing && !s.buffering && !s.ended && s.publishedNs && nowNs > s.publishedNs) p += std::min<int64_t>((nowNs - s.publishedNs) / 1000000, 250);
+    if (s.playing && !s.buffering && !s.ended && s.publishedNs && nowNs > s.publishedNs)
+      p += std::min<int64_t>((nowNs - s.publishedNs) / 1000000, 250) * (s.speed > 0 ? s.speed : 100) / 100;
     return s.durationMs > 0 && p > s.durationMs ? s.durationMs : p;
   }
 

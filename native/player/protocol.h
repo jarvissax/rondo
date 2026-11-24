@@ -44,6 +44,11 @@ enum PlayerCommand : uint32_t {
   kVolumeLimit,   // i32 the highest step the wheel and the dashboard may set (Settings › Sound › Volume limit)
   kRecordStart,   // the WAV file to record the microphone into (what plays pauses)
   kRecordStop,    // u8 keep: the file finished, or removed
+  // an audiobook (core/books.h): as kRestoreQueue, at its speed: u32 start, i64 ms, u8 play, i32 speed
+  // (percent), then the paths
+  kPlayBook,
+  kSpeed,  // i32 percent (100: as recorded): spoken word faster or slower, its pitch kept (Sonic)
+  kFade,   // i32 ms: the sound fades out over that long and stays silent (the sleep timer pauses after); 0: back now
 };
 
 inline bool readFully(int fd, void* buf, size_t n) {

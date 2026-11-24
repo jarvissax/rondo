@@ -489,6 +489,19 @@ void drawIcon(Pen& p, Icon kind, float level) {
       p.stroke({p.arc(7.8f, 3, 16.2f, 21, 0, 360)}, 1.8f);
       p.stroke({p.poly({3, 12, 21, 12}, false)}, 1.8f);
       break;
+    case Icon::Book:  // Library › Audiobooks: an open book, its two pages
+      p.fill({p.poly({2.5f, 5.5f, 11, 7.2f, 11, 20.5f, 2.5f, 18.8f}, true), p.poly({21.5f, 5.5f, 13, 7.2f, 13, 20.5f, 21.5f, 18.8f}, true)});
+      break;
+    case Icon::Bookmark:  // a ribbon with its notch
+      p.fill({p.poly({6, 2.5f, 18, 2.5f, 18, 21.5f, 12, 16.8f, 6, 21.5f}, true)});
+      break;
+    case Icon::Moon: {  // the sleep timer: a crescent, the outer circle's arc and an inner one back
+      Contour c{{}, true};
+      for (int a = -60; a >= -300; a -= 10) p.lineTo(c, 12 + 9 * cosf(float(a * M_PI / 180)), 12 + 9 * sinf(float(a * M_PI / 180)));
+      for (float b = 100.9f; b <= 259.2f; b += 9.9f) p.lineTo(c, 18 + 7.94f * cosf(float(b * M_PI / 180)), 12 + 7.94f * sinf(float(b * M_PI / 180)));
+      p.fill({c});
+      break;
+    }
     case Icon::Smile:  // reacting: a smiling face
       p.stroke({p.circle(12, 12, 9.2f)}, 2);
       p.fill({p.circle(8.8f, 10, 1.5f), p.circle(15.2f, 10, 1.5f)});

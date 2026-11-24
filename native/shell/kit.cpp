@@ -116,6 +116,15 @@ const Tile clock{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile update{Icon::Download, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile about{Icon::Info, rgb(0xb8bcc4), rgb(0x6f747d)};
 const Tile language{Icon::Globe, rgb(0x4fc3f7), rgb(0x0288d1)};  // Settings › Language
+// Library › Audiobooks, a book's screen and Now Playing's options for it
+const Tile audiobooks{Icon::Book, rgb(0xffa24d), rgb(0xe8660c)};
+const Tile resume{Icon::Play, rgb(0x7be07b), rgb(0x26a83b)};
+const Tile startAgain{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
+const Tile chapters{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};
+const Tile bookmarks{Icon::Bookmark, rgb(0xc58cff), rgb(0x7b3fe0)};
+const Tile speed{Icon::Gauge, rgb(0x4fd8c8), rgb(0x139c8c)};
+const Tile finished{Icon::Check, rgb(0xb8bcc4), rgb(0x6f747d)};
+const Tile sleep{Icon::Moon, rgb(0x8c7bff), rgb(0x4b36d6)};
 const Tile power{Icon::Power, rgb(0xff7a7a), rgb(0xe0283c)};
 const Tile restart{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
 // Library: its sections
@@ -488,7 +497,8 @@ void RowList::draw(Env& e, float x, float y) {
     bool hasTile = r.tile || !r.thumb.empty();
     int tileW = hasTile ? e.dp(26) + e.dp(9) : 0;
     Label trail = label(e, r.trailing, 12, false);
-    int trailW = e.dp(6) + trail.w;
+    int dotD = r.dot ? e.dp(7) : 0;
+    int trailW = e.dp(6) + trail.w + (r.dot ? dotD + (trail.w ? e.dp(6) : 0) : 0);
     int chevW = r.chevron ? e.dp(5) + e.dp(8) : 0;
     float colW = w_ - padL - padR - tileW - trailW - chevW;
     Label tl = label(e, r.title, r.subtitle.empty() ? 15 : 13.5f, sel > 0.5f, colW);
@@ -517,6 +527,10 @@ void RowList::draw(Env& e, float x, float y) {
     if (!r.subtitle.empty()) drawLabel(e, sl, tx, colTop + tl.h + e.dp(1), mix(p.muted, 0xdcffffff, sel));
     float trx = x + w_ - padR - chevW - trail.w;
     drawLabel(e, trail, trx, top + float((int(H) - trail.h) / 2), mix(r.enabled ? p.muted : p.disabled, p.white, sel));
+    if (r.dot) {  // the iPod's unplayed dot, in the accent (white on the highlight)
+      float dx = trx - (trail.w ? e.dp(6) : 0) - dotD;
+      c.shape({dx, top + float((int(H) - dotD) / 2), float(dotD), float(dotD)}, float(dotD) / 2, mix(p.accent, p.white, sel));
+    }
     if (r.chevron) {
       int cw = e.dp(8), ch = e.dp(12);
       e.icons.draw(c, Icon::Chevron, {x + w_ - padR - cw, top + float((int(H) - ch) / 2), float(cw), float(ch)},

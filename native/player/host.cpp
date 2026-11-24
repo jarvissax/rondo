@@ -62,6 +62,7 @@ void PlayerHost::send(uint32_t type, const void* payload, uint32_t len) {
 }
 
 void PlayerHost::playQueue(const std::vector<std::string>& paths, int start) {
+  if (onReplace) onReplace();
   queue_ = paths;
   std::string b(4, '\0');
   uint32_t s = uint32_t(start);
@@ -71,6 +72,7 @@ void PlayerHost::playQueue(const std::vector<std::string>& paths, int start) {
 }
 
 void PlayerHost::restoreQueue(const std::vector<std::string>& paths, int start, int64_t ms, bool play) {
+  if (onReplace) onReplace();
   queue_ = paths;
   std::string b(13, '\0');
   uint32_t s = uint32_t(start);
@@ -79,6 +81,29 @@ void PlayerHost::restoreQueue(const std::vector<std::string>& paths, int start, 
   b[12] = play ? 1 : 0;
   for (const auto& p : paths) b += p, b += '\0';
   send(kRestoreQueue, b.data(), uint32_t(b.size()));
+}
+
+void PlayerHost::playBook(const std::vector<std::string>& paths, int start, int64_t ms, bool play, int speed) {
+  queue_ = paths;
+  std::string b(17, '\0');
+  uint32_t s = uint32_t(start);
+  int32_t sp = speed;
+  memcpy(&b[0], &s, 4);
+  memcpy(&b[4], &ms, 8);
+  b[12] = play ? 1 : 0;
+  memcpy(&b[13], &sp, 4);
+  for (const auto& p : paths) b += p, b += '\0';
+  send(kPlayBook, b.data(), uint32_t(b.size()));
+}
+
+void PlayerHost::setSpeed(int percent) {
+  int32_t v = percent;
+  send(kSpeed, &v, 4);
+}
+
+void PlayerHost::fade(int ms) {
+  int32_t v = ms;
+  send(kFade, &v, 4);
 }
 
 void PlayerHost::togglePlay() { send(kToggle); }
@@ -122,6 +147,7 @@ void PlayerHost::setVolumeLimit(int limit) {
   send(kVolumeLimit, &v, 4);
 }
 void PlayerHost::playVideo(const std::string& soundPath, const std::vector<std::string>& picturePaths) {
+  if (onReplace) onReplace();
   queue_ = {soundPath};
   std::string b = soundPath;
   for (const auto& p : picturePaths) b += '\0', b += p;

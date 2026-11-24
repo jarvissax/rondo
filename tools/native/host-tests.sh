@@ -28,6 +28,9 @@ run tag_write_test -Dpread64=pread -Dlseek64=lseek -Doff64_t=off_t -I native -I 
 run api_method_test -Dpthread_cond_timedwait_monotonic_np=pthread_cond_timedwait -I native/core -I $Y native/core/api.cpp \
   native/core/net.cpp native/tests/host/api_method_test.cpp "$OUT/yy.o" -lcurl
 run lookup_test -I native -I $Y native/core/lookup.cpp native/core/fold.cpp "$OUT/yy.o" native/tests/host/lookup_test.cpp -lcurl
+run books_test -I native native/core/books.cpp native/core/fold.cpp native/tests/host/books_test.cpp
+SONIC=$(ls -d native/third_party/src/sonic-*/ 2>/dev/null | head -1)
+clang -O2 -w -c "${SONIC}sonic.c" -o "$OUT/sonic.o" && run speed_test -O2 -I "$SONIC" native/tests/host/speed_test.cpp "$OUT/sonic.o"
 if node tools/lang/check.mjs >"$OUT/lang.log" 2>&1; then echo "ok    lang/ (tools/lang/check.mjs)"; else echo "FAIL  lang/"; tail -20 "$OUT/lang.log"; failed=$((failed + 1)); fi
 echo "$failed failed"
 exit $failed

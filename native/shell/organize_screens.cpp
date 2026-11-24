@@ -36,7 +36,8 @@ Job g_job;
 std::vector<OrganizeItem> organizeItems(const std::string& root) {
   std::vector<OrganizeItem> items;
   for (const Track& t : g_library.tracks()) {
-    if (t.gone || t.path.compare(0, root.size() + 1, root + "/") != 0) continue;
+    // an audiobook stays where it is (its Audiobooks folder, its own folder of chapters)
+    if (t.gone || t.book || t.path.compare(0, root.size() + 1, root + "/") != 0) continue;
     OrganizeItem i;
     i.path = t.path, i.title = t.title, i.artist = t.artist, i.albumArtist = t.albumArtist, i.album = t.album;
     i.track = t.track, i.disc = t.disc, i.year = t.year, i.video = t.video;
@@ -68,6 +69,7 @@ void filesMoved(const std::vector<std::pair<std::string, std::string>>& moves) {
     }
   }
   for (const auto& kv : moved) g_library.moved(kv.first, kv.second);
+  for (const auto& mv : moves) g_library.bookMoved(mv.first, mv.second);  // a book's place and bookmarks
   for (const Playlist& p : g_playlists.all()) {
     std::vector<std::string> paths = p.paths;
     bool changed = false;
@@ -79,6 +81,7 @@ void filesMoved(const std::vector<std::pair<std::string, std::string>>& moves) {
   bool changed = false;
   for (std::string& s : queue)
     if (auto it = moved.find(s); it != moved.end()) s = it->second, changed = true;
+  if (changed && booksQueueMoved(queue)) changed = false;  // an audiobook's files: it plays on from its place
   if (changed) {
     PlayerState s = g_player.state();
     bool shuffle = s.shuffle;

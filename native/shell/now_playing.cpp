@@ -102,6 +102,11 @@ SongInfo songInfo(const std::string& path) {
     if (const Item* it = streamItem(path)) s.title = it->title, s.subtitle = it->subtitle;
     return s;
   }
+  if (const Book* b = g_library.bookOf(path)) {  // an audiobook's file: the book (the main menu, the dashboard)
+    s.title = b->title;
+    s.subtitle = b->author;
+    return s;
+  }
   if (const Track* t = g_library.find(path)) {
     s.title = t->title;
     s.subtitle = t->artist;
@@ -299,13 +304,23 @@ LyricsLoader g_lyricsLoader;
 class NowPlayingScreen : public Screen {
  public:
   // "Open lyrics automatically" (dashboard) applies when Now Playing opens; the page stays for the next visit
-  NowPlayingScreen() { showLyrics(lyricsOn() || g_config.behavior.lyricsOnOpen); }
+  NowPlayingScreen() {
+    showLyrics(lyricsOn() || g_config.behavior.lyricsOnOpen);
+    // an audiobook: the chapter playing is what the bar and the scrubber cover
+    scrub_.range = [](int64_t& lo, int64_t& hi) {
+      PlayerState s = g_player.state();
+      BookView v = bookView(s, s.positionMs);
+      if (!v.b) return false;
+      lo = v.lo, hi = v.hi;
+      return true;
+    };
+  }
   std::string title() const override { return tr("menu.nowPlaying"); }
   bool statusBar() const override { return false; }
 
   bool onAction(Action a, int steps) override {
     if (options_) {
-      int n = optionCount();
+      int n = int(options().size());
       switch (a) {
         case Action::Up: cursor_ = (cursor_ + n - 1) % n; break;
         case Action::Down: cursor_ = (cursor_ + 1) % n; break;
@@ -327,9 +342,11 @@ class NowPlayingScreen : public Screen {
         return true;
       }
       case Action::Select:
-        // center: Now Playing <-> lyrics (or, while scrubbing, jump)
+        // center: Now Playing <-> lyrics (or, while scrubbing, jump); an audiobook's: its chapters
         if (scrubbing) scrub_.commit();
-        else showLyrics(!lyricsOn());
+        else if (const BookPlay* b = bookNow()) {
+          if (!b->skips) g_app->push(makeChapters(b->key, true));
+        } else showLyrics(!lyricsOn());
         return true;
       case Action::LongSelect:
         scrub_.cancel();
@@ -341,7 +358,7 @@ class NowPlayingScreen : public Screen {
           scrub_.cancel();
           return true;
         }
-        if (lyricsOn()) {
+        if (lyricsOn() && !bookNow()) {
           showLyrics(false);
           return true;
         }
@@ -380,7 +397,8 @@ class NowPlayingScreen : public Screen {
     if (changing(now)) changed = true;
     Shown v = shownOf(s);
     if (!(v == shown_)) changed = true;
-    if (lyricsOn()) {
+    if (chapterChanging(now)) changed = true;
+    if (lyricsOn() && !bookNow()) {
       std::string path = s.index >= 0 ? std::string(s.path) : std::string();
       if (path != lyricsFor_) loadLyrics(path), changed = true;  // the next song
       Lyrics found;
@@ -395,7 +413,10 @@ class NowPlayingScreen : public Screen {
     }
     return changed;
   }
-  bool step(float) override { return changing(now_ns()) || (lyricsOn() && lyrics_.animating(now_)); }
+  bool step(float) override {
+    int64_t now = now_ns();
+    return changing(now) || chapterChanging(now) || (lyricsOn() && !bookNow() && lyrics_.animating(now_));
+  }
   int64_t wakeAt() const override {
     int64_t t = scrub_.deadline();
     auto sooner = [&](int64_t w) { if (w && (!t || w < t)) t = w; };
@@ -405,8 +426,8 @@ class NowPlayingScreen : public Screen {
     // (after the loop had asked whether anything moves), the slide waited for the loop's next look,
     // 250 ms later: most of its 320 ms were gone, and the cover jumped instead of sliding.
     if (hintAt_ && now_ns() - hintAt_ < 1000 * kMs) sooner(now_ns() + 4 * kMs);
-    if (changing(now_ns())) sooner(now_ns());
-    if (lyricsOn()) {
+    if (changing(now_ns()) || chapterChanging(now_ns())) sooner(now_ns());
+    if (lyricsOn() && !bookNow()) {
       if (loadPending_) sooner(now_ns() + 20 * kMs);  // the loader's answer
       if (lyrics_.layingOut()) sooner(now_ns());  // the next slice of the layout
       PlayerState s = g_player.state();
@@ -437,7 +458,8 @@ class NowPlayingScreen : public Screen {
     if (t < 1) backdrop(fromPath_, 1);
     backdrop(path, t < 1 ? t : 1);
     e.c.fill({0, 0, w, h}, dim);
-    if (lyricsOn()) {
+    const BookPlay* book = bookNow();
+    if (lyricsOn() && !book) {
       drawLyricsPage(e, w, h, s, path);
       if (scrub_.active) drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
       if (options_) drawOptions(e, w, h, s);
@@ -452,7 +474,15 @@ class NowPlayingScreen : public Screen {
     float hx = float(e.dp(12));
     drawLabel(e, np, hx, float((headH - np.h) / 2), whiteA(200));
     float iconsLeft = statusIcons(e, w - e.dp(10), headH, whiteA(200));
-    if (s.count > 1) {
+    int64_t shownPos = scrub_.active ? scrub_.target : s.positionMs;
+    BookView bv = bookView(s, shownPos);
+    noticeChapter(bv);
+    if (bv.b && !bv.b->skips && bv.chapter >= 0) {
+      std::string pos = tr("book.np.chapterOf", {{"number", bv.chapter + 1}, {"total", bv.b->chapters.size()}});
+      float px = hx + np.w + e.dp(8);
+      Label pl = label(e, pos, 11, false, iconsLeft - px);
+      drawLabel(e, pl, px, float((headH - pl.h) / 2), whiteA(160));
+    } else if (s.count > 1 && !bv.b) {
       std::string pos = tr("nowPlaying.position", {{"pos", s.index + 1}, {"total", s.count}});
       float px = hx + np.w + e.dp(8);
       Label pl = label(e, pos, 11, false, iconsLeft - px);
@@ -463,8 +493,8 @@ class NowPlayingScreen : public Screen {
     float ax = float(e.dp(12)), ay = float(headH + e.dp(4));
     Rect ar{ax, ay, float(art), float(art)};
     int note = e.dp(44);
-    e.icons.draw(e.c, Icon::Note, {ax + float((art - note) / 2), ay + float((art - note) / 2), float(note), float(note)},
-                 whiteA(120));
+    e.icons.draw(e.c, book ? Icon::Book : Icon::Note, {ax + float((art - note) / 2), ay + float((art - note) / 2), float(note), float(note)},
+                 whiteA(120));  // under the artwork: what shows without one
     e.c.layer(5);
     e.c.shape(ar, e.dpf(6), whiteA(70));
     // the cover: a song change slides the new one in from its side, inside the cover's frame, the one
@@ -497,6 +527,8 @@ class NowPlayingScreen : public Screen {
     // the title, artist and album: the new ones slide a little and fade in, the ones before out
     auto songText = [&](const std::string& p, float dx, float alpha) {
       SongInfo song = p.empty() ? SongInfo{tr("nowPlaying.nothingPlaying"), ""} : songInfo(p);
+      if (book && !p.empty() && std::find(book->paths.begin(), book->paths.end(), p) != book->paths.end())
+        song = {book->title, book->author};  // an audiobook: its title and author, its chapter below
       auto parts = firstAndRest(song.subtitle);
       float y = cy;
       e.c.pushAlpha(alpha);
@@ -522,51 +554,94 @@ class NowPlayingScreen : public Screen {
     } else {
       songText(path, 0, 1);
     }
-    // from the bottom: the modes row, the song up next, "UP NEXT"
+    // from the bottom: the modes row, the song up next, "UP NEXT" (an audiobook: its speed and the
+    // book's time left, the chapter and its time left)
     int iconW = e.dp(15), iconH = e.dp(13);
     std::string source = path.empty()     ? ""
+                         : book           ? tr("book.left", {{"time", listenTime(std::max<int64_t>(0, book->lengthMs - bookMsOf(book->fileMs, {s.index, shownPos})), bv.speed)}})
                          : isStream(path) ? tr("nowPlaying.streaming", {{"codec", s.codec[0] ? s.codec : "AAC"}})
                                           : tr("nowPlaying.fromLibrary", {{"format", upperExt(path)}});
-    float srcX = cx + iconW + e.dp(12) + iconW;
-    Label src = label(e, source, 10, false, cx + cw - srcX);
-    int modesH = std::max(iconH, src.h);
+    float mx = cx;  // the marks' row: shuffle and repeat (music), the speed (a book), the sleep timer
+    Label probe = label(e, "0", 10, false);
+    int modesH = std::max(iconH, probe.h);
     float my = bottom - modesH;
-    e.icons.draw(e.c, Icon::Shuffle, {cx, my + float((modesH - iconH) / 2), float(iconW), float(iconH)},
-                 s.shuffle ? white : whiteA(90));
-    e.icons.draw(e.c, Icon::Repeat, {cx + iconW + e.dp(12), my + float((modesH - iconH) / 2), float(iconW), float(iconH)},
-                 s.repeat ? white : whiteA(90));
-    drawLabel(e, src, cx + cw - src.w, my + float((modesH - src.h) / 2), whiteA(170));
-    std::string next = "\xe2\x80\x94";
-    if (s.nextIndex >= 0 && s.nextIndex < int(g_player.queue().size())) {
-      SongInfo n = songInfo(g_player.queue()[size_t(s.nextIndex)]);
-      std::string by = firstAndRest(n.subtitle).first;
-      next = n.title;
-      if (!by.empty()) next = next.empty() ? by : next + " \xc2\xb7 " + by;
+    if (!book) {
+      e.icons.draw(e.c, Icon::Shuffle, {mx, my + float((modesH - iconH) / 2), float(iconW), float(iconH)}, s.shuffle ? white : whiteA(90));
+      mx += iconW + e.dp(12);
+      e.icons.draw(e.c, Icon::Repeat, {mx, my + float((modesH - iconH) / 2), float(iconW), float(iconH)}, s.repeat ? white : whiteA(90));
+      mx += iconW;
+    } else if (bv.speed != 100) {  // the speed's badge: white, the number dark
+      Label sp = label(e, speedLabel(bv.speed), 9, true);
+      int bw = sp.w + e.dp(8), bh = std::max(iconH, sp.h + e.dp(2));
+      Rect br{mx, my + float((modesH - bh) / 2), float(bw), float(bh)};
+      e.c.shape(br, e.dpf(4), white);  // in the text's layer, in order: the number over it
+      drawLabel(e, sp, br.x + float((bw - sp.w) / 2), br.y + float((bh - sp.h) / 2), e.p.dark);
+      mx += bw;
     }
-    Label nl = label(e, next, 11, false, cw);
-    float ny = my - e.dp(8) - nl.h;
-    drawLabel(e, nl, cx, ny, whiteA(220));
-    Label up = label(e, tr("nowPlaying.upNextHeader"), 9, true, cw);
-    drawLabel(e, up, cx, ny - e.dp(1) - up.h, whiteA(150));
+    std::string sleep = sleepMark();
+    if (!sleep.empty()) {  // the sleep timer running: the moon and what's left
+      if (mx > cx) mx += e.dp(10);
+      int mw = e.dp(11);
+      e.icons.draw(e.c, Icon::Moon, {mx, my + float((modesH - mw) / 2), float(mw), float(mw)}, white);
+      mx += mw + e.dp(3);
+      Label sl = label(e, sleep, 10, false, cx + cw - mx);
+      drawLabel(e, sl, mx, my + float((modesH - sl.h) / 2), white);
+      mx += sl.w;
+    }
+    float srcX = std::max(mx + e.dp(8), cx + (book ? 0.f : float(iconW + e.dp(12) + iconW)));
+    Label src = label(e, source, 10, false, cx + cw - srcX);
+    drawLabel(e, src, cx + cw - src.w, my + float((modesH - src.h) / 2), whiteA(170));
+    if (book) {
+      // the chapter: its name, and how long it has left at the book's speed; a new one fades in
+      float ct = chapterT(e.now), ce = 1.f - (1.f - ct) * (1.f - ct);
+      e.c.pushAlpha(ct < 1 ? std::max(0.f, (ce - 0.3f) / 0.7f) : 1.f);
+      float slideX = ct < 1 ? chapterDir_ * (1 - ce) * float(e.dp(16)) : 0;
+      if (!book->skips && bv.chapter >= 0) {
+        Label nl = label(e, chapterName(*book, bv.chapter), 11, false, cw);
+        float ny = my - e.dp(8) - nl.h;
+        drawLabel(e, nl, cx + slideX, ny, whiteA(220));
+        std::string left = tr("book.np.leftInChapter", {{"time", listenTime(std::max<int64_t>(0, bv.hi - shownPos), bv.speed)}});
+        Label up = label(e, left, 9, true, cw);
+        drawLabel(e, up, cx + slideX, ny - e.dp(1) - up.h, whiteA(150));
+      }
+      e.c.popAlpha();
+    } else {
+      std::string next = "\xe2\x80\x94";
+      if (s.nextIndex >= 0 && s.nextIndex < int(g_player.queue().size())) {
+        SongInfo n = songInfo(g_player.queue()[size_t(s.nextIndex)]);
+        std::string by = firstAndRest(n.subtitle).first;
+        next = n.title;
+        if (!by.empty()) next = next.empty() ? by : next + " \xc2\xb7 " + by;
+      }
+      Label nl = label(e, next, 11, false, cw);
+      float ny = my - e.dp(8) - nl.h;
+      drawLabel(e, nl, cx, ny, whiteA(220));
+      Label up = label(e, tr("nowPlaying.upNextHeader"), 9, true, cw);
+      drawLabel(e, up, cx, ny - e.dp(1) - up.h, whiteA(150));
+    }
 
     // ---- bottom: the progress and the times ----
     int64_t d = s.durationMs;
     int64_t pos = scrub_.active ? scrub_.target : s.positionMs;
-    Label el = label(e, formatTime(int(pos / 1000)), 11, false);
+    // an audiobook: the chapter's part of the file, in listening time at its speed
+    int64_t barLo = bv.b ? bv.lo : 0, barLen = bv.b ? bv.hi - bv.lo : d;
+    auto shown = [&](int64_t ms) { return bv.b ? (ms - barLo) * 100 / std::max(1, bv.speed) : ms; };
+    Label el = label(e, formatTime(int(std::max<int64_t>(0, shown(pos)) / 1000)), 11, false);
     float timesH = float(el.h);
     float by = h - e.dp(6) - timesH;
     float barH = float(e.dp(12));
     float barY = by - e.dp(2) - barH;
     float bx = float(e.dp(10)), bw = w - 2 * bx;
     e.c.layer(5);
-    progressBar(e, {bx, barY, bw, barH}, whiteA(70), white, d > 0 ? float(s.positionMs) / d : 0, 9, 3,
+    progressBar(e, {bx, barY, bw, barH}, whiteA(70), white, barLen > 0 ? float(s.positionMs - barLo) / float(barLen) : 0, 9, 3,
                 scrub_.fraction(d));
     e.c.layer(6);
     float tx = bx + e.dp(4), tw = bw - 2 * e.dp(4);
     // weights 1 : 2 : 1, shared out as LinearLayout does
     int total = int(tw), w1 = total * 1 / 4, w2 = (total - w1) * 2 / 3, w3 = total - w1 - w2;
     drawLabel(e, el, tx, by, whiteA(220));
-    Label rem = label(e, "-" + formatTime(int(std::max<int64_t>(0, d / 1000 - pos / 1000))), 11, false);
+    int64_t remain = bv.b ? std::max<int64_t>(0, shown(barLo + barLen) / 1000 - shown(pos) / 1000) : std::max<int64_t>(0, d / 1000 - pos / 1000);
+    Label rem = label(e, "-" + formatTime(int(remain)), 11, false);
     drawLabel(e, rem, tx + w1 + w2 + w3 - rem.w, by, whiteA(220));
     std::string state = scrub_.active ? tr("nowPlaying.scrubHint")
                         : s.buffering ? tr("nowPlaying.loading")
@@ -584,12 +659,54 @@ class NowPlayingScreen : public Screen {
     }
     drawLabel(e, st, gx, gy + float((groupH - st.h) / 2), white);
 
-    if (scrub_.active) drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
+    if (scrub_.active) {
+      if (bv.b) drawScrubBubble(e, w, h, shown(scrub_.target), shown(scrub_.from));
+      else drawScrubBubble(e, w, h, scrub_.target, scrub_.from);
+    }
     if (options_) drawOptions(e, w, h, s);
     e.c.layer(0);
   }
 
  private:
+  // the audiobook playing (b null: music), the chapter at `pos`, its part of the file and the speed
+  struct BookView {
+    const BookPlay* b = nullptr;
+    int chapter = -1;
+    int64_t lo = 0, hi = 0;
+    int speed = 100;
+  };
+  static BookView bookView(const PlayerState& s, int64_t pos) {
+    BookView v;
+    v.b = s.index >= 0 ? bookNow() : nullptr;
+    if (!v.b) return v;
+    v.speed = s.speed > 0 ? s.speed : 100;
+    v.chapter = chapterAt(v.b->chapters, {s.index, pos});
+    if (!v.b->skips && v.chapter >= 0 && v.b->chapters[size_t(v.chapter)].file == s.index) {
+      v.lo = v.b->chapters[size_t(v.chapter)].startMs;
+      v.hi = v.b->chapters[size_t(v.chapter)].endMs;
+    } else {
+      v.lo = 0, v.hi = s.durationMs;
+    }
+    if (v.hi <= v.lo) v.hi = std::max(v.lo + 1, s.durationMs);
+    return v;
+  }
+  // a chapter change: its name fades in from the side it comes from
+  void noticeChapter(const BookView& v) {
+    std::string key = v.b ? v.b->key : std::string();
+    if (key != chapterBook_) {
+      chapterBook_ = key, lastChapter_ = v.chapter;
+      return;
+    }
+    if (v.chapter == lastChapter_) return;
+    chapterDir_ = v.chapter > lastChapter_ ? 1 : -1;
+    lastChapter_ = v.chapter;
+    if (!scrub_.active) chapterAt_ = now_ns();
+  }
+  float chapterT(int64_t now) const { return chapterAt_ ? std::min(1.f, float(now - chapterAt_) / 300e6f) : 1.f; }
+  bool chapterChanging(int64_t now) const { return chapterAt_ && now - chapterAt_ < 320 * kMs; }
+  std::string chapterBook_;
+  int lastChapter_ = -1, chapterDir_ = 1;
+  int64_t chapterAt_ = 0;
   static bool& lyricsOn() {
     static bool on = false;  // the lyrics page stays open for the next visit to Now Playing
     return on;
@@ -691,10 +808,11 @@ class NowPlayingScreen : public Screen {
     int index = -1, next = -1, count = 0, playing = 0, buffering = 0, shuffle = 0, repeat = 0;
     int64_t sec = -1, durSec = -1, bar = -1;
     bool scrubbing = false;
+    std::string marks;  // the sleep timer's, an audiobook's speed, chapter and times left
     bool operator==(const Shown& o) const {
       return path == o.path && index == o.index && next == o.next && count == o.count && playing == o.playing &&
              buffering == o.buffering && shuffle == o.shuffle && repeat == o.repeat && sec == o.sec && durSec == o.durSec &&
-             bar == o.bar && scrubbing == o.scrubbing;
+             bar == o.bar && scrubbing == o.scrubbing && marks == o.marks;
     }
   };
   Shown shownOf(const PlayerState& s) const {
@@ -705,6 +823,16 @@ class NowPlayingScreen : public Screen {
     // the thumb moves a quarter pixel at a time: the bar is redrawn when it would move
     v.bar = s.durationMs > 0 ? s.positionMs * 4 * 452 / s.durationMs : 0;
     v.scrubbing = scrub_.active;
+    v.marks = sleepMark();
+    int64_t pos = scrub_.active ? scrub_.target : s.positionMs;
+    BookView b = bookView(s, pos);
+    if (b.b) {
+      int64_t len = std::max<int64_t>(1, b.hi - b.lo);
+      v.bar = (s.positionMs - b.lo) * 4 * 452 / len;
+      v.sec = (pos - b.lo) * 100 / std::max(1, b.speed) / 1000;  // the times shown, at the speed
+      v.marks += "|" + std::to_string(b.chapter) + "|" + std::to_string(b.speed) + "|" + std::to_string((b.hi - pos) / 60000) + "|" +
+                 std::to_string((b.b->lengthMs - bookMsOf(b.b->fileMs, {s.index, pos})) / 60000) + "|" + b.b->key;
+    }
     return v;
   }
 
@@ -721,8 +849,23 @@ class NowPlayingScreen : public Screen {
     PlayerState s = g_player.state();
     return s.video || !isStream(s.path) ? nullptr : streamItem(s.path);
   }
-  // a card song also has its rating (center: one star more, after five none); a streamed one, Download
-  int optionCount() const { return ratable().empty() && !downloadable() ? 4 : 5; }
+  // The options: a song's (a card song also has its rating, center giving one star more, after five
+  // none; a streamed one, Download) or an audiobook's, and the sleep timer for both
+  enum class Opt { Scrub, UpNext, Shuffle, Repeat, Rating, Download, Sleep, Chapters, AddBookmark, Bookmarks, Speed, BackToMusic };
+  static std::vector<Opt> options() {
+    std::vector<Opt> v{Opt::Scrub};
+    if (const BookPlay* b = bookNow()) {
+      if (!b->skips) v.push_back(Opt::Chapters);
+      v.insert(v.end(), {Opt::AddBookmark, Opt::Bookmarks, Opt::Speed, Opt::Sleep});
+      if (musicLent()) v.push_back(Opt::BackToMusic);
+      return v;
+    }
+    v.insert(v.end(), {Opt::UpNext, Opt::Shuffle, Opt::Repeat});
+    if (!ratable().empty()) v.push_back(Opt::Rating);
+    else if (downloadable()) v.push_back(Opt::Download);
+    v.push_back(Opt::Sleep);
+    return v;
+  }
   // where a streamed song's download is: not asked for, on the card, paused, on its way
   enum class Dl { None, Done, Paused, Going };
   static Dl downloadState(const Item& it) {
@@ -740,53 +883,113 @@ class NowPlayingScreen : public Screen {
       default: return tr("music.download");
     }
   }
-  std::string optionLabel(int i, const PlayerState& s) const {
-    switch (i) {
-      case 0: return tr("nowPlaying.scrub");
-      case 1: return tr("nowPlaying.upNext");
-      case 2: return tr("nowPlaying.shuffle", {{"state", s.shuffle ? tr("common.on") : tr("common.off")}});
-      case 3:
+  std::string optionLabel(Opt o, const PlayerState& s) const {
+    switch (o) {
+      case Opt::Scrub: {
+        const BookPlay* b = bookNow();
+        return !b ? tr("nowPlaying.scrub") : b->skips ? tr("book.np.scrubBook") : tr("book.np.scrubChapter");
+      }
+      case Opt::UpNext: return tr("nowPlaying.upNext");
+      case Opt::Shuffle: return tr("nowPlaying.shuffle", {{"state", s.shuffle ? tr("common.on") : tr("common.off")}});
+      case Opt::Repeat:
         return tr("nowPlaying.repeat", {{"mode", s.repeat == 1   ? tr("nowPlaying.repeatAll")
                                                  : s.repeat == 2 ? tr("nowPlaying.repeatOne")
                                                                  : tr("common.off")}});
-      default: {
-        if (ratable().empty())
-          if (const Item* it = downloadable()) return downloadLabel(*it);
+      case Opt::Download: {
+        const Item* it = downloadable();
+        return it ? downloadLabel(*it) : tr("music.download");
+      }
+      case Opt::Rating: {
         const Track* t = g_library.find(ratable());
         int r = t ? t->rating : 0;
         std::string stars;
         for (int k = 0; k < r; k++) stars += "\xe2\xad\x90";  // U+2B50, in color (Roboto has no star)
         return tr("nowPlaying.rating", {{"stars", r ? stars : tr("nowPlaying.ratingNone")}});
       }
+      case Opt::Sleep: {
+        SleepMode m = sleepMode();
+        std::string state = m == SleepMode::Off ? tr("common.off") : m == SleepMode::Minutes ? sleepMark() : sleepEndName();
+        return tr("sleep.option", {{"state", state}});
+      }
+      case Opt::Chapters: return tr("book.chapters");
+      case Opt::AddBookmark: return tr("book.addBookmark");
+      case Opt::Bookmarks: return tr("book.bookmarks");
+      case Opt::Speed: return tr("book.np.speed", {{"speed", speedLabel(bookSpeedNow())}});
+      case Opt::BackToMusic: return tr("book.backToMusic");
     }
+    return "";
+  }
+  static Icon optionGlyph(Opt o) {
+    switch (o) {
+      case Opt::Scrub: return Icon::Seek;
+      case Opt::UpNext: return Icon::Queue;
+      case Opt::Shuffle: return Icon::Shuffle;
+      case Opt::Repeat: return Icon::Repeat;
+      case Opt::Rating: return Icon::Star;
+      case Opt::Download: return Icon::Download;
+      case Opt::Sleep: return Icon::Moon;
+      case Opt::Chapters: return Icon::Queue;
+      case Opt::AddBookmark: return Icon::Plus;
+      case Opt::Bookmarks: return Icon::Bookmark;
+      case Opt::Speed: return Icon::Gauge;
+      case Opt::BackToMusic: return Icon::Note;
+    }
+    return Icon::Seek;
   }
   void chooseOption() {
     PlayerState s = g_player.state();
-    switch (cursor_) {
-      case 0:
+    std::vector<Opt> opts = options();
+    if (cursor_ < 0 || cursor_ >= int(opts.size())) return;
+    const BookPlay* book = bookNow();
+    std::string key = book ? book->key : std::string();
+    switch (opts[size_t(cursor_)]) {
+      case Opt::Scrub:
         options_ = false;
         scrub_.begin();
         break;
-      case 1:
+      case Opt::UpNext:
         options_ = false;
         g_app->push(makeQueue());
         break;
-      case 2: g_player.setShuffle(!s.shuffle); shuffleShown_ = !s.shuffle; break;
-      case 3: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
-      default: {
-        std::string p = ratable();
-        if (p.empty()) {  // Download: to the card (Music/YouTube Music), as the song menu's
-          if (const Item* it = downloadable()) {
-            Item song = *it;
-            options_ = false;
-            if (downloadState(song) == Dl::None) downloadSong(song);
-            else g_app->push(makeMusicDownloads());
-          }
-          break;
+      case Opt::Shuffle: g_player.setShuffle(!s.shuffle); shuffleShown_ = !s.shuffle; break;
+      case Opt::Repeat: g_player.setRepeat(s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0); repeatShown_ = s.repeat == 0 ? 1 : s.repeat == 1 ? 2 : 0; break;
+      case Opt::Download:  // to the card (Music/YouTube Music), as the song menu's
+        if (const Item* it = downloadable()) {
+          Item song = *it;
+          options_ = false;
+          if (downloadState(song) == Dl::None) downloadSong(song);
+          else g_app->push(makeMusicDownloads());
         }
+        break;
+      case Opt::Rating: {
+        std::string p = ratable();
         if (const Track* t = g_library.find(p)) g_library.setRating(p, (t->rating + 1) % 6);
         break;
       }
+      case Opt::Sleep:
+        options_ = false;
+        g_app->push(makeSleepTimer());
+        break;
+      case Opt::Chapters:
+        options_ = false;
+        g_app->push(makeChapters(key, true));
+        break;
+      case Opt::AddBookmark:
+        options_ = false;
+        if (addBookmarkNow()) g_app->toast(tr("book.bookmarkAdded"));
+        break;
+      case Opt::Bookmarks:
+        options_ = false;
+        g_app->push(makeBookmarks(key, true));
+        break;
+      case Opt::Speed:
+        options_ = false;
+        g_app->push(makeBookSpeed(key));
+        break;
+      case Opt::BackToMusic:
+        options_ = false;
+        backToMusic();
+        break;
     }
     optionsAt_ = now_ns();
   }
@@ -798,28 +1001,37 @@ class NowPlayingScreen : public Screen {
     } else {
       shuffleShown_ = repeatShown_ = -1;
     }
+    std::vector<Opt> opts = options();
     int pw = e.dp(214), rowH = e.dp(28), pad = e.dp(5);
-    int n = optionCount();
+    int n = int(opts.size());
     if (cursor_ >= n) cursor_ = n - 1;  // the song changed to one without a rating
-    int ph = pad + n * rowH + pad;
+    // as many rows as fit (Large text, an audiobook's seven): the panel scrolls with the cursor
+    int fit = std::max(1, (int(h) - 2 * e.dp(8) - 2 * pad) / rowH), shownRows = std::min(n, fit);
+    if (cursor_ < optionsTop_) optionsTop_ = cursor_;
+    if (cursor_ >= optionsTop_ + shownRows) optionsTop_ = cursor_ - shownRows + 1;
+    optionsTop_ = std::max(0, std::min(optionsTop_, n - shownRows));
+    int ph = pad + shownRows * rowH + pad;
     float x = float((int(w) - pw) / 2), y = float((int(h) - ph) / 2);
     e.c.layer(7);
     e.c.shape({x, y, float(pw), float(ph)}, e.dpf(10), 0xf21e1e20);
-    for (int i = 0; i < n; i++) {
+    for (int k = 0; k < shownRows; k++) {
+      int i = optionsTop_ + k;
       bool on = i == cursor_;
-      Rect r{x + pad, y + pad + float(i * rowH), float(pw - 2 * pad), float(rowH)};
+      Rect r{x + pad, y + pad + float(k * rowH), float(pw - 2 * pad), float(rowH)};
       if (on) e.c.shape(r, e.dpf(6), white);
-      static const Icon kGlyphs[] = {Icon::Seek, Icon::Queue, Icon::Shuffle, Icon::Repeat, Icon::Star, Icon::Download};
       int g = e.dp(14), gx = e.dp(10);
       Color ink = on ? e.p.dark : white;
-      int glyph = i < 4 ? i : ratable().empty() ? 5 : 4;
-      e.icons.draw(e.c, kGlyphs[glyph], {r.x + gx, r.y + float((rowH - g) / 2), float(g), float(g)}, ink);
+      e.icons.draw(e.c, optionGlyph(opts[size_t(i)]), {r.x + gx, r.y + float((rowH - g) / 2), float(g), float(g)}, ink);
       float tx = r.x + gx + g + e.dp(9);
-      Label l = label(e, optionLabel(i, s), 13, on, r.x + r.w - e.dp(10) - tx);
+      Label l = label(e, optionLabel(opts[size_t(i)], s), 13, on, r.x + r.w - e.dp(10) - tx);
       drawLabel(e, l, tx, r.y + float((rowH - l.h) / 2), ink);
     }
+    if (shownRows < n) {  // more above or below: a thin bar on the right, where the rows are
+      float trackH = float(shownRows * rowH), barH = trackH * float(shownRows) / float(n);
+      float by = y + pad + trackH * float(optionsTop_) / float(n);
+      e.c.shape({x + pw - e.dpf(3.5f), by, e.dpf(2), barH}, e.dpf(1), whiteA(110));
+    }
   }
-
   Scrubber scrub_;
   LyricsView lyrics_;
   Requests requests_;
@@ -829,14 +1041,18 @@ class NowPlayingScreen : public Screen {
   int64_t artTried_ = 0;
   int64_t now_ = 0;
   bool options_ = false;
-  int cursor_ = 0;
+  int cursor_ = 0, optionsTop_ = 0;
   int shuffleShown_ = -1, repeatShown_ = -1;
   int64_t optionsAt_ = 0;
   Shown shown_;
   // the song change under way: the song before, which way (1: the next, from the right), since when
   void noticeChange(const std::string& path, const PlayerState& s) {
     if (path == lastPath_) return;
-    if (!lastPath_.empty() && !path.empty()) {
+    // an audiobook's next file is its next chapter: the book stays (its name fades in instead)
+    const BookPlay* b = bookNow();
+    bool sameBook = b && std::find(b->paths.begin(), b->paths.end(), lastPath_) != b->paths.end() &&
+                    std::find(b->paths.begin(), b->paths.end(), path) != b->paths.end();
+    if (!lastPath_.empty() && !path.empty() && !sameBook) {
       fromPath_ = lastPath_;
       int64_t now = now_ns();
       if (hintAt_ && now - hintAt_ < 3000 * kMs) changeDir_ = hintDir_;

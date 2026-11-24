@@ -17,6 +17,7 @@ own license.
 | [libjpeg-turbo](https://libjpeg-turbo.org) | IJG and BSD-3-Clause |
 | [SQLite](https://sqlite.org) | public domain |
 | [yyjson](https://github.com/ibireme/yyjson) | MIT |
+| [Sonic](https://github.com/waywardgeek/sonic) (audiobooks' speed, the voice's pitch kept) | Apache-2.0 |
 | [Roboto](https://github.com/googlefonts/roboto-3-classic) font | SIL Open Font License 1.1 (see `native/assets/fonts/NOTICE.txt`) |
 | [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) font | SIL Open Font License 1.1 |
 | ISRG Root X1 and ISRG Root YR certificates ([Let's Encrypt](https://letsencrypt.org/certificates/)) | public certificates |

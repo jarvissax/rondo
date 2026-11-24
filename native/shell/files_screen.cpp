@@ -97,6 +97,10 @@ std::vector<Entry> listFolder(const std::string& dir) {
 void openFile(const std::string& path) {
   std::string dir = parentOf(path), name = nameOf(path);
   if (isAudioExtension(extOf(name))) {
+    if (const Book* b = g_library.bookOf(path)) {  // an audiobook's file: the book, from that file
+      playBookFile(*b, path);
+      return openNowPlaying();
+    }
     std::vector<std::string> songs;
     for (const Entry& e : listFolder(dir))
       if (!e.dir && isAudioExtension(extOf(e.name))) songs.push_back(e.path);

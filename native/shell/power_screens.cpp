@@ -89,6 +89,8 @@ class PowerScreen : public ShellListScreen {
       saveConfigNow();
       savePrefsNow();
       resumeSaveNow();  // the queue and the place in the song, for the next start
+      booksSaveNow();   // and the audiobook's
+      g_library.flush(1000);
       // the song's file closed, so unmounting the card stops nothing of Rondo's
       if (g_player.active()) g_player.release();
       if (restart_) power::reboot();
@@ -170,9 +172,9 @@ void powerAction(bool restart) {
 // only while the screen is lit
 void headsetButton(Key k) {
   switch (k) {
-    case Key::HeadsetPlay: g_player.togglePlay(); break;
-    case Key::HeadsetNext: g_player.next(); break;
-    case Key::HeadsetPrev: g_player.previous(); break;
+    case Key::HeadsetPlay: transportToggle(); break;
+    case Key::HeadsetNext: transportNext(); break;
+    case Key::HeadsetPrev: transportPrev(); break;
     case Key::HeadsetVolumeUp:
     case Key::HeadsetVolumeDown: {
       int dir = k == Key::HeadsetVolumeUp ? 1 : -1;

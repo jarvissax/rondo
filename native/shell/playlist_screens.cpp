@@ -277,6 +277,7 @@ class LocalSongMenuScreen : public RenderedList {
       return render();
     }
     if (!g_player.active()) g_player.playQueue({path_}, 0);
+    else if (booksTakeQueueAdd(path_, next)) g_app->toast(tr("book.queuedForAfter"));  // the music waiting for the book
     else if (next) g_player.insertNext(path_);
     else g_player.append(path_);
     g_app->pop();

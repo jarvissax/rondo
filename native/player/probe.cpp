@@ -81,6 +81,44 @@ bool probeTags(const char* path, Tags& t) {
   return true;
 }
 
+bool probeBookInfo(const char* path, BookFileInfo& out) {
+  // MP4's chapters are a text track (or Nero's chpl atom) and ID3's CHAP frames: FFmpeg reads both as
+  // the file opens. Its warnings about a cover's picture stream it won't decode aren't errors.
+  if (av_log_get_level() > AV_LOG_ERROR) av_log_set_level(AV_LOG_ERROR);
+  AVFormatContext* fmt = open(path);
+  if (!fmt) return false;
+  int audio = -1;
+  for (unsigned i = 0; i < fmt->nb_streams; i++)
+    if (audio < 0 && fmt->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) audio = int(i);
+  if (audio < 0) {
+    avformat_close_input(&fmt);
+    return false;
+  }
+  if (fmt->duration == AV_NOPTS_VALUE || fmt->duration <= 0) {
+    for (unsigned i = 0; i < fmt->nb_streams; i++)
+      if (int(i) != audio) fmt->streams[i]->discard = AVDISCARD_ALL;
+    avformat_find_stream_info(fmt, nullptr);
+  }
+  out.durationMs = fmt->duration != AV_NOPTS_VALUE && fmt->duration > 0 ? fmt->duration / 1000 : -1;
+  for (const char* k : {"narrator", "composer", "performer"}) {
+    for (AVDictionary* d : {fmt->metadata, fmt->streams[audio]->metadata}) {
+      AVDictionaryEntry* e = d ? av_dict_get(d, k, nullptr, 0) : nullptr;
+      if (e && out.narrator.empty()) out.narrator = trimmed(e->value);
+    }
+  }
+  out.chapters.clear();
+  for (unsigned i = 0; i < fmt->nb_chapters; i++) {
+    const AVChapter* c = fmt->chapters[i];
+    FileChapter f;
+    f.startMs = av_rescale_q(c->start, c->time_base, {1, 1000});
+    f.endMs = c->end == AV_NOPTS_VALUE ? f.startMs : av_rescale_q(c->end, c->time_base, {1, 1000});
+    if (const AVDictionaryEntry* t = av_dict_get(c->metadata, "title", nullptr, 0)) f.title = trimmed(t->value);
+    out.chapters.push_back(std::move(f));
+  }
+  avformat_close_input(&fmt);
+  return true;
+}
+
 bool probeCover(const char* path, std::vector<uint8_t>& out) {
   AVFormatContext* fmt = open(path);
   if (!fmt) return false;

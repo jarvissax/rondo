@@ -93,7 +93,9 @@ extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bl
     // Settings › Sound
     eqPreset, eqEdit, match, boost, leveling, amplifier, limit,
     // Settings › Language
-    language;
+    language,
+    // Library › Audiobooks and a book's screen
+    audiobooks, resume, chapters, bookmarks, speed, finished, startAgain, sleep;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 // a service's mark in white, size wide, centered in r (YouTube's play mark in its tile's red)
@@ -124,6 +126,7 @@ struct Row {
   bool chevron = false, enabled = true;
   const Tile* tile = nullptr;
   std::function<void()> onSelect, onLongSelect;
+  bool dot = false;  // an accent dot before the trailing text: not started yet (an audiobook)
   std::string ahead;  // a song's or a video's id: resolved in the background once the wheel rests here
 };
 
