@@ -5,6 +5,25 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## 4.1.1 (not released yet)
+
+An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer, as
+4.1.0 does; WhatsApp's own words come in your language with the next server release.
+
+### New
+
+- **Turn the Y1 off from the main menu** ([#6](https://github.com/jarvissax/rondo/issues/6)): hold
+  center there for 2 seconds. A bar fills while you hold; let go sooner and nothing happens. The Y1
+  has no power button of its own (center only switches it on), so until now shutting down took
+  Settings › System › Shut down. Holding center everywhere else still opens the options.
+- **The update page speaks Spanish:** it starts in the browser's language when Rondo has it, with a
+  language picker.
+
+### Fixed
+
+- **The guides named a Power button the Y1 doesn't have.** They now say how to turn it off.
+
 ## 4.1.0 (November 22, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the
