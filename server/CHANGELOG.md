@@ -4,6 +4,13 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## Not released yet
+
+- **WhatsApp's words in the Rondo's language:** what the server writes itself for a WhatsApp chat
+  comes in the language the Rondo speaks: a chat's last message ("Foto", "Mensaje de voz 0:12"),
+  what a reply quotes, "Tú", "Alguien" and "Grupo", a contact or a poll without a name, and why a
+  message wasn't sent. Quotes received before keep their English words.
+
 ## 3.6.0 (November 22, 2026)
 
 - **The admin page speaks Spanish**, and any language in `lang/`: it starts in the browser's

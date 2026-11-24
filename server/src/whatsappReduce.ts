@@ -5,6 +5,8 @@
 
 import { getContentType, normalizeMessageContent, type proto, type WAMessage } from "baileys";
 
+import { say } from "./lang.js";
+
 export type WaKind =
   | "text"
   | "image"
@@ -33,7 +35,11 @@ export interface WaQuoted {
   id: string;
   sender: string;
   kind: WaKind;
-  text: string;
+  text: string; // raw: the quoted message's own words (its preview is made when it's sent, in the Rondo's language); before 3.6.1, its preview in English
+  raw?: true;
+  seconds?: number;
+  fileName?: string;
+  gif?: boolean;
 }
 
 export interface WaMessage {
@@ -80,30 +86,43 @@ const b64 = (v: Uint8Array | string | null | undefined): string | undefined => {
   return v.length ? Buffer.from(v).toString("base64") : undefined;
 };
 
-// the words a message shows in a list or a quote ("Photo", "Voice message 0:12")
-export function previewText(kind: WaKind, text: string, media?: WaMedia): string {
+// the words a message shows in a list or a quote ("Photo", "Voice message 0:12"), in the language of the
+// Rondo asking (say(): the device's own words for them, lang/<code>.json)
+export function previewText(kind: WaKind, text: string, media?: Pick<WaMedia, "seconds" | "gif" | "fileName">): string {
   const t = text.trim();
-  const len = media?.seconds ? ` ${Math.floor(media.seconds / 60)}:${String(Math.floor(media.seconds % 60)).padStart(2, "0")}` : "";
+  const length = media?.seconds ? `${Math.floor(media.seconds / 60)}:${String(Math.floor(media.seconds % 60)).padStart(2, "0")}` : "";
+  const captioned = (what: string) => (t ? say("whatsapp.summary.captioned", { what, text: t }) : what);
   switch (kind) {
     case "image":
-      return t ? `Photo: ${t}` : "Photo";
+      return captioned(say("whatsapp.photo"));
     case "video":
-      return t ? `Video: ${t}` : media?.gif ? "GIF" : `Video${len}`;
+      return t ? captioned(say("whatsapp.video")) : media?.gif ? "GIF" : length ? say("whatsapp.videoLength", { length }) : say("whatsapp.video");
     case "voice":
-      return `Voice message${len}`;
+      return length ? say("whatsapp.voiceMessageLength", { length }) : say("whatsapp.voiceMessage");
     case "audio":
-      return `Audio${len}`;
+      return length ? say("whatsapp.audioLength", { length }) : say("whatsapp.audio");
     case "document":
-      return `Document: ${media?.fileName || t || "file"}`;
+      return say("whatsapp.summary.document", { name: media?.fileName || t || say("whatsapp.file") });
     case "sticker":
-      return "Sticker";
+      return say("whatsapp.sticker");
     case "deleted":
-      return "This message was deleted";
+      return say("whatsapp.deleted");
     case "unsupported":
-      return t || "A message the Rondo can't show";
+      return t || say("whatsapp.summary.unsupported");
+    case "contact":
+    case "poll":
+      return nameless(kind, text);
     default:
       return t;
   }
+}
+
+// a contact or a poll that came without a name or a question ("👤 ", "📊 \n• Yes"): what they are, in
+// the Rondo's language, filled in when it's shown (stored before 3.6.1: "Contact", "Poll" in English)
+export function nameless(kind: WaKind, text: string): string {
+  if (kind === "contact" && text.trim() === "\u{1F464}") return `\u{1F464} ${say("whatsapp.contact")}`;
+  if (kind === "poll" && /^\u{1F4CA} ?(\n|$)/u.test(text)) return text.replace(/^\u{1F4CA} ?/u, `\u{1F4CA} ${say("whatsapp.poll")}`);
+  return text;
 }
 
 interface Content {
@@ -189,18 +208,18 @@ export function contentOf(message: proto.IMessage | null | undefined): Content |
       return { kind: "location", text: `\u{1F4CD} ${where ? `${where} (${lat}, ${lng})` : `${lat}, ${lng}`}`, context: x.contextInfo };
     }
     case "contactMessage":
-      return { kind: "contact", text: `\u{1F464} ${m.contactMessage!.displayName ?? "Contact"}`, context: m.contactMessage!.contextInfo };
+      return { kind: "contact", text: `\u{1F464} ${m.contactMessage!.displayName ?? ""}`, context: m.contactMessage!.contextInfo };
     case "contactsArrayMessage": {
       const x = m.contactsArrayMessage!;
       const names = (x.contacts ?? []).map((c) => c.displayName).filter(Boolean);
-      return { kind: "contact", text: `\u{1F464} ${names.join(", ") || x.displayName || "Contacts"}`, context: x.contextInfo };
+      return { kind: "contact", text: `\u{1F464} ${names.join(", ") || x.displayName || ""}`, context: x.contextInfo };
     }
     case "pollCreationMessage":
     case "pollCreationMessageV2":
     case "pollCreationMessageV3": {
       const x = (m.pollCreationMessage ?? m.pollCreationMessageV2 ?? m.pollCreationMessageV3)!;
       const options = (x.options ?? []).map((o) => `• ${o.optionName ?? ""}`).join("\n");
-      return { kind: "poll", text: `\u{1F4CA} ${x.name ?? "Poll"}${options ? `\n${options}` : ""}`, context: x.contextInfo };
+      return { kind: "poll", text: `\u{1F4CA} ${x.name ?? ""}${options ? `\n${options}` : ""}`, context: x.contextInfo };
     }
     default:
       return undefined;
@@ -269,7 +288,12 @@ export function reduceMessage(msg: WAMessage, resolve: JidResolver, myJid: strin
       id: ctx.stanzaId,
       sender: ctx.participant ? resolve(ctx.participant) : "",
       kind: q?.kind ?? "unsupported",
-      text: q ? previewText(q.kind, q.text, q.media) : "",
+      // its own words: its preview is made when it's shown, in the language of the Rondo asking
+      text: q?.text ?? "",
+      raw: true,
+      ...(q?.media?.seconds ? { seconds: q.media.seconds } : {}),
+      ...(q?.media?.fileName ? { fileName: q.media.fileName } : {}),
+      ...(q?.media?.gif ? { gif: true } : {}),
     };
   }
   return out;

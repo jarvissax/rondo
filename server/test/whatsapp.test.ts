@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WAMessage } from "baileys";
 import { numberOf, waveform, WhatsApp } from "../src/whatsapp.js";
-import { changeOf, previewText, reduceMessage, type JidResolver } from "../src/whatsappReduce.js";
+import { withLang } from "../src/lang.js";
+import { changeOf, nameless, previewText, reduceMessage, type JidResolver } from "../src/whatsappReduce.js";
 import { WaStore } from "../src/whatsappStore.js";
 
 const ME = "15550000001@s.whatsapp.net";
@@ -50,7 +51,29 @@ describe("WhatsApp messages as the Rondo shows them", () => {
       ME,
     );
     expect(m).toMatchObject({ chat: GROUP, sender: ALI, kind: "image", text: "Baku", media: { mime: "image/jpeg", width: 1600, height: 1200, size: 250000 }, thumb: "AQID" });
-    expect(m?.quoted).toEqual({ id: "A1", sender: ME, kind: "text", text: "Send a photo" });
+    expect(m?.quoted).toEqual({ id: "A1", sender: ME, kind: "text", text: "Send a photo", raw: true });
+  });
+
+  it("makes its own words in the Rondo's language: previews, quotes, nameless contacts and polls", () => {
+    expect(previewText("image", "Baku")).toBe("Photo: Baku");
+    expect(withLang("es", () => previewText("image", "Baku"))).toBe("Foto: Baku");
+    expect(withLang("es", () => previewText("voice", "", { seconds: 72 }))).toBe("Mensaje de voz 1:12");
+    expect(withLang("es", () => previewText("document", "", {}))).toBe("Documento: archivo");
+    expect(previewText("contact", "\u{1F464} ")).toBe("\u{1F464} Contact");
+    expect(withLang("es", () => nameless("poll", "\u{1F4CA} \n• Sí\n• No"))).toBe("\u{1F4CA} Encuesta\n• Sí\n• No");
+    expect(nameless("poll", "\u{1F4CA} Lunch?\n• Yes")).toBe("\u{1F4CA} Lunch?\n• Yes");
+    // a quote keeps the quoted message's own words; its preview is made for the Rondo asking
+    const q = reduceMessage(
+      msg({
+        key: { remoteJid: ALI, id: "Q1" },
+        messageTimestamp: 4,
+        message: { extendedTextMessage: { text: "Nice", contextInfo: { stanzaId: "V9", participant: ALI, quotedMessage: { audioMessage: { ptt: true, seconds: 5 } } } } },
+      }),
+      resolve,
+      ME,
+    );
+    expect(q?.quoted).toMatchObject({ kind: "voice", text: "", raw: true, seconds: 5 });
+    expect(withLang("es", () => previewText(q!.quoted!.kind, q!.quoted!.text, q!.quoted))).toBe("Mensaje de voz 0:05");
   });
 
   it("tells a voice message from an audio file, and gives their length", () => {

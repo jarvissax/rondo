@@ -5,6 +5,7 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { say } from "./lang.js";
 import type { WhatsApp } from "./whatsapp.js";
 
 const JID = /^[0-9A-Za-z._:-]{1,64}@(s\.whatsapp\.net|g\.us|lid)$/;
@@ -53,12 +54,12 @@ export function registerWhatsAppRoutes(app: FastifyInstance, wa: WhatsApp): void
   const sent = async (reply: FastifyReply, work: () => Promise<object | undefined>) => {
     try {
       const m = await work();
-      return m ?? reply.code(502).send({ error: "WhatsApp didn't take it" });
+      return m ?? reply.code(502).send({ error: say("whatsapp.server.notTaken") });
     } catch (err) {
       const why = (err as Error).message;
-      if (why === "offline") return reply.code(503).send({ error: "WhatsApp isn't connected on the server" });
+      if (why === "offline") return reply.code(503).send({ error: say("whatsapp.server.offline") });
       reply.log.warn({ err: why }, "whatsapp: not sent");
-      return reply.code(502).send({ error: "Not sent: try again" });
+      return reply.code(502).send({ error: say("whatsapp.server.notSent") });
     }
   };
 
@@ -133,7 +134,7 @@ export function registerWhatsAppRoutes(app: FastifyInstance, wa: WhatsApp): void
       return reply.send(createReadStream(file));
     } catch (err) {
       req.log.warn({ err: (err as Error).message }, "whatsapp: media unavailable");
-      return reply.code(410).send({ error: "WhatsApp doesn't have it any more" });
+      return reply.code(410).send({ error: say("whatsapp.server.gone") });
     }
   });
 

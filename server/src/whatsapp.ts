@@ -23,7 +23,8 @@ import makeWASocket, {
 } from "baileys";
 import sharp from "sharp";
 import { WaStore, type WaChatRow, type WaStoredMessage } from "./whatsappStore.js";
-import { changeOf, groupSender, previewText, reduceMessage } from "./whatsappReduce.js";
+import { say } from "./lang.js";
+import { changeOf, groupSender, nameless, previewText, reduceMessage, type WaQuoted } from "./whatsappReduce.js";
 
 export type WaState = "unlinked" | "linking" | "connecting" | "open" | "closed";
 
@@ -450,8 +451,8 @@ export class WhatsApp {
       if (c?.notify) return `~${c.notify}`;
     }
     if (pushName) return `~${pushName}`;
-    if (jid === this.myJid()) return "You";
-    return numberOf(pn || jid) || "Someone";
+    if (jid === this.myJid()) return say("whatsapp.you");
+    return numberOf(pn || jid) || say("whatsapp.someone");
   }
 
   async about(jid: string): Promise<string> {
@@ -654,17 +655,25 @@ export class WhatsApp {
       const lidPn = this.store.pnOf(lid);
       const who = lidPn || this.store.contact(lid) ? lid : this.store.contact(pn) || this.store.chat(pn) ? pn : "";
       if (!who) return all;
-      if ((lidPn || who) === me) return "@You";
+      if ((lidPn || who) === me) return `@${say("whatsapp.you")}`;
       const name = this.nameOf(who).replace(/^~/, "");
-      return !name || name === "Someone" ? all : `@${name}`;
+      return !name || name === say("whatsapp.someone") ? all : `@${name}`;
     });
+  }
+
+  // a quote as the Rondo shows it: its preview in the language of the Rondo asking (quotes kept before
+  // 3.6.1 have theirs in English already)
+  quotedJson(q: WaQuoted): object {
+    const text = q.raw ? previewText(q.kind, q.text, { seconds: q.seconds, fileName: q.fileName, gif: q.gif }) : q.text;
+    const name = q.sender ? (q.sender === this.myJid() ? say("whatsapp.you") : this.nameOf(q.sender)) : "";
+    return { id: q.id, sender: q.sender, kind: q.kind, text: this.named(text), name };
   }
 
   chatJson(c: WaChatRow): object {
     const last = this.store.lastMessage(c.jid);
     return {
       jid: c.jid,
-      name: c.group ? c.name || "Group" : this.nameOf(c.jid),
+      name: c.group ? c.name || say("whatsapp.group") : this.nameOf(c.jid),
       group: c.group,
       at: c.at,
       unread: c.unread,
@@ -700,14 +709,14 @@ export class WhatsApp {
       id: m.id,
       fromMe: m.fromMe,
       sender: m.sender,
-      name: m.fromMe ? "You" : m.chat.endsWith("@g.us") ? this.nameOf(m.sender, m.senderName) : "",
+      name: m.fromMe ? say("whatsapp.you") : m.chat.endsWith("@g.us") ? this.nameOf(m.sender, m.senderName) : "",
       at: m.at,
       kind: m.kind,
-      text: this.named(m.text),
+      text: this.named(nameless(m.kind, m.text)),
       ...(m.media ? { media: m.media } : {}),
       // the small preview picture: from /wa/media/<chat>/<id>?preview=1, not in the JSON
       ...(m.thumb ? { preview: true } : {}),
-      ...(m.quoted ? { quoted: { ...m.quoted, text: this.named(m.quoted.text), name: m.quoted.sender ? (m.quoted.sender === this.myJid() ? "You" : this.nameOf(m.quoted.sender)) : "" } } : {}),
+      ...(m.quoted ? { quoted: this.quotedJson(m.quoted) } : {}),
       status: m.status,
       edited: m.edited,
       reactions: [...counts].map(([emoji, count]) => ({ emoji, count })),
