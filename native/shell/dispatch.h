@@ -1,7 +1,7 @@
 // The wheel and buttons turned into actions, with 1.0.x's rules (input/WheelInput.kt):
 // - every wheel pulse is a step (two per felt click); pulses under 154 ms apart in one direction are a
 //   spin, and acceleration multiplies its steps;
-// - Center: Select on release, LongSelect after a 600 ms hold (then nothing on release);
+// - Center: Select on release, LongSelect after a 600 ms hold (then LongSelectEnd on release);
 // - Menu: Back on release; Play: PlayPause on press;
 // - Next/Prev: Next/Prev on release; held 600 ms, LongNext/LongPrev every 300 ms, SeekEnd on release.
 #pragma once
@@ -14,7 +14,7 @@
 
 namespace rondo::shell {
 
-enum class Action { Up, Down, Select, LongSelect, Back, PlayPause, Next, Prev, LongNext, LongPrev, SeekEnd };
+enum class Action { Up, Down, Select, LongSelect, LongSelectEnd, Back, PlayPause, Next, Prev, LongNext, LongPrev, SeekEnd };
 
 class Dispatcher {
  public:
@@ -34,7 +34,7 @@ class Dispatcher {
           longFired_ = false;
         } else if (centerAt_) {
           centerAt_ = 0;
-          if (!longFired_) emit(Action::Select, 1);
+          emit(longFired_ ? Action::LongSelectEnd : Action::Select, 1);
         }
         break;
       case Key::Menu:

@@ -87,16 +87,32 @@ class MainMenuScreen : public Screen {
   std::string title() const override { return "Rondo"; }
   bool onAction(Action a, int steps) override {
     switch (a) {
-      case Action::Down: return list_.down(steps);
-      case Action::Up: return list_.up(steps);
+      case Action::Down: endHold(); return list_.down(steps);
+      case Action::Up: endHold(); return list_.up(steps);
       case Action::Select: return list_.select();
+      // holding center here turns the Y1 off (issue #6: the Y1 has no power button of its own, center
+      // only switches it on): the hold's 600 ms, then a bar that fills while it goes on, off at 2 s;
+      // let go (or turn the wheel) sooner and nothing happens. Only here: elsewhere a hold is options.
+      case Action::LongSelect: holdAt_ = g_app->now(); return true;
+      case Action::LongSelectEnd: return endHold();
       case Action::Back: return true;  // the launcher: nothing below it
       default: return false;
     }
   }
   bool step(float dt) override {
     bool a = list_.step(dt);
-    return a || fade_.running(g_app->now());
+    int64_t now = g_app->now();
+    if (holdAt_ && now - holdAt_ >= kTurnOff) {
+      holdAt_ = 0;
+      powerAction(false);  // the Power screen's "Shutting down…", then off, as Settings › System › Shut down
+      return true;
+    }
+    return a || fade_.running(now) || holdAt_;
+  }
+  bool endHold() {
+    bool was = holdAt_ != 0;
+    holdAt_ = 0;
+    return was;
   }
   // the Now Playing pane follows the song and its progress (1.0.x's onTick)
   bool tick(int64_t) override {
@@ -127,9 +143,30 @@ class MainMenuScreen : public Screen {
     } else if (shown_) {
       drawPane(e, pane, shown_, 1, 1);
     }
+    if (holdAt_) drawHold(e, w, h, e.now - holdAt_);
   }
 
  private:
+  static constexpr int64_t kTurnOff = 1400 * kMs;  // after the hold's 600 ms: 2 s in all
+  int64_t holdAt_ = 0;                             // when the hold to turn off began (0: none)
+
+  // the hold to turn off: a dark card in the middle, its words and a bar that fills until the Y1 goes off
+  void drawHold(Env& e, float w, float h, int64_t held) {
+    float in = clamp01(float(held) / float(120 * kMs)), filled = clamp01(float(held) / float(kTurnOff));
+    Label l = label(e, tr("power.holdToTurnOff"), 14, false, w - e.dp(64));
+    int padX = e.dp(18), padY = e.dp(12), gap = e.dp(10), barH = e.dp(4);
+    int bw = std::max(l.w + 2 * padX, e.dp(220)), bh = padY + l.h + gap + barH + padY;
+    float x = float((int(w) - bw) / 2), y = float((int(h) - bh) / 2);
+    e.c.layer(7);
+    e.c.pushAlpha(in);
+    e.c.shape({x, y, float(bw), float(bh)}, e.dpf(8), 0xe6262626);
+    drawLabel(e, l, x + float((bw - l.w) / 2), y + float(padY), 0xffffffff);
+    Rect bar{x + float(padX), y + float(padY + l.h + gap), float(bw - 2 * padX), float(barH)};
+    e.c.shape(bar, float(barH) / 2, 0x40ffffff);
+    if (filled > 0) e.c.shape({bar.x, bar.y, std::max(float(barH), bar.w * filled), bar.h}, float(barH) / 2, 0xffffffff);
+    e.c.popAlpha();
+    e.c.layer(0);
+  }
   // renderPane() for an entry that isn't playing: its tile's colors corner to corner, its glyph on a
   // translucent rounded square (the logos alone), and its name
   // renderPane() for Now Playing with a song: the artwork on its own color (darker toward the bottom),

@@ -6,7 +6,7 @@
 
 - Try another cable. Many USB-C cables only charge.
 - Follow the Updater's steps exactly: the Y1 has to be **completely off** before you plug it in.
-  If it's on, hold Power and choose Shut down, or use the reset hole between the headphone and
+  If it's on, hold center on the main menu for 2 seconds, or use the reset hole between the headphone and
   USB ports with a paperclip.
 - **Windows:** let the Updater install its drivers, and restart the computer once.
 - Close other programs that use the Y1's USB connection (adb, Android Studio).

@@ -14,12 +14,11 @@ screens give them an extra meaning.
 | **Play/Pause** (bottom) | Plays and pauses, from any screen. |
 | **Next / Previous** | Next or previous song, from any screen. |
 | **Hold Next / Previous** | Fast-forward or rewind. |
-| **Power** | Switches the screen off and on. **Hold it** to shut down or restart. |
+| **Hold center on the main menu** | Turns the Y1 off: keep holding for 2 seconds, until the bar fills. Let go sooner and nothing happens. |
 
 When the screen is off, any press (a button, center or the wheel) only wakes it: nothing else
 happens, so a press in your pocket never skips a song. Within 5 seconds of the screen dimming or
-going dark by itself, a press wakes it and does what it does (after Power, a press still only
-wakes it). A **wired headset's buttons** (play/pause, next, previous, volume) work with the screen
+going dark by itself, a press wakes it and does what it does. A **wired headset's buttons** (play/pause, next, previous, volume) work with the screen
 on or off, like Bluetooth headphones' buttons.
 
 ### The keyboard
@@ -329,12 +328,12 @@ Settings has the **Dashboard** at the top, then **Connections** (Wi-Fi, Bluetoot
 | **System › Date & time** | The time and the time zone, each set automatically (from the network, and the time zone of wherever the Y1 is online) or by hand, and 24-hour time or AM/PM. |
 | **System › Software update** | Checks GitHub for a newer Rondo and installs it over Wi-Fi, keeping everything, or says when a release needs Innioasis Updater CE ([more](install.md#updating-rondo)). No server needed. |
 | **System › About** | Rondo's version, the battery, free space on the card and the internal storage, Wi-Fi, the IP and MAC addresses, the time zone and where YouTube comes from. |
-| **System › Shut down** | Shut down or restart. Holding the Power button opens the same choices. |
+| **System › Shut down** | Shut down or restart. Holding center on the main menu for 2 seconds shuts down too. |
 | **Language** | English or Español, each in its own name. The change is at once, everywhere (no restart), and the dashboard follows it. The very first start asks for it before anything else. To help translate, see [Translating Rondo](translating.md). |
 
 <p align="center">
   <img src="images/theme.png" width="360" alt="Settings › Display › Theme">
-  <img src="images/power.png" width="360" alt="Holding Power: shut down or restart">
+  <img src="images/power.png" width="360" alt="Settings › System › Shut down: shut down or restart">
 </p>
 
 ### Sound
@@ -369,7 +368,7 @@ Rondo, this repository or its releases: each Mac makes its own.
 1. On the Mac, in a copy of this repository: `node tools/emoji/make-font.cjs`. It writes
    `emoji.ttf` (about 13 MB, only the one size the Y1 uses) to the folder you're in.
 2. With the Y1 connected over USB: `adb push emoji.ttf /data/rondo/emoji.ttf`, then restart Rondo
-   (hold Power › Restart).
+   (Settings › System › Shut down › Restart).
 
 Rondo takes `emoji.ttf` in its data folder over its own emoji, draws them at the same size and in the
 same place, and keeps it through updates. To go back: `adb shell rm /data/rondo/emoji.ttf` and restart.

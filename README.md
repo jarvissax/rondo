@@ -185,7 +185,7 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
 | **Menu** (top) | Back. |
 | **Play/Pause** (bottom) | Plays and pauses, from any screen. |
 | **Next / Previous** | Next or previous song. **Hold** to fast-forward or rewind. |
-| **Power** | Screen off and on. **Hold** it to shut down or restart. |
+| **Hold center on the main menu** | Turns the Y1 off after 2 seconds. Restart is in Settings › System › Shut down. |
 
 [Using Rondo](docs/using.md) has the details for every screen, and every setting.
 
