@@ -5,6 +5,37 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## Not released yet
+
+### New
+
+- **Podcasts, from YouTube Music** (YouTube Music › **Podcasts**, a tab beside Home and Library):
+  your saved shows, **Episodes for Later**, **New episodes**, what's downloaded, **Continue
+  listening**, and search for shows and episodes (song search offers matching podcasts too; Home's
+  shelves open shows and play episodes). A show's page has **Save to library**, its **speed** and its
+  episodes newest first, with a dot on the ones you haven't heard and the time left on the ones you've
+  started; hundreds load as you scroll.
+- **Episodes play as audiobooks do:** each remembers where you stopped and starts a little earlier
+  after a pause, Next and Previous move by YouTube's chapters (or skip 30 s and 15 s), with bookmarks,
+  the sleep timer and Back to your music. **Speed is kept per show.** Your music waits.
+- **Episodes up next:** Play next and Add to queue put episodes after the episode or book playing, or
+  after the song playing; each starts where you left it.
+- **Played marks are shared with YouTube Music on your phone**, both ways; an episode started on the
+  phone opens about where you left it there.
+- **Download** an episode to the card (`Podcasts/<show>`) to play it offline, chapters and place
+  included. Episodes stay out of Songs and Shuffle songs.
+- **The dashboard's Podcasts page** (a tab of its own): the same lists, a show's page with its speed,
+  and every episode's options, played on the Y1.
+
+Through a server, podcasts need **Rondo server 3.7.0** (not released yet); directly to YouTube they
+work as they are. With an older server, YouTube Music › Podcasts says so and still plays what's on the
+card.
+
+### Changed
+
+- YouTube Music's header shows the logo without the word "Music" and the battery alone when it has
+  three tabs (Home, Library, Podcasts), as YouTube's does.
+
 ## 4.1.2 (November 24, 2026)
 
 An update for the 4.0 firmware: Settings › System › Software update, the dashboard or the

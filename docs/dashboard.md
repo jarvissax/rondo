@@ -37,7 +37,8 @@ shows no Install button: it points to Innioasis Updater CE instead.
 
 The sidebar has the pages in groups: **Overview**, **Library**, **FM Radio** and **YouTube**, then
 **Connections** (Wi-Fi, Bluetooth, Server) and **Settings** (Sound, Theme, General). On a phone the
-tabs at the bottom are Overview, Library, Radio, YouTube and **Settings**, which lists the rest.
+tabs at the bottom are Overview, Library, Radio, YouTube, Podcasts and **Settings**, which lists the
+rest.
 
 ## Library
 
@@ -93,6 +94,17 @@ stars to rate it.
   rules or any, choose the order (random, by artist, most played, best rated…) and a limit. The Y1
   works the songs out whenever you open one, so it follows what you add, play and rate; it lists
   them under **Library › Playlists**. They're `.smart.json` files beside the playlists.
+
+## Podcasts
+
+YouTube Music's podcasts, played on the Y1 (as its YouTube Music › Podcasts): **search** for a show or
+an episode; **Continue listening** and **Episodes up next** (take one off with ×); **Episodes for
+Later** and **New episodes**; what's **downloaded** on the card; and **your shows**. A show's page has
+**Save to library**, its **speed** (every episode of the show plays at it) and its episodes, newest
+first (**Show more** for older ones). Each episode shows where the Y1 has it; its **⋯** menu plays it
+on the Y1 (or from the start), puts it next or at the end of Episodes up next, downloads it to the
+card (or deletes the download), marks it played or unplayed (YouTube Music on your phone follows),
+saves it for later or takes it out, and opens its show.
 
 ## Theme
 

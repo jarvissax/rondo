@@ -206,6 +206,33 @@ route: it answers `503 {"error": "needs_server"}`.
   say). A Rondo whose server has no such route names a download from the song's row ("Artist · Album").
   Direct mode on the Y1 answers it itself (`native/direct/music.cpp`).
 
+## YouTube Music's podcasts for the Rondo (device token)
+
+Server 3.7.0, not released yet (`server/src/podcasts.ts`), all new routes; direct mode on the Y1 answers the same ones
+itself (`native/direct/podcasts.cpp`). An episode is `{"kind": "episode", "id", "title", "subtitle",
+"thumb", "durationSec"?, "show", "showId", "date", "length"?, "progress"?, "played"?}`: `date` and
+`length` are YouTube's words in the Rondo's language, `durationSec` only where YouTube gives a clock,
+`progress` (0–100) and `played` only signed in. A show is `{"kind": "podcast", "id": "MPSP…",
+"title", "subtitle": its author, "thumb"}`.
+
+- `GET /music/podcasts` → `{"items": [shows], "later", "latest"}`: the account's saved shows, and
+  YouTube's words for how many episodes Episodes for Later and New Episodes hold. 503
+  `no_cookies` without cookies.txt (the code sign-in's TV app has no podcasts).
+- `GET /music/podcasts/later`, `/music/podcasts/new` → `{"items", "next"}`: Episodes for Later
+  (VLSE) and New Episodes (VLRDPN), paged. 503 without cookies.txt.
+- `GET /music/podcast/:id` (MPSP… or the playlist id) → `{"title", "subtitle", "thumb",
+  "description", "saved"?, "items", "next"}`: a show's episodes newest first, 20 a page, then 100.
+- `GET /music/episode/:id` → `{"id", "title", "show", "showId", "thumb", "description",
+  "durationSec", "date", "chapters": [{"ms", "title"}], "progress"?, "played"?, "later"?}`: the
+  chapters are YouTube's markers (none: `[]`); the length from YouTube Music's queue row.
+- `GET /music/search?type=podcast|episode&q=` → `{"items", "next"}` (shows, or episodes). A server
+  before 3.7.0 answers 400 for these types.
+- `POST /music/podcast/:id/save` `{"saved": bool}`, `POST /music/episode/:id/later`
+  `{"later": bool}`, `POST /music/episode/:id/played` `{"played": bool}` → the same body back:
+  Save to library, Episodes for Later, Mark as played or unplayed, as YouTube Music's own buttons
+  (YouTube shows a change some seconds late). 503 without cookies.txt.
+- `GET /music/home?podcasts=1`: Home's shelves with shows and episodes as such (without it, as before).
+
 ## WhatsApp for the Rondo (device token)
 
 Server 3.3.0 (`server/src/whatsapp.ts`, `whatsappRoutes.ts`): the server is one of the owner's

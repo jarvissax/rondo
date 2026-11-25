@@ -231,7 +231,47 @@ with the wheel.
 
 <p align="center"><img src="images/downloads.png" width="360" alt="YouTube › Home › Downloads: the videos saved on the card"></p>
 
-### Shorts
+### Podcasts
+
+YouTube Music's podcasts are in its **Podcasts** tab (beside Home and Library):
+
+- **Continue listening:** the episodes you've started, the last one first, with the time left.
+- **Episodes up next**, when some wait (see below).
+- **Episodes for Later** and **New episodes** (the latest from your shows), signed in.
+- **Downloaded:** the episodes on the card, to play with no connection.
+- **Search podcasts** finds shows and episodes. YouTube Music's search for songs also offers a
+  **Podcasts** row at its top when shows match the words.
+- **Your shows:** the podcasts saved in your YouTube account (signed in with a cookies.txt: the code
+  sign-in has no podcasts).
+
+**A show's page** has **Save to library** (or **Saved to library**), its **Speed**, then its episodes,
+newest first, hundreds of them loading as you go down. Each says when it came out and how long it is,
+or how much is left, or **Played**; a dot marks one you haven't started. Center plays an episode; hold
+center for its menu: **Play** (or **Resume**), **Start again**, **Play next**, **Add to queue**,
+**Download**, **Mark as played**, **Save for later** and **Go to podcast**.
+
+**An episode plays as an audiobook does** (see [Audiobooks](#audiobooks)): it remembers where you
+stopped, starts a little earlier after a pause, and Next and Previous move by YouTube's chapters
+when the episode has them (else 30 seconds forward and 15 back); Now Playing shows the chapter, and
+the options have Chapters, bookmarks, Speed, the Sleep timer and **Back to your music**. **Speed** is
+kept per show: every episode of it plays at the speed you chose. Your music waits while an episode
+plays and comes back when you choose Back to your music.
+
+- **Play next and Add to queue** put an episode in **Episodes up next**: it plays after the episode
+  or book playing; while music plays, after the song playing. Each one starts where you left it.
+- **Played marks are shared with your phone:** an episode you finish (or mark played) on the Y1 is
+  **Played** in YouTube Music on your phone, and one you finish or mark there shows Played here. One
+  you started on the phone opens on the Y1 at about where you left it. (Where you stopped on the Y1
+  stays on the Y1.) **Episodes for Later** is your YouTube list, so it's the same on both; YouTube
+  keeps only unplayed episodes in it.
+- **Download** saves an episode to the card, in `Podcasts/<show>`, to play with no connection, with
+  its chapters and its place. Episodes stay out of Songs and Shuffle songs. Downloading one while it
+  plays carries on from the card once it's whole.
+
+Through a [server](server.md), podcasts need Rondo server 3.7.0 or newer; directly to YouTube they
+need nothing more.
+
+## Shorts
 
 YouTube's home page starts with **Shorts**: one short at a time, looping, picked for your account
 when you're signed in. **Next / Previous** move to the next or previous short,

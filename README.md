@@ -41,6 +41,9 @@ into a USB drive.
 **Audiobooks** have a place of their own, as on the stock firmware but further: each book remembers
 where you stopped, Next and Previous move by chapter, the speed goes from 0.75× to 3× with the
 voice's pitch kept, and there are bookmarks and a sleep timer. Your music waits while a book plays.
+**Podcasts** come from YouTube Music, with the same care: your saved shows, Episodes for Later and new
+episodes, each show at its own speed, YouTube's chapters, downloads, and played marks shared with
+YouTube Music on your phone.
 
 <table>
   <tr>

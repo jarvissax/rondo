@@ -328,6 +328,22 @@ With a server, these answer `{"mode": "server"}`: the server's admin page signs 
   youtube.com lines) → the account; `400` when it isn't a cookies.txt with youtube.com cookies.
   `DELETE /api/youtube/cookies` signs out. The file stays on the Y1 (0600) and is never returned.
 
+### Podcasts (YouTube Music's)
+
+- `GET /api/podcasts/state` → `{"inProgress", "upNext", "downloaded", "signedIn"}`: the Y1's own
+  lists of episodes (each `{"id", "title", "show", "showId", "thumb", "date", "status", "lengthMs",
+  "subtitle", "new", "played", "positionMs", "onCard", "later"?, "playing", "progress"?}`).
+- `GET /api/podcasts/library`, `/api/podcasts/list?which=later|new[&next=]`,
+  `/api/podcasts/show?id=MPSP…[&next=]`, `/api/podcasts/search?type=podcast|episode&q=[&next=]`:
+  the source's answers (server-api.md) with every episode as above, a show's `speed`, and its
+  `shows`. Errors: `no_cookies` (503), `old_server` (404: a server before 3.7.0), `expired` (410).
+- `POST /api/podcasts/play` (`from: "start"` for Start again), `/queue` (`next`), `/played`
+  (`played`), `/download` with the episode's `{id, title, show, showId, thumb, lengthMs, progress}`
+  → `{"player", "episode", "state"}`. `DELETE /api/podcasts/download?id=`,
+  `DELETE /api/podcasts/upnext?id=` → the state.
+- `POST /api/podcasts/later` `{id, later}`, `POST /api/podcasts/save` `{id, saved}`: through the source.
+- `PUT /api/podcasts/speed` `{showId, speed}` → `{"speed"}`: the show's speed (percent).
+
 ### YouTube downloads
 Videos saved to `Videos/YouTube` on the card with their subtitles, songs and playlists from YouTube
 Music (`native/shell/downloads.h`); the endpoints are under [Downloads](#downloads).

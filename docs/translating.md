@@ -160,3 +160,5 @@ Spanish is neutral Spanish, with *tú*, and the words Rondo uses for its own thi
 | Sign in | Iniciar sesión | | Pair | Vincular |
 | Audiobooks | Audiolibros | | Chapter | Capítulo |
 | Bookmark | Marcador | | Sleep timer | Temporizador |
+| Podcast | Podcast | | Episode | Episodio |
+| Show (a podcast) | Programa | | Played | Escuchado |
