@@ -522,6 +522,8 @@ class MusicSearchScreen : public Screen {
     auto done = [this, q, waiting, shows, eps, failed] {
       if (--*waiting) return;
       if (shows->empty() && eps->empty()) {
+        // a server before podcasts takes no such search (400)
+        if (*failed == 400) return results_.setMessage(tr("podcasts.needNewerServer") + "\n" + tr("podcasts.needNewerServerHint"));
         if (*failed >= 0) return results_.setMessage(offlineOr(tr("music.searchFailed", {{"problem", httpProblem(*failed, "/music/search")}})));
         return results_.setMessage(tr("music.nothingFound", {{"query", q}}));
       }

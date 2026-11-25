@@ -1628,8 +1628,9 @@ Response podcastSource(const std::string& path, const std::string& showId = "") 
   std::string body;
   int st = coreCall(false, path, "", body, 40000);
   if (st != 200) {
-    Response res = error(st == 503 || st == 404 || st == 410 || st == 400 ? st : 502, st == 503 ? "no_cookies" : st == 404 ? "old_server" : st == 410 ? "expired" : "source");
-    return res;
+    // a server before podcasts: its routes answer 404, and its search takes no podcast type (400)
+    bool old = st == 404 || (st == 400 && path.compare(0, 19, "/music/search?type=") == 0);
+    return error(st == 503 || st == 404 || st == 410 || st == 400 ? st : 502, st == 503 ? "no_cookies" : old ? "old_server" : st == 410 ? "expired" : "source");
   }
   return onUi([body, showId] { return json(podcastListJson(body, showId)); });
 }

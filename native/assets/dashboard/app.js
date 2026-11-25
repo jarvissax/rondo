@@ -1835,7 +1835,7 @@ async function podSearch(q) {
   } catch (e) {
     if (e.status === 401) return;
     POD.search = { q, shows: [], items: [], error: e };
-    toast(`${t('podcasts.couldntRead')} ${reason(e)}`, 'err');
+    toast(e.code === 'old_server' ? t('podcasts.needNewerServer') : `${t('podcasts.couldntRead')} ${reason(e)}`, 'err');
   }
   renderPodcasts();
 }
