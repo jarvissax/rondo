@@ -75,6 +75,24 @@ describe("TV pages", () => {
     expect(items[2]).toMatchObject({ title: "Lockup bbbbbbbbbb1", subtitle: "Lofi Girl · 58M views", durationSec: 185 });
   });
 
+  it("passes the account's progress (the red bar) as watched", () => {
+    // History's tiles, as the TV app's FEhistory answered on 2026-11-25: a resume overlay in the header
+    const resumed = (pct: number) => ({
+      header: {
+        tileHeaderRenderer: {
+          thumbnail: thumbs("dddddddddd1"),
+          thumbnailOverlays: [{ thumbnailOverlayTimeStatusRenderer: { text: { simpleText: "41:07" } } }, { thumbnailOverlayResumePlaybackRenderer: { percentDurationWatched: pct } }],
+        },
+      },
+    });
+    const items = tvItems(page([tile("dddddddddd1", "Half seen", "41:07", resumed(10)), tile("dddddddddd2", "Seen", "9:00", resumed(100)), tile("dddddddddd3", "Not seen", "5:00")]));
+    expect(items.map((i) => i.watched)).toEqual([10, 100, undefined]);
+    // a lockup's progress bar
+    const l = lockup("eeeeeeeeee1", "LOCKUP_CONTENT_TYPE_VIDEO", "20:00");
+    l.lockupViewModel.contentImage.thumbnailViewModel.overlays.push({ thumbnailBottomOverlayViewModel: { progressBar: { thumbnailOverlayProgressBarViewModel: { startPercent: 37 } } } } as never);
+    expect(tvItems(page([l]))[0]!.watched).toBe(37);
+  });
+
   it("reads playlists and pages with the list's own continuation, not a shelf's", async () => {
     const playlists = page([
       { tileRenderer: { contentId: "PLabc", contentType: "TILE_CONTENT_TYPE_PLAYLIST", onSelectCommand: { browseEndpoint: { browseId: "VLPLabc" } }, metadata: { tileMetadataRenderer: { title: { simpleText: "Road trip" }, lines: [line("12 videos")] } } } },

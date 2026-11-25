@@ -19,6 +19,25 @@ export interface TvItem {
   subtitle: string;
   durationSec?: number;
   thumbUrl?: string; // the raw ytimg URL; browse.ts turns it into a /thumb link
+  watched?: number; // the account's progress, as the red bar under the picture shows it (percent)
+}
+
+// The red bar under a video's picture (the account's progress) in a raw TV item, as a percent: a tile's
+// resume overlay (percentDurationWatched), a lockup's progress bar (startPercent); undefined none
+export function rawWatched(o: unknown, depth = 0): number | undefined {
+  if (!o || typeof o !== "object" || depth > 12) return undefined;
+  if (!Array.isArray(o)) {
+    for (const k of ["percentDurationWatched", "startPercent"]) {
+      const v = (o as Raw)[k];
+      const pct = typeof v === "string" ? Number(v) : v;
+      if (typeof pct === "number" && Number.isFinite(pct) && pct > 0) return Math.min(100, Math.round(pct));
+    }
+  }
+  for (const v of Object.values(o as Raw)) {
+    const p = rawWatched(v, depth + 1);
+    if (p) return p;
+  }
+  return undefined;
 }
 
 export interface TvPending {
@@ -93,7 +112,8 @@ function fromTile(t: Raw): TvItem | undefined {
   const overlay = (header?.thumbnailOverlays ?? []).map((o: Raw) => rawText(o?.thumbnailOverlayTimeStatusRenderer?.text)).find(Boolean) ?? "";
   const durationSec = clockSeconds(overlay);
   if (!durationSec) return undefined; // live streams, premieres and promos carry no duration
-  return { kind: "video", id, title, subtitle: lines.slice(0, 2).join(" · "), durationSec, thumbUrl };
+  const watched = rawWatched(header?.thumbnailOverlays);
+  return { kind: "video", id, title, subtitle: lines.slice(0, 2).join(" · "), durationSec, thumbUrl, ...(watched ? { watched } : {}) };
 }
 
 function fromLockup(l: Raw): TvItem | undefined {
@@ -115,7 +135,8 @@ function fromLockup(l: Raw): TvItem | undefined {
   if (!/_(VIDEO|MUSIC)$/.test(type) || !VIDEO_ID.test(String(l.contentId))) return undefined;
   const durationSec = badgeTexts(l).map(clockSeconds).find(Boolean);
   if (!durationSec) return undefined;
-  return { kind: "video", id: l.contentId, title, subtitle: parts.slice(0, 2).join(" · "), durationSec, thumbUrl };
+  const watched = rawWatched(l.contentImage);
+  return { kind: "video", id: l.contentId, title, subtitle: parts.slice(0, 2).join(" · "), durationSec, thumbUrl, ...(watched ? { watched } : {}) };
 }
 
 // the texts of a lockup's thumbnail badges ("2:44", "LIVE", "Mix")

@@ -496,6 +496,7 @@ export const tvItem = (t: TvItem, kind: Item["kind"] = t.kind): Item => ({
   subtitle: t.subtitle,
   ...(t.durationSec ? { durationSec: t.durationSec } : {}),
   ...(thumbLink(t.thumbUrl) ? { thumb: thumbLink(t.thumbUrl) } : {}),
+  ...(t.watched ? { watched: t.watched } : {}),
 });
 
 const asItems = (c: Chunk<TvItem>, kind?: Item["kind"]): Chunk<Item> => ({
