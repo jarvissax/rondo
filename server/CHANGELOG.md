@@ -4,6 +4,22 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## Not released yet
+
+- **YouTube Music's podcasts**, for the Rondo that has them (all new routes; nothing an older Rondo
+  asks changes): `GET /music/podcasts` (the account's saved shows, and how many episodes Episodes for
+  Later and New Episodes hold), `/music/podcasts/later` and `/music/podcasts/new` (those two lists,
+  paged), `/music/podcast/<id>` (a show: its header, whether it's saved, its episodes newest first,
+  paged), `/music/episode/<id>` (an episode: its length, YouTube's chapters, how much of it the account
+  has heard, whether it's in Episodes for Later) and `/music/search?type=podcast` or `type=episode`.
+  `POST /music/podcast/<id>/save`, `/music/episode/<id>/later` and `/music/episode/<id>/played` save a
+  show, put an episode in or out of Episodes for Later and mark it played or unplayed on the account,
+  as YouTube Music's own buttons do, so the phone agrees. The account's need cookies.txt (the code
+  sign-in's TV app has no podcasts). Episodes play through the same `/s/` streams as songs.
+- **Home with podcasts:** `GET /music/home?podcasts=1` gives a show on a home shelf as a show and an
+  episode as an episode. Without it nothing changes, except that a show's card (which YouTube Music's
+  home can have) is left out instead of coming as a video that can't play.
+
 ## 3.6.1 (November 24, 2026)
 
 - **WhatsApp's words in the Rondo's language:** what the server writes itself for a WhatsApp chat

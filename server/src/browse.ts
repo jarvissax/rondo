@@ -15,9 +15,29 @@ import { currentLang, langFetch, say, withLang } from "./lang.js";
 import { TtlCache } from "./ttl.js";
 import { type TvAccount, type TvItem, tvChunk, tvItems, tvShorts } from "./tv.js";
 import { dispatcher } from "./upstream.js";
+import {
+  EPISODE_TYPE,
+  type Episode,
+  type EpisodeInfo,
+  PODCAST_PAGE,
+  SEARCH_PARAMS,
+  SHOW_ID,
+  type Show,
+  type ShowPage,
+  chunkOf,
+  episodeActions,
+  episodeInfo,
+  episodeList,
+  episodeListMore,
+  libraryPodcasts,
+  libraryToken,
+  podcastSearch,
+  showMore,
+  showPage,
+} from "./podcasts.js";
 
 export interface Item {
-  kind: "song" | "video" | "album" | "artist" | "playlist";
+  kind: "song" | "video" | "album" | "artist" | "playlist" | "podcast" | "episode";
   id: string;
   title: string;
   subtitle: string;
@@ -233,8 +253,27 @@ export function feedVideo(n: Node): Item | undefined {
   return item && isVideoId(item.id) && item.durationSec ? item : undefined;
 }
 
-export function shelfSection(s: Node, maxItems = SECTION_ITEMS): Section | undefined {
-  const items = uniqueById((s.contents ?? []).map(musicItem)).slice(0, maxItems);
+// A home shelf's show or episode (podcasts.ts's kinds), for a Rondo that asks for them (?podcasts=1).
+// youtubei.js reads a show's card as a video (its first word isn't "Song"); this goes by the page
+// type and the musicVideoType instead.
+export function podcastNode(n: Node): Item | undefined {
+  if (n?.type !== "MusicTwoRowItem" && n?.type !== "MusicResponsiveListItem" && n?.type !== "MusicMultiRowListItem") return undefined;
+  const payload = (n.endpoint ?? n.on_tap)?.payload;
+  const page = payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+  const title = text(n.title) || text(n.name);
+  if (!title) return undefined;
+  if (page === PODCAST_PAGE && typeof payload.browseId === "string" && SHOW_ID.test(payload.browseId))
+    return { kind: "podcast", id: payload.browseId, title, subtitle: bullets(text(n.subtitle)).split(" · ").pop() ?? "", thumb: nodeThumb(n) };
+  if (payload?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType === EPISODE_TYPE && isVideoId(payload.videoId))
+    return { kind: "episode", id: payload.videoId, title, subtitle: bullets(text(n.subtitle)), thumb: nodeThumb(n) };
+  return undefined;
+}
+
+// a card whose id isn't what its kind plays (a show's card read as a video): left out, not broken
+const playable = (i: Item | undefined): Item | undefined => (i && (i.kind === "song" || i.kind === "video") && !isVideoId(i.id) ? undefined : i);
+
+export function shelfSection(s: Node, maxItems = SECTION_ITEMS, podcasts = false): Section | undefined {
+  const items = uniqueById((s.contents ?? []).map((n: Node) => (podcasts ? podcastNode(n) : undefined) ?? playable(musicItem(n)))).slice(0, maxItems);
   if (!items.length) return undefined;
   return { title: text(s.header?.title) || text(s.title), items };
 }
@@ -422,9 +461,9 @@ export function chainFrom(yt: { getShortsVideoInfo(id: string): Promise<unknown>
 const compact = (n: number): string =>
   currentLang() !== "en" ? new Intl.NumberFormat(currentLang(), { notation: "compact", maximumFractionDigits: 1 }).format(n) : n >= 1e9 ? `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
 
-export const homeChunk = (page: any): Chunk<Section> => ({
-  items: (page.sections ?? []).map((s: Node) => shelfSection(s)),
-  more: continued(page, homeChunk),
+export const homeChunk = (page: any, podcasts = false): Chunk<Section> => ({
+  items: (page.sections ?? []).map((s: Node) => shelfSection(s, SECTION_ITEMS, podcasts)),
+  more: continued(page, (p) => homeChunk(p, podcasts)),
 });
 
 const playlistRows = (page: any): Node[] => (page.items ?? page.contents ?? []).filter((n: Node) => n?.type === "MusicResponsiveListItem");
@@ -490,6 +529,7 @@ export function mixChunk(actions: Execute, id: string, panel: Node | undefined):
 }
 
 const byId = { key: (i: Item) => i.id, min: PAGE_ITEMS };
+const byIdOf = <T extends { id: string }>() => ({ key: (i: T) => i.id, min: PAGE_ITEMS });
 
 const withNext = (p: Page<unknown>): { next?: string } => (p.next ? { next: p.next } : {});
 
@@ -717,9 +757,102 @@ export class Browse {
   }
 
   // the first page holds ~3 shelves; each continuation (~0.2–0.6 s) adds ~3 more
-  async musicHome(): Promise<{ sections: Section[]; next?: string }> {
+  // podcasts: shows and episodes on its shelves as such (a Rondo that knows them asks)
+  async musicHome(podcasts = false): Promise<{ sections: Section[]; next?: string }> {
     const yt = await this.yt();
-    return homePage(await this.pager.page("music/home", async () => homeChunk(await yt.music.getHomeFeed()), { min: HOME_SECTIONS }));
+    const scope = podcasts ? "music/home+podcasts" : "music/home";
+    return homePage(await this.pager.page(scope, async () => homeChunk(await yt.music.getHomeFeed(), podcasts), { min: HOME_SECTIONS }));
+  }
+
+  // ---- podcasts (podcasts.ts): YouTube Music's raw answers, as direct mode reads them ----
+
+  // WEB_REMIX (YouTube Music), or WEB for a video's chapter markers
+  private async raw(endpoint: string, args: Record<string, unknown>, web = false): Promise<any> {
+    const yt = await this.yt();
+    return (await yt.actions.execute(endpoint, { ...args, ...(web ? {} : { client: "YTMUSIC" }), parse: false })).data;
+  }
+
+  // the account's saved shows (a few pages of its grid), and what YouTube says of Episodes for Later
+  // and New Episodes (how many: its words)
+  async podcastLibrary(): Promise<{ items: Show[]; later?: string; latest?: string }> {
+    let data = await this.raw("/browse", { browseId: "FEmusic_library_non_music_audio_list" });
+    const lib = libraryPodcasts(data);
+    let token = libraryToken(data);
+    for (let i = 0; i < 5 && token; i++) {
+      data = await this.raw("/browse", { continuation: token }).catch(() => undefined);
+      if (!data) break;
+      for (const s of libraryPodcasts(data).shows) if (!lib.shows.some((x) => x.id === s.id)) lib.shows.push(s);
+      token = libraryToken(data);
+    }
+    return { items: lib.shows, ...(lib.later !== undefined ? { later: lib.later } : {}), ...(lib.latest !== undefined ? { latest: lib.latest } : {}) };
+  }
+
+  // a show's page: its header, then its episodes newest first, 20 a page as YouTube pages them
+  async podcastShow(id: string): Promise<Omit<ShowPage, "items"> & { items: Episode[]; next?: string }> {
+    const sp = showPage(await this.raw("/browse", { browseId: id }), id);
+    const onShow = { title: sp.title, id };
+    const more = async (t: string) => showMore(await this.raw("/browse", { continuation: t }), onShow);
+    const page = await this.pager.page(`music/podcast/${id}`, async () => chunkOf<Episode>({ items: sp.items, ...(sp.token ? { token: sp.token } : {}) }, more), byIdOf<Episode>());
+    const { token: _token, items: _items, ...head } = sp;
+    return { ...head, items: page.items, ...withNext(page) };
+  }
+
+  // Episodes for Later (SE) or New Episodes (RDPN), paged
+  async podcastList(which: "SE" | "RDPN"): Promise<Page<Episode>> {
+    const first = episodeList(await this.raw("/browse", { browseId: `VL${which}` }));
+    const more = async (t: string) => episodeListMore(await this.raw("/browse", { continuation: t }));
+    return this.pager.page(`music/podcasts/${which}`, async () => chunkOf<Episode>(first, more), byIdOf<Episode>());
+  }
+
+  // an episode: its page, its length (the queue YouTube Music plays it in) and its chapters (WEB)
+  async episode(id: string): Promise<EpisodeInfo> {
+    const [page, next, web] = await Promise.all([
+      this.raw("/browse", { browseId: `MPED${id}` }),
+      this.raw("/next", { videoId: id }).catch(() => undefined),
+      this.raw("/next", { videoId: id }, true).catch(() => undefined),
+    ]);
+    const info = episodeInfo(id, page, next, web);
+    if (!info) throw new Error(`no episode ${id}`);
+    return info;
+  }
+
+  async podcastSearch(q: string, type: "podcast" | "episode"): Promise<Page<Show | Episode>> {
+    const first = podcastSearch(await this.raw("/search", { query: q, params: SEARCH_PARAMS[type] }), type);
+    const more = async (t: string) => podcastSearch(await this.raw("/search", { continuation: t }), type);
+    return this.pager.page("music/search", async () => chunkOf<Show | Episode>(first, more), byIdOf<Show | Episode>());
+  }
+
+  // Save to library / Remove from library: a like of the show's playlist, as YouTube Music's button
+  async podcastSave(id: string, saved: boolean): Promise<void> {
+    await this.raw(saved ? "/like/like" : "/like/removelike", { target: { playlistId: id.replace(/^MPSP/, "") } });
+    this.changed((k) => k.startsWith("music/podcasts|") || k.startsWith(`music/podcast/${id}|`));
+  }
+
+  // into or out of Episodes for Later
+  async episodeLater(id: string, later: boolean): Promise<void> {
+    const action = later
+      ? { action: "ACTION_ADD_VIDEO", addedVideoId: id, dedupeOption: "DEDUPE_OPTION_CHECK" }
+      : { action: "ACTION_REMOVE_VIDEO_BY_VIDEO_ID", removedVideoId: id };
+    await this.raw("/browse/edit_playlist", { playlistId: "SE", actions: [action] });
+    this.changed((k) => k.startsWith("music/podcasts") || k.startsWith(`music/episode/${id}|`));
+  }
+
+  // Mark as played / unplayed: YouTube Music's toggle, its token from the episode's page as it is now
+  // (a token is good for one page load). Sent even when the page says it's that already: YouTube shows a
+  // change some seconds late, so a page right after one can still show the state before it.
+  async episodePlayed(id: string, played: boolean): Promise<void> {
+    const a = episodeActions(await this.raw("/browse", { browseId: `MPED${id}` }));
+    const token = played ? a.played : a.unplayed;
+    if (!token) throw new Error("no played toggle");
+    await this.raw("/feedback", { feedbackTokens: [token] });
+    this.changed((k) => k.startsWith("music/podcast") || k.startsWith(`music/episode/${id}|`));
+  }
+
+  // YouTube shows an account's change some seconds late: what was cached goes now, and what was cached
+  // meanwhile (the state before the change) goes again a little later
+  private changed(match: (key: string) => boolean): void {
+    this.cache.forget(match);
+    setTimeout(() => this.cache.forget(match), 15_000).unref?.();
   }
 
   // yt.music.getLibrary() throws on the current library page (ItemSection where it expects a
@@ -1002,6 +1135,8 @@ export function registerBrowseRoutes(
       if (next) return later(reply, "music/search", next);
       const q = (req.query.q ?? "").trim();
       const type = req.query.type ?? "song";
+      if (q && (type === "podcast" || type === "episode"))  // shows or episodes (podcasts.ts)
+        return run(reply, () => browse.cached(`music/search/${type}/${q.toLowerCase()}`, () => browse.podcastSearch(q, type)));
       if (!q || !MUSIC_TYPES.has(type)) return reply.code(400).send({ error: "query" });
       return run(reply, () => browse.cached(`music/search/${type}/${q.toLowerCase()}`, () => browse.musicSearch(q, type)));
     }),
@@ -1017,7 +1152,65 @@ export function registerBrowseRoutes(
     }),
   );
 
-  list("/music/home", "music/home", () => browse.musicHome(), { stale: true, shape: homePage });
+  // ?podcasts=1: shows and episodes on the shelves as such (a Rondo with podcasts asks; older ones
+  // get the shelves as before)
+  app.get<{ Querystring: { next?: string; podcasts?: string } }>("/music/home", async (req, reply) => {
+    const podcasts = req.query.podcasts === "1";
+    const scope = podcasts ? "music/home+podcasts" : "music/home";
+    const next = nextOf(req.query);
+    if (next) return later(reply, scope, next, homePage);
+    return run(reply, () => browse.cachedStale(scope, () => browse.musicHome(podcasts)));
+  });
+
+  // ---- podcasts (podcasts.ts). The account's need cookies.txt: the code sign-in's TV app has no podcasts.
+  const podcastAccount = async (reply: FastifyReply): Promise<boolean> => {
+    if (await browse.hasCookies()) return true;
+    reply.code(503).send({ error: "no_cookies" });
+    return false;
+  };
+  app.get("/music/podcasts", async (_req, reply) => {
+    if (!(await podcastAccount(reply))) return reply;
+    return run(reply, () => browse.cached("music/podcasts", () => browse.podcastLibrary()));
+  });
+  for (const [path, which] of [["/music/podcasts/later", "SE"], ["/music/podcasts/new", "RDPN"]] as const)
+    app.get<{ Querystring: { next?: string } }>(path, async (req, reply) => {
+      if (!(await podcastAccount(reply))) return reply;
+      const next = nextOf(req.query);
+      if (next) return later(reply, `music/podcasts/${which}`, next);
+      return run(reply, () => browse.cached(`music/podcasts/${which}`, () => browse.podcastList(which)));
+    });
+  app.get<{ Params: { id: string }; Querystring: { next?: string } }>("/music/podcast/:id", async (req, reply) => {
+    const id = req.params.id.startsWith("MPSP") ? req.params.id : `MPSP${req.params.id}`;
+    if (!SHOW_ID.test(id)) return reply.code(400).send({ error: "id" });
+    const next = nextOf(req.query);
+    if (next) return later(reply, `music/podcast/${id}`, next);
+    return run(reply, () => browse.cached(`music/podcast/${id}`, () => browse.podcastShow(id)));
+  });
+  app.get<{ Params: { id: string } }>("/music/episode/:id", async (req, reply) => {
+    const id = req.params.id;
+    if (!isVideoId(id)) return reply.code(400).send({ error: "id" });
+    return run(reply, () => browse.cached(`music/episode/${id}`, () => browse.episode(id)));
+  });
+  // what the account does: {"saved": bool}, {"later": bool}, {"played": bool}; answers the new state
+  const flag = (body: unknown, key: string): boolean | undefined => {
+    const v = (body as Record<string, unknown> | undefined)?.[key];
+    return typeof v === "boolean" ? v : undefined;
+  };
+  app.post<{ Params: { id: string } }>("/music/podcast/:id/save", async (req, reply) => {
+    const id = req.params.id.startsWith("MPSP") ? req.params.id : `MPSP${req.params.id}`;
+    const saved = flag(req.body, "saved");
+    if (!SHOW_ID.test(id) || saved === undefined) return reply.code(400).send({ error: "body" });
+    if (!(await podcastAccount(reply))) return reply;
+    return run(reply, async () => (await browse.podcastSave(id, saved), { saved }));
+  });
+  for (const key of ["later", "played"] as const)
+    app.post<{ Params: { id: string } }>(`/music/episode/:id/${key}`, async (req, reply) => {
+      const id = req.params.id;
+      const on = flag(req.body, key);
+      if (!isVideoId(id) || on === undefined) return reply.code(400).send({ error: "body" });
+      if (!(await podcastAccount(reply))) return reply;
+      return run(reply, async () => (await (key === "later" ? browse.episodeLater(id, on) : browse.episodePlayed(id, on)), { [key]: on }));
+    });
 
   app.get("/music/library", async (_req, reply) => account(reply, "music/library", () => browse.musicLibrary()));
 

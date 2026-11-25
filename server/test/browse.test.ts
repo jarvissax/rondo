@@ -173,7 +173,7 @@ describe("YouTube Music reducers", () => {
     const list = { type: "MusicShelf", title: { text: "Top songs" }, contents: [{ item_type: "song", id: "khnokW3Mw24", title: "Instant Crush" }] };
     expect(shelfSection(list)!.title).toBe("Top songs");
     expect(shelfSection({ type: "MusicDescriptionShelf", header: { title: { text: "About" } } })).toBeUndefined();
-    const many = { header: { title: { text: "x" } }, contents: Array.from({ length: 30 }, (_, i) => ({ item_type: "song", id: `id${i}`, title: "t" })) };
+    const many = { header: { title: { text: "x" } }, contents: Array.from({ length: 30 }, (_, i) => ({ item_type: "song", id: `song${String(i).padStart(7, "0")}`, title: "t" })) };
     expect(shelfSection(many)!.items).toHaveLength(20);
   });
 

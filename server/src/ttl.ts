@@ -13,6 +13,11 @@ export class TtlCache<V> {
     private readonly now: () => number = Date.now,
   ) {}
 
+  // drops the entries a change made stale (a show saved: the library and the show's page)
+  forget(match: (key: string) => boolean): void {
+    for (const key of [...this.entries.keys()]) if (match(key)) this.entries.delete(key);
+  }
+
   get(key: string, load: () => Promise<V>): Promise<V> {
     const hit = this.entries.get(key);
     if (hit && hit.expires > this.now()) return hit.value;
