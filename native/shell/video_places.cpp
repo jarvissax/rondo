@@ -188,6 +188,9 @@ std::vector<Item> continueWatchingYouTube() {
     if (t && t->video && !t->gone) {  // on the card: its file, so it plays with no connection
       Item i = cardItem(*t);
       if (seen != g_seen.end()) i.title = seen->second.title, i.subtitle = seen->second.subtitle;
+      else
+        for (const Item& d : downloadedVideos())  // started from Library: the download's own title and channel
+          if (d.id == file) i.title = d.title, i.subtitle = d.subtitle;
       out.push_back(i);
     } else if (seen != g_seen.end()) {
       Item i;
