@@ -4,6 +4,12 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## 3.8.1 (November 25, 2026)
+
+- **How far a video was watched, with the code sign-in too:** home, subscriptions and history come
+  from YouTube's TV app when the server is signed in with a code, and 3.8.0 left their red bar out;
+  their videos now carry `watched` as well.
+
 ## 3.8.0 (November 25, 2026)
 
 For Rondo 4.3.0, whose videos pick up where you left off. A new field only: nothing an older Rondo
