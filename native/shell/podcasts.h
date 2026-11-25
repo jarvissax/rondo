@@ -106,5 +106,11 @@ void podcastsSaveNow();
 // ---- the dashboard's (dashboard_server.cpp) ----
 std::string episodeJson(const Episode& e);  // with the Y1's place and marks
 std::string podcastsStateJson();            // Continue listening, Episodes up next, downloaded
+// a list from the source (GET /music/podcast…, a search) as the dashboard shows it: its head as it came,
+// each episode with the Y1's place and marks; showId: a show's page (its episodes name it, its speed)
+std::string podcastListJson(const std::string& sourceBody, const std::string& showId = "");
+// an episode the dashboard names: what the Y1 keeps of it, else what the page sent
+Episode episodeFromFields(const std::string& id, const std::string& title, const std::string& show, const std::string& showId,
+                          const std::string& thumb, int64_t lengthMs, int progress);
 
 }  // namespace rondo::shell

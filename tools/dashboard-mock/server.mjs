@@ -120,6 +120,26 @@ function playlistJson(p) {
     paths: p.paths, missing: p.paths.filter((x) => !by.has(x)).length, durationSec: p.paths.reduce((n, x) => n + (by.get(x)?.durationSec || 0), 0) };
 }
 
+// ---------- YouTube Music's podcasts (shell/podcasts.h) ----------
+const podThumb = (k) => '/thumb?u=' + encodeURIComponent('https://i.ytimg.com/vi/' + k + '/hq720.jpg');
+const pod = {
+  shows: [
+    { kind: 'podcast', id: 'MPSPPLmockLex', title: 'Lex Fridman Podcast', subtitle: 'Lex Fridman', thumb: podThumb('lex') },
+    { kind: 'podcast', id: 'MPSPPLmockHub', title: 'Huberman Lab', subtitle: 'Andrew Huberman', thumb: podThumb('hub') },
+  ],
+  episodes: [
+    ['v1X9Fqs5a14', 'GTA 6, Crime, Heists, Mafia, Gangs, Prison, Corrupt Cops, Miami & Money | Lex Fridman Podcast #505', '6d ago', '3 hr 21 min', 12074000, 'MPSPPLmockLex', 'Lex Fridman Podcast', 4520000],
+    ['2hJkprFnzhY', 'Russia-Ukraine War: Putin, Zelenskyy, Drones and the Future of Warfare | Lex Fridman Podcast #504', 'Nov 11', '2 hr 53 min', 10380000, 'MPSPPLmockLex', 'Lex Fridman Podcast', 0],
+    ['ZAzWPE9CItg', 'AI Crisis in Math: Navier-Stokes, Riemann Hypothesis & Complexity Theory | Lex Fridman Podcast #503', 'Oct 27', '3 hr 34 min', 12840000, 'MPSPPLmockLex', 'Lex Fridman Podcast', 0],
+    ['brzkTni-nTQ', 'Access the Power of Now to Experience Life More Fully | Eckhart Tolle', '1d ago', '2 hr 6 min', 7573000, 'MPSPPLmockHub', 'Huberman Lab', 0],
+    ['8YHTMsy0bT8', "Essentials: Nicotine's Effects on the Brain & Body & How to Quit Smoking or Vaping", '5d ago', '35 min', 2100000, 'MPSPPLmockHub', 'Huberman Lab', 0],
+  ].map(([id, title, date, length, lengthMs, showId, show, positionMs]) => ({ kind: 'episode', id, title, date, length, status: length, lengthMs, showId, show, thumb: podThumb(id), positionMs, played: false })),
+  upNext: ['ZAzWPE9CItg'],
+  onCard: ['8YHTMsy0bT8'],
+  speeds: {},
+  playing: '',
+};
+
 // ---------- YouTube › Download (shell/downloads.cpp): one queue, one at a time, pause and resume ----------
 const dl = {
   held: '',
@@ -542,6 +562,35 @@ async function api(req, res, url) {
       if (paths) p.paths = paths;
       return send(res, 200, playlistJson(p));
     }
+  }
+  // YouTube Music's podcasts (shell/podcasts.h): made-up shows and episodes, the Rondo's places kept here
+  if (pathname.startsWith('/api/podcasts/')) {
+    const body = method === 'GET' ? {} : await readJson(req).catch(() => ({}));
+    const ep = (id) => pod.episodes.find((e) => e.id === id);
+    const left = (e) => Math.round((e.lengthMs - e.positionMs) / 60000) + ' min left';
+    const decorate = (e) => ({ ...e, subtitle: [e.date, e.played ? 'Played' : e.positionMs ? left(e) : e.length].join(' · '), new: !e.played && !e.positionMs, playing: pod.playing === e.id, onCard: pod.onCard.includes(e.id) });
+    const state = () => ({ signedIn: true, inProgress: pod.episodes.filter((e) => e.positionMs && !e.played).map(decorate), upNext: pod.upNext.map(ep).map(decorate), downloaded: pod.onCard.map(ep).map(decorate) });
+    if (pathname === '/api/podcasts/state') return send(res, 200, state());
+    if (pathname === '/api/podcasts/library') return send(res, 200, { later: 'Auto playlist • 1 episode', latest: 'Auto playlist • 12 episodes', shows: pod.shows, items: [] });
+    if (pathname === '/api/podcasts/show') {
+      const show = pod.shows.find((x) => x.id === url.searchParams.get('id')) || pod.shows[0];
+      const page = url.searchParams.get('next') ? 1 : 0;
+      const items = pod.episodes.filter((e) => e.showId === show.id).slice(page * 2, page * 2 + 2).map(decorate);
+      return send(res, 200, { title: show.title, subtitle: show.subtitle, thumb: show.thumb, description: 'Conversations about science, technology, history, philosophy and the nature of intelligence, consciousness, love, and power.', saved: true, speed: pod.speeds[show.id] || 100, shows: [], items, ...(page ? {} : { next: 'p2' }) });
+    }
+    if (pathname === '/api/podcasts/list') return send(res, 200, { shows: [], items: (url.searchParams.get('which') === 'later' ? pod.episodes.slice(3, 4) : pod.episodes).map(decorate) });
+    if (pathname === '/api/podcasts/search') return send(res, 200, url.searchParams.get('type') === 'podcast' ? { shows: pod.shows, items: [] } : { shows: [], items: pod.episodes.map(decorate) });
+    const answer = () => send(res, 200, { player: playerJson(), episode: decorate(ep(body.id)), state: state() });
+    if (pathname === '/api/podcasts/play') { pod.playing = body.id; return answer(); }
+    if (pathname === '/api/podcasts/queue') { pod.upNext = pod.upNext.filter((x) => x !== body.id); if (body.next) pod.upNext.unshift(body.id); else pod.upNext.push(body.id); return answer(); }
+    if (pathname === '/api/podcasts/played') { ep(body.id).played = body.played; return answer(); }
+    if (pathname === '/api/podcasts/download' && method === 'POST') { if (!pod.onCard.includes(body.id)) pod.onCard.push(body.id); return answer(); }
+    if (pathname === '/api/podcasts/download' && method === 'DELETE') { pod.onCard = pod.onCard.filter((x) => x !== url.searchParams.get('id')); return send(res, 200, state()); }
+    if (pathname === '/api/podcasts/upnext') { pod.upNext = pod.upNext.filter((x) => x !== url.searchParams.get('id')); return send(res, 200, state()); }
+    if (pathname === '/api/podcasts/later') return send(res, 200, { later: body.later });
+    if (pathname === '/api/podcasts/save') return send(res, 200, { saved: body.saved });
+    if (pathname === '/api/podcasts/speed') { pod.speeds[body.showId] = body.speed; return send(res, 200, { speed: body.speed }); }
+    return err(res, 404, 'not found');
   }
   if (pathname === '/api/downloads' && method === 'GET') return send(res, 200, downloadsJson());
   if (pathname === '/api/downloads' && method === 'POST') {

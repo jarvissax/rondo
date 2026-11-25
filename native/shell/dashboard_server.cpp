@@ -45,6 +45,7 @@
 #include "file_ops.h"
 #include "../direct/innertube.h"
 #include "main_queue.h"
+#include "podcasts.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -1619,6 +1620,31 @@ std::string bookDetailJson(const std::string& key) {
          ",\"bookmarkList\":" + arr(bm) + "}";
 }
 
+// --- YouTube Music's podcasts (podcasts.h) ---
+
+// a list from the source through rondo-core, each episode with the Y1's place and marks (UI thread);
+// the source's status when it couldn't (503: no cookies.txt, 404: a server before podcasts)
+Response podcastSource(const std::string& path, const std::string& showId = "") {
+  std::string body;
+  int st = coreCall(false, path, "", body, 40000);
+  if (st != 200) {
+    Response res = error(st == 503 || st == 404 || st == 410 || st == 400 ? st : 502, st == 503 ? "no_cookies" : st == 404 ? "old_server" : st == 410 ? "expired" : "source");
+    return res;
+  }
+  return onUi([body, showId] { return json(podcastListJson(body, showId)); });
+}
+
+// the episode a page names: {id, title, show, showId, thumb, lengthMs, progress}
+bool episodeIn(const Body& b, Episode& out) {
+  std::string id, title, show, showId, thumb;
+  int64_t len = 0, progress = -1;
+  if (!b.text("id", id) || id.size() != 11) return false;
+  b.text("title", title), b.text("show", show), b.text("showId", showId), b.text("thumb", thumb);
+  b.integer("lengthMs", len), b.integer("progress", progress);
+  out = episodeFromFields(id, title, show, showId, thumb, len, int(progress));
+  return true;
+}
+
 // POST /api/books/play {key, from: "resume" | "start" | "chapter" | "bookmark" | "at", index, created, positionMs}
 Response playBookRequest(const Body& body) {
   std::string key, from = "resume";
@@ -2218,9 +2244,10 @@ Response Server::api(Request& r, const std::string& path) {
       std::string key;
       int64_t v;
       const Book* book = b->text("key", key) ? g_library.bookByKey(key) : nullptr;
-      if (!book || !b->integer("speed", v)) return error(400, "key, speed");
-      setBookSpeed(*book, int(v));
-      return json(bookDetailJson(key));
+      BookPlay d;  // or an episode's (podcasts.h): its show's speed
+      if ((!book && !spokenDetails(key, d)) || !b->integer("speed", v)) return error(400, "key, speed");
+      setSpokenSpeed(key, int(v));
+      return json(book ? bookDetailJson(key) : obj({{"speed", num(int64_t(spokenSpeed(key)))}}));
     });
   if (path == "/books/finished" && m == "PUT")
     return onUi([b] {
@@ -2250,6 +2277,80 @@ Response Server::api(Request& r, const std::string& path) {
     return onUi([] {
       backToMusic();
       return json(playerJson());
+    });
+  // YouTube Music's podcasts: the Y1's own (Continue listening, Episodes up next, on the card), the
+  // source's lists with the Y1's places, and what the Y1 does with an episode
+  if (path == "/podcasts/state" && m == "GET") return ui([] { return podcastsStateJson(); });
+  if (path == "/podcasts/library" && m == "GET") return podcastSource("/music/podcasts");
+  if (path == "/podcasts/show" && m == "GET") {
+    std::string id = r.param("id");
+    if (id.compare(0, 4, "MPSP") != 0 || id.size() > 90) return error(400, "id");
+    std::string next = r.param("next");
+    return podcastSource("/music/podcast/" + Api::escape(id) + (next.empty() ? "" : "?next=" + Api::escape(next)), id);
+  }
+  if (path == "/podcasts/list" && m == "GET") {
+    std::string which = r.param("which"), next = r.param("next");
+    if (which != "later" && which != "new") return error(400, "which");
+    return podcastSource("/music/podcasts/" + which + (next.empty() ? "" : "?next=" + Api::escape(next)));
+  }
+  if (path == "/podcasts/search" && m == "GET") {
+    std::string q = r.param("q"), type = r.param("type"), next = r.param("next");
+    if (type != "podcast" && type != "episode") return error(400, "type");
+    if (!next.empty()) return podcastSource("/music/search?next=" + Api::escape(next));
+    if (q.empty() || q.size() > 200) return error(400, "query");
+    return podcastSource("/music/search?type=" + type + "&q=" + Api::escape(q));
+  }
+  if ((path == "/podcasts/play" || path == "/podcasts/queue" || path == "/podcasts/played" || path == "/podcasts/download") && m == "POST")
+    return onUi([b, path] {
+      Episode e;
+      if (!episodeIn(*b, e)) return error(400, "id");
+      bool flag = false;
+      if (path == "/podcasts/play") {
+        std::string from;
+        if (b->text("from", from) && from == "start") playEpisodeFrom(e, 0);
+        else playEpisode(e);
+      } else if (path == "/podcasts/queue") {
+        b->flag("next", flag);
+        queueEpisode(e, flag);
+      } else if (path == "/podcasts/played") {
+        if (!b->flag("played", flag)) return error(400, "played");
+        markEpisodePlayed(e, flag);
+      } else {
+        downloadEpisode(e);
+      }
+      return json(obj({{"player", playerJson()}, {"episode", episodeJson(e)}, {"state", podcastsStateJson()}}));
+    });
+  if (path == "/podcasts/download" && m == "DELETE") {
+    std::string id = r.param("id");
+    return onUi([id] {
+      if (!deleteEpisodeDownload(id)) return error(404, "not found");
+      return json(podcastsStateJson());
+    });
+  }
+  if (path == "/podcasts/upnext" && m == "DELETE") {
+    std::string id = r.param("id");
+    return ui([id] {
+      removeFromUpNext(id);
+      return podcastsStateJson();
+    });
+  }
+  // the account's: through the source, as the Y1 does it
+  if ((path == "/podcasts/later" || path == "/podcasts/save") && m == "POST") {
+    std::string id;
+    bool on = false;
+    if (!b->text("id", id) || !b->flag(path == "/podcasts/later" ? "later" : "saved", on)) return error(400, "body");
+    std::string route = path == "/podcasts/later" ? "/music/episode/" + Api::escape(id) + "/later" : "/music/podcast/" + Api::escape(id) + "/save";
+    std::string body;
+    int st = coreCall(true, route, path == "/podcasts/later" ? (on ? "{\"later\":true}" : "{\"later\":false}") : (on ? "{\"saved\":true}" : "{\"saved\":false}"), body, 40000);
+    if (st != 200) return error(st == 503 ? 503 : st == 404 ? 404 : 502, st == 503 ? "no_cookies" : st == 404 ? "old_server" : "source");
+    return json(body);
+  }
+  if (path == "/podcasts/speed" && m == "PUT")
+    return ui([b] {
+      std::string showId;
+      int64_t v = 100;
+      if (b->text("showId", showId) && b->integer("speed", v)) setSpokenSpeed(showSpeedKey(showId), int(v));
+      return obj({{"speed", num(int64_t(spokenSpeed(showSpeedKey(showId))))}});
     });
   if (path == "/sleep" && m == "PUT")
     return onUi([b] {

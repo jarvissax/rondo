@@ -202,6 +202,8 @@ input { caret-color: var(--accent-hi); }
 /* YouTube, YouTube Music, WhatsApp: their colors, their marks in white (YouTube's play mark cut out) */
 .t-youtube { --t1: #ff6a5c; --t2: #d7001a; }
 .t-ytmusic { --t1: #ff5a72; --t2: #c8102e; }
+.t-later { --t1: #4fd8c8; --t2: #139c8c; }
+.t-newEpisodes { --t1: #ffb04d; --t2: #f07a12; }
 .t-whatsapp { --t1: #63f08e; --t2: #17a74c; }
 .brand-glyph { width: 62%; height: auto; }
 .brand-glyph.yt { width: 72%; }
@@ -1221,3 +1223,21 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   .dl-form .seg { justify-self: start; }
   .dl-lbl { display: none; }
 }
+
+/* Podcasts (YouTube Music's): the search, a show's description, an episode's options, Show more */
+.pod-search { display: flex; gap: 10px; margin: 0 0 18px; }
+.pod-search .search { flex: 1; min-width: 0; }
+.pod-h { margin: 12px 0 8px; }
+.pod-list { width: 100%; text-align: left; background: none; border: 0; font: inherit; color: inherit; cursor: pointer; }
+.pod-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-2); white-space: pre-line; }
+.pod-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.pod-acts .btn { flex: 1 1 200px; justify-content: flex-start; }
+.pod-more { display: flex; justify-content: center; margin: -4px 0 18px; }
+.pod-sec { margin-bottom: 18px; }
+.pod-list .chev { width: 8px; height: 12px; margin-left: auto; flex: none; color: var(--text-3, #6b6b72); }
+.lib .song.ep-row, .lib .song.show-row { grid-template-columns: 44px minmax(0, 1fr) auto; cursor: pointer; }
+@media (min-width: 900px) {
+  .lib .song.ep-row, .lib .song.show-row { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .lib .song.ep-row .s-sub, .lib .song.show-row .s-sub { display: block; }
+}
+.ep-row .art img, .show-row .art img, .bk-cover img { object-fit: cover; }

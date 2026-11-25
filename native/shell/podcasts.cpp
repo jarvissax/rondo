@@ -662,6 +662,55 @@ std::string episodeJson(const Episode& e) {
   return s + "}";
 }
 
+std::string podcastListJson(const std::string& body, const std::string& showId) {
+  yyjson_doc* d = yyjson_read(body.data(), body.size(), 0);
+  if (!d) return "null";
+  yyjson_val* r = yyjson_doc_get_root(d);
+  std::string out = "{";
+  int n = 0;
+  for (const char* k : {"title", "subtitle", "thumb", "description", "later", "latest", "next"})
+    if (yyjson_is_str(yyjson_obj_get(r, k))) out += std::string(n++ ? "," : "") + jq(k) + ":" + jq(sval(r, k));
+  if (yyjson_is_bool(yyjson_obj_get(r, "saved")))
+    out += std::string(n++ ? "," : "") + "\"saved\":" + (yyjson_get_bool(yyjson_obj_get(r, "saved")) ? "true" : "false");
+  if (!showId.empty()) out += std::string(n++ ? "," : "") + "\"speed\":" + std::to_string(spokenSpeed(showSpeedKey(showId)));
+  std::vector<Episode> eps;
+  std::vector<Item> shows;
+  std::string next;
+  parseEpisodes(body, eps, &shows, &next);
+  std::string title = sval(r, "title");
+  for (Episode& e : eps) {
+    if (!showId.empty() && e.showId.empty()) e.showId = showId;
+    if (!showId.empty() && e.show.empty()) e.show = title;
+  }
+  noteEpisodes(eps);
+  out += std::string(n++ ? "," : "") + "\"shows\":[";
+  for (size_t k = 0; k < shows.size(); k++)
+    out += (k ? "," : "") + std::string("{\"kind\":\"podcast\",\"id\":") + jq(shows[k].id) + ",\"title\":" + jq(shows[k].title) + ",\"subtitle\":" +
+           jq(shows[k].subtitle) + ",\"thumb\":" + jq(shows[k].thumb) + "}";
+  out += "],\"items\":[";
+  for (size_t k = 0; k < eps.size(); k++) {
+    std::string j = episodeJson(eps[k]);
+    if (eps[k].progress >= 0) j = j.substr(0, j.size() - 1) + ",\"progress\":" + std::to_string(eps[k].progress) + "}";
+    out += (k ? "," : "") + j;
+  }
+  yyjson_doc_free(d);
+  return out + "]}";
+}
+
+Episode episodeFromFields(const std::string& id, const std::string& title, const std::string& show, const std::string& showId,
+                          const std::string& thumb, int64_t lengthMs, int progress) {
+  Episode e;
+  if (const Kept* p = kept(id)) e = p->e;
+  e.id = id;
+  if (!title.empty()) e.title = title;
+  if (!show.empty()) e.show = show;
+  if (!showId.empty()) e.showId = showId;
+  if (!thumb.empty()) e.thumb = thumb;
+  if (lengthMs > 0) e.lengthMs = lengthMs;
+  if (progress >= 0) e.progress = progress;
+  return e;
+}
+
 std::string podcastsStateJson() {
   auto list = [](const std::vector<Episode>& v) {
     std::string s = "[";
