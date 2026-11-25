@@ -5,7 +5,11 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## Not released yet
+## 4.3.0 (November 25, 2026)
+
+Videos pick up where you left off. An update for the 4.0 firmware: Settings › System › Software
+update, the dashboard or the [update page](https://jarvissax.github.io/rondo/). It works with Rondo
+server 3.1.0 or newer; your phone's progress through a server needs Rondo server 3.8.1.
 
 ### New
 
@@ -20,7 +24,7 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 - **Your phone's progress too:** signed in to YouTube, a video you half-watched on your phone opens on
   the Y1 about where you left it, and its red bar shows in YouTube's lists, unless the Y1 has a place
   of its own for it. The Y1 doesn't tell YouTube what it played. Through a server this needs Rondo
-  server 3.8.0.
+  server 3.8.1.
 - **The dashboard's Library** sorts videos by **Continue watching**, says where you stopped in a
   video's details, and has **Start again** there.
 
@@ -28,6 +32,11 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
 - **Podcasts have an icon of their own** on the main menu, in YouTube Music's Podcasts tab and on the
   dashboard, instead of Connections' waves.
+
+### Fixed
+
+- **A list keeps the row you were on** when one comes in above it (Continue watching, on coming back
+  from a video).
 
 ## 4.2.0 (November 25, 2026)
 
