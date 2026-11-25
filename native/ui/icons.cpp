@@ -492,6 +492,11 @@ void drawIcon(Pen& p, Icon kind, float level) {
     case Icon::Book:  // Library › Audiobooks: an open book, its two pages
       p.fill({p.poly({2.5f, 5.5f, 11, 7.2f, 11, 20.5f, 2.5f, 18.8f}, true), p.poly({21.5f, 5.5f, 13, 7.2f, 13, 20.5f, 21.5f, 18.8f}, true)});
       break;
+    case Icon::Podcast:  // Podcasts: a speaker's head and stem inside the two rings of their voice, open below
+      p.fill({p.circle(12, 11, 2.7f)});
+      p.fill({p.roundRect(10.6f, 15.6f, 13.4f, 22.4f, 1.4f)});
+      p.stroke({p.arc(6.4f, 5.4f, 17.6f, 16.6f, 135, 270), p.arc(2.4f, 1.4f, 21.6f, 20.6f, 130, 280)}, 2.1f);
+      break;
     case Icon::Bookmark:  // a ribbon with its notch
       p.fill({p.poly({6, 2.5f, 18, 2.5f, 18, 21.5f, 12, 16.8f, 6, 21.5f}, true)});
       break;

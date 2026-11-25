@@ -126,7 +126,7 @@ const Tile speed{Icon::Gauge, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile finished{Icon::Check, rgb(0xb8bcc4), rgb(0x6f747d)};
 const Tile sleep{Icon::Moon, rgb(0x8c7bff), rgb(0x4b36d6)};
 // YouTube Music's Podcasts pill, a show's screen and an episode's menu
-const Tile podcasts{Icon::Broadcast, rgb(0xe07bff), rgb(0x9b30d9)};
+const Tile podcasts{Icon::Podcast, rgb(0xe07bff), rgb(0x9b30d9)};
 const Tile later{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile newEpisodes{Icon::Sparkle, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile upNext{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};

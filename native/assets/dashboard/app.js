@@ -368,7 +368,7 @@ const NAV = [
   { id: 'library', label: t('common.library'), tile: 'device', glyph: 'library', tab: true },
   { id: 'radio', label: t('nav.fmRadio'), short: t('common.radio'), tile: 'radio', glyph: 'radio', tab: true },
   { id: 'youtube', label: 'YouTube', brand: 'video', tab: true },
-  { id: 'podcasts', label: t('podcasts.title'), tile: 'podcasts', glyph: 'broadcast', tab: true },
+  { id: 'podcasts', label: t('podcasts.title'), tile: 'podcasts', glyph: 'podcast', tab: true },
   { group: t('nav.connections') },
   { id: 'wifi', label: 'Wi-Fi', tile: 'wifi', glyph: 'wifi' },
   { id: 'bluetooth', label: 'Bluetooth', tile: 'bluetooth', glyph: 'bluetooth' },
@@ -1732,7 +1732,7 @@ function rssEpRowHtml(e, withShow, extra = '') {
   const pct = rssPct(e);
   const mark = e.downloading !== undefined ? `<span class="pod-mark">${esc(t('rss.downloadingPct', { pct: e.downloading }))}</span>` : e.onCard ? `<span class="pod-mark">${te('rss.onCard')}</span>` : '';
   return `<div class="song ep-row${e.playing ? ' is-playing' : ''}${withShow ? '' : ' no-art'}" role="listitem" data-rep="${esc(e.id)}">
-    ${withShow ? `<span class="art" data-thumb="${esc(e.art || '')}">${icon('broadcast')}</span>` : ''}
+    ${withShow ? `<span class="art" data-thumb="${esc(e.art || '')}">${icon('podcast')}</span>` : ''}
     <span class="s-main"><span class="s-title">${esc(e.title)}${e.new ? `<span class="bk-dot" title="${te('podcasts.notStarted')}"></span>` : ''}</span><span class="s-sub">${esc(sub)}</span>${pct && !e.played ? `<span class="bk-prog"><span style="--p:${pct.toFixed(1)}%"></span></span>` : ''}</span>
     <span class="s-acts">${mark}${extra}<button class="ib ib-sm" type="button" data-act="rep-play" aria-label="${te('common.playNameOnRondo', { name: e.title })}">${icon('play')}</button><button class="ib ib-sm" type="button" data-act="rep-more" aria-label="${te('podcasts.optionsFor', { name: e.title })}">${icon('more')}</button></span></div>`;
 }
@@ -1748,7 +1748,7 @@ function rssShowRowHtml(s, rank) {
   R.shows.set(s.id, s);
   const subscribed = s.subscribed || (R.state?.shows || []).some((x) => x.id === s.id);
   return `<div class="song show-row" role="listitem" data-rshow="${esc(s.id)}">
-    <span class="art" data-thumb="${esc(s.thumb || '')}">${icon('broadcast')}</span>
+    <span class="art" data-thumb="${esc(s.thumb || '')}">${icon('podcast')}</span>
     <span class="s-main"><span class="s-title">${rank ? `<span class="pod-rank">${rank}</span>` : ''}${esc(s.title || s.feed)}</span><span class="s-sub">${esc(rssShowSub({ ...s, subscribed }))}</span></span>
     <span class="s-acts">${subscribed ? `<span class="pod-mark">${te('rss.subscribed')}</span>` : `<button class="btn btn-sm" type="button" data-act="rshow-sub">${icon('plus')}<span>${te('rss.subscribe')}</span></button>`}<button class="ib ib-sm" type="button" data-act="rshow-open" aria-label="${te('podcasts.openName', { name: s.title })}">${icon('chevron')}</button></span></div>`;
 }
@@ -1815,7 +1815,7 @@ function rssShowHtml() {
   const eps = p.episodes.slice(0, R.shown);
   return `<div class="lib pod-sec"><div class="pl-head bk-head">
       <span style="grid-column:1/-1;justify-self:start">${rssBack()}</span>
-      <span class="art bk-cover" data-thumb="${esc(s.thumb || '')}">${icon('broadcast')}</span>
+      <span class="art bk-cover" data-thumb="${esc(s.thumb || '')}">${icon('podcast')}</span>
       <div><h2>${esc(s.title || s.feed)}</h2><p>${esc([s.author, s.genre, t('podcasts.episodeCount', { count: p.episodes.length })].filter(Boolean).join(' · '))}</p>${s.description ? `<p class="pod-desc">${esc(s.description)}</p>` : ''}</div>
       <div class="pl-acts bk-acts">${sub}<label class="select"><span class="sr-only">${te('podcasts.speed')}</span><select data-act="rss-speed" aria-label="${te('podcasts.speedFor', { name: s.title })}">${speeds}</select>${icon('down')}</label></div></div>${auto}` +
     `<div class="lhdr" role="heading" aria-level="3">${te(s.serial ? 'rss.episodesInOrder' : 'podcasts.episodes')}</div><div class="lib-list" role="list">${eps.length ? eps.map((e) => rssEpRowHtml(e, false)).join('') : `<div class="lib-empty"><p>${te('podcasts.noEpisodes')}</p></div>`}</div></div>` +
@@ -1889,7 +1889,7 @@ async function rssAct(method, path, body, done) {
 function rssEpSheet(e) {
   const b = (act, ic, label, cls = '') => `<button class="btn${cls}" type="button" data-act="${act}">${icon(ic)}<span>${esc(label)}</span></button>`;
   const onShowPage = R.view === 'show' && R.show?.show?.id === e.show;
-  openSheet(`<div class="song-sheet"><span class="art" data-thumb="${esc(e.art || '')}">${icon('broadcast')}</span>
+  openSheet(`<div class="song-sheet"><span class="art" data-thumb="${esc(e.art || '')}">${icon('podcast')}</span>
       <div><h2>${esc(e.title)}</h2><p>${esc([e.showTitle, e.subtitle].filter(Boolean).join(' · '))}</p></div></div>
       <div class="pod-acts">
         ${b('rep-play', 'play', e.video ? t('rss.watchOnRondo') : e.positionMs && !e.played ? t('podcasts.resume') : t('podcasts.play'), ' btn-primary')}
@@ -1900,7 +1900,7 @@ function rssEpSheet(e) {
         ${b(e.later ? 'rep-unlater' : 'rep-later', 'clock', e.later ? t('rss.removeFromLater') : t('podcasts.saveForLater'))}
         ${b('rep-played', 'check', e.played ? t('podcasts.markUnplayed') : t('podcasts.markPlayed'))}
         ${b('rep-notes', 'info', t('rss.showNotes'))}
-        ${onShowPage ? '' : b('rep-show', 'broadcast', t('rss.goToShow'))}
+        ${onShowPage ? '' : b('rep-show', 'podcast', t('rss.goToShow'))}
       </div>`);
   const art = $('.art[data-thumb]', sheet);
   if (art?.dataset.thumb) loadArtInto(art, 240);
@@ -2148,12 +2148,12 @@ function epRowHtml(e, withShow, extra = '') {
   const sub = [withShow ? e.show : '', e.subtitle].filter(Boolean).join(' · ');
   const pct = podPct(e);
   return `<div class="song ep-row${e.playing ? ' is-playing' : ''}" role="listitem" data-ep="${esc(e.id)}">
-    <span class="art" data-thumb="${esc(e.thumb || '')}">${icon('broadcast')}</span>
+    <span class="art" data-thumb="${esc(e.thumb || '')}">${icon('podcast')}</span>
     <span class="s-main"><span class="s-title">${esc(e.title)}${e.new ? `<span class="bk-dot" title="${te('podcasts.notStarted')}"></span>` : ''}</span><span class="s-sub">${esc(sub)}</span>${pct && !e.played ? `<span class="bk-prog"><span style="--p:${pct.toFixed(1)}%"></span></span>` : ''}</span>
     <span class="s-acts">${extra}<button class="ib ib-sm" type="button" data-act="ep-play" aria-label="${te('common.playNameOnRondo', { name: e.title })}">${icon('play')}</button><button class="ib ib-sm" type="button" data-act="ep-more" aria-label="${te('podcasts.optionsFor', { name: e.title })}">${icon('more')}</button></span></div>`;
 }
 const showRowHtml = (s) => `<div class="song show-row" role="listitem" data-show="${esc(s.id)}" data-title="${esc(s.title)}">
-    <span class="art" data-thumb="${esc(s.thumb || '')}">${icon('broadcast')}</span>
+    <span class="art" data-thumb="${esc(s.thumb || '')}">${icon('podcast')}</span>
     <span class="s-main"><span class="s-title">${esc(s.title)}</span><span class="s-sub">${esc(s.subtitle || '')}</span></span>
     <span class="s-acts"><button class="ib ib-sm" type="button" data-act="show-open" aria-label="${te('podcasts.openName', { name: s.title })}">${icon('chevron')}</button></span></div>`;
 const podHeader = (title, count) => `<div class="lhdr" role="heading" aria-level="3">${esc(title)}${count ? `<small>${esc(count)}</small>` : ''}</div>`;
@@ -2208,7 +2208,7 @@ function renderShow() {
   const save = p.saved === undefined ? '' : `<button class="btn btn-sm${p.saved ? '' : ' btn-primary'}" type="button" data-act="show-save">${icon(p.saved ? 'check' : 'plus')}<span>${te(p.saved ? 'podcasts.savedToLibrary' : 'podcasts.saveToLibrary')}</span></button>`;
   return `<div class="lib pod-sec"><div class="pl-head bk-head">
       <span style="grid-column:1/-1;justify-self:start">${podBack()}</span>
-      <span class="art bk-cover" data-thumb="${esc(p.thumb || '')}">${icon('broadcast')}</span>
+      <span class="art bk-cover" data-thumb="${esc(p.thumb || '')}">${icon('podcast')}</span>
       <div><h2>${esc(p.title)}</h2><p>${esc(p.subtitle || '')}</p>${p.description ? `<p class="pod-desc">${esc(p.description)}</p>` : ''}</div>
       <div class="pl-acts bk-acts">${save}<label class="select"><span class="sr-only">${te('podcasts.speed')}</span><select data-act="show-speed" aria-label="${te('podcasts.speedFor', { name: p.title })}">${speeds}</select>${icon('down')}</label></div></div>` +
     podHeader(t('podcasts.episodes')) + `<div class="lib-list" role="list">${p.items.length ? p.items.map((e) => epRowHtml(e, false)).join('') : `<div class="lib-empty"><p>${te('podcasts.noEpisodes')}</p></div>`}</div></div>${podMore(p.next)}`;
@@ -2299,7 +2299,7 @@ async function podAct(method, path, body, done) {
 function epSheet(e) {
   const signed = POD.state?.signedIn;
   const b = (act, ic, label, cls = '') => `<button class="btn${cls}" type="button" data-act="${act}">${icon(ic)}<span>${esc(label)}</span></button>`;
-  openSheet(`<div class="song-sheet"><span class="art" data-thumb="${esc(e.thumb || '')}">${icon('broadcast')}</span>
+  openSheet(`<div class="song-sheet"><span class="art" data-thumb="${esc(e.thumb || '')}">${icon('podcast')}</span>
       <div><h2>${esc(e.title)}</h2><p>${esc([e.show, e.subtitle].filter(Boolean).join(' · '))}</p></div></div>
       <div class="pod-acts">
         ${b('ep-play', 'play', e.positionMs && !e.played ? t('podcasts.resume') : t('podcasts.play'), ' btn-primary')}
@@ -2308,7 +2308,7 @@ function epSheet(e) {
         ${e.onCard ? b('ep-undownload', 'trash', t('podcasts.deleteDownload'), ' btn-red-text') : b('ep-download', 'download', t('common.download'))}
         ${b('ep-played', 'check', e.played ? t('podcasts.markUnplayed') : t('podcasts.markPlayed'))}
         ${signed && (!e.played || e.later) ? b(e.later ? 'ep-unlater' : 'ep-later', 'clock', e.later ? t('podcasts.removeFromLater') : t('podcasts.saveForLater')) : ''}
-        ${e.showId && !(POD.view === 'show' && POD.show?.id === e.showId) ? b('ep-show', 'broadcast', t('podcasts.goToPodcast')) : ''}
+        ${e.showId && !(POD.view === 'show' && POD.show?.id === e.showId) ? b('ep-show', 'podcast', t('podcasts.goToPodcast')) : ''}
       </div>`);
   const art = $('.art[data-thumb]', sheet);
   if (art?.dataset.thumb) loadArtInto(art, 240);
@@ -2591,7 +2591,7 @@ const MENU = {
   videos: { tile: 'video', glyph: 'play', brand: 'video', t: ['#ff6a5c', '#d7001a'], title: 'YouTube', logo: MARK.video('pv-glyph pv-mark wide') },
   whatsapp: { tile: 'whatsapp', glyph: 'chat', brand: 'whatsapp', t: ['#63f08e', '#17a74c'], title: 'WhatsApp', logo: MARK.whatsapp('pv-glyph pv-mark wa') },
   device: { tile: 'device', glyph: 'library', t: ['#5fb7ff', '#1f73e0'], title: t('common.library') },
-  podcasts: { tile: 'podcasts', glyph: 'broadcast', t: ['#e07bff', '#9b30d9'], title: t('podcasts.title') },
+  podcasts: { tile: 'podcasts', glyph: 'podcast', t: ['#e07bff', '#9b30d9'], title: t('podcasts.title') },
   nowPlaying: { tile: 'now', glyph: 'bars', t: ['#7be07b', '#26a83b'], title: t('overview.nothingPlaying') },
   radio: { tile: 'radio', glyph: 'radio', t: ['#ffb04d', '#f07a12'], title: t('nav.fmRadio') },
   settings: { tile: 'settings', glyph: 'gear', t: ['#b8bcc4', '#6f747d'], title: t('common.settings') },
@@ -3947,7 +3947,7 @@ function renderDateTime() {
       <div class="row-main"><div class="row-title">${te('settings.date.dateTime')}</div><div class="row-sub">${te('settings.date.dateTimeSub')}</div></div>
       <div class="row-control date-set"><input type="datetime-local" id="dtValue" value="${esc(rondoLocal(d))}" aria-label="${te('settings.date.dateTime')}">
         <button class="btn btn-sm" type="button" id="dtFromHere">${te('settings.date.fromHere')}</button><button class="btn btn-sm btn-primary" type="button" id="dtSet">${te('settings.date.set')}</button></div></div>`}
-    <div class="row set-row"><span class="tile t-zone">${icon('broadcast')}</span>
+    <div class="row set-row"><span class="tile t-zone">${icon('podcast')}</span>
       <div class="row-main"><div class="row-title">${te('settings.date.autoZone')}</div><div class="row-sub">${te('settings.date.autoZoneSub', { city: d.city, zone: d.zone })}</div></div>
       <button class="switch" type="button" role="switch" data-dt="autoZone" aria-checked="${d.autoZone}" aria-label="${te('settings.date.autoZoneLabel')}"></button></div>
     ${d.autoZone ? '' : `<div class="row row-wide set-row"><span class="tile t-globe">${icon('globe')}</span>
