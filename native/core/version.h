@@ -2,7 +2,7 @@
 #pragma once
 
 namespace rondo {
-constexpr const char* kRondoVersion = "4.1.2";
+constexpr const char* kRondoVersion = "4.2.0";
 // the firmware this Rondo needs (ro.rondo.firmware): 4.0's, whose kernel turns the USB clock off after
 // every unplug (tools/firmware/BootImage.java; Rondo 4.0 installs only with Innioasis Updater CE)
 // (3: 3.0's, without the stock firmware's root backdoors; 2: 2.0's, the first without Android)

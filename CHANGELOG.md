@@ -5,9 +5,16 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
-## Not released yet
+## 4.2.0 (November 25, 2026)
+
+Podcasts: any show with a public feed, on the main menu, and YouTube Music's own. An update for the
+4.0 firmware: Settings › System › Software update, the dashboard or the
+[update page](https://jarvissax.github.io/rondo/). It works with Rondo server 3.1.0 or newer;
+YouTube Music's podcasts through a server need Rondo server 3.7.0, released with it.
 
 ### New
+
+**Podcasts on the main menu**, from the shows' own feeds (RSS), as podcast apps get them:
 
 - **Podcasts, from their feeds** (a new **Podcasts** entry on the main menu, after Library; hide it in
   Settings › Display › Theme › Main menu): **Continue listening**, **New episodes** (what your shows
@@ -36,6 +43,11 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
   **Export OPML** to move your shows from and to other podcast apps, the country, and without a
   server a Podcast Index key of the Y1's own.
 
+They need no server at all. With Rondo server 3.7.0, search finds Podcast Index's shows too (with
+the key on its admin page), and big feeds come from it a page at a time.
+
+**Podcasts in YouTube Music**, in a tab of their own:
+
 - **Podcasts, from YouTube Music** (YouTube Music › **Podcasts**, a tab beside Home and Library):
   your saved shows, **Episodes for Later**, **New episodes**, what's downloaded, **Continue
   listening**, and search for shows and episodes (song search offers matching podcasts too; Home's
@@ -54,12 +66,9 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 - **The dashboard's Podcasts page** (a tab of its own): the same lists, a show's page with its speed,
   and every episode's options, played on the Y1.
 
-Through a server, podcasts need **Rondo server 3.7.0** (not released yet); directly to YouTube they
-work as they are. With an older server, YouTube Music › Podcasts says so and still plays what's on the
-card.
-
-The main menu's Podcasts need no server at all. With Rondo server 3.7.0 search finds Podcast Index's
-shows too (with the key on its admin page), and big feeds come from it a page at a time.
+Through a server, YouTube Music's podcasts need **Rondo server 3.7.0**; directly to YouTube they
+work as they are. With an older server, YouTube Music › Podcasts says so and still plays what's on
+the card.
 
 ### Changed
 
