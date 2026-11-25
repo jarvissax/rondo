@@ -4,7 +4,10 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
-## Not released yet
+## 3.7.0 (November 25, 2026)
+
+Podcasts, for Rondo 4.2.0. All new routes: nothing an older Rondo asks changes, and a Rondo older
+than 4.2.0 works with it as before.
 
 - **YouTube Music's podcasts**, for the Rondo that has them (all new routes; nothing an older Rondo
   asks changes): `GET /music/podcasts` (the account's saved shows, and how many episodes Episodes for
