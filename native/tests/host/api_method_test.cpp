@@ -22,6 +22,7 @@
 
 namespace rondo {
 extern const char kRootCerts[] = "";  // the generated roots.cpp's, unused over plain HTTP
+extern const char kPodcastRoots[] = "";  // podcast_roots.cpp's, the same
 }
 using namespace rondo;
 

@@ -20,6 +20,7 @@
 #include "lyrics_view.h"
 #include "music_list.h"
 #include "podcasts.h"
+#include "rss.h"
 #include "screens.h"
 #include "scrub.h"
 
@@ -856,13 +857,14 @@ class NowPlayingScreen : public Screen {
   enum class Opt { Scrub, UpNext, Shuffle, Repeat, Rating, Download, Sleep, Chapters, AddBookmark, Bookmarks, Speed, BackToMusic, EpisodesNext, EpisodeDownload };
   static bool episodeStreaming(const BookPlay* b) {
     PlayerState s = g_player.state();
+    if (b && isRssKey(b->key)) return isStream(s.path) && downloadedRss(rssIdOf(b->key)).empty();  // the main menu's Podcasts'
     return b && isEpisodeKey(b->key) && isStream(s.path) && downloadedEpisode(episodeIdOf(b->key)).empty();
   }
   static std::vector<Opt> options() {
     std::vector<Opt> v{Opt::Scrub};
     if (const BookPlay* b = bookNow()) {
       if (!b->skips) v.push_back(Opt::Chapters);
-      if (isEpisodeKey(b->key) && !episodesUpNext().empty()) v.push_back(Opt::EpisodesNext);
+      if ((isEpisodeKey(b->key) || isRssKey(b->key)) && (!episodesUpNext().empty() || rssUpNextWaiting())) v.push_back(Opt::EpisodesNext);
       v.insert(v.end(), {Opt::AddBookmark, Opt::Bookmarks, Opt::Speed, Opt::Sleep});
       if (episodeStreaming(b)) v.push_back(Opt::EpisodeDownload);
       if (musicLent()) v.push_back(Opt::BackToMusic);
@@ -927,7 +929,7 @@ class NowPlayingScreen : public Screen {
       case Opt::EpisodesNext: return tr("podcasts.upNext");
       case Opt::EpisodeDownload: {
         const BookPlay* b = bookNow();
-        std::string id = b ? episodeIdOf(b->key) : "";
+        std::string id = !b ? "" : isRssKey(b->key) ? rssIdOf(b->key) : episodeIdOf(b->key);
         for (const DownloadJob& j : downloadJobs())
           if (j.id == id && j.state == DownloadJob::Paused) return tr("music.downloadPaused");
           else if (j.id == id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return tr("music.downloading");
@@ -1011,16 +1013,18 @@ class NowPlayingScreen : public Screen {
         break;
       case Opt::EpisodesNext:
         options_ = false;
-        g_app->push(makeEpisodesUpNext());
+        g_app->push(rssUpNextWaiting() ? makeRssUpNext() : makeEpisodesUpNext());
         break;
       case Opt::EpisodeDownload: {  // to the card (Podcasts/<show>): it goes on from there once it's whole
         options_ = false;
         Episode e;
-        std::string id = episodeIdOf(key);
+        bool rss = isRssKey(key);
+        std::string id = rss ? rssIdOf(key) : episodeIdOf(key);
         bool going = false;
         for (const DownloadJob& j : downloadJobs()) going = going || (j.id == id && j.state != DownloadJob::Done && j.state != DownloadJob::Failed);
-        if (going) g_app->push(makePodcastDownloads());
-        else if (episodeDownloadInfo(id, e)) downloadEpisode(e);
+        if (going) g_app->push(rss ? makeRssDownloaded() : makePodcastDownloads());
+        else if (rss && rssKept(id)) downloadRss(*rssKept(id));
+        else if (!rss && episodeDownloadInfo(id, e)) downloadEpisode(e);
         break;
       }
     }

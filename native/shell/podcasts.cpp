@@ -15,6 +15,7 @@
 #include "books.h"
 #include "downloads.h"
 #include "file_ops.h"
+#include "rss.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -282,6 +283,7 @@ bool episodeDetails(const std::string& key, BookPlay& d) {
 }
 
 void episodeFinishedChanged(const std::string& key, bool finished) {
+  if (isRssKey(key)) return rssFinishedChanged(key, finished);  // the main menu's Podcasts: the Y1's own marks
   Kept* p = kept(episodeIdOf(key));
   if (!p) return;
   if (p->agreed == int(finished) && p->pending < 0) return;  // YouTube says so already

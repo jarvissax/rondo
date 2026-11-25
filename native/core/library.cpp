@@ -76,7 +76,7 @@ std::string baseName(const std::string& path) { return path.substr(path.rfind('/
 // whether it is an audiobook's (core/books.h), which follows the path and the genre.
 void setKey(Track& t) {
   t.key = t.video ? fold(t.title + " " + baseName(t.path)) : fold(t.title + " " + t.artist + " " + t.album + " " + baseName(t.path));
-  t.podcast = !t.video && inPodcastFolder(t.path);
+  t.podcast = inPodcastFolder(t.path);  // a video episode too: the Podcasts screens have it, not Videos
   t.book = !t.video && !t.podcast && (bookCandidate(t.path) || isBookGenre(t.genre));
 }
 
@@ -237,7 +237,8 @@ void Library::scanAsync() {
     for (const FileEntry& f : need) {
       batch.push_back({f.path, f.size, f.modified, rondo::readTags(f.path.c_str()), false, {}});
       TagResult& r = batch.back();
-      if (!f.video && (bookCandidate(f.path) || isBookGenre(r.tags.genre))) r.hasBook = readBookInfo(f.path.c_str(), r.book);
+      // (a podcast episode on the card: its own chapters and exact length too)
+      if (!f.video && (bookCandidate(f.path) || inPodcastFolder(f.path) || isBookGenre(r.tags.genre))) r.hasBook = readBookInfo(f.path.c_str(), r.book);
       if (batch.size() == 40) {
         std::lock_guard<std::mutex> l(w->mu);
         w->batches.push_back(std::move(batch));

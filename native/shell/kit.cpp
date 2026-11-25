@@ -131,6 +131,9 @@ const Tile later{Icon::Clock, rgb(0x4fd8c8), rgb(0x139c8c)};
 const Tile newEpisodes{Icon::Sparkle, rgb(0xffb04d), rgb(0xf07a12)};
 const Tile upNext{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile saveShow{Icon::Bookmark, rgb(0xff7a93), rgb(0xd6304f)};
+const Tile topShows{Icon::Flame, rgb(0xffa36b), rgb(0xe8521c)};
+const Tile listenOnly{Icon::Headphones, rgb(0x8c9eff), rgb(0x3d5afe)};
+const Tile showNotes{Icon::Type, rgb(0xffd54f), rgb(0xe6a100)};
 const Tile power{Icon::Power, rgb(0xff7a7a), rgb(0xe0283c)};
 const Tile restart{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
 // Library: its sections

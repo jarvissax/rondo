@@ -64,6 +64,8 @@ std::unique_ptr<Screen> makeMusicSearch();
 std::unique_ptr<Screen> makeVideo();
 std::unique_ptr<Screen> makeVideoSearch();
 void openVideo(const Item& item);
+// a podcast episode's video (rss.h): item.id its file or its address; it opens and is kept where it was left
+void openVideoEpisode(const Item& item, const std::string& placeKey);
 std::unique_ptr<Screen> makeShorts();
 // a video's sound (/s/<id>/140, or the file) and its pictures to try for a quality (video_player.cpp)
 std::string videoSound(const Item& item);

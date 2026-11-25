@@ -29,6 +29,8 @@ struct DownloadJob {
   std::string id, title, channel, thumb;
   bool song = false;  // a YouTube Music song (an .m4a in Music/YouTube Music), else a video
   bool episode = false;  // (with song) a YouTube Music podcast episode: an .m4a in Podcasts/<show>
+  bool rss = false;      // an RSS podcast's episode (rss.h): its file as its host has it, in Podcasts/<show>
+  std::string url;       // (rss) where it comes from: rss.h's rssStreamPath, through the local server
   bool alone = true;  // a song asked for by itself, not only for a downloaded playlist (kept when the playlist goes)
   int quality = 480;  // the height asked for (a video)
   enum State { Waiting, Running, Done, Failed, Paused } state = Waiting;
@@ -101,6 +103,11 @@ bool deleteSong(const std::string& file);  // and its entry; out of every playli
 //   Podcasts/<Show>/<Title> [<id>].m4a
 // The library keeps it out of the music (core/books.h's inPodcastFolder); podcasts.h has it.
 bool downloadEpisodeJob(const Item& episode);
+// The main menu's Podcasts' episode (rss.h's downloadRss), in the same queue: its file whole as its
+// host has it (an .mp3, .m4a or .mp4, nothing changed in it), from source (the local server's path):
+//   Podcasts/<Show>/<YYYY-MM-DD> <Title>.<ext>
+// quiet: no toast (Download new episodes)
+bool downloadRssJob(const Item& episode, const std::string& source, bool quiet = false);
 
 // YouTube Music › a playlist › Download playlist: every song of it (a mix: the ones its first page has,
 // as it never ends) in the queue, and a playlist of them in Library, in YouTube's order:

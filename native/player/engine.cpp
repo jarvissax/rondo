@@ -477,6 +477,7 @@ void Engine::command(const std::vector<uint8_t>& m) {
   switch (type) {
     case kPlayQueue: {
       if (videoOn_) videoOn_ = false, video_.stop();
+      released_ = false;  // a new queue: the place kept for the USB drive was the old one's
       speed_ = 100;
       endFade();
       uint32_t start = 0;
@@ -500,6 +501,10 @@ void Engine::command(const std::vector<uint8_t>& m) {
       size_t head = type == kPlayBook ? 17 : 13;
       if (len < head) break;
       if (type == kPlayBook && videoOn_) videoOn_ = false, video_.stop();
+      // a new queue: the place kept for the USB drive (kRelease) was the old one's, and Play would take
+      // this one there (a book started after the card came back from a computer jumped to the music's
+      // place at its first pause and play, Nov 25)
+      released_ = false;
       uint32_t start = 0;
       int64_t at = 0;
       memcpy(&start, p, 4);
@@ -562,6 +567,7 @@ void Engine::command(const std::vector<uint8_t>& m) {
       std::string sound = s.substr(0, z), pictures = z == std::string::npos ? "" : s.substr(z + 1);
       videoOn_ = false;
       video_.stop();
+      released_ = false;  // a new queue (kPlayBook says why)
       speed_ = 100;
       endFade();
       items_ = {sound};
@@ -1020,9 +1026,11 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   const AVCodec* codec = nullptr;
   // a song the server streams: read through HttpSource, from the first of its streams that opens; a file
   // on the card: FFmpeg's own file input
-  bool streamed = path.compare(0, 3, "/s/") == 0;
+  // (an RSS podcast's episode comes from its host through the Y1's own local server: its full address)
+  bool local = path.compare(0, 23, "http://127.0.0.1:47811/") == 0;
+  bool streamed = path.compare(0, 3, "/s/") == 0 || local;
   std::vector<std::string> tries{path};
-  if (streamed) tries = streamCandidates(path, video, opusMisses_ < 3);
+  if (streamed && !local) tries = streamCandidates(path, video, opusMisses_ < 3);
   std::unique_ptr<HttpSource> source;
   for (size_t t = 0; t < tries.size() && !ok && gen == gen_; t++) {
     if (t > 0) {  // the one before didn't open: closed, the next tried
@@ -1041,7 +1049,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
     if (streamed) {
       if (!curl_) curl_ = curl_easy_init();  // one handle for every song: its connection stays open
       pthread_mutex_lock(&mu_);
-      std::string url = base_ + tries[t], token = token_;
+      std::string url = local ? tries[t] : base_ + tries[t], token = token_;
       pthread_mutex_unlock(&mu_);
       source.reset(new HttpSource(curl_, url, token, [this, gen] { return gen != gen_; }));
       fmt = avformat_alloc_context();
@@ -1072,7 +1080,7 @@ bool Engine::decodeTrack(int pos, int64_t seekMs, uint32_t gen) {
   // open because it was stopped, and its error landed on the one after it (Shorts then skipped that
   // one too, and the next, on and on)
   if (gen == gen_ && !ok) {
-    error_ = streamed ? "Can't play this song" : "Can't play " + path.substr(path.rfind('/') + 1);
+    error_ = streamed ? (local ? "Can't play this episode" : "Can't play this song") : "Can't play " + path.substr(path.rfind('/') + 1);
     fprintf(stderr, "rondo-player: %s\n", error_.c_str());
   }
   if (gen == gen_ && ok) error_.clear();

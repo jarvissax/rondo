@@ -16,7 +16,7 @@
 
 namespace rondo {
 
-const char* const kMenuIds[7] = {"nowPlaying", "device", "videos", "music", "whatsapp", "radio", "settings"};
+const char* const kMenuIds[8] = {"nowPlaying", "device", "podcasts", "videos", "music", "whatsapp", "radio", "settings"};
 const float kTextScales[3] = {1.25f, 1.4f, 1.55f};
 const AccentPreset kAccentPresets[6] = {{"accent.ipodBlue", "#1c5ccc"}, {"accent.rondoRed", "#ff3b4f"}, {"accent.mint", "#11a683"},
                                         {"accent.violet", "#7b4fe0"},    {"accent.amber", "#e8860c"},     {"accent.graphite", "#4a4f59"}};
@@ -27,6 +27,7 @@ std::string menuLabel(const std::string& id) {
   if (id == "music") return "YouTube Music";
   if (id == "videos") return "YouTube";
   if (id == "device") return tr("common.library");
+  if (id == "podcasts") return tr("menu.podcasts");
   if (id == "nowPlaying") return tr("menu.nowPlaying");
   if (id == "whatsapp") return "WhatsApp";
   if (id == "radio") return tr("menu.fmRadio");

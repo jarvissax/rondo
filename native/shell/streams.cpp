@@ -21,7 +21,12 @@ std::map<std::string, Item>& registry() {
 
 std::string streamPath(const Item& it) { return "/s/" + it.id + "/140"; }
 
-bool isStream(const std::string& path) { return path.compare(0, 3, "/s/") == 0; }
+// a song or an episode the server (or direct mode) streams, or an RSS episode from its host through
+// the local server (rss.h): not a file on the card
+bool isStream(const std::string& path) {
+  static const std::string rss = std::string(Api::kLocal) + "rss/file?";
+  return path.compare(0, 3, "/s/") == 0 || path.compare(0, rss.size(), rss) == 0;
+}
 
 const Item* streamItem(const std::string& path) {
   auto it = registry().find(path);
@@ -89,7 +94,7 @@ void streamsNetwork(bool online) {
   static int tries = 0;
   static bool waiting = false;  // a try was asked for: the failure must clear before another
   PlayerState s = g_player.state();
-  bool streaming = s.index >= 0 && strncmp(s.path, "/s/", 3) == 0;
+  bool streaming = s.index >= 0 && isStream(s.path);
   int64_t now = now_ns();
   if (online != wasOnline) {
     wasOnline = online;
@@ -133,7 +138,7 @@ size_t g_lastCount = 0;
 
 std::string idOfStream(const std::string& path) {  // "/s/<id>/140" -> id
   size_t a = 3, b = path.find('/', a);
-  return isStream(path) && b != std::string::npos ? path.substr(a, b - a) : "";
+  return path.compare(0, 3, "/s/") == 0 && b != std::string::npos ? path.substr(a, b - a) : "";
 }
 
 const bool kLog = getenv("RONDO_AHEAD_LOG");

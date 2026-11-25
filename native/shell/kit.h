@@ -97,7 +97,9 @@ extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bl
     // Library › Audiobooks and a book's screen
     audiobooks, resume, chapters, bookmarks, speed, finished, startAgain, sleep,
     // YouTube Music's Podcasts: a show, Episodes for Later, New episodes, Episodes up next, Save to library
-    podcasts, later, newEpisodes, upNext, saveShow;
+    podcasts, later, newEpisodes, upNext, saveShow,
+    // the main menu's Podcasts: Top shows (Apple's charts), an episode's Listen only and Show notes
+    topShows, listenOnly, showNotes;
 }
 void drawTile(Env& e, const Tile& t, Rect r, float alpha = 1);
 // a service's mark in white, size wide, centered in r (YouTube's play mark in its tile's red)

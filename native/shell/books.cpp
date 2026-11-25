@@ -14,6 +14,7 @@
 
 #include "app.h"
 #include "podcasts.h"
+#include "rss.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -320,6 +321,7 @@ void playBook(const Book& b) { resume(bookDetails(b)); }
 
 bool spokenDetails(const std::string& key, BookPlay& out) {
   if (isEpisodeKey(key)) return episodeDetails(key, out);
+  if (isRssKey(key)) return rssDetails(key, out);
   if (const Book* b = g_library.bookByKey(key)) return out = bookDetails(*b), true;
   return false;
 }
@@ -340,6 +342,7 @@ int spokenSpeed(const std::string& key) {
   if (g.on && g.book.key == key) return g.speed;
   std::string where = key;
   if (isEpisodeKey(key)) where = episodeSpeedKey(key);
+  if (isRssKey(key)) where = rssSpeedKey(key);
   if (const BookState* s = g_library.bookState(where)) return clampSpeed(s->speed);
   if (const BookState* s = g_library.bookState(key)) return clampSpeed(s->speed);
   return 100;
@@ -368,7 +371,7 @@ void setBookSpeed(const Book& b, int percent) { setSpokenSpeed(b.key, percent); 
 void setSpokenSpeed(const std::string& key, int percent) {
   percent = clampSpeed(percent);
   // where it's kept: a book's own; an episode's show's (every episode of the show); a show's key itself
-  std::string where = isEpisodeKey(key) ? episodeSpeedKey(key) : key;
+  std::string where = isEpisodeKey(key) ? episodeSpeedKey(key) : isRssKey(key) ? rssSpeedKey(key) : key;
   if (g.on && (g.book.key == key || g.book.speedKey == where)) {
     g.speed = percent;
     g_player.setSpeed(percent);
@@ -521,7 +524,9 @@ bool booksTick(int64_t now) {
       // episode: the next of Episodes up next first, if one waits)
       g.finishedHandled = true;
       saveSession(true);
-      if (isEpisodeKey(g.book.key) && episodeEnded(g.book.key)) {
+      // (Up next: the main menu's Podcasts' first, then YouTube Music's)
+      bool episode = isEpisodeKey(g.book.key) || isRssKey(g.book.key);
+      if (episode && (rssEnded(g.book.key) || episodeEnded(g.book.key))) {
         changed = true;
       } else if (g.lent) {
         endSession();
@@ -575,6 +580,7 @@ int64_t booksWakeAt() {
 void booksSaveNow() {
   saveSession(true);
   podcastsSaveNow();  // the episodes kept, with it
+  rssSaveNow();
 }
 
 BookResume booksRestore() {
@@ -603,6 +609,7 @@ BookResume booksRestore() {
   }
   const std::string& cur = paths[size_t(index)];
   if (isEpisodeKey(key)) episodeRestored(key, cur);  // a streamed episode: what Now Playing shows of it
+  if (isRssKey(key)) rssRestored(key, cur);
   if (!isStream(cur) && access(cur.c_str(), R_OK) != 0) {
     int root = cur.compare(0, 17, "/storage/sdcard0/") == 0 ? 1 : cur.compare(0, 17, "/storage/sdcard1/") == 0 ? 2 : 0;
     if (root && !(g_library.presentRoots() & root)) return BookResume::Waiting;
@@ -699,7 +706,7 @@ std::string sleepMark() {
 
 std::string sleepEndName() {
   if (const BookPlay* b = bookNow())
-    return !b->skips ? tr("sleep.endOfChapter") : isEpisodeKey(b->key) ? tr("sleep.endOfEpisode") : tr("sleep.endOfBook");
+    return !b->skips ? tr("sleep.endOfChapter") : isEpisodeKey(b->key) || isRssKey(b->key) ? tr("sleep.endOfEpisode") : tr("sleep.endOfBook");
   return tr("sleep.endOfSong");
 }
 

@@ -177,7 +177,73 @@ bool jpeg(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
   return ok;
 }
 
+// A big PNG (a podcast's cover is often 3000 x 3000: 36 MB whole) read a row at a time into a picture
+// a whole number of times smaller that still covers w x h, each of its pixels the average of the ones
+// it covers: a few hundred KB at once instead. false: not one of these (interlaced, small), or broken.
+bool pngReduced(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
+  struct Mem {
+    const uint8_t* d;
+    size_t n, at;
+  };
+  struct Bufs {  // on the heap, its address fixed before setjmp: a longjmp leaves it as it was
+    std::vector<uint8_t> row, small;
+    std::vector<uint32_t> acc;
+  };
+  std::unique_ptr<Bufs> b(new Bufs);
+  Mem m{data, size, 8};
+  png_structp p = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  if (!p) return false;
+  png_infop info = png_create_info_struct(p);
+  if (!info || setjmp(png_jmpbuf(p))) {
+    png_destroy_read_struct(&p, info ? &info : nullptr, nullptr);
+    return false;
+  }
+  png_set_read_fn(p, &m, [](png_structp pp, png_bytep to, png_size_t len) {
+    Mem* mm = static_cast<Mem*>(png_get_io_ptr(pp));
+    if (mm->at + len > mm->n) png_error(pp, "short");
+    memcpy(to, mm->d + mm->at, len);
+    mm->at += len;
+  });
+  png_set_sig_bytes(p, 8);
+  png_read_info(p, info);
+  int iw = int(png_get_image_width(p, info)), ih = int(png_get_image_height(p, info));
+  int k = std::min(iw / std::max(1, w), ih / std::max(1, h));
+  if (png_get_interlace_type(p, info) != PNG_INTERLACE_NONE || k < 2) {
+    png_destroy_read_struct(&p, &info, nullptr);
+    return false;
+  }
+  // every kind as 8-bit RGBA
+  png_set_expand(p);
+  png_set_strip_16(p);
+  png_set_gray_to_rgb(p);
+  png_set_filler(p, 0xff, PNG_FILLER_AFTER);
+  png_read_update_info(p, info);
+  if (png_get_rowbytes(p, info) < size_t(iw) * 4) {
+    png_destroy_read_struct(&p, &info, nullptr);
+    return false;
+  }
+  int sw = iw / k, sh = ih / k;
+  b->row.resize(png_get_rowbytes(p, info));
+  b->acc.assign(size_t(sw) * 4, 0);
+  b->small.resize(size_t(sw) * sh * 4);
+  for (int y = 0; y < ih; y++) {
+    png_read_row(p, b->row.data(), nullptr);
+    int oy = y / k;
+    if (oy >= sh) continue;  // the rows past the last whole block
+    const uint8_t* r = b->row.data();
+    for (int x = 0; x < sw * k; x++)
+      for (int c = 0; c < 4; c++) b->acc[size_t(x / k) * 4 + c] += r[size_t(x) * 4 + c];
+    if ((y + 1) % k == 0) {
+      uint8_t* to = b->small.data() + size_t(oy) * sw * 4;
+      for (size_t i = 0; i < b->acc.size(); i++) to[i] = uint8_t(b->acc[i] / uint32_t(k * k)), b->acc[i] = 0;
+    }
+  }
+  png_destroy_read_struct(&p, &info, nullptr);
+  return fit(b->small.data(), sw, sh, w, h, out);
+}
+
 bool png(const uint8_t* data, size_t size, int w, int h, Pixels& out) {
+  if (pngReduced(data, size, w, h, out)) return true;
   png_image img;
   memset(&img, 0, sizeof(img));
   img.version = PNG_IMAGE_VERSION;
@@ -474,7 +540,8 @@ struct Worker {
   }
 
   // the server's pictures: /thumb artwork, WhatsApp's avatars and photos (/wa/)
-  static bool remote(const char* path) { return !strncmp(path, "/thumb", 6) || !strncmp(path, "/wa/", 4); }
+  // and an RSS podcast's pictures, through the Y1's own local server (shell/rss.h's rssArt)
+  static bool remote(const char* path) { return !strncmp(path, "/thumb", 6) || !strncmp(path, "/wa/", 4) || !strncmp(path, "http://127.0.0.1:47811/rss/art", 30); }
 
   // a thumbnail from the server: <base><thumb>&w=<width>&h=<height>, as 1.0.x's ImageLoader asked
   bool fetch(rondo::Api& api, int& apiGeneration, const Msg& r, std::vector<uint8_t>& bytes) {

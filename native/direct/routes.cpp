@@ -14,6 +14,7 @@
 #include "model.h"
 #include "music.h"
 #include "podcasts.h"
+#include "rss.h"
 #include "streams.h"
 #include "video.h"
 
@@ -286,6 +287,7 @@ Request parseTarget(const std::string& method, const std::string& target) {
 void route(const Request& r, Response& out) {
   const std::string& p = r.path;
   forgetAgainIfDue();
+  if (rss::route(r, out)) return;  // the main menu's Podcasts (RSS feeds), in both modes
   if (r.method == "POST") return post(r, out);
   if (p == "/healthz") {
     // what the screens read: up, and whether the account's tabs show (signed in with cookies)

@@ -46,6 +46,7 @@
 #include "../direct/innertube.h"
 #include "main_queue.h"
 #include "podcasts.h"
+#include "rss.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -943,7 +944,9 @@ void returnArtApi(std::unique_ptr<ArtApi> a) {
 
 // YouTube Music and YouTube artwork through the Rondo server, or direct mode's local one
 Response Server::thumb(const std::string& path) {
-  if (path.compare(0, 7, "/thumb?") != 0) return error(404, "not found");
+  // the server's (or direct mode's) /thumb, or an RSS podcast's picture through the Y1's local server
+  bool rss = path.compare(0, 30, "http://127.0.0.1:47811/rss/art") == 0;
+  if (path.compare(0, 7, "/thumb?") != 0 && !rss) return error(404, "not found");
   std::vector<uint8_t> bytes;
   if (!cachedArt(path, bytes)) {
     auto where = std::make_shared<std::pair<std::string, std::string>>();  // safe if it runs after 5 s
@@ -965,7 +968,7 @@ Response Server::thumb(const std::string& path) {
     keepArt(path, bytes);
   }
   Response res;
-  res.type = "image/jpeg";
+  res.type = bytes.size() > 4 && bytes[0] == 0x89 && bytes[1] == 'P' ? "image/png" : "image/jpeg";
   res.body.assign(bytes.begin(), bytes.end());
   res.headers.push_back({"Cache-Control", "max-age=86400"});
   return res;
@@ -1646,6 +1649,40 @@ bool episodeIn(const Body& b, Episode& out) {
   return true;
 }
 
+// --- the main menu's Podcasts (rss.h): RSS feeds ---
+
+// a feed through the local server, waited for while it's still being read (202): its body, or the status
+int rssFeedCall(const std::string& path, std::string& body) {
+  int st = 0;
+  for (int tries = 0; tries < 6; tries++) {  // the local server answers within 20 s each time
+    st = coreCall(false, path, "", body, 30000);
+    if (st != 202) break;
+  }
+  return st;
+}
+Response rssFeedError(int st) {
+  return error(st == 422 ? 422 : st == 0 || st == 504 ? 504 : 502, st == 422 ? "not_feed" : st == 0 || st == 504 ? "offline" : st == 202 ? "slow" : "upstream");
+}
+// a show's page: what it is and its episodes (newest first, a story's first first), each with the Y1's marks
+std::string rssShowPageJson(const std::string& body, const RssShow& asked) {
+  RssShow got;
+  std::vector<RssEpisode> eps;
+  if (!parseRssFeed(body, got, eps)) return "";
+  got.id = asked.id.empty() ? got.id : asked.id;
+  got.priv = asked.priv;
+  if (asked.art.find("mzstatic.com/") != std::string::npos) got.art = asked.art;
+  if (got.genre.empty()) got.genre = asked.genre;
+  if (!got.apple) got.apple = asked.apple;
+  if (const RssShow* k = rssShow(got.id))
+    if (k->art.find("mzstatic.com/") != std::string::npos) got.art = k->art;
+  sortRssEpisodes(eps, got.serial);
+  for (RssEpisode& e : eps) e.show = got.id, e.showTitle = got.title;
+  rssNoteFeed(got, eps);
+  std::string out = "{\"show\":" + rssShowJson(got) + ",\"episodes\":[";
+  for (size_t k = 0; k < eps.size(); k++) out += (k ? "," : "") + rssEpisodeJson(eps[k]);
+  return out + "]}";
+}
+
 // POST /api/books/play {key, from: "resume" | "start" | "chapter" | "bookmark" | "at", index, created, positionMs}
 Response playBookRequest(const Body& body) {
   std::string key, from = "resume";
@@ -2155,7 +2192,7 @@ Response Server::api(Request& r, const std::string& path) {
   }
   last_ = monoNs();
   // every body read now (except uploads): an unread body would be taken for the next request
-  std::string text = (m == "POST" || m == "PUT") && path != "/library/upload" && path != "/update" ? smallBody(r) : "";
+  std::string text = (m == "POST" || m == "PUT") && path != "/library/upload" && path != "/update" && path != "/rss/opml" ? smallBody(r) : "";
   auto b = std::make_shared<Body>(text);
   auto ui = [&](std::function<std::string()> make) {
     return onUi([make] { return json(make()); });
@@ -2353,6 +2390,226 @@ Response Server::api(Request& r, const std::string& path) {
       if (b->text("showId", showId) && b->integer("speed", v)) setSpokenSpeed(showSpeedKey(showId), int(v));
       return obj({{"speed", num(int64_t(spokenSpeed(showSpeedKey(showId))))}});
     });
+  // the main menu's Podcasts (RSS): the Y1's own (subscriptions, its lists), the directory and the
+  // feeds through the local server, and what the Y1 does with a show or an episode
+  if (path == "/rss/state" && m == "GET") {
+    std::string key;
+    int st = coreCall(false, std::string(Api::kLocal) + "rss/key", "", key, 10000);
+    bool own = st == 200 && key.find("\"own\":true") != std::string::npos;
+    return ui([own] {
+      std::string s = rssStateJson(), countries;
+      s.pop_back();
+      for (int i = 0; i < kRssCountryCount; i++) countries += std::string(i ? "," : "") + str(kRssCountries[i]);
+      return s + ",\"server\":" + (serverConnected() ? "true" : "false") + ",\"ownKey\":" + (own ? "true" : "false") + ",\"countries\":[" + countries + "]}";
+    });
+  }
+  if ((path == "/rss/search" || path == "/rss/top") && m == "GET") {
+    std::string q = r.param("q"), genre = r.param("genre");
+    if (path == "/rss/search" && (q.empty() || q.size() > 200)) return error(400, "query");
+    if (!genre.empty() && genre.find_first_not_of("0123456789") != std::string::npos) return error(400, "genre");
+    std::string country;
+    onUi([&country] { return country = rssCountry(), json("{}"); });
+    std::string p = std::string(Api::kLocal) + (path == "/rss/search" ? "rss/search?q=" + Api::escape(q) + "&" : "rss/top?" + (genre.empty() ? "" : "genre=" + genre + "&")) +
+                    "country=" + country;
+    std::string body;
+    int st = coreCall(false, p, "", body, 40000);
+    if (st != 200) return error(st == 429 ? 429 : st == 0 ? 504 : 502, st == 429 ? "busy" : st == 0 ? "offline" : "upstream");
+    return json(body);
+  }
+  if (path == "/rss/show" && m == "GET") {
+    RssShow s;
+    s.feed = r.param("feed");
+    if (s.feed.compare(0, 7, "http://") != 0 && s.feed.compare(0, 8, "https://") != 0) return error(400, "feed");
+    s.priv = r.param("private") == "1";
+    s.art = r.param("art"), s.genre = r.param("genre");
+    s.apple = atoll(r.param("apple").c_str());
+    {
+      // its id: the address it was found by
+      std::string probe = "{\"feed\":" + str(s.feed) + "}";
+      onUi([&s, probe] {
+        RssShow k = rssShowFromJson(probe);
+        s.id = k.id;
+        if (k.priv) s.priv = true;
+        if (s.art.empty()) s.art = k.art;
+        return json("{}");
+      });
+    }
+    std::string body;
+    RssShow asked = s;
+    int st = rssFeedCall(rssFeedPath(asked, false, 0, false), body);
+    if (st != 200) return rssFeedError(st);
+    return onUi([body, asked] {
+      std::string page = rssShowPageJson(body, asked);
+      return page.empty() ? error(502, "upstream") : json(page);
+    });
+  }
+  if ((path == "/rss/subscribe" || path == "/rss/add") && m == "POST") {
+    // subscribed from a show the page found (its picture and name as the directory had them), or by a
+    // feed's address (a private or paid feed: only ever read by the Y1)
+    std::string feed;
+    if (!b->text(path == "/rss/add" ? "url" : "feed", feed)) return error(400, "feed");
+    while (!feed.empty() && (feed.back() == ' ' || feed.back() == '\n')) feed.pop_back();
+    while (!feed.empty() && feed[0] == ' ') feed.erase(0, 1);
+    if (feed.compare(0, 7, "http://") != 0 && feed.compare(0, 8, "https://") != 0) return error(400, "feed");
+    RssShow asked;
+    asked.feed = feed;
+    asked.priv = path == "/rss/add";
+    b->text("art", asked.art), b->text("genre", asked.genre), b->text("title", asked.title);
+    int64_t apple = 0;
+    if (b->integer("apple", apple)) asked.apple = apple;
+    {
+      std::string probe = "{\"feed\":" + str(feed) + "}";
+      onUi([&asked, probe] {
+        RssShow k = rssShowFromJson(probe);
+        asked.id = k.id;
+        if (k.priv) asked.priv = true;
+        return json("{}");
+      });
+    }
+    std::string body;
+    int st = rssFeedCall(rssFeedPath(asked, true), body);
+    if (st != 200) return rssFeedError(st);
+    return onUi([body, asked] {
+      RssShow got;
+      std::vector<RssEpisode> eps;
+      if (!parseRssFeed(body, got, eps)) return error(422, "not_feed");
+      got.id = asked.id, got.priv = asked.priv;
+      if (asked.art.find("mzstatic.com/") != std::string::npos) got.art = asked.art;
+      if (got.genre.empty()) got.genre = asked.genre;
+      if (!got.apple) got.apple = asked.apple;
+      for (RssEpisode& e : eps) e.show = got.id, e.showTitle = got.title;
+      rssSubscribe(got, eps);
+      return json(obj({{"show", rssShowJson(got)}, {"state", rssStateJson()}}));
+    });
+  }
+  if (path == "/rss/unsubscribe" && m == "POST")
+    return onUi([b] {
+      std::string id;
+      bool del = false;
+      if (!b->text("id", id)) return error(400, "id");
+      b->flag("deleteDownloads", del);
+      rssUnsubscribe(id, del);
+      return json(rssStateJson());
+    });
+  if (path == "/rss/auto" && m == "PUT")
+    return onUi([b] {
+      std::string id;
+      if (!b->text("id", id) || !rssSubscribed(id)) return error(404, "not subscribed");
+      RssAuto a = rssAuto(id);
+      int64_t keep = a.keep;
+      b->flag("on", a.on), b->flag("deletePlayed", a.deletePlayed);
+      if (b->integer("keep", keep)) a.keep = int(keep);
+      setRssAuto(id, a);
+      return json(rssShowJson(*rssShow(id)));
+    });
+  if (path == "/rss/speed" && m == "PUT")
+    return ui([b] {
+      std::string id;
+      int64_t v = 100;
+      if (b->text("id", id) && b->integer("speed", v)) setSpokenSpeed(rssShowSpeedKey(id), int(v));
+      return obj({{"speed", num(int64_t(spokenSpeed(rssShowSpeedKey(id))))}});
+    });
+  if (path == "/rss/country" && m == "PUT")
+    return onUi([b] {
+      std::string c;
+      if (!b->text("country", c)) return error(400, "country");
+      bool known = false;
+      for (int i = 0; i < kRssCountryCount; i++) known = known || c == kRssCountries[i];
+      if (!known) return error(400, "country");
+      setRssCountry(c);
+      return json(rssStateJson());
+    });
+  if (path == "/rss/check" && m == "POST")
+    return ui([] {
+      rssCheckNow();
+      return rssStateJson();
+    });
+  if ((path == "/rss/play" || path == "/rss/queue" || path == "/rss/played" || path == "/rss/later" || path == "/rss/download") && m == "POST") {
+    std::string ep;
+    if (yyjson_val* v = b->get("episode")) {
+      size_t len = 0;
+      char* s = yyjson_val_write(v, 0, &len);
+      if (s) ep.assign(s, len), free(s);
+    }
+    return onUi([b, path, ep] {
+      RssEpisode e = rssEpisodeFromJson(ep);
+      if (e.id.size() != 16 || (e.url.empty() && e.show.empty())) return error(400, "episode");
+      bool flag = false;
+      if (path == "/rss/play") {
+        std::string from;
+        b->text("from", from);
+        if (from == "start") playRssFrom(e, 0);
+        else if (from == "listen") listenRss(e);
+        else playRss(e);
+      } else if (path == "/rss/queue") {
+        b->flag("next", flag);
+        queueRss(e, flag);
+      } else if (path == "/rss/played") {
+        if (!b->flag("played", flag)) return error(400, "played");
+        markRssPlayed(e, flag);
+      } else if (path == "/rss/later") {
+        if (!b->flag("later", flag)) return error(400, "later");
+        setRssLater(e, flag);
+      } else {
+        downloadRss(e);
+      }
+      return json(obj({{"player", playerJson()}, {"episode", rssEpisodeJson(e)}, {"state", rssStateJson()}}));
+    });
+  }
+  if (path == "/rss/download" && m == "DELETE") {
+    std::string id = r.param("id");
+    return onUi([id] {
+      if (!deleteRssDownload(id)) return error(404, "not found");
+      return json(rssStateJson());
+    });
+  }
+  if (path == "/rss/upnext" && m == "DELETE") {
+    std::string id = r.param("id");
+    return ui([id] {
+      rssRemoveFromUpNext(id);
+      return rssStateJson();
+    });
+  }
+  if (path == "/rss/notes" && m == "GET") {
+    std::string feed = r.param("feed"), guid = r.param("guid"), body;
+    if (feed.empty() || guid.empty()) return error(400, "episode");
+    int st = coreCall(false, std::string(Api::kLocal) + "rss/notes?url=" + Api::escape(feed) + "&guid=" + Api::escape(guid), "", body, 20000);
+    if (st != 200) return error(502, "upstream");
+    return json(body);
+  }
+  if (path == "/rss/key" && m == "PUT") {
+    std::string k, s;
+    b->text("key", k), b->text("secret", s);
+    std::string body;
+    int st = coreCall(true, std::string(Api::kLocal) + "rss/key", obj({{"key", str(k)}, {"secret", str(s)}}), body, 10000);
+    if (st != 200) return error(st == 400 ? 400 : 502, st == 400 ? "key" : "failed");
+    return json(body);
+  }
+  if (path == "/rss/opml" && m == "GET")
+    return onUi([] {
+      Response res;
+      res.type = "text/x-opml; charset=utf-8";
+      res.body = rssOpml();
+      res.headers.push_back({"Content-Disposition", "attachment; filename=\"rondo-podcasts.opml\""});
+      res.headers.push_back({"Cache-Control", "no-store"});
+      return res;
+    });
+  if (path == "/rss/opml" && m == "POST") {
+    // an OPML file from another podcast app: its shows subscribed to one by one, the page watching
+    int64_t length = r.length();
+    if (length <= 0 || length > (2 << 20)) return error(400, "size");
+    std::string opml;
+    streamBody(r, length, [&](const char* p, size_t n) {
+      opml.append(p, n);
+      return true;
+    });
+    return onUi([opml] {
+      int n = rssImportOpml(opml, [](int, int, int) {});
+      if (n == 0) return error(422, "no_feeds");
+      if (n < 0) return error(409, "importing");
+      return json(obj({{"feeds", num(int64_t(n))}, {"state", rssStateJson()}}));
+    });
+  }
   if (path == "/sleep" && m == "PUT")
     return onUi([b] {
       std::string mode;

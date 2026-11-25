@@ -120,7 +120,7 @@ class MusicDownloadsScreen : public MusicListScreen {
   static std::string key() {
     std::string k = downloadsHeld() + (downloadsGoing() ? "g" : "") + (downloadsPaused() ? "p" : "") + "|";
     for (const DownloadJob& j : downloadJobs())
-      if (j.song) k += j.id + char('0' + j.state) + "|";
+      if (j.song && !j.rss) k += j.id + char('0' + j.state) + "|";
     for (const PlaylistDownload& p : playlistDownloads())
       k += p.id + (p.loading ? "l" : "") + std::to_string(p.total) + "/" + std::to_string(p.onCard) + "/" + std::to_string(p.going) + "/" + std::to_string(p.paused) + (p.cover.empty() ? "" : "c") + "|";
     return k;
@@ -141,7 +141,7 @@ class MusicDownloadsScreen : public MusicListScreen {
       add(h);
     };
     bool going = false;
-    for (const DownloadJob& j : downloadJobs()) going = going || (j.song && j.state != DownloadJob::Done);
+    for (const DownloadJob& j : downloadJobs()) going = going || (j.song && !j.rss && j.state != DownloadJob::Done);
     std::vector<PlaylistDownload> lists = playlistDownloads();
     std::vector<Item> songs = downloadedSongs();
     int sections = int(going) + int(!lists.empty()) + int(!songs.empty());
@@ -174,7 +174,7 @@ class MusicDownloadsScreen : public MusicListScreen {
     if (going) {
       if (sections > 1) header(tr("music.onTheWay"));
       for (const DownloadJob& j : downloadJobs()) {
-        if (!j.song || j.state == DownloadJob::Done) continue;
+        if (!j.song || j.rss || j.state == DownloadJob::Done) continue;
         Row r;
         r.title = j.title;
         r.thumb = j.thumb;
@@ -687,8 +687,8 @@ Row musicDownloadsRow() {
   d.title = tr("music.downloads");
   int on = int(downloadedSongs().size()), going = 0, paused = 0;
   for (const DownloadJob& j : downloadJobs()) {
-    going += j.song && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
-    paused += j.song && j.state == DownloadJob::Paused;
+    going += j.song && !j.rss && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running);
+    paused += j.song && !j.rss && j.state == DownloadJob::Paused;
   }
   std::string cardPart = on ? " \xc2\xb7 " + tr("downloads.onCard", {{"count", on}}) : "";
   std::string held = downloadsHeld();  // why they wait: Wi-Fi, the card

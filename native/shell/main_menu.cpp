@@ -1,6 +1,7 @@
 // The main menu (MainMenuScreen.kt in 1.0.x): the menu on the left, a preview of the selected entry on
 // the right.
 #include "app.h"
+#include "rss.h"
 #include "screens.h"
 #include "whatsapp.h"
 
@@ -62,7 +63,7 @@ class MainMenuScreen : public Screen {
     // the labels: menuLabel() (core/config.h), in the language spoken
     static const E kEntries[] = {{"music", &tiles::music},   {"videos", &tiles::video},          {"whatsapp", &tiles::whatsapp},
                                  {"device", &tiles::device}, {"nowPlaying", &tiles::nowPlaying}, {"radio", &tiles::radio},
-                                 {"settings", &tiles::settings}};
+                                 {"settings", &tiles::settings}, {"podcasts", &tiles::podcasts}};
     std::vector<Row> rows;
     for (const MenuEntry& m : g_config.theme.menu) {
       if (!m.visible) continue;
@@ -73,6 +74,7 @@ class MainMenuScreen : public Screen {
         r.tile = e.tile;
         r.chevron = true;
         if (m.id == "device") r.onSelect = [] { g_app->push(makeDevice()); };
+        if (m.id == "podcasts") r.onSelect = [] { g_app->push(makeRssHome()); };
         if (m.id == "nowPlaying") r.onSelect = [] { openNowPlaying(); };
         if (m.id == "settings") r.onSelect = [] { g_app->push(makeSettings()); };
         if (m.id == "music") r.onSelect = [] { g_app->push(makeMusic()); };
@@ -246,6 +248,7 @@ class MainMenuScreen : public Screen {
                        : tile == &tiles::video      ? "YouTube"
                        : tile == &tiles::whatsapp   ? "WhatsApp"
                        : tile == &tiles::device     ? tr("common.library")
+                       : tile == &tiles::podcasts   ? tr("menu.podcasts")
                        : tile == &tiles::nowPlaying ? (fm.fmOn ? radioName : tr("nowPlaying.nothingPlaying"))
                        : tile == &tiles::radio      ? (fm.fmOn ? radioName : tr("menu.fmRadio"))
                                                     : tr("common.settings");

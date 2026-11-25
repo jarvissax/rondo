@@ -12,6 +12,7 @@
 
 namespace rondo {
 extern const char kRootCerts[];  // generated from native/assets/certs/*.pem (native/CMakeLists.txt)
+extern const char kPodcastRoots[];  // native/assets/certs/podcast-roots.pem
 
 namespace net {
 
@@ -62,6 +63,14 @@ void trust(CURL* curl, bool wide) {
     roots = {(void*)kRootCerts, strlen(kRootCerts), CURL_BLOB_NOCOPY};
   }
   curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &roots);  // curl copies what it needs per connection
+}
+
+void trustPodcastHosts(CURL* curl) {
+  static std::once_flag once;
+  static std::string all;
+  std::call_once(once, [] { all = wideRoots() + "\n" + kPodcastRoots; });
+  curl_blob roots = {(void*)all.data(), all.size(), CURL_BLOB_NOCOPY};
+  curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &roots);
 }
 
 bool retryable(CURLcode rc) { return rc == CURLE_COULDNT_CONNECT || rc == CURLE_SEND_ERROR || rc == CURLE_RECV_ERROR; }

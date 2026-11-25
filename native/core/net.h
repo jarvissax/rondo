@@ -15,5 +15,8 @@ void trust(CURL* curl, bool wide);
 // A failure 1.0.x retried after 250 ms, up to 20 times: the hotspot refusing a connect, a reset
 // (OkHttp's SocketException).
 bool retryable(CURLcode rc);
+// For podcast hosts (direct/rss.cpp), which use every certificate authority there is: the wide set
+// above and Apple's trusted roots (native/assets/certs/podcast-roots.pem), loaded once
+void trustPodcastHosts(CURL* curl);
 
 }  // namespace rondo::net

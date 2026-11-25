@@ -26,6 +26,7 @@
 #include "../core/clock.h"
 #include "../core/lang.h"
 #include "../direct/innertube.h"
+#include "../direct/rss.h"
 #include "../direct/server.h"
 
 #include "../player/protocol.h"  // readFully
@@ -540,6 +541,8 @@ void runCore(int sock, CoreState* shm) {
         static std::string langDir;
         if (!f[6].empty() && f[6] != langDir) langDir = f[6], lang::init(langDir, "device", "en");
         api.configure(f[0], token, cacheDir, f[3], f[4], language);
+        // the Rondo server, whatever YouTube's source: podcasts ask it for help when it can (direct/rss.h)
+        direct::rss::configure(f[3], f[4]);
         // direct mode keeps its visitor id and rules beside the prefs (the cache's folder's folder)
         static std::string directData;
         std::string data = cacheDir.empty() ? "" : cacheDir.substr(0, cacheDir.rfind('/'));

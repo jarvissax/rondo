@@ -74,11 +74,15 @@ if(EXISTS ${TP}/lib/libcurl.a)
   endforeach()
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp
     "namespace rondo { extern const char kRootCerts[] = R\"PEM(${ROOT_X1}\n${ROOT_YR}\n${GTS})PEM\"; }\n")
+  # podcast hosts (direct/rss.cpp): Apple's trusted roots (tools/native/podcast-roots.sh), as Android 4.2's are old
+  file(READ ${CMAKE_CURRENT_SOURCE_DIR}/assets/certs/podcast-roots.pem PODCAST_ROOTS)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/podcast_roots.cpp
+    "namespace rondo { extern const char kPodcastRoots[] = R\"PEM(${PODCAST_ROOTS})PEM\"; }\n")
   foreach(lib curl nghttp2 ssl crypto)
     add_library(tp_${lib} STATIC IMPORTED)
     set_target_properties(tp_${lib} PROPERTIES IMPORTED_LOCATION ${TP}/lib/lib${lib}.a)
   endforeach()
-  add_library(rondo_net STATIC core/api.cpp core/net.cpp core/bundle.cpp ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp)
+  add_library(rondo_net STATIC core/api.cpp core/net.cpp core/bundle.cpp ${CMAKE_CURRENT_BINARY_DIR}/roots.cpp ${CMAKE_CURRENT_BINARY_DIR}/podcast_roots.cpp)
   target_compile_definitions(rondo_net PUBLIC CURL_STATICLIB)
   target_link_libraries(rondo_net PUBLIC rondo_core tp_curl tp_nghttp2 tp_ssl tp_crypto z)
   target_link_libraries(rondo_ui PUBLIC rondo_net)  # rondo-media fetches the server's artwork
@@ -88,13 +92,13 @@ if(EXISTS ${TP}/lib/libcurl.a)
   add_executable(uploadtest tools/uploadtest.cpp)
   target_link_libraries(uploadtest PRIVATE rondo_net)
   # direct mode (N7): YouTube without a server, behind a local copy of the server's API (rondo-core)
-  add_library(rondo_direct STATIC direct/json.cpp direct/innertube.cpp direct/tv_auth.cpp direct/model.cpp direct/music.cpp direct/podcasts.cpp direct/video.cpp
-    direct/streams.cpp direct/lyrics.cpp direct/routes.cpp direct/server.cpp)
+  add_library(rondo_direct STATIC direct/json.cpp direct/innertube.cpp direct/tv_auth.cpp direct/model.cpp direct/music.cpp direct/podcasts.cpp direct/rss.cpp direct/video.cpp
+    direct/streams.cpp direct/lyrics.cpp direct/routes.cpp direct/server.cpp direct/rss_parse.cpp)
   target_link_libraries(rondo_direct PUBLIC rondo_net rondo_core)
 endif()
 
 # Rondo 2.0's shell: 1.0.x's screens, ported 1:1 (native/shell, native/apps/rondo)
-add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/organize_screens.cpp shell/coverflow_screen.cpp shell/photo_screens.cpp shell/files_screen.cpp shell/file_ops.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp shell/subtitles.cpp shell/downloads.cpp shell/fill_in.cpp shell/shelves.cpp shell/whatsapp.cpp shell/whatsapp_screens.cpp shell/language_screen.cpp shell/books.cpp shell/book_screens.cpp shell/podcasts.cpp shell/podcast_screens.cpp)
+add_library(rondo_shell STATIC shell/kit.cpp shell/library_screens.cpp shell/main_menu.cpp shell/now_playing.cpp shell/lyrics_view.cpp shell/music_list.cpp shell/playlist_screens.cpp shell/organize_screens.cpp shell/coverflow_screen.cpp shell/photo_screens.cpp shell/files_screen.cpp shell/file_ops.cpp shell/settings_screens.cpp shell/usb_screen.cpp shell/wifi_screens.cpp shell/music_screen.cpp shell/streams.cpp shell/music_screens.cpp shell/video_screen.cpp shell/video_player.cpp shell/shorts_screen.cpp shell/bluetooth_screens.cpp shell/fm_screens.cpp shell/power_screens.cpp shell/server_screens.cpp shell/dashboard_server.cpp shell/dashboard_screen.cpp shell/main_queue.cpp shell/sound_screens.cpp shell/resume.cpp shell/update_screen.cpp shell/safety_screens.cpp shell/date_screens.cpp shell/subtitles.cpp shell/downloads.cpp shell/fill_in.cpp shell/shelves.cpp shell/whatsapp.cpp shell/whatsapp_screens.cpp shell/language_screen.cpp shell/books.cpp shell/book_screens.cpp shell/podcasts.cpp shell/podcast_screens.cpp shell/rss.cpp shell/rss_screens.cpp)
 target_link_libraries(rondo_shell PUBLIC rondo_ui)
 add_executable(rondo apps/rondo/main.cpp)
 target_link_libraries(rondo PRIVATE rondo_shell rondo_platform_y1)
