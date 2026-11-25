@@ -12,6 +12,9 @@ import { EqService, registerEqRoutes } from "./eq.js";
 import { Health } from "./health.js";
 import { langFromHeader, withLang } from "./lang.js";
 import { type LyricsDeps, LyricsService, lrclibGet, registerLyricsRoutes } from "./lyrics.js";
+import { type FeedFetchOptions, FeedFetcher, type FeedSource } from "./feedFetch.js";
+import { type IndexGet, PodcastIndex } from "./podcastIndex.js";
+import { FeedCache, registerRssRoutes } from "./rss.js";
 import { execRunner, Resolver, type YtdlpRunner } from "./resolver.js";
 import type { ServerUpdate } from "./serverUpdate.js";
 import { registerTimezoneRoutes, TimezoneService } from "./timezone.js";
@@ -42,6 +45,8 @@ export async function buildApp(
     serverUpdate?: ServerUpdate;
     eq?: EqService;
     timezone?: TimezoneService;
+    // RSS podcasts (rss.ts): how feeds are fetched and Podcast Index is asked (tests make them up)
+    rss?: { source?: FeedSource; fetch?: FeedFetchOptions; indexGet?: IndexGet; now?: () => number };
     // WhatsApp (the running server's; tests build the app without it)
     whatsapp?: (log: FastifyInstance["log"]) => WhatsApp;
   } = {},
@@ -75,9 +80,12 @@ export async function buildApp(
   let browse: Browse | undefined;
   const tv = opts.tv ?? new TvAccount(config.tvTokensFile, app.log);
   const whatsapp = opts.whatsapp?.(app.log); // Rondo 3.0.4: WhatsApp, linked on the admin page
+  const store = new Store(config.configFile);
+  // podcast search with the key pasted on the admin page
+  const podcastIndex = new PodcastIndex(() => store.data.podcastIndex, opts.rss?.indexGet, opts.rss?.now);
   const admin = new Admin({
     config,
-    store: new Store(config.configFile),
+    store,
     health,
     resolver,
     logs,
@@ -88,6 +96,7 @@ export async function buildApp(
     updates: opts.updates,
     serverUpdate: opts.serverUpdate,
     whatsapp,
+    podcastIndex,
   });
   // each request in the language its Rondo speaks (Accept-Language; English when it says none):
   // YouTube is asked in it and the server's own words follow it (lang.ts)
@@ -120,6 +129,14 @@ export async function buildApp(
   registerLyricsRoutes(app, { lyrics });
   registerEqRoutes(app, opts.eq ?? new EqService()); // Rondo 2.0: Settings › Sound › Headphone match
   if (whatsapp) registerWhatsAppRoutes(app, whatsapp); // the Rondo's: chats, messages, sending
+  // RSS podcasts: a feed read for the Rondo, podcast search in Podcast Index
+  let source = opts.rss?.source;
+  if (!source) {
+    const fetcher = new FeedFetcher(opts.rss?.fetch);
+    app.addHook("onClose", () => fetcher.close());
+    source = fetcher.fetch;
+  }
+  registerRssRoutes(app, { feeds: new FeedCache(source, { now: opts.rss?.now }), index: podcastIndex });
 
   return { app, health, resolver, admin, tv, whatsapp };
 }

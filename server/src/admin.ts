@@ -20,6 +20,7 @@ import { hashPassword, sha256, type Store, verifyPassword } from "./store.js";
 import type { ServerUpdate } from "./serverUpdate.js";
 import { isNewer, type Updates } from "./updates.js";
 import { pageStrings } from "./lang.js";
+import type { PodcastIndex } from "./podcastIndex.js";
 
 const run = promisify(execFile);
 // the container's yt-dlp installer (infra/ytdlp-install.sh, copied into the image)
@@ -69,7 +70,12 @@ export interface AdminDeps {
   serverUpdate?: ServerUpdate;
   // WhatsApp, linked from the admin page (whatsapp.ts); none when left out
   whatsapp?: WhatsApp;
+  // podcast search in Podcast Index with the key pasted here (podcastIndex.ts)
+  podcastIndex?: PodcastIndex;
 }
+
+// a Podcast Index API key or secret as pasted: printable ASCII, no spaces
+const INDEX_KEY = /^[\x21-\x7e]{8,200}$/;
 
 const randomCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
 
@@ -330,6 +336,7 @@ export class Admin {
       pairing: this.pairing && this.pairing.expiresAt > Date.now() ? { code: this.pairing.code, expiresAt: this.pairing.expiresAt } : null,
       tv: this.deps.tv?.state() ?? null,
       whatsapp: this.deps.whatsapp?.status() ?? null,
+      podcastIndex: this.podcastIndexState(),
       updates: this.updates(h.ytdlp),
     };
   }
@@ -408,6 +415,39 @@ export class Admin {
 
   logs() {
     return { lines: this.deps.logs.all() };
+  }
+
+  // --- Podcast Index (podcast search on the Rondo) ---
+
+  // whether a key is saved, its first characters and when; the secret never leaves the server
+  podcastIndexState() {
+    const k = this.deps.store.data.podcastIndex;
+    return k ? { set: true, key: `${k.key.slice(0, 4)}…`, setAt: k.setAt } : { set: false, key: null, setAt: null };
+  }
+
+  // "key" or "secret" when one doesn't look like it, else null (saved)
+  setPodcastIndex(key: string, secret: string): "key" | "secret" | null {
+    const k = key.trim();
+    const s = secret.trim();
+    if (!INDEX_KEY.test(k)) return "key";
+    if (!INDEX_KEY.test(s)) return "secret";
+    this.deps.store.update((d) => ({ ...d, podcastIndex: { key: k, secret: s, setAt: Date.now() } }));
+    this.deps.podcastIndex?.forget();
+    this.deps.log.info("Podcast Index key saved from the admin page");
+    return null;
+  }
+
+  removePodcastIndex(): void {
+    this.deps.store.update((d) => {
+      const { podcastIndex: _gone, ...rest } = d;
+      return rest;
+    });
+    this.deps.podcastIndex?.forget();
+    this.deps.log.info("Podcast Index key removed from the admin page");
+  }
+
+  async checkPodcastIndex() {
+    return (await this.deps.podcastIndex?.check()) ?? { ok: false as const, error: "no_key" as const };
   }
 }
 
@@ -569,6 +609,17 @@ export function registerAdminRoutes(app: FastifyInstance, admin: Admin): void {
         return reply.code(502).send({ error: "whatsapp" });
       }
     });
+    // Podcast Index: the key and secret for podcast search (the secret is never sent back)
+    scope.post<{ Body: { key?: unknown; secret?: unknown } }>("/admin/api/podcasts/key", async (req, reply) => {
+      const bad = admin.setPodcastIndex(str(req.body?.key), str(req.body?.secret));
+      if (bad) return reply.code(400).send({ error: bad });
+      return { ok: true, podcastIndex: admin.podcastIndexState() };
+    });
+    scope.delete("/admin/api/podcasts/key", async () => {
+      admin.removePodcastIndex();
+      return { ok: true };
+    });
+    scope.post("/admin/api/podcasts/check", async () => admin.checkPodcastIndex());
     scope.post("/admin/api/whatsapp/unlink", async (_req, reply) => {
       const wa = admin.whatsapp;
       if (!wa) return reply.code(404).send({ error: "not_found" });

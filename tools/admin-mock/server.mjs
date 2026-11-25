@@ -16,6 +16,7 @@
 //   node tools/admin-mock/server.mjs --updates    a newer Rondo and yt-dlp are out (updates.ts); Update on the
 //                                                 Overview runs a pretend server update (download, restart)
 //   node tools/admin-mock/server.mjs --no-updater no updater container: "How to update" instead of Update
+//   node tools/admin-mock/server.mjs --podcast-index  a Podcast Index key saved (Check fails for a key with "bad" in it)
 //   PORT=9000 CODE_SECONDS=40 node tools/admin-mock/server.mjs
 //   SIGNED_IN=1 node tools/admin-mock/server.mjs  every visit signed in (screenshots with headless Chrome)
 //
@@ -46,6 +47,7 @@ const AUTOPAIR = !argv.has('--no-autopair');
 const SLOW = argv.has('--slow');
 const UPDATES = argv.has('--updates');
 const UPDATER = !argv.has('--no-updater');
+const PODCAST_INDEX = argv.has('--podcast-index');
 // the pretend server update: the version it runs, the next one, and the updater's state
 let version = VERSION;
 const NEXT = VERSION.replace(/(\d+)$/, (n) => String(Number(n) + 1));
@@ -63,6 +65,7 @@ const S = {
   wa: process.argv.includes('--whatsapp') ? { state: 'open', linkedAt: NOW - 3600_000, codeAt: 0 } : { state: 'unlinked', linkedAt: 0, codeAt: 0 },
   tv: process.argv.includes('--tv') ? { signedIn: true, account: { name: 'Alex', handle: '@alex' }, pending: null, error: null } : { signedIn: false, account: null, pending: null, error: null },
   password: FRESH ? null : PASSWORD,
+  podcastIndex: PODCAST_INDEX ? { key: 'UXKCGDSYGUUEVQJSYDZH', setAt: NOW - 3 * 86400_000 } : null,
   setupCode: FRESH ? code6() : null,
   sessions: new Map(),
   failures: [],
@@ -157,6 +160,7 @@ function status() {
     pairing: p ? { code: p.code, expiresAt: p.expiresAt } : null,
     tv: { ...S.tv, pending: S.tv.pending && S.tv.pending.expiresAt > Date.now() ? S.tv.pending : null },
     whatsapp: waStatus(),
+    podcastIndex: S.podcastIndex ? { set: true, key: `${S.podcastIndex.key.slice(0, 4)}…`, setAt: S.podcastIndex.setAt } : { set: false, key: null, setAt: null },
     updates: UPDATES
       ? { server: version === NEXT ? null : { version: NEXT, url: `https://github.com/jarvissax/rondo/releases/tag/v${NEXT}`, publishedAt: NOW - 86400000 }, ytdlp: S.ytdlp.version < '2026.11.01' ? { version: '2026.11.01.233542', url: 'https://github.com/yt-dlp/yt-dlp-nightly-builds/releases', publishedAt: NOW - 3600000 } : null, checkedAt: NOW }
       : { server: null, ytdlp: null, checkedAt: NOW },
@@ -322,6 +326,21 @@ async function api(req, res, url) {
     return send(res, 200, waStatus().code);
   }
   if (pathname === '/admin/api/whatsapp/unlink' && method === 'POST') { S.wa = { state: 'unlinked', linkedAt: 0, codeAt: 0 }; return send(res, 200, waStatus()); }
+  // the Podcast Index key: kept here as the real server keeps it, never sent back
+  if (pathname === '/admin/api/podcasts/key' && method === 'POST') {
+    const b = await readJson(req);
+    const ok = (v) => typeof v === 'string' && /^[\x21-\x7e]{8,200}$/.test(v.trim());
+    if (!ok(b?.key)) return err(res, 400, 'key');
+    if (!ok(b?.secret)) return err(res, 400, 'secret');
+    S.podcastIndex = { key: b.key.trim(), setAt: Date.now() };
+    return send(res, 200, { ok: true, podcastIndex: status().podcastIndex });
+  }
+  if (pathname === '/admin/api/podcasts/key' && method === 'DELETE') { S.podcastIndex = null; return send(res, 200, { ok: true }); }
+  if (pathname === '/admin/api/podcasts/check' && method === 'POST') {
+    if (!S.podcastIndex) return send(res, 200, { ok: false, error: 'no_key' });
+    await new Promise((r) => setTimeout(r, 700));
+    return send(res, 200, /bad/i.test(S.podcastIndex.key) ? { ok: false, error: 'key', status: 401 } : { ok: true, ms: 412 });
+  }
   if (pathname === '/admin/api/tv/code' && method === 'DELETE') { clearTimeout(S.tvTimer); S.tv.pending = null; return send(res, 200, { ok: true }); }
   if (pathname === '/admin/api/tv' && method === 'DELETE') { clearTimeout(S.tvTimer); S.tv = { signedIn: false, account: null, pending: null, error: null }; return send(res, 200, { ok: true }); }
 

@@ -56,7 +56,10 @@ the same paths either way.
   `http://<server-ip>:3000` directly; the admin page and the dashboard mark such a connection
   "not encrypted: use it only on your home network".
 - Settings are kept in `/data/config.json` on the server's volume (admin password hash, device
-  token hash, pairing time, last seen). Secrets are never returned by any endpoint.
+  token hash, pairing time, last seen, the Podcast Index API key and secret). The file is readable by
+  the server only (0600). The password and the token are kept as hashes; the Podcast Index key and
+  secret as they are, since every Podcast Index request is signed with them. Secrets are never
+  returned by any endpoint or written to the log.
 
 ## Guessing limits
 
@@ -98,6 +101,7 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
    "whatsapp": {"state": "unlinked" | "linking" | "connecting" | "open" | "closed",
                 "me": {"jid", "name", "number"} | null, "code": {"code": "K7Q2MX4R", "expiresAt": …} | null,
                 "error": "", "syncing": bool, "chats": 87} | null,
+   "podcastIndex": {"set": true, "key": "UXKC…" | null, "setAt": 1793440000000 | null},
    "updates": {"server": {"version": "1.0.1", "url": "https://github.com/…", "publishedAt": …} | null,
                "ytdlp": {"version": "2026.11.01.233542", "url": "…", "publishedAt": …} | null, "checkedAt": … | null}}
   ```
@@ -140,6 +144,17 @@ Paths under `/admin/api`. Everything except `state`, `setup`, `login` needs the 
   is never logged.
 - `POST /admin/api/whatsapp/unlink` → the status: the server leaves the linked devices and deletes
   the chats and media it kept (also a waiting code's cancel).
+- `POST /admin/api/podcasts/key` `{"key": "…", "secret": "…"}` (server 3.7.0) → `{"ok": true,
+  "podcastIndex": {"set": true, "key": "UXKC…", "setAt": …}}`: saves the Podcast Index API key and
+  secret (free at [api.podcastindex.org/signup](https://api.podcastindex.org/signup)) for
+  `GET /podcasts/index/search`; replaces a saved one. `400 {"error": "key"}` or `{"error": "secret"}`
+  when one isn't 8 to 200 printable characters without spaces. The secret never comes back: `status`
+  shows the key's first four characters only.
+- `DELETE /admin/api/podcasts/key` → `{"ok": true}` (podcast search on the Rondo is Apple's directory
+  only again).
+- `POST /admin/api/podcasts/check` → `{"ok": true, "ms": 412}`, or `{"ok": false, "error": "no_key" |
+  "key" | "upstream", "status"?: 401}`: one search on Podcast Index with the saved key (`key`: Podcast
+  Index refused it; `upstream`: it failed or didn't answer).
 
 ## Device pairing (called by the Rondo, not the admin page)
 
@@ -232,6 +247,61 @@ itself (`native/direct/podcasts.cpp`). An episode is `{"kind": "episode", "id", 
   Save to library, Episodes for Later, Mark as played or unplayed, as YouTube Music's own buttons
   (YouTube shows a change some seconds late). 503 without cookies.txt.
 - `GET /music/home?podcasts=1`: Home's shelves with shows and episodes as such (without it, as before).
+
+## RSS podcasts for the Rondo (device token)
+
+Server 3.7.0, not released yet (`server/src/rss.ts`, `rssFeed.ts`, `feedFetch.ts`,
+`podcastIndex.ts`), new routes only. A Rondo reads podcast feeds and plays episodes straight from the
+podcasts' own hosts, in both modes; these two only help it.
+
+- `GET /podcasts/feed?url=<feed address>&offset=0&limit=100&since=<unix seconds>` → the feed read
+  for the Rondo (`rssFeed.ts`, the same rules as the Y1's own parser), a page of its episodes at a
+  time:
+  ```json
+  {"feed": "https://example.com/feed.xml", "title": "…", "author": "…", "description": "…",
+   "art": "https://…", "link": "https://…", "language": "en-us", "serial": false, "explicit": false,
+   "complete": false, "newFeedUrl": "", "count": 523, "offset": 0, "next": 100,
+   "episodes": [{"guid": "…", "title": "…", "date": 1732500000, "duration": 3600,
+                 "url": "https://…/ep.mp3", "type": "audio/mpeg", "size": 12345678, "image": "",
+                 "chapters": "", "season": 0, "episode": 0, "episodeType": "full", "notes": "…"}]}
+  ```
+  `feed` is the address the feed was read from in the end (after permanent redirects, 301 and 308,
+  that no temporary one came before); `count` every episode the feed has (an item without an
+  enclosure isn't one); `episodes` in the feed's own order, `limit` of them (1 to 500, default 100)
+  from `offset`, with each episode's `notes` (plain text, at most 4000 bytes; the show's description
+  at most 2000); `next` the next page's offset, or `null` on the last. With `since`, only the
+  episodes dated after it are paged (`offset`, `limit` and `next` count within those; an episode
+  without a readable date is never after it), while `count` and the channel are as always: how a
+  Rondo fetches just the new episodes of a big feed it has. A value that isn't a number is left out (`offset` 0, `limit` 100, no
+  `since`).
+
+  The server fetches the feed with its own user agent (`Rondo server (…)`), following up to 5
+  redirects, in at most 30 s, and refuses one over 60 MB (counted unpacked; gzip, deflate and br are
+  asked for). A feed is kept in memory for 10 minutes (at most 200 feeds, about 64 MB of text in all,
+  the least recently used going first), then asked again with `If-None-Match` /
+  `If-Modified-Since`; nothing is written to disk. An address with a user name and password sends
+  them as Basic auth to that host only. Errors:
+  - `400 {"error": "url"}`: no address, not http(s), or a host (the feed's or a redirect's) that
+    resolves to an address on a private network: loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7),
+    link-local (169.254/16, fe80::/10), carrier-grade NAT (100.64/10), multicast, documentation or
+    otherwise reserved, IPv4 inside IPv6 too. The addresses are checked again as the connection opens,
+    so a name that answers differently the second time can't get through.
+  - `502 {"error": "upstream", "status": 404}`: the host answered an error (`status` its HTTP status;
+    0 when it didn't answer: no such host, refused, a broken TLS or gzip; a 3xx when there were more
+    than 5 redirects).
+  - `504 {"error": "timeout"}`, `413 {"error": "too_big"}`, `422 {"error": "not_feed"}` (not RSS 2.0:
+    no `<rss><channel>`, such as a web page or an Atom feed).
+- `GET /podcasts/index/search?q=<words>&max=20` → `{"items": [{"feed", "title", "author", "art",
+  "id", "itunesId", "count", "language", "explicit"}]}`: shows from
+  [Podcast Index](https://podcastindex.org) (its `/search/byterm`) with the key saved on the admin
+  page's Podcasts page. `feed` is the show's feed address (for `/podcasts/feed`), `id` Podcast
+  Index's feed id, `itunesId` Apple's (`null` when none), `count` its episodes, `art` its artwork
+  (else its image), `language` lower case. `max` 1 to 100. Shows Podcast Index marks dead are left
+  out. Answers are kept 10 minutes. `400 {"error": "query"}` without `q`, `503 {"error": "no_key"}`
+  when no key is saved, `502 {"error": "upstream"}` when Podcast Index fails or refuses the key (a
+  warning in the admin page's Activity says which). Each request is signed as Podcast Index asks:
+  `User-Agent`, `X-Auth-Key`, `X-Auth-Date` (unix seconds) and `Authorization`, the lower-case
+  hex SHA-1 of key + secret + date.
 
 ## WhatsApp for the Rondo (device token)
 

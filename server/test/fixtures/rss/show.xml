@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rss [ <!ENTITY unused "x"> ]>
+<!-- a podcast as feeds really are -->
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <atom:link href="https://feeds.example.com/show.xml" rel="self" type="application/rss+xml"/>
+    <title>The  Example &amp; Friends
+      Show</title>
+    <link></link>
+    <link>https://example.com/show</link>
+    <language>EN-us</language>
+    <description>Plain description, not used.</description>
+    <itunes:summary><![CDATA[<p>A show about <b>examples</b> &amp; friends.</p><p>Every week.</p>]]></itunes:summary>
+    <itunes:owner><itunes:name>Example Media</itunes:name><itunes:email>hi@example.com</itunes:email></itunes:owner>
+    <itunes:image href=" https://example.com/art.jpg "/>
+    <image><url>https://example.com/small.jpg</url><title>The Example Show</title></image>
+    <itunes:type>Serial</itunes:type>
+    <itunes:explicit>Yes</itunes:explicit>
+    <itunes:complete>yes</itunes:complete>
+    <itunes:new-feed-url> https://new.example.com/feed.xml </itunes:new-feed-url>
+    <item>
+      <title>Episode 3: &lt;b&gt;Bold&lt;/b&gt; moves</title>
+      <guid isPermaLink="false"> ep-3 </guid>
+      <pubDate>Tue, 01 Oct 2024 10:00:00 GMT</pubDate>
+      <itunes:duration>1:02:03</itunes:duration>
+      <enclosure url="https://cdn.example.com/ep3.pdf" type="application/pdf" length="10"/>
+      <enclosure url=" https://cdn.example.com/ep3.mp3 " type="Audio/MPEG" length="12345678"/>
+      <itunes:image href="https://example.com/ep3.jpg"/>
+      <podcast:chapters url="https://example.com/ep3.json" type="application/json+chapters"/>
+      <itunes:season>2</itunes:season>
+      <itunes:episode>3</itunes:episode>
+      <itunes:episodeType>Full</itunes:episodeType>
+      <content:encoded><![CDATA[<p>Show notes&nbsp;for <i>three</i>.</p>
+<ul><li>One</li><li>Two &hellip;</li></ul>
+<script>alert("no")</script><style>p{}</style>
+<p>Bye&#33; &#x2014; caf&eacute;</p>]]></content:encoded>
+      <description>Not this one.</description>
+    </item>
+    <item>
+      <title>Trailer</title>
+      <guid></guid>
+      <pubDate>Mon, 30 Sep 24 9:05 -0400</pubDate>
+      <itunes:duration>75:30</itunes:duration>
+      <enclosure url="https://cdn.example.com/trailer.m4a" type="" length="abc"/>
+      <itunes:episodeType>trailer</itunes:episodeType>
+      <description>Line one&lt;br&gt;Line two</description>
+    </item>
+    <item>
+      <title>A post without audio</title>
+      <description>Nothing to play.</description>
+    </item>
+    <item>
+      <itunes:title>Bonus with only an itunes title</itunes:title>
+      <guid>bonus-1</guid>
+      <pubDate>2024-09-01T08:30:00+02:00</pubDate>
+      <itunes:duration>3600.7</itunes:duration>
+      <enclosure url="https://cdn.example.com/bonus.mp4?token=1" length="0"/>
+      <itunes:episodeType>bonus</itunes:episodeType>
+      <itunes:summary>Summary &amp;amp; more</itunes:summary>
+    </item>
+  </channel>
+</rss>

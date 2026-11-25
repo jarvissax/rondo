@@ -19,6 +19,20 @@ version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 - **Home with podcasts:** `GET /music/home?podcasts=1` gives a show on a home shelf as a show and an
   episode as an episode. Without it nothing changes, except that a show's card (which YouTube Music's
   home can have) is left out instead of coming as a video that can't play.
+- **RSS podcasts**, for the Rondo that has them (new routes only; nothing an older Rondo asks
+  changes). The Rondo plays episodes straight from each podcast's own host; the server helps it read
+  feeds: `GET /podcasts/feed?url=` reads a podcast's RSS feed and answers it compact (the show, and
+  each episode's title, date, length, audio address and notes as plain text), a page at a time
+  (`offset`, `limit`, `next`), or with `since=` only the episodes newer than the Rondo already has.
+  A feed is kept in memory for 10 minutes, then asked again only if it changed (ETag,
+  Last-Modified); nothing is written to disk. The server reads feeds only from addresses on the
+  internet, never from its own network (redirects and changing DNS answers included), follows up to
+  5 redirects, gives up after 30 s and refuses a feed over 60 MB.
+- **Podcast search in Podcast Index:** `GET /podcasts/index/search?q=` finds shows in
+  [Podcast Index](https://podcastindex.org) with the server's own free key, so podcast search on the
+  Rondo finds shows there as well as in Apple's directory. The admin page has a new **Podcasts** page
+  to paste the key and its secret, check that it works, replace it or remove it; the secret stays on
+  the server and is never shown again or logged.
 
 ## 3.6.1 (November 24, 2026)
 

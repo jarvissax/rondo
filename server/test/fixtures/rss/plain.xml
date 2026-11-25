@@ -1,0 +1,9 @@
+<rss version="0.92"><channel>
+<title>Old Feed</title>
+<description>&lt;p&gt;Escaped &lt;em&gt;HTML&lt;/em&gt;.&lt;/p&gt;</description>
+<managingEditor>editor@example.org (The Editor)</managingEditor>
+<language>de</language>
+<image><url> https://example.org/logo.png </url></image>
+<item><title><![CDATA[CDATA title & more]]></title><enclosure url="https://example.org/a.ogg"/><pubDate>Sept 5 2024</pubDate><itunes:duration>unknown</itunes:duration></item>
+<item><title>Raw <b>HTML</b> in a title<br/>second line</title><enclosure url="https://example.org/b.opus" length="2048"/><pubDate>5 Sept 2024 12:00:00 EDT</pubDate><description><p>Raw paragraph one<p>two<br>three</description></item>
+</channel></rss>

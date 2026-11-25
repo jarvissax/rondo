@@ -89,6 +89,7 @@ const S = {
   checking: false,
   cookieBusy: false,
   rz: { updating: false, updateStart: 0, update: null, testing: false, test: null },
+  pc: { editing: false, saving: false, checking: false, check: null }, // the Podcast Index key
 };
 const now = () => Date.now() + S.skew;
 
@@ -413,6 +414,7 @@ const NAV = [
   { id: 'overview', label: t('nav.overview'), short: t('nav.overview'), tile: 'rondo' },
   { id: 'youtube', label: 'YouTube', short: 'YouTube', tile: 'youtube' },
   { id: 'whatsapp', label: 'WhatsApp', short: 'WhatsApp', tile: 'whatsapp' },
+  { id: 'podcasts', label: t('nav.podcasts'), short: t('nav.podcasts'), tile: 'podcasts', glyph: 'podcast' },
   { id: 'device', label: t('nav.device'), short: t('nav.device'), tile: 'device', glyph: 'player' },
   { id: 'resolver', label: t('nav.resolver'), short: t('nav.resolver'), tile: 'resolver', glyph: 'bolt' },
   { id: 'activity', label: t('nav.activity'), short: t('nav.activity'), tile: 'activity', glyph: 'pulse' },
@@ -451,6 +453,7 @@ function renderView(id = S.route) {
   if (id === 'overview') renderOverview();
   if (id === 'youtube') renderYouTube();
   if (id === 'whatsapp') renderWhatsApp();
+  if (id === 'podcasts') renderPodcasts();
   if (id === 'device') renderDevice();
   if (id === 'resolver') renderResolver();
 }
@@ -657,6 +660,7 @@ function renderOverview() {
     row({ href: '#youtube', tile: 'youtube', title: 'YouTube', sub: a.yt.detail, level: a.yt.level, pillText: a.yt.pill }),
     row({ href: '#device', tile: 'device', glyph: 'player', title: t('nav.device'), sub: a.dev.detail, level: a.dev.level, pillText: a.dev.pill }),
     st0().whatsapp ? row({ href: '#whatsapp', tile: 'whatsapp', title: 'WhatsApp', ...waRow(st0().whatsapp) }) : '',
+    st0().podcastIndex ? row({ href: '#podcasts', tile: 'podcasts', glyph: 'podcast', title: t('nav.podcasts'), ...pcRow(st0().podcastIndex) }) : '',
   ].join(''));
 }
 
@@ -1027,6 +1031,118 @@ async function waUnlink(_b, _e, cancel = false) {
   } catch (x) { if (x.status !== 401) toast(t('whatsapp.notUnlinked', { reason: reason(x) }), 'err'); }
 }
 
+// ---------- podcasts (podcastIndex.ts on the server) ----------
+// podcast search on the Rondo finds shows in Apple's directory, and in Podcast Index with a key here
+const pcRow = (k) => (k.set
+  ? { sub: t('podcasts.overviewOn'), level: 'ok', pillText: t('podcasts.on') }
+  : { sub: t('podcasts.overviewOff'), level: 'off', pillText: t('podcasts.off') });
+// what the server's Check said
+function pcCheckLine(r) {
+  if (!r) return '';
+  if (r.ok) return `<div class="rz-line ok">${icon('check')}<span>${th('podcasts.works', { ms: Number(r.ms || 0) })}</span></div>`;
+  const why = r.error === 'key' ? te('podcasts.rejected')
+    : r.error === 'upstream' ? te('podcasts.unreachable')
+    : r.reason ? te('podcasts.checkFailed', { reason: r.reason }) : te('podcasts.unreachable');
+  return `<div class="rz-line bad">${icon('alert')}<span>${why}</span></div>`;
+}
+function renderPodcasts() {
+  const P = S.pc, k = st0().podcastIndex || { set: false }, body = $('#pcBody');
+  if (P.saving) return;
+  if (!k.set || P.editing) {
+    setHtml(body, `<form class="group form-card" id="pcForm" novalidate>
+      <div class="field">
+        <label class="field-label" for="pcKey">${te('podcasts.keyLabel')}</label>
+        <input type="text" id="pcKey" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label class="field-label" for="pcSecret">${te('podcasts.secretLabel')}</label>
+        <div class="pw">
+          <input type="password" id="pcSecret" autocomplete="off" spellcheck="false">
+          <button class="ib ib-sm pw-eye" type="button" aria-label="${te('password.show')}" aria-pressed="false">${icon('eye')}</button>
+        </div>
+        <p class="field-help">${th('podcasts.signup', { link: html('<a href="https://api.podcastindex.org/signup" target="_blank" rel="noopener">api.podcastindex.org</a>') })}</p>
+      </div>
+      <p class="form-err" id="pcErr" role="alert"></p>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" id="pcBtn">${te('podcasts.save')}</button>${k.set ? `<button class="btn btn-quiet" type="button" data-act="pcCancel">${te('shared.cancel')}</button>` : ''}</div>
+    </form>`);
+    return;
+  }
+  const res = P.checking ? `<div class="rz-line wait">${spinner()}<span>${te('podcasts.checkingLine')}</span></div>` : pcCheckLine(P.check);
+  setHtml(body, `<div class="group">
+    <div class="row dev-head">${tileHtml('podcasts', 'podcast')}
+      <div class="row-main"><div class="row-title">${te('podcasts.saved')}</div>
+        <div class="row-sub">${te('podcasts.keyLine', { key: String(k.key || ''), date: k.setAt ? day(k.setAt) : '' })}</div></div>
+      ${pill('ok', t('podcasts.on'))}
+    </div>
+    <div class="row rz">${tileHtml('ok', 'check')}
+      <div class="row-main"><div class="row-title">${te('podcasts.checkTitle')}</div><div class="row-sub">${te('podcasts.checkText')}</div></div>
+      <button class="btn${P.checking ? ' is-busy' : ''}" type="button" data-act="pcCheck"${P.checking ? ' disabled' : ''}>${P.checking ? te('podcasts.checking') : P.check ? te('podcasts.checkAgain') : te('podcasts.check')}</button>
+      ${res ? `<div class="rz-res" aria-live="polite">${res}</div>` : ''}
+    </div>
+    <div class="row-actions">
+      <button class="btn" type="button" data-act="pcReplace">${icon('refresh')}<span>${te('podcasts.replace')}</span></button>
+      <button class="btn btn-red-text push" type="button" data-act="pcRemove">${icon('trash')}<span>${te('podcasts.remove')}</span></button>
+    </div>
+  </div>`);
+}
+$('#pcBody').addEventListener('input', clearInvalid);
+$('#pcBody').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'pcForm') return;
+  e.preventDefault();
+  const keyIn = $('#pcKey'), secretIn = $('#pcSecret'), err = $('#pcErr');
+  const key = keyIn.value.trim(), secret = secretIn.value.trim();
+  const bad = (input, text) => { input.classList.add('is-invalid'); err.textContent = text; input.focus(); };
+  if (!key) return bad(keyIn, t('podcasts.needKey'));
+  if (!secret) return bad(secretIn, t('podcasts.needSecret'));
+  const btn = $('#pcBtn'), was = btn.innerHTML;
+  S.pc.saving = true;
+  btn.disabled = true;
+  keyIn.readOnly = secretIn.readOnly = true;
+  btn.innerHTML = `${spinner()}<span>${te('podcasts.saving')}</span>`;
+  err.textContent = '';
+  try {
+    await api('POST', '/podcasts/key', { key, secret });
+    S.pc.saving = false;
+    S.pc.editing = false;
+    S.pc.check = null;
+    toast(t('podcasts.saved'));
+    await poll();
+    pcCheck();
+  } catch (x) {
+    S.pc.saving = false;
+    if (x.status === 401) return;
+    btn.disabled = false;
+    keyIn.readOnly = secretIn.readOnly = false;
+    btn.innerHTML = was;
+    if (x.code === 'key') bad(keyIn, t('podcasts.badKey'));
+    else if (x.code === 'secret') bad(secretIn, t('podcasts.badSecret'));
+    else err.textContent = t('podcasts.notSaved', { reason: reason(x) });
+  }
+});
+async function pcCheck() {
+  const P = S.pc;
+  if (P.checking) return;
+  P.checking = true;
+  P.check = null;
+  if (S.route === 'podcasts') renderPodcasts();
+  try { P.check = await api('POST', '/podcasts/check', undefined, { timeout: 30000 }); } catch (e) {
+    if (e.status === 401) { P.checking = false; return; }
+    P.check = { ok: false, reason: reason(e) };
+  }
+  P.checking = false;
+  if (S.route === 'podcasts') renderPodcasts();
+}
+async function pcRemove() {
+  const ok = await confirmSheet({ title: t('podcasts.removeTitle'), text: t('podcasts.removeText'), action: t('podcasts.removeAction') });
+  if (!ok) return;
+  try {
+    await api('DELETE', '/podcasts/key');
+    S.pc.check = null;
+    toast(t('podcasts.removed'));
+    await poll();
+  } catch (e) { if (e.status !== 401) toast(t('podcasts.notRemoved', { reason: reason(e) }), 'err'); }
+}
+
 // ---------- device ----------
 function renderDevice() {
   const a = areas(S.status), d = a.d;
@@ -1353,6 +1469,10 @@ const ACTIONS = {
   waCopy: (b) => copyWith(b, st0().whatsapp?.code?.code || '', 'code'),
   waCancel: (b, e) => waUnlink(b, e, true),
   waUnlink,
+  pcCheck,
+  pcRemove,
+  pcReplace: () => { S.pc.editing = true; S.pc.check = null; renderPodcasts(); setTimeout(() => $('#pcKey')?.focus(), 30); },
+  pcCancel: () => { S.pc.editing = false; renderPodcasts(); },
 };
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]');

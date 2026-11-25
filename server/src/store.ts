@@ -1,6 +1,7 @@
-// What the admin page changes, kept on the data volume (/data/config.json): the admin password
-// (scrypt hash) and the one device's token (SHA-256). Secrets are stored only as hashes and never
-// returned by any endpoint (docs/dev/server-api.md).
+// What the admin page changes, kept on the data volume (/data/config.json, readable by the server
+// only): the admin password (scrypt hash), the one device's token (SHA-256) and the Podcast Index API
+// key. The password and the token are stored only as hashes; the key and its secret as they are (every
+// Podcast Index request is signed with them). None is returned by any endpoint (docs/dev/server-api.md).
 
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -11,6 +12,8 @@ export interface StoreData {
   device?: { tokenHash: string; pairedAt: number; name?: string };
   // set by the first pairing or disconnect: API_TOKEN from the environment no longer works
   envRetired?: boolean;
+  // podcast search in Podcast Index (podcastIndex.ts), pasted on the admin page's Podcasts page
+  podcastIndex?: { key: string; secret: string; setAt: number };
 }
 
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
