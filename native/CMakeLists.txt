@@ -88,7 +88,7 @@ if(EXISTS ${TP}/lib/libcurl.a)
   add_executable(uploadtest tools/uploadtest.cpp)
   target_link_libraries(uploadtest PRIVATE rondo_net)
   # direct mode (N7): YouTube without a server, behind a local copy of the server's API (rondo-core)
-  add_library(rondo_direct STATIC direct/json.cpp direct/innertube.cpp direct/tv_auth.cpp direct/model.cpp direct/music.cpp direct/video.cpp
+  add_library(rondo_direct STATIC direct/json.cpp direct/innertube.cpp direct/tv_auth.cpp direct/model.cpp direct/music.cpp direct/podcasts.cpp direct/video.cpp
     direct/streams.cpp direct/lyrics.cpp direct/routes.cpp direct/server.cpp)
   target_link_libraries(rondo_direct PUBLIC rondo_net rondo_core)
 endif()

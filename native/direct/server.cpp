@@ -98,10 +98,12 @@ void connection(int fd) {
       else if (!strcasecmp(name.c_str(), "connection") && !strcasecmp(value.c_str(), "close")) keep = false;
       else if (!strcasecmp(name.c_str(), "content-length")) bodyLen = atoll(value.c_str());
     }
-    // a body (none of the routes reads one): read past it
+    // a body: kept for a POST (the podcast actions read theirs, a few bytes), else read past
+    std::string body;
     while (bodyLen > 0) {
       if (!buf.empty()) {
         size_t take = std::min<size_t>(buf.size(), size_t(bodyLen));
+        if (method == "POST" && body.size() + take <= 65536) body.append(buf, 0, take);
         buf.erase(0, take);
         bodyLen -= int64_t(take);
         continue;
@@ -113,6 +115,7 @@ void connection(int fd) {
     }
     Request req = parseTarget(method, target);
     req.range = range;
+    req.body = std::move(body);
     // YouTube asked in the Rondo's language, and direct mode's own words in it (innertube.h): the first
     // one the header names, if it looks like a language code
     {
@@ -129,7 +132,7 @@ void connection(int fd) {
     Response res;
     timeval t0, t1;
     gettimeofday(&t0, nullptr);
-    if (method != "GET" && method != "HEAD") res.error(404, "not_found");
+    if (method != "GET" && method != "HEAD" && method != "POST") res.error(404, "not_found");
     else route(req, res);
     static const bool log = getenv("RONDO_DIRECT_LOG") != nullptr;  // development: every request, its answer and time
     if (log) {

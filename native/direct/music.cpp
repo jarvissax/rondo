@@ -10,6 +10,7 @@
 #include <set>
 
 #include "innertube.h"
+#include "podcasts.h"
 
 namespace rondo::direct::music {
 namespace {
@@ -240,15 +241,22 @@ std::vector<Item> uniqueById(std::vector<Item> v) {
   return out;
 }
 
-// shelfSection: a shelf of any kind with its cards or rows
-bool shelf(J entry, Section& out) {
+// a card whose id isn't what its kind plays (a show's card read as a video): left out, not broken
+Item playable(Item i) { return (i.kind == "song" || i.kind == "video") && !isVideoId(i.id) ? Item() : i; }
+
+// shelfSection: a shelf of any kind with its cards or rows; podcasts: its shows and episodes as such
+bool shelf(J entry, Section& out, bool podcasts = false) {
   J s = nullptr;
   for (const char* k : {"musicCarouselShelfRenderer", "musicImmersiveCarouselShelfRenderer", "musicShelfRenderer", "gridRenderer"})
     if ((s = key(entry, k))) break;
   if (!s) return false;
   std::vector<Item> items;
-  each(key(s, "contents"), [&](J c) { items.push_back(item(c)); });
-  each(key(s, "items"), [&](J c) { items.push_back(item(c)); });
+  auto take = [&](J c) {
+    Item p = podcasts ? podcasts::homeItem(c) : Item();
+    items.push_back(p.ok() ? p : playable(item(c)));
+  };
+  each(key(s, "contents"), take);
+  each(key(s, "items"), take);
   items = uniqueById(std::move(items));
   if (items.size() > kSectionItems) items.resize(kSectionItems);
   if (items.empty()) return false;
@@ -274,19 +282,19 @@ std::function<std::string(const Item&)> byId() {
 
 // --- home ---
 
-void homeChunk(J sl, Chunk<Section>& c) {
+void homeChunk(J sl, Chunk<Section>& c, bool podcasts) {
   each(key(sl, "contents"), [&](J e) {
     Section s;
-    if (shelf(e, s)) c.items.push_back(std::move(s));
+    if (shelf(e, s, podcasts)) c.items.push_back(std::move(s));
   });
   std::string token = str(path(sl, "continuations", 0, "nextContinuationData", "continuation"));
   if (token.empty()) return;
-  c.more = [token](Chunk<Section>& n) {
+  c.more = [token, podcasts](Chunk<Section>& n) {
     Doc d;
     if (call("browse", "\"continuation\":" + quote(token), d) != 200) return false;
     J sl = path(root(d), "continuationContents", "sectionListContinuation");
     if (!sl) return false;
-    homeChunk(sl, n);
+    homeChunk(sl, n, podcasts);
     return true;
   };
 }
@@ -477,15 +485,15 @@ std::string mix(const std::string& id) {
 
 }  // namespace
 
-std::string home() {
+std::string home(bool podcasts) {
   return page<Section>(
-      "music/home",
-      [](Chunk<Section>& c) {
+      podcasts ? "music/home+podcasts" : "music/home",
+      [podcasts](Chunk<Section>& c) {
         Doc d;
         if (call("browse", "\"browseId\":\"FEmusic_home\"", d) != 200) return false;
         J sl = path(root(d), "contents", "singleColumnBrowseResultsRenderer", "tabs", 0, "tabRenderer", "content", "sectionListRenderer");
         if (!sl) return false;
-        homeChunk(sl, c);
+        homeChunk(sl, c, podcasts);
         return true;
       },
       kHomeSections, nullptr,

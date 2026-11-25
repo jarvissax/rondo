@@ -13,6 +13,7 @@
 #include "lyrics.h"
 #include "model.h"
 #include "music.h"
+#include "podcasts.h"
 #include "streams.h"
 #include "video.h"
 
@@ -71,11 +72,78 @@ void list(const Request& r, Response& out, const std::string& scope, const std::
     return answer(out, twice(load));
   }
   std::string body;
-  if (cache && fromCache(r.path + "?" + (r.query.count("q") ? r.query.at("q") : "") + (r.query.count("type") ? r.query.at("type") : ""), body))
-    return answer(out, body);
+  std::string k = r.path + "?" + (r.query.count("q") ? r.query.at("q") : "") + (r.query.count("type") ? r.query.at("type") : "") +
+                  (r.query.count("podcasts") ? "+podcasts" : "");
+  if (cache && fromCache(k, body)) return answer(out, body);
   body = twice(first);
-  if (cache && !body.empty()) toCache(r.path + "?" + (r.query.count("q") ? r.query.at("q") : "") + (r.query.count("type") ? r.query.at("type") : ""), body);
+  if (cache && !body.empty()) toCache(k, body);
   answer(out, body);
+}
+
+// a change to the account (a show saved, an episode marked): what was kept from before goes, now and
+// again a little later (YouTube shows a change some seconds late, so an answer just after it can still
+// be the old one)
+std::mutex g_forgetMu;
+int64_t g_forgetAgainAt = 0;
+std::vector<std::string> g_forgetAgain;
+void forgetCached(const std::vector<std::string>& prefixes, bool later = true) {
+  std::lock_guard<std::mutex> l(g_cacheMu);
+  for (auto it = g_cache.begin(); it != g_cache.end();) {
+    std::string k = it->first.substr(it->first.find('|') + 1);
+    bool hit = false;
+    for (const std::string& p : prefixes) hit = hit || k.compare(0, p.size(), p) == 0;
+    it = hit ? g_cache.erase(it) : std::next(it);
+  }
+  if (later) {
+    std::lock_guard<std::mutex> f(g_forgetMu);
+    g_forgetAgain.insert(g_forgetAgain.end(), prefixes.begin(), prefixes.end());
+    g_forgetAgainAt = nowMs() + 15000;
+  }
+}
+void forgetAgainIfDue() {
+  std::vector<std::string> due;
+  {
+    std::lock_guard<std::mutex> f(g_forgetMu);
+    if (g_forgetAgain.empty() || nowMs() < g_forgetAgainAt) return;
+    due.swap(g_forgetAgain);
+  }
+  forgetCached(due, false);
+}
+
+// {"played": true} and the like: the flag a POST's body names (-1: missing, not a boolean)
+int bodyFlag(const std::string& body, const char* name) {
+  Doc d(yyjson_read(body.data(), body.size(), 0));
+  J v = key(root(d), name);
+  return v && yyjson_is_bool(v) ? (yyjson_is_true(v) ? 1 : 0) : -1;
+}
+
+// the podcast actions (server/src/browse.ts's POST routes): {"saved"}, {"later"}, {"played"}
+void post(const Request& r, Response& out) {
+  const std::string& p = r.path;
+  auto done = [&](bool ok, const char* name, int on, const std::vector<std::string>& stale) {
+    if (!ok) return out.error(502, "browse");
+    forgetCached(stale);
+    out.body = std::string("{\"") + name + "\":" + (on ? "true" : "false") + "}";
+  };
+  if (starts(p, "/music/podcast/") && p.size() > 20 && p.compare(p.size() - 5, 5, "/save") == 0) {
+    std::string id = uriDecode(p.substr(15, p.size() - 20));
+    if (!starts(id, "MPSP")) id = "MPSP" + id;
+    int on = bodyFlag(r.body, "saved");
+    if (!podcasts::isShowId(id) || on < 0) return out.error(400, "body");
+    if (!signedIn()) return out.error(503, "no_cookies");
+    return done(podcasts::save(id, on), "saved", on, {"/music/podcasts?", "/music/podcast/" + id});
+  }
+  for (const char* what : {"later", "played"}) {
+    std::string tail = std::string("/") + what;
+    if (!starts(p, "/music/episode/") || p.size() <= 15 + tail.size() || p.compare(p.size() - tail.size(), tail.size(), tail) != 0) continue;
+    std::string id = uriDecode(p.substr(15, p.size() - 15 - tail.size()));
+    int on = bodyFlag(r.body, what);
+    if (!isVideoId(id) || on < 0) return out.error(400, "body");
+    if (!signedIn()) return out.error(503, "no_cookies");
+    bool ok = !strcmp(what, "later") ? podcasts::later(id, on) : podcasts::played(id, on);
+    return done(ok, what, on, {"/music/podcast", "/music/episode/" + id});
+  }
+  out.error(404, "not_found");
 }
 
 std::string param(const Request& r, const char* k) {
@@ -217,6 +285,8 @@ Request parseTarget(const std::string& method, const std::string& target) {
 
 void route(const Request& r, Response& out) {
   const std::string& p = r.path;
+  forgetAgainIfDue();
+  if (r.method == "POST") return post(r, out);
   if (p == "/healthz") {
     // what the screens read: up, and whether the account's tabs show (signed in with cookies)
     int ok = lastResolveOk();
@@ -242,11 +312,36 @@ void route(const Request& r, Response& out) {
     return;
   }
   // --- YouTube Music ---
-  if (p == "/music/home") return list(r, out, "music/home", [] { return music::home(); });
+  if (p == "/music/home") {  // ?podcasts=1: shows and episodes as such (a Rondo that has them asks)
+    bool pods = param(r, "podcasts") == "1";
+    return list(r, out, pods ? "music/home+podcasts" : "music/home", [pods] { return music::home(pods); });
+  }
   if (p == "/music/search") {
     std::string q = trim(param(r, "q")), type = param(r, "type").empty() ? "song" : param(r, "type");
     if (param(r, "next").empty() && q.empty()) return out.error(400, "query");
+    if (type == "podcast" || type == "episode") return list(r, out, "music/search", [q, type] { return podcasts::search(q, type); }, false);
     return list(r, out, "music/search", [q, type] { return music::search(q, type); }, false);
+  }
+  // --- YouTube Music's podcasts (podcasts.h): the account's need cookies.txt ---
+  if (p == "/music/podcasts") {
+    if (!signedIn()) return out.error(503, "no_cookies");
+    return list(r, out, "music/podcasts", [] { return podcasts::library(); });
+  }
+  if (p == "/music/podcasts/later" || p == "/music/podcasts/new") {
+    if (!signedIn()) return out.error(503, "no_cookies");
+    std::string which = p == "/music/podcasts/later" ? "SE" : "RDPN";
+    return list(r, out, "music/podcasts/" + which, [which] { return podcasts::list(which); });
+  }
+  if (starts(p, "/music/podcast/")) {
+    std::string id = uriDecode(p.substr(15));
+    if (!starts(id, "MPSP")) id = "MPSP" + id;
+    if (!podcasts::isShowId(id)) return out.error(400, "id");
+    return list(r, out, "music/podcast/" + id, [id] { return podcasts::show(id); });
+  }
+  if (starts(p, "/music/episode/")) {
+    std::string id = uriDecode(p.substr(15));
+    if (!isVideoId(id)) return out.error(400, "id");
+    return list(r, out, "music/episode/" + id, [id] { return podcasts::episode(id); });
   }
   if (p == "/music/library") {  // cookies.txt's (YouTube Music's own), else the code sign-in's
     if (signedIn()) return list(r, out, "music/library", [] { return music::library(); });

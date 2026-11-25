@@ -8,7 +8,8 @@
 
 namespace rondo::direct::music {
 
-std::string home();                                            // /music/home: {sections, next}
+// /music/home: {sections, next}; podcasts: shows and episodes on its shelves as such (?podcasts=1)
+std::string home(bool podcasts = false);
 std::string search(const std::string& q, const std::string& type);  // /music/search: {items, next}
 std::string playlist(const std::string& id);                   // /music/playlist/:id: {title, subtitle, thumb, items, next}
 std::string album(const std::string& id);                      // /music/album/:id

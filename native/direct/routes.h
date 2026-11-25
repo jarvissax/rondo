@@ -15,6 +15,7 @@ struct Request {
   std::string method = "GET", path;
   std::map<std::string, std::string> query;
   std::string range;  // the Range header
+  std::string body;   // a POST's (the podcast actions' {"played": true}), at most 64 KB
 };
 Request parseTarget(const std::string& method, const std::string& target);
 
