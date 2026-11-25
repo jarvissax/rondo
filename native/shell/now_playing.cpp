@@ -19,6 +19,7 @@
 #include "downloads.h"
 #include "lyrics_view.h"
 #include "music_list.h"
+#include "podcasts.h"
 #include "screens.h"
 #include "scrub.h"
 
@@ -851,12 +852,19 @@ class NowPlayingScreen : public Screen {
   }
   // The options: a song's (a card song also has its rating, center giving one star more, after five
   // none; a streamed one, Download) or an audiobook's, and the sleep timer for both
-  enum class Opt { Scrub, UpNext, Shuffle, Repeat, Rating, Download, Sleep, Chapters, AddBookmark, Bookmarks, Speed, BackToMusic };
+  // an episode (podcasts.h) also has Episodes up next when some wait, and Download while it streams
+  enum class Opt { Scrub, UpNext, Shuffle, Repeat, Rating, Download, Sleep, Chapters, AddBookmark, Bookmarks, Speed, BackToMusic, EpisodesNext, EpisodeDownload };
+  static bool episodeStreaming(const BookPlay* b) {
+    PlayerState s = g_player.state();
+    return b && isEpisodeKey(b->key) && isStream(s.path) && downloadedEpisode(episodeIdOf(b->key)).empty();
+  }
   static std::vector<Opt> options() {
     std::vector<Opt> v{Opt::Scrub};
     if (const BookPlay* b = bookNow()) {
       if (!b->skips) v.push_back(Opt::Chapters);
+      if (isEpisodeKey(b->key) && !episodesUpNext().empty()) v.push_back(Opt::EpisodesNext);
       v.insert(v.end(), {Opt::AddBookmark, Opt::Bookmarks, Opt::Speed, Opt::Sleep});
+      if (episodeStreaming(b)) v.push_back(Opt::EpisodeDownload);
       if (musicLent()) v.push_back(Opt::BackToMusic);
       return v;
     }
@@ -916,6 +924,15 @@ class NowPlayingScreen : public Screen {
       case Opt::Bookmarks: return tr("book.bookmarks");
       case Opt::Speed: return tr("book.np.speed", {{"speed", speedLabel(bookSpeedNow())}});
       case Opt::BackToMusic: return tr("book.backToMusic");
+      case Opt::EpisodesNext: return tr("podcasts.upNext");
+      case Opt::EpisodeDownload: {
+        const BookPlay* b = bookNow();
+        std::string id = b ? episodeIdOf(b->key) : "";
+        for (const DownloadJob& j : downloadJobs())
+          if (j.id == id && j.state == DownloadJob::Paused) return tr("music.downloadPaused");
+          else if (j.id == id && (j.state == DownloadJob::Waiting || j.state == DownloadJob::Running)) return tr("music.downloading");
+        return tr("music.download");
+      }
     }
     return "";
   }
@@ -933,6 +950,8 @@ class NowPlayingScreen : public Screen {
       case Opt::Bookmarks: return Icon::Bookmark;
       case Opt::Speed: return Icon::Gauge;
       case Opt::BackToMusic: return Icon::Note;
+      case Opt::EpisodesNext: return Icon::Queue;
+      case Opt::EpisodeDownload: return Icon::Download;
     }
     return Icon::Seek;
   }
@@ -990,6 +1009,20 @@ class NowPlayingScreen : public Screen {
         options_ = false;
         backToMusic();
         break;
+      case Opt::EpisodesNext:
+        options_ = false;
+        g_app->push(makeEpisodesUpNext());
+        break;
+      case Opt::EpisodeDownload: {  // to the card (Podcasts/<show>): it goes on from there once it's whole
+        options_ = false;
+        Episode e;
+        std::string id = episodeIdOf(key);
+        bool going = false;
+        for (const DownloadJob& j : downloadJobs()) going = going || (j.id == id && j.state != DownloadJob::Done && j.state != DownloadJob::Failed);
+        if (going) g_app->push(makePodcastDownloads());
+        else if (episodeDownloadInfo(id, e)) downloadEpisode(e);
+        break;
+      }
     }
     optionsAt_ = now_ns();
   }

@@ -44,6 +44,7 @@
 #include "../../shell/dashboard.h"
 #include "../../shell/downloads.h"
 #include "../../shell/main_queue.h"
+#include "../../shell/podcasts.h"
 #include "../../platform/video_frame.h"
 #include "../../platform/video_surface.h"
 #include "../../services/core.h"
@@ -495,6 +496,7 @@ int main(int argc, char** argv) {
     if (g_library.applyScan()) changed = true;  // a background scan's files and tags
     if (safetyTick(now_ns())) changed = true;
     if (booksTick(now_ns())) changed = true;  // the audiobook's place, its end, the sleep timer
+    if (podcastsTick(now_ns())) changed = true;  // an episode playing: its length; Episodes up next after a song; marks for YouTube
     resumeTick(now_ns());  // the queue and where it is, for after a restart
     // a helper process that died (a crash): Rondo ends too, with the queue kept, and init starts it
     // again (back in about a second, playing on)

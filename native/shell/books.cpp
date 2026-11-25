@@ -13,6 +13,7 @@
 #include <algorithm>
 
 #include "app.h"
+#include "podcasts.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -82,7 +83,9 @@ void saveSession(bool force = false) {
   if (!placeNow(p, &s)) return;
   bool playing = s.playing && !s.ended;
   BookState st;
-  if (const BookState* old = g_library.bookState(g.book.key)) st = *old;
+  const BookState* old = g_library.bookState(g.book.key);
+  if (old) st = *old;
+  bool wasFinished = old && old->finished;
   st.key = g.book.key;
   st.file = g.book.paths[size_t(p.file)];
   st.positionMs = p.ms;
@@ -91,6 +94,7 @@ void saveSession(bool force = false) {
   st.finished = finishedAt(at, g.book.lengthMs) || s.ended;
   st.lastPlayed = playing || !g.pausedWall ? wallNowMs() : g.pausedWall;
   g_library.setBookState(st);
+  if (st.finished != wasFinished) episodeFinishedChanged(st.key, st.finished);  // an episode: YouTube's Played mark too
   writeSessionState(p.file, p.ms, playing);
   g.savedAt = now_ns();
   (void)force;
@@ -165,6 +169,7 @@ int64_t wallNowMs() {
 
 BookPlay bookDetails(const Book& b) {
   BookPlay d;
+  d.speedKey = b.key;
   d.key = b.key, d.title = b.title, d.author = b.author;
   std::vector<std::vector<FileChapter>> infos;
   std::vector<std::string> titles;
@@ -191,17 +196,21 @@ std::string chapterName(const BookPlay& b, int chapter) {
   return t.empty() ? tr("book.chapterNumber", {{"number", chapter + 1}}) : t;
 }
 
-BookProgress bookProgress(const Book& b, const BookPlay& d) {
+BookProgress bookProgress(const Book& b, const BookPlay& d) { (void)b; return spokenProgress(d); }
+
+BookProgress spokenProgress(const BookPlay& d) {
   BookProgress p;
-  if (const BookState* s = g_library.bookState(b.key)) {
-    p.speed = s->speed;
+  p.speed = spokenSpeed(d.key);
+  if (const BookState* s = g_library.bookState(d.key)) {
     p.finished = s->finished;
     p.lastPlayed = s->lastPlayed;
     p.started = s->lastPlayed > 0;
     for (size_t i = 0; i < d.paths.size(); i++)
       if (d.paths[i] == s->file) p.place = {int(i), s->positionMs};
+    // one file (an episode streamed, then downloaded): the place whatever the file's name was
+    if (d.paths.size() == 1) p.place = {0, s->positionMs};
   }
-  if (g.on && g.book.key == b.key) {  // the one playing: the player's place
+  if (g.on && g.book.key == d.key) {  // the one playing: the player's place
     Place now;
     if (placeNow(now)) p.place = now, p.started = true;
     p.speed = g.speed;
@@ -237,14 +246,19 @@ Place bookPlace() {
 
 int bookSpeedNow() { return g.on ? g.speed : 100; }
 
-void playBookFrom(const Book& b, Place p, bool play) {
-  BookPlay d = bookDetails(b);
+namespace {
+// a spoken-word item from a place (playBookFrom's, for any key)
+void playFrom(const BookPlay& d, Place p, bool play) {
   if (d.paths.empty()) return;
   p.file = std::max(0, std::min(p.file, int(d.paths.size()) - 1));
   p.ms = std::max<int64_t>(0, p.ms);
-  const BookState* st = g_library.bookState(b.key);
-  int speed = st ? clampSpeed(st->speed) : 100;
-  if (g.on && g.book.key != b.key) saveSession(true);  // another book: it keeps its place, the music still waits
+  // a copy: saving another book's place below may move the library's map
+  BookState prior;
+  bool had = false;
+  if (const BookState* st = g_library.bookState(d.key)) prior = *st, had = true;
+  bool wasFinished = had && prior.finished;
+  int speed = spokenSpeed(d.key);
+  if (g.on && g.book.key != d.key) saveSession(true);  // another book: it keeps its place, the music still waits
   if (!g.on) {
     // the music queue waits for the book, where it is (queue.txt); nothing to give back without one
     PlayerState s = g_player.state();
@@ -266,30 +280,68 @@ void playBookFrom(const Book& b, Place p, bool play) {
   g_player.playBook(d.paths, p.file, p.ms, play, speed);
   writeSessionState(p.file, p.ms, play);
   // started (again): not finished, played now
-  BookState ns = st ? *st : BookState();
-  ns.key = b.key, ns.file = d.paths[size_t(p.file)], ns.positionMs = p.ms, ns.speed = speed;
+  BookState ns = had ? prior : BookState();
+  ns.key = d.key, ns.file = d.paths[size_t(p.file)], ns.positionMs = p.ms, ns.speed = speed;
   ns.lastPlayed = wallNowMs();
   if (!finishedAt(bookMsOf(d.fileMs, p), d.lengthMs)) ns.finished = false;
   g_library.setBookState(ns);
+  if (ns.finished != wasFinished) episodeFinishedChanged(d.key, ns.finished);
   g.savedAt = now_ns();
   g.wasPlaying = play;
 }
 
-void playBook(const Book& b) {
+// Resume or Start (playBook's, for any key)
+void resume(const BookPlay& d) {
   // the one playing, paused: on from where it is, a little earlier
-  if (g.on && g.book.key == b.key && queueIsBook()) {
+  if (g.on && g.book.key == d.key && queueIsBook()) {
     PlayerState s = g_player.state();
     if (!s.playing) {
-      if (s.ended) playBookFrom(b, {0, 0});
+      if (s.ended) playFrom(d, {0, 0}, true);
       else resumeWithRewind();
     }
     return;
   }
-  BookPlay d = bookDetails(b);
-  BookProgress p = bookProgress(b, d);
-  if (p.finished || !p.started) return playBookFrom(b, p.finished ? Place{0, 0} : p.place);
+  BookProgress p = spokenProgress(d);
+  if (p.finished || !p.started) return playFrom(d, p.finished ? Place{0, 0} : p.place, true);
   int64_t rw = p.lastPlayed ? rewindAfterPause(wallNowMs() - p.lastPlayed) : 0;
-  playBookFrom(b, placeAt(d.fileMs, std::max<int64_t>(0, p.ms - rw)));
+  playFrom(d, placeAt(d.fileMs, std::max<int64_t>(0, p.ms - rw)), true);
+}
+}  // namespace
+
+void playBookFrom(const Book& b, Place p, bool play) { playFrom(bookDetails(b), p, play); }
+void playBook(const Book& b) { resume(bookDetails(b)); }
+
+bool spokenDetails(const std::string& key, BookPlay& out) {
+  if (isEpisodeKey(key)) return episodeDetails(key, out);
+  if (const Book* b = g_library.bookByKey(key)) return out = bookDetails(*b), true;
+  return false;
+}
+
+void playSpoken(const std::string& key) {
+  BookPlay d;
+  if (spokenDetails(key, d)) resume(d);
+}
+
+void playSpokenFrom(const std::string& key, Place p, bool play) {
+  BookPlay d;
+  if (spokenDetails(key, d)) playFrom(d, p, play);
+}
+
+void playSpokenDetails(const BookPlay& d) { resume(d); }
+
+int spokenSpeed(const std::string& key) {
+  if (g.on && g.book.key == key) return g.speed;
+  std::string where = key;
+  if (isEpisodeKey(key)) where = episodeSpeedKey(key);
+  if (const BookState* s = g_library.bookState(where)) return clampSpeed(s->speed);
+  if (const BookState* s = g_library.bookState(key)) return clampSpeed(s->speed);
+  return 100;
+}
+
+void spokenDetailsCame(const BookPlay& d) {
+  if (!g.on || g.book.key != d.key || d.paths != g.book.paths) return;
+  g.book = d;
+  g.detailed = true;
 }
 
 void playBookFile(const Book& b, const std::string& path) {
@@ -304,37 +356,51 @@ void playBookFile(const Book& b, const std::string& path) {
   playBook(b);
 }
 
-void setBookSpeed(const Book& b, int percent) {
+void setBookSpeed(const Book& b, int percent) { setSpokenSpeed(b.key, percent); }
+
+void setSpokenSpeed(const std::string& key, int percent) {
   percent = clampSpeed(percent);
-  if (g.on && g.book.key == b.key) {
+  // where it's kept: a book's own; an episode's show's (every episode of the show); a show's key itself
+  std::string where = isEpisodeKey(key) ? episodeSpeedKey(key) : key;
+  if (g.on && (g.book.key == key || g.book.speedKey == where)) {
     g.speed = percent;
     g_player.setSpeed(percent);
     saveSession(true);
-    return;
   }
-  BookState st;
-  if (const BookState* old = g_library.bookState(b.key)) st = *old;
-  st.key = b.key;
-  st.speed = percent;
-  g_library.setBookState(st);
+  auto put = [&](const std::string& k) {
+    BookState st;
+    if (const BookState* old = g_library.bookState(k)) st = *old;
+    st.key = k;
+    st.speed = percent;
+    g_library.setBookState(st);
+  };
+  put(where);
+  if (where != key && g_library.bookState(key)) put(key);  // an episode with a place of its own: the same
 }
 
-void markBookFinished(const Book& b, bool finished) {
-  if (g.on && g.book.key == b.key) saveSession(true);
+void markBookFinished(const Book& b, bool finished) { markSpokenFinished(b.key, finished); }
+
+void markSpokenFinished(const std::string& key, bool finished) {
+  if (g.on && g.book.key == key) saveSession(true);
   BookState st;
-  if (const BookState* old = g_library.bookState(b.key)) st = *old;
-  st.key = b.key;
+  const BookState* old = g_library.bookState(key);
+  if (old) st = *old;
+  bool was = old && old->finished;
+  st.key = key;
   st.finished = finished;
   if (finished && !st.lastPlayed) st.lastPlayed = wallNowMs();
   if (!finished) {
     // unfinished: from its start next time (as never played, unless it was left somewhere)
-    BookPlay d = bookDetails(b);
-    int64_t at = 0;
-    for (size_t i = 0; i < d.paths.size(); i++)
-      if (d.paths[i] == st.file) at = bookMsOf(d.fileMs, {int(i), st.positionMs});
-    if (finishedAt(at, d.lengthMs)) st.file = d.paths.empty() ? "" : d.paths[0], st.positionMs = 0;
+    BookPlay d;
+    if (spokenDetails(key, d)) {
+      int64_t at = 0;
+      for (size_t i = 0; i < d.paths.size(); i++)
+        if (d.paths[i] == st.file || d.paths.size() == 1) at = bookMsOf(d.fileMs, {int(i), st.positionMs});
+      if (finishedAt(at, d.lengthMs)) st.file = d.paths.empty() ? "" : d.paths[0], st.positionMs = 0;
+    }
   }
   g_library.setBookState(st);
+  if (finished != was) episodeFinishedChanged(key, finished);
 }
 
 bool addBookmarkNow() {
@@ -406,11 +472,9 @@ void transportHold(int dir) {
 
 void booksStart() {
   g_player.onReplace = [] { onReplace(); };
-  if (g.on && !g.detailed)  // restored at startup: the chapters now the library is open
-    if (const Book* b = g_library.bookByKey(g.book.key)) {
-      BookPlay d = bookDetails(*b);
-      if (d.paths == g.book.paths) g.book = d, g.detailed = true;
-    }
+  BookPlay d;
+  if (g.on && !g.detailed && spokenDetails(g.book.key, d))  // restored at startup: the chapters now the library is open
+    if (d.paths == g.book.paths) g.book = d, g.detailed = true;
 }
 
 bool booksTick(int64_t now) {
@@ -431,11 +495,9 @@ bool booksTick(int64_t now) {
     if (s.speed != g.speed) g_player.setSpeed(g.speed);
   }
   if (g.on && !g.held) {
-    if (!g.detailed)
-      if (const Book* b = g_library.bookByKey(g.book.key)) {
-        BookPlay d = bookDetails(*b);
-        if (d.paths == g.book.paths) g.book = d, g.detailed = true, changed = true;
-      }
+    BookPlay d;
+    if (!g.detailed && spokenDetails(g.book.key, d))
+      if (d.paths == g.book.paths) g.book = d, g.detailed = true, changed = true;
     bool playing = s.playing && !s.ended;
     if (playing != g.wasPlaying) {  // a pause (or the end) is kept at once; a play just noted
       g.wasPlaying = playing;
@@ -446,10 +508,13 @@ bool booksTick(int64_t now) {
       saveSession();
     }
     if (s.ended && !g.finishedHandled) {
-      // the book's end: finished, and the music that waited comes back where it was, paused
+      // the book's end: finished, and the music that waited comes back where it was, paused (an
+      // episode: the next of Episodes up next first, if one waits)
       g.finishedHandled = true;
       saveSession(true);
-      if (g.lent) {
+      if (isEpisodeKey(g.book.key) && episodeEnded(g.book.key)) {
+        changed = true;
+      } else if (g.lent) {
         endSession();
         resumeMusic(false);
       }
@@ -498,7 +563,10 @@ int64_t booksWakeAt() {
   return 0;  // the end of what plays: the loop looks every 250 ms while it plays
 }
 
-void booksSaveNow() { saveSession(true); }
+void booksSaveNow() {
+  saveSession(true);
+  podcastsSaveNow();  // the episodes kept, with it
+}
 
 BookResume booksRestore() {
   FILE* f = fopen((dataDir() + "book-state.txt").c_str(), "r");
@@ -525,7 +593,8 @@ BookResume booksRestore() {
     return BookResume::None;
   }
   const std::string& cur = paths[size_t(index)];
-  if (access(cur.c_str(), R_OK) != 0) {
+  if (isEpisodeKey(key)) episodeRestored(key, cur);  // a streamed episode: what Now Playing shows of it
+  if (!isStream(cur) && access(cur.c_str(), R_OK) != 0) {
     int root = cur.compare(0, 17, "/storage/sdcard0/") == 0 ? 1 : cur.compare(0, 17, "/storage/sdcard1/") == 0 ? 2 : 0;
     if (root && !(g_library.presentRoots() & root)) return BookResume::Waiting;
     forgetSessionFiles();  // the book is gone: the music comes back instead
@@ -579,7 +648,7 @@ bool booksGiveBack() {
   Place p;
   if (const BookState* st = g_library.bookState(g.book.key))
     for (size_t i = 0; i < g.book.paths.size(); i++)
-      if (g.book.paths[i] == st->file) p = {int(i), st->positionMs};
+      if (g.book.paths[i] == st->file || g.book.paths.size() == 1) p = {int(i), st->positionMs};
   g_player.setShuffle(false);
   g_player.setRepeat(0);
   g_player.playBook(g.book.paths, p.file, p.ms, false, g.speed);
@@ -620,7 +689,8 @@ std::string sleepMark() {
 }
 
 std::string sleepEndName() {
-  if (const BookPlay* b = bookNow()) return b->skips ? tr("sleep.endOfBook") : tr("sleep.endOfChapter");
+  if (const BookPlay* b = bookNow())
+    return !b->skips ? tr("sleep.endOfChapter") : isEpisodeKey(b->key) ? tr("sleep.endOfEpisode") : tr("sleep.endOfBook");
   return tr("sleep.endOfSong");
 }
 

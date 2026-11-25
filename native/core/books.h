@@ -19,6 +19,9 @@ namespace rondo {
 // count too). bookRoot(): that folder's path, "" when the file isn't under one.
 std::string bookRoot(const std::string& path);
 bool inBookFolder(const std::string& path);
+// Under a Podcasts folder at the root of the card or the internal storage, any letter case (YouTube
+// Music › Download's episodes go to Podcasts/<show>/): podcast episodes, spoken word but not books
+bool inPodcastFolder(const std::string& path);
 bool isM4b(const std::string& path);
 // "Audiobook" or "Audiobooks" (and "Audio book", "Audiolibro"), any case
 bool isBookGenre(const std::string& genre);
@@ -114,6 +117,20 @@ int64_t rewindAfterPause(int64_t pausedMs);
 // Finished: in the last 30 s, or at the end
 constexpr int64_t kFinishedWithinMs = 30000;
 inline bool finishedAt(int64_t bookMs, int64_t lengthMs) { return lengthMs > 0 && bookMs >= lengthMs - kFinishedWithinMs; }
+
+// ---- a podcast episode's Played mark, agreed with YouTube's (shell/podcasts.h) ----
+// What the Y1 knows of the mark: the one it last agreed on with YouTube (-1 never compared), one made
+// here that YouTube hasn't taken yet (-1 none), and when YouTube took one from here (ms; it shows a change
+// some seconds late, so a list in the next two minutes saying otherwise is from before it).
+struct PlayedSync {
+  int agreed = -1, pending = -1;
+  int64_t toldAt = 0;
+};
+enum class PlayedAction { None, AdoptPlayed, AdoptUnplayed, Tell };
+constexpr int64_t kPlayedSettleMs = 120000;
+// A list says YouTube's mark (yt) while the Y1's is "here": what to do (changed on the phone: take it;
+// finished here before YouTube was ever asked: tell it), and the sync updated
+PlayedAction syncPlayed(PlayedSync& s, bool here, bool yt, int64_t nowMs);
 
 // The speeds (percent) Speed offers
 constexpr int kSpeeds[] = {75, 100, 125, 150, 175, 200, 250, 300};

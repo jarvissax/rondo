@@ -37,10 +37,39 @@ int main() {
   CHECK(!inBookFolder("/storage/sdcard0/Audiobooks.mp3"));
   CHECK(!inBookFolder("/storage/sdcard0/Music/x.mp3"));
   CHECK(bookRoot("/storage/sdcard0/audioBooks/x/y.mp3") == "/storage/sdcard0/audioBooks");
+  // YouTube Music › Download's episodes: Podcasts/<show>/ at a storage's root
+  CHECK(inPodcastFolder("/storage/sdcard0/Podcasts/Lex Fridman Podcast/GTA 6 [v1X9Fqs5a14].m4a"));
+  CHECK(inPodcastFolder("/storage/sdcard1/podcasts/x.m4a"));
+  CHECK(!inPodcastFolder("/storage/sdcard0/Music/Podcasts/x.m4a"));  // only at the root
+  CHECK(!inPodcastFolder("/storage/sdcard0/Podcasts.m4a"));
+  CHECK(!inPodcastFolder("/storage/sdcard0/Audiobooks/x.mp3"));
   CHECK(isM4b("/storage/sdcard0/Music/Book.M4B"));
   CHECK(!isM4b("/storage/sdcard0/Music/Song.m4a"));
   CHECK(isBookGenre("Audiobook") && isBookGenre("audiobooks") && isBookGenre("Audio Book") && isBookGenre("Audiolibro"));
   CHECK(!isBookGenre("Rock") && !isBookGenre("") && !isBookGenre("Spoken Word"));
+
+  // ---- a podcast episode's Played mark and YouTube's ----
+  {
+    const int64_t t = 1000000;
+    PlayedSync s;  // never compared: YouTube's Played is taken, its unplayed agreed on
+    CHECK(syncPlayed(s, false, true, t) == PlayedAction::AdoptPlayed && s.agreed == 1);
+    PlayedSync s2;
+    CHECK(syncPlayed(s2, false, false, t) == PlayedAction::None && s2.agreed == 0);
+    PlayedSync s3;  // finished here before YouTube was asked: it's told
+    CHECK(syncPlayed(s3, true, false, t) == PlayedAction::Tell && s3.pending == 1 && s3.agreed == -1);
+    CHECK(syncPlayed(s3, true, false, t) == PlayedAction::None && s3.pending == 1);  // not taken yet
+    CHECK(syncPlayed(s3, true, true, t) == PlayedAction::None && s3.pending == -1 && s3.agreed == 1);  // taken
+    // unmarked on the phone since: the Y1 follows
+    CHECK(syncPlayed(s3, true, false, t) == PlayedAction::AdoptUnplayed && s3.agreed == 0);
+    CHECK(syncPlayed(s3, false, false, t) == PlayedAction::None);
+    // marked here and taken a moment ago: a list still saying unplayed is from before it
+    PlayedSync s4{1, -1, t};
+    CHECK(syncPlayed(s4, true, false, t + 5000) == PlayedAction::None && s4.agreed == 1);
+    CHECK(syncPlayed(s4, true, false, t + kPlayedSettleMs + 1) == PlayedAction::AdoptUnplayed);  // later: the phone's
+    // the same everywhere: nothing to do
+    PlayedSync s5{0, -1, 0};
+    CHECK(syncPlayed(s5, false, false, t) == PlayedAction::None);
+  }
 
   // ---- disc folders ----
   CHECK(isDiscFolder("CD 1") && isDiscFolder("CD1") && isDiscFolder("Disc 02") && isDiscFolder("disk-3"));

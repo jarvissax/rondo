@@ -39,6 +39,9 @@ struct Track {
   // an audiobook's (core/books.h): in an Audiobooks folder, an .m4b, or tagged as one. Books stay out
   // of songs, artists, albums, genres, the smart lists and Shuffle songs: Library › Audiobooks has them.
   bool book = false;
+  // a podcast episode's file (core/books.h's inPodcastFolder: the card's Podcasts folder, where YouTube
+  // Music › Download puts episodes): spoken word too, kept out of the music the same way, and not a book
+  bool podcast = false;
   std::string key;  // fold() of what search matches
   bool dirty = true;
   bool gone = false;  // deleted from the card in this run: kept, so screens' pointers stay valid

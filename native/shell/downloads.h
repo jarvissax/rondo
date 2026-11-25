@@ -28,6 +28,7 @@ std::string downloadDir();  // the card's Videos/YouTube
 struct DownloadJob {
   std::string id, title, channel, thumb;
   bool song = false;  // a YouTube Music song (an .m4a in Music/YouTube Music), else a video
+  bool episode = false;  // (with song) a YouTube Music podcast episode: an .m4a in Podcasts/<show>
   bool alone = true;  // a song asked for by itself, not only for a downloaded playlist (kept when the playlist goes)
   int quality = 480;  // the height asked for (a video)
   enum State { Waiting, Running, Done, Failed, Paused } state = Waiting;
@@ -94,6 +95,12 @@ std::string downloadedSong(const std::string& id);  // the card's file of this s
 // The downloaded songs on the card, the newest first (id: the file; subtitle: artist · album)
 std::vector<Item> downloadedSongs();
 bool deleteSong(const std::string& file);  // and its entry; out of every playlist too
+
+// YouTube Music › a podcast's episode › Download (podcasts.h's downloadEpisode), in the same queue: its
+// sound as YouTube has it (itag 140) in an .m4a tagged with the episode, its show and its picture:
+//   Podcasts/<Show>/<Title> [<id>].m4a
+// The library keeps it out of the music (core/books.h's inPodcastFolder); podcasts.h has it.
+bool downloadEpisodeJob(const Item& episode);
 
 // YouTube Music › a playlist › Download playlist: every song of it (a mix: the ones its first page has,
 // as it never ends) in the queue, and a playlist of them in Library, in YouTube's order:

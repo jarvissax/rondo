@@ -37,7 +37,7 @@ std::vector<OrganizeItem> organizeItems(const std::string& root) {
   std::vector<OrganizeItem> items;
   for (const Track& t : g_library.tracks()) {
     // an audiobook stays where it is (its Audiobooks folder, its own folder of chapters)
-    if (t.gone || t.book || t.path.compare(0, root.size() + 1, root + "/") != 0) continue;
+    if (t.gone || t.book || t.podcast || t.path.compare(0, root.size() + 1, root + "/") != 0) continue;
     OrganizeItem i;
     i.path = t.path, i.title = t.title, i.artist = t.artist, i.albumArtist = t.albumArtist, i.album = t.album;
     i.track = t.track, i.disc = t.disc, i.year = t.year, i.video = t.video;

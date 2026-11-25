@@ -2,6 +2,7 @@
 #include "music_list.h"
 
 #include "downloads.h"
+#include "podcasts.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -81,7 +82,7 @@ void Ambient::draw(Env& e, Rect r) {
 }
 
 namespace {
-bool isContainer(const std::string& kind) { return kind == "playlist" || kind == "album" || kind == "artist"; }
+bool isContainer(const std::string& kind) { return kind == "playlist" || kind == "album" || kind == "artist" || kind == "podcast"; }
 }  // namespace
 
 std::string httpProblem(int status, const std::string& path) {
@@ -101,10 +102,14 @@ std::string offlineOr(const std::string& problem) {
 
 void openMusicItem(const Item& item, const std::vector<Item>& siblings) {
   if (isContainer(item.kind)) return openMusicContainer(item);
+  if (item.kind == "episode") {  // spoken word, by itself: the music waits for it (podcasts.h)
+    playEpisode(episodeOf(item));
+    return openNowPlaying();
+  }
   std::vector<Item> playable;
   int at = -1;
   for (const Item& s : siblings)
-    if (!isContainer(s.kind)) {
+    if (!isContainer(s.kind) && s.kind != "episode") {
       if (at < 0 && s.id == item.id) at = int(playable.size());  // the first copy, as indexOf
       playable.push_back(s);
     }
@@ -125,7 +130,8 @@ std::vector<Row> musicRows(const std::vector<Item>& items, std::function<std::ve
     r.chevron = container;
     Item item = it;
     r.onSelect = [item, queue] { openMusicItem(item, queue()); };
-    if (!container) r.onLongSelect = [item] { openSongMenu(item); };
+    if (it.kind == "episode") r.onLongSelect = [item] { openEpisodeMenu(episodeOf(item)); };
+    else if (!container) r.onLongSelect = [item] { openSongMenu(item); };
     if (!container && !it.id.empty() && it.id[0] != '/') r.ahead = it.id;
     rows.push_back(std::move(r));
   }
@@ -140,7 +146,8 @@ std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::
     c.title = it.title, c.subtitle = it.subtitle, c.thumb = it.thumb;
     Item item = it;
     c.onSelect = [item, queue] { openMusicItem(item, queue()); };
-    if (!isContainer(it.kind)) c.onLongSelect = [item] { openSongMenu(item); };
+    if (it.kind == "episode") c.onLongSelect = [item] { openEpisodeMenu(episodeOf(item)); };
+    else if (!isContainer(it.kind)) c.onLongSelect = [item] { openSongMenu(item); };
     if (!isContainer(it.kind) && !it.id.empty() && it.id[0] != '/') c.ahead = it.id;
     cards.push_back(std::move(c));
   }

@@ -14,9 +14,12 @@
 
 namespace rondo::shell {
 
-// A book as it plays: its files, their lengths, its chapters
+// A spoken-word item as it plays: a book (its files, their lengths, its chapters), or a YouTube Music
+// episode (podcasts.h: key "yt:<video id>", its one file or stream, YouTube's chapters, its show as
+// the author)
 struct BookPlay {
   std::string key, title, author, narrator;
+  std::string speedKey;  // where its speed is kept: "" its own key; an episode's show ("ytshow:<id>")
   std::vector<std::string> paths;
   std::vector<int64_t> fileMs;
   std::vector<Chapter> chapters;
@@ -36,7 +39,21 @@ struct BookProgress {
   int64_t lastPlayed = 0;  // ms since 1970
 };
 BookProgress bookProgress(const Book& b, const BookPlay& d);
+BookProgress spokenProgress(const BookPlay& d);
 int64_t wallNowMs();
+
+// ---- by key: a book's or an episode's, the screens' and the controls' one way to either ----
+// what plays and its chapters (false: no such book or episode now)
+bool spokenDetails(const std::string& key, BookPlay& out);
+void playSpoken(const std::string& key);  // Resume (a little earlier after a pause) or Start
+void playSpokenFrom(const std::string& key, Place p, bool play = true);
+void playSpokenDetails(const BookPlay& d);  // as playSpoken, for details in hand (an episode's from its row)
+// the speed: a book's own, an episode's show's (a show's key "ytshow:<id>" sets it for all its episodes)
+int spokenSpeed(const std::string& key);
+void setSpokenSpeed(const std::string& key, int percent);
+void markSpokenFinished(const std::string& key, bool finished);
+// details that came later for the one playing (an episode's chapters and length): taken in place
+void spokenDetailsCame(const BookPlay& d);
 
 // What the screens say: listening time at a speed ("2 h 10 min", "45 min", "under a minute"), and
 // a speed in the language's numbers ("1.5×", "1,5×")
@@ -95,6 +112,6 @@ void sleepStart(SleepMode mode, int minutes = 0);
 SleepMode sleepMode();
 int64_t sleepLeftMs();  // Minutes: what's left
 std::string sleepMark();  // what Now Playing shows beside its moon ("28 min", "End"); "" off
-std::string sleepEndName();  // "End of chapter", "End of book" or "End of song", for what plays
+std::string sleepEndName();  // "End of chapter", "End of book", "End of episode" or "End of song", for what plays
 
 }  // namespace rondo::shell

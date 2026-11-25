@@ -7,6 +7,7 @@
 #include "../ui/keyboard.h"
 #include "downloads.h"
 #include "music_list.h"
+#include "podcasts.h"
 
 namespace rondo::shell {
 
@@ -396,14 +397,21 @@ class ArtistScreen : public MusicListScreen {
 
 // SearchScreen: YouTube Music songs typed on the TV keyboard. Keyboard: Menu/Play/Prev/Next are the
 // arrows, the wheel walks the keys, center types. Results: the wheel picks a row, center plays it,
-// Menu goes back to the keyboard.
+// Menu goes back to the keyboard. Songs: a row above them opens the podcasts of the same words, when
+// YouTube Music has some. Podcasts (the Podcasts pill's search): the shows, then the episodes.
+enum class Find { Songs, Videos, Podcasts };
 class MusicSearchScreen : public Screen {
  public:
-  explicit MusicSearchScreen(bool video) : video_(video), kb_(tr("keyboard.search"), Keyboard::Style::YouTube) {
-    results_.style = video ? RowStyle::Video : RowStyle::Music;
+  explicit MusicSearchScreen(Find find, const std::string& query = "")
+      : video_(find == Find::Videos), podcasts_(find == Find::Podcasts), kb_(tr("keyboard.search"), Keyboard::Style::YouTube) {
+    results_.style = video_ ? RowStyle::Video : RowStyle::Music;
     results_.onNearEnd = [this] { more(); };
+    if (!query.empty()) {
+      kb_.setTyped(query);
+      search();
+    }
   }
-  std::string title() const override { return video_ ? tr("music.searchYouTube") : tr("music.searchMusic"); }
+  std::string title() const override { return video_ ? tr("music.searchYouTube") : podcasts_ ? tr("podcasts.searchTitle") : tr("music.searchMusic"); }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     if (showing_) {
@@ -465,15 +473,87 @@ class MusicSearchScreen : public Screen {
     loading_ = false;  // a page that was loading went with the cancel
     next_.clear();
     results_.setMessage(tr("music.searching", {{"query", q}}));
+    if (podcasts_) return searchPodcasts(q);
     std::string path = (video_ ? "/video/search?q=" : "/music/search?type=song&q=") + Api::escape(q);
-    requests_.get(path, 0, [this, q, path](int status, const std::string& body) {
-      if (status != 200) return results_.setMessage(offlineOr(tr("music.searchFailed", {{"problem", httpProblem(status, path)}})));
+    // the songs, and (YouTube Music) its shows of the same words: both before the rows, so none moves
+    auto waiting = std::make_shared<int>(video_ ? 1 : 2);
+    auto songs = std::make_shared<std::pair<int, std::string>>();
+    auto shows = std::make_shared<std::vector<Item>>();
+    auto done = [this, q, path, waiting, songs, shows] {
+      if (--*waiting) return;
+      if (songs->first != 200) return results_.setMessage(offlineOr(tr("music.searchFailed", {{"problem", httpProblem(songs->first, path)}})));
       ItemsPage page;
-      parseItems(body, page);
+      parseItems(songs->second, page);
       found_ = page.items;
       next_ = page.next;
-      if (found_.empty()) return results_.setMessage(tr("music.nothingFound", {{"query", q}}));
-      results_.setRows(rowsFor(page.items));
+      std::vector<Row> rows;
+      if (!shows->empty()) {
+        Row p;
+        p.title = tr("podcasts.inSearch", {{"query", q}});
+        std::string names;
+        for (size_t k = 0; k < shows->size() && k < 2; k++) names += (k ? ", " : "") + (*shows)[k].title;
+        p.subtitle = names;
+        p.tile = &tiles::podcasts;
+        p.chevron = true;
+        p.onSelect = [q] { g_app->push(makePodcastSearch(q)); };
+        rows.push_back(p);
+      }
+      if (found_.empty() && rows.empty()) return results_.setMessage(tr("music.nothingFound", {{"query", q}}));
+      for (Row& r : rowsFor(page.items)) rows.push_back(std::move(r));
+      results_.setRows(std::move(rows));
+    };
+    requests_.get(path, 0, [songs, done](int status, const std::string& body) {
+      *songs = {status, body};
+      done();
+    });
+    if (!video_)
+      requests_.get("/music/search?type=podcast&q=" + Api::escape(q), 0, [shows, done](int status, const std::string& body) {
+        std::vector<Episode> none;
+        if (status == 200) parseEpisodes(body, none, shows.get());
+        done();
+      });
+  }
+  // Podcasts: shows (one page) and episodes (paged), asked together
+  void searchPodcasts(const std::string& q) {
+    auto waiting = std::make_shared<int>(2);
+    auto shows = std::make_shared<std::vector<Item>>();
+    auto eps = std::make_shared<std::vector<Episode>>();
+    auto failed = std::make_shared<int>(-1);
+    auto done = [this, q, waiting, shows, eps, failed] {
+      if (--*waiting) return;
+      if (shows->empty() && eps->empty()) {
+        if (*failed >= 0) return results_.setMessage(offlineOr(tr("music.searchFailed", {{"problem", httpProblem(*failed, "/music/search")}})));
+        return results_.setMessage(tr("music.nothingFound", {{"query", q}}));
+      }
+      std::vector<Row> rows;
+      auto header = [&](const std::string& t) {
+        Row h;
+        h.header = true;
+        h.title = t;
+        rows.push_back(h);
+      };
+      if (!shows->empty()) {
+        header(tr("podcasts.shows"));
+        std::vector<Item> all = *shows;
+        for (Row& r : musicRows(all, [all] { return all; })) rows.push_back(std::move(r));
+      }
+      if (!eps->empty()) {
+        header(tr("podcasts.episodes"));
+        for (Row& r : episodeRows(*eps, true)) rows.push_back(std::move(r));
+      }
+      results_.setRows(std::move(rows));
+    };
+    requests_.get("/music/search?type=podcast&q=" + Api::escape(q), 0, [shows, failed, done](int status, const std::string& body) {
+      std::vector<Episode> none;
+      if (status == 200) parseEpisodes(body, none, shows.get());
+      else *failed = status;
+      done();
+    });
+    requests_.get("/music/search?type=episode&q=" + Api::escape(q), 0, [this, eps, failed, done](int status, const std::string& body) {
+      if (status == 200) parseEpisodes(body, *eps, nullptr, &next_);
+      else *failed = status;
+      noteEpisodes(*eps);
+      done();
     });
   }
   void more() {
@@ -484,6 +564,12 @@ class MusicSearchScreen : public Screen {
       loading_ = false;
       if (status == 410) next_.clear();
       if (status != 200) return;
+      if (podcasts_) {  // the episodes' next page
+        std::vector<Episode> eps;
+        parseEpisodes(body, eps, nullptr, &next_);
+        noteEpisodes(eps);
+        return results_.appendRows(episodeRows(eps, true));
+      }
       ItemsPage page;
       parseItems(body, page);
       next_ = page.next;
@@ -494,7 +580,7 @@ class MusicSearchScreen : public Screen {
   std::vector<Row> rowsFor(const std::vector<Item>& items) {
     return video_ ? videoRows(items) : musicRows(items, [this] { return found_; });
   }
-  bool video_;
+  bool video_, podcasts_;
   Keyboard kb_;
   RowList results_;
   bool showing_ = false, loading_ = false;
@@ -505,10 +591,12 @@ class MusicSearchScreen : public Screen {
 
 }  // namespace
 
-std::unique_ptr<Screen> makeMusicSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(false)); }
-std::unique_ptr<Screen> makeVideoSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(true)); }
+std::unique_ptr<Screen> makeMusicSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(Find::Songs)); }
+std::unique_ptr<Screen> makeVideoSearch() { return std::unique_ptr<Screen>(new MusicSearchScreen(Find::Videos)); }
+std::unique_ptr<Screen> makePodcastSearch(const std::string& query) { return std::unique_ptr<Screen>(new MusicSearchScreen(Find::Podcasts, query)); }
 
 void openMusicContainer(const Item& item) {
+  if (item.kind == "podcast") return openPodcast(item.id, item.title);
   if (item.kind == "playlist") g_app->push(std::unique_ptr<Screen>(new CollectionScreen(item.id, item.title, false)));
   else if (item.kind == "album") g_app->push(std::unique_ptr<Screen>(new CollectionScreen(item.id, item.title, true)));
   else if (item.kind == "artist") g_app->push(std::unique_ptr<Screen>(new ArtistScreen(item.id, item.title)));

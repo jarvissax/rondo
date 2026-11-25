@@ -76,7 +76,8 @@ std::string baseName(const std::string& path) { return path.substr(path.rfind('/
 // whether it is an audiobook's (core/books.h), which follows the path and the genre.
 void setKey(Track& t) {
   t.key = t.video ? fold(t.title + " " + baseName(t.path)) : fold(t.title + " " + t.artist + " " + t.album + " " + baseName(t.path));
-  t.book = !t.video && (bookCandidate(t.path) || isBookGenre(t.genre));
+  t.podcast = !t.video && inPodcastFolder(t.path);
+  t.book = !t.video && !t.podcast && (bookCandidate(t.path) || isBookGenre(t.genre));
 }
 
 // "Artist - Title.flac"; a "01 " track prefix is dropped (LocalLibrary.fromName()).
@@ -709,7 +710,7 @@ namespace {
 std::vector<const Track*> songsWhere(const std::deque<Track>& tracks, const std::function<bool(const Track&)>& keep) {
   std::vector<const Track*> v;
   for (const Track& t : tracks)
-    if (!t.gone && !t.video && !t.book && keep(t)) v.push_back(&t);
+    if (!t.gone && !t.video && !t.book && !t.podcast && keep(t)) v.push_back(&t);
   return v;
 }
 }  // namespace
@@ -807,7 +808,7 @@ std::vector<Library::Group> group(const std::deque<Track>& tracks, By by) {
   std::unordered_map<std::string, size_t> at;
   std::vector<std::string> keys;  // lower() of each group's name, computed once
   for (const Track& t : tracks) {
-    if (t.gone || t.video || t.book || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
+    if (t.gone || t.video || t.book || t.podcast || (album && t.album.empty()) || (by == By::Genre && t.genre.empty())) continue;
     const std::string& artist = by == By::AlbumArtist && !t.albumArtist.empty() ? t.albumArtist : t.artist;
     // "Unknown artist" stays English here: it's the group's name, which opens, sorts and finds it; the
     // screens show it in the language spoken (shell/library_screens.cpp, groupTitle)
@@ -852,7 +853,7 @@ void Library::index() const {
   videos_.clear();
   std::vector<BookFile> bookFiles;
   for (const Track& t : tracks_) {
-    if (t.gone) continue;
+    if (t.gone || t.podcast) continue;  // an episode: YouTube Music's Podcasts has it
     if (t.book) {
       BookFile f;
       f.path = t.path, f.title = t.title, f.album = t.album, f.artist = t.artist, f.albumArtist = t.albumArtist;
@@ -960,7 +961,7 @@ Library::Found Library::search(const std::string& query) const {
   for (size_t i = 0; i < albums_.size(); i++)
     if (hit(albumKeys_[i])) f.albums.push_back(albums_[i]);
   for (const Track& t : tracks_) {
-    if (!t.gone && !t.book && hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
+    if (!t.gone && !t.book && !t.podcast && hit(t.key)) (t.video ? f.videos : f.songs).push_back(&t);
   }
   for (size_t i = 0; i < books_.size(); i++)
     if (hit(bookKeys_[i])) f.books.push_back(&books_[i]);

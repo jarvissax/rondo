@@ -115,6 +115,15 @@ std::string bookRoot(const std::string& path) {
 
 bool inBookFolder(const std::string& path) { return !bookRoot(path).empty(); }
 
+bool inPodcastFolder(const std::string& path) {
+  std::string storage = storageOf(path);
+  if (storage.empty() || path.size() <= storage.size() + 1) return false;
+  size_t end = path.find('/', storage.size() + 1);
+  if (end == std::string::npos) return false;
+  std::string folder = asciiLower(path.substr(storage.size() + 1, end - storage.size() - 1));
+  return folder == "podcasts" || folder == "podcast";
+}
+
 bool isM4b(const std::string& path) {
   size_t dot = path.rfind('.');
   return dot != std::string::npos && asciiLower(path.substr(dot + 1)) == "m4b";
@@ -123,6 +132,21 @@ bool isM4b(const std::string& path) {
 bool isBookGenre(const std::string& genre) { return bookWord(genre); }
 
 void setBookReader(BookReader reader) { g_reader = reader; }
+
+PlayedAction syncPlayed(PlayedSync& s, bool here, bool yt, int64_t nowMs) {
+  int y = yt ? 1 : 0;
+  if (s.pending < 0 && s.toldAt && nowMs - s.toldAt < kPlayedSettleMs && y != s.agreed) return PlayedAction::None;  // from before ours
+  if (s.pending >= 0) {
+    if (s.pending == y) s.pending = -1, s.agreed = y;  // taken
+    return PlayedAction::None;
+  }
+  if (s.agreed >= 0 && s.agreed == y) return PlayedAction::None;
+  PlayedAction a = PlayedAction::None;
+  if (here != yt && (s.agreed >= 0 || yt)) a = yt ? PlayedAction::AdoptPlayed : PlayedAction::AdoptUnplayed;  // the phone's
+  else if (here && !yt && s.agreed < 0) s.pending = 1, a = PlayedAction::Tell;  // finished here first
+  if (s.pending < 0) s.agreed = y;
+  return a;
+}
 
 bool readBookInfo(const char* path, BookFileInfo& out) { return g_reader && g_reader(path, out); }
 

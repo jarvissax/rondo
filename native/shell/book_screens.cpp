@@ -237,10 +237,9 @@ class ChaptersScreen : public ShellListScreen {
 
  private:
   void render() {
-    const Book* b = g_library.bookByKey(key_);
-    if (!b) return list_.setMessage(tr("books.gone"));
-    BookPlay d = bookDetails(*b);
-    BookProgress p = bookProgress(*b, d);
+    BookPlay d;  // a book's, or an episode's (podcasts.h)
+    if (!spokenDetails(key_, d)) return list_.setMessage(tr("books.gone"));
+    BookProgress p = spokenProgress(d);
     int now = chapterAt(d.chapters, p.place);
     std::vector<Row> rows;
     for (size_t i = 0; i < d.chapters.size(); i++) {
@@ -253,7 +252,7 @@ class ChaptersScreen : public ShellListScreen {
       Place at{c.file, c.startMs};
       bool fromNp = fromNp_;
       r.onSelect = [key, at, fromNp] {
-        if (const Book* b = g_library.bookByKey(key)) playBookFrom(*b, at);
+        playSpokenFrom(key, at);
         showPlaying(fromNp);
       };
       rows.push_back(std::move(r));
@@ -274,9 +273,8 @@ class BookmarksScreen : public ShellListScreen {
 
  private:
   void render() {
-    const Book* b = g_library.bookByKey(key_);
-    if (!b) return list_.setMessage(tr("books.gone"));
-    BookPlay d = bookDetails(*b);
+    BookPlay d;  // a book's, or an episode's (podcasts.h)
+    if (!spokenDetails(key_, d)) return list_.setMessage(tr("books.gone"));
     std::vector<Row> rows;
     const BookPlay* now = bookNow();
     if (now && now->key == key_) {
@@ -305,7 +303,7 @@ class BookmarksScreen : public ShellListScreen {
       std::string key = key_;
       bool fromNp = fromNp_;
       r.onSelect = [key, at, fromNp] {
-        if (const Book* b = g_library.bookByKey(key)) playBookFrom(*b, at);
+        playSpokenFrom(key, at);
         showPlaying(fromNp);
       };
       int64_t created = m.created;
@@ -344,13 +342,10 @@ std::unique_ptr<Screen> makeBookSpeed(const std::string& key) {
       tr("book.speed"), choices,
       [key] {
         const BookPlay* now = bookNow();
-        if (now && now->key == key) return std::to_string(bookSpeedNow());
-        const BookState* s = g_library.bookState(key);
-        return std::to_string(s ? s->speed : 100);
+        if (now && (now->key == key || now->speedKey == key)) return std::to_string(bookSpeedNow());
+        return std::to_string(spokenSpeed(key));
       },
-      [key](const std::string& v) {
-        if (const Book* b = g_library.bookByKey(key)) setBookSpeed(*b, atoi(v.c_str()));
-      });
+      [key](const std::string& v) { setSpokenSpeed(key, atoi(v.c_str())); });
 }
 
 std::unique_ptr<Screen> makeSleepTimer() {
