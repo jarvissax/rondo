@@ -204,6 +204,7 @@ input { caret-color: var(--accent-hi); }
 .t-ytmusic { --t1: #ff5a72; --t2: #c8102e; }
 .t-later { --t1: #4fd8c8; --t2: #139c8c; }
 .t-newEpisodes { --t1: #ffb04d; --t2: #f07a12; }
+.t-podcasts { --t1: #e07bff; --t2: #9b30d9; }
 .t-whatsapp { --t1: #63f08e; --t2: #17a74c; }
 .brand-glyph { width: 62%; height: auto; }
 .brand-glyph.yt { width: 72%; }
@@ -1241,3 +1242,23 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
   .lib .song.ep-row .s-sub, .lib .song.show-row .s-sub { display: block; }
 }
 .ep-row .art img, .show-row .art img, .bk-cover img { object-fit: cover; }
+
+/* Podcasts from their feeds (the Rondo's main menu › Podcasts): the tools row, a chart's rank, a row's
+   mark (On card, 40 %), the notes under the tools, Podcast Index's key, Download new episodes, a show's
+   episode rows (no picture: its cover is above), the notes sheet */
+.pod-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -6px 0 18px; }
+.pod-tools .pod-h { margin: 0 auto 0 0; }
+.pod-tools .select select { max-width: 220px; }
+.pod-rank { display: inline-block; min-width: 1.6em; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.pod-mark { align-self: center; color: var(--text-2); font-size: 12px; white-space: nowrap; margin-right: 4px; }
+.pod-note { color: var(--text-2); font-size: 13px; margin: -8px 0 18px; }
+.pod-key { padding-bottom: 14px; }
+.pod-key p { margin: 8px 14px; color: var(--text-2); font-size: 13px; }
+.pod-key-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 14px; }
+.pod-key-row input { flex: 1 1 180px; min-width: 0; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line, #d9d9de); background: var(--surface, #fff); color: inherit; }
+.pod-auto { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 14px; border-top: 1px solid var(--line, #e4e4e8); }
+.pod-auto small { color: var(--text-2); }
+.pod-auto .check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.lib .song.ep-row.no-art { grid-template-columns: minmax(0, 1fr) auto; }
+.pod-notes { white-space: pre-line; max-height: 60vh; overflow: auto; }
+.pod-yt-head { margin-top: 28px; }
