@@ -97,7 +97,30 @@ stars to rate it.
 
 ## Podcasts
 
-YouTube Music's podcasts, played on the Y1 (as its YouTube Music › Podcasts): **search** for a show or
+The Y1's [Podcasts](using.md#podcasts) (shows from their feeds) first, then YouTube Music's.
+
+**Shows from their feeds**, played on the Y1: **search** for a show by its name (Apple's directory,
+and Podcast Index's with a key); **Top shows** in your country, by category; **Continue listening**,
+**Episodes up next**, **New episodes** (**Look now** looks for more), **your shows** with how many new
+episodes each has, **Save for later** and what's **downloaded**. A show's page has **Subscribe**, its
+**speed**, **Download new episodes** (on Wi-Fi: keep the latest 1 to 10, and delete played ones if
+you like) and its episodes, newest first or a story's first first. An episode's **⋯** menu plays it
+on the Y1 (or from the start, or a video episode's sound alone), puts it in Episodes up next,
+downloads it (or deletes the download), saves it for later, marks it played, shows its notes and
+opens its show.
+
+- **Add by address** subscribes to a show by its feed's address: the one a private or paid show
+  gives you. The Y1 reads it itself; it goes to no server or directory.
+- **Import OPML** brings your shows from another podcast app (most can export an OPML file), one by
+  one, with how many came, were already here or couldn't be read. **Export OPML** saves yours.
+- **Country** chooses whose directory and charts search and Top shows use (the United States unless
+  you choose another), as Podcasts › Podcast settings on the Y1 does.
+- **More shows in search:** without a Rondo server, paste a free
+  [Podcast Index](https://api.podcastindex.org/signup) key and secret here, and search finds shows
+  there as well as in Apple's directory. They stay on the Y1 and aren't shown again. With a server,
+  its own key (on its admin page) is used.
+
+**YouTube Music's podcasts**, played on the Y1 (as its YouTube Music › Podcasts): **search** for a show or
 an episode; **Continue listening** and **Episodes up next** (take one off with ×); **Episodes for
 Later** and **New episodes**; what's **downloaded** on the card; and **your shows**. A show's page has
 **Save to library**, its **speed** (every episode of the show plays at it) and its episodes, newest

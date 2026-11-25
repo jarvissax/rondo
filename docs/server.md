@@ -14,6 +14,8 @@ home or on a VPS. With it:
   changes (the server updates it every day), and the server has its own YouTube account, signed in
   on its admin page.
 - **Headphone match** (Settings › Sound) looks up your headphone model's correction through it.
+- **Podcast search in Podcast Index** as well as Apple's directory (server 3.7.0 or newer), with a
+  free key pasted on its admin page; see [Podcasts](#podcasts).
 
 The server is set up apart from YouTube: **Settings › Server** on the Y1 (and the dashboard's
 **Server** page) connects it, and YouTube uses it only when you choose it there.
@@ -127,10 +129,13 @@ Open `<your server's address>/admin` any time to see how things are going. A sig
 hours.
 
 - **Overview:** whether your Rondo is connected to the server, what needs doing, and a row for each
-  part (the server, its connection, the resolver, YouTube, your Rondo, WhatsApp) with its state.
+  part (the server, its connection, the resolver, YouTube, your Rondo, WhatsApp, podcasts) with its
+  state.
 - **YouTube:** the server's YouTube account: sign in with a code, add or replace cookies.txt, or
   sign out.
 - **WhatsApp:** link your WhatsApp, see whose it is and how many chats came over, or unlink it.
+- **Podcasts:** the Podcast Index key for podcast search on your Rondo: paste it, check that it
+  works, replace it or remove it.
 - **Device:** the connected Y1, when it was last seen, and buttons to connect a different one or
   disconnect it.
 - **Resolver:** the yt-dlp version, **Update now**, and **Test playback**, which checks that a
@@ -166,6 +171,26 @@ phone, ends it; unlinking deletes the chats and media the server kept.
 - **WhatsApp's terms don't allow unofficial apps** like this one (it uses
   [Baileys](https://github.com/WhiskeySockets/Baileys)), and WhatsApp may close accounts that use
   them.
+
+## Podcasts
+
+Rondo plays podcasts from their RSS feeds, straight from where each show publishes them. Podcast
+search on the Y1 finds shows in Apple's podcast directory; with a free
+[Podcast Index](https://podcastindex.org) key on the server, it finds shows in Podcast Index too:
+
+1. Sign up at [api.podcastindex.org/signup](https://api.podcastindex.org/signup). It's free and gives
+   you an API key and an API secret.
+2. On the admin page, open **Podcasts**, paste the key and the secret, and press **Save key**. The
+   page then runs one search with them and says whether the key works (**Check** runs it again).
+
+The secret stays on the server's Docker volume, readable by the server only; the admin page never
+shows it again. **Replace key** puts in a new one, and **Remove key** takes it away (search is then
+Apple's directory only).
+
+The server also reads big feeds for the Y1 (a show with thousands of episodes), and then only the
+new episodes each time, so the Y1 doesn't fetch megabytes of feed every few hours. That's for shows
+found in a directory: one added by its own private address is only ever read by the Y1. Episodes
+never go through the server, and podcasts work without one, or with one that is down or older.
 
 ## Your YouTube account (optional)
 
@@ -246,8 +271,14 @@ video you download is saved on the Y1's card, not on the server.) WhatsApp is di
 keeps your chats and the photos, videos and voice messages they hold, so the Y1 can show them;
 unlinking deletes them. Your cookies, the code sign-in and WhatsApp's link stay on the server's
 Docker volume, readable only by the server, and are never shown or written to the logs (neither is
-your WhatsApp number). Going **Through my server**, the Y1 reaches YouTube only through your server,
-never Google directly. It still checks GitHub for Rondo's own updates.
+your WhatsApp number, nor the Podcast Index key's secret). Going **Through my server**, the Y1
+reaches YouTube only through your server, never Google directly. It still checks GitHub for Rondo's
+own updates.
+
+Podcasts: with a Podcast Index key, the words you search for podcasts go to Podcast Index, from the
+server. A podcast feed the Y1 has the server read is fetched by the server from the podcast's own
+host and kept in its memory for 10 minutes, never on disk; the server reads feeds only from
+addresses on the internet, never from its own network.
 
 With a server, Rondo sets its time zone from it: once each time the Y1 joins Wi-Fi, the server asks
 [ipwho.is](https://ipwho.is) (or, if that fails, [ipapi.co](https://ipapi.co)) which time zone the

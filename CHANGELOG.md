@@ -9,6 +9,33 @@ releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
 ### New
 
+- **Podcasts, from their feeds** (a new **Podcasts** entry on the main menu, after Library; hide it in
+  Settings › Display › Theme › Main menu): **Continue listening**, **New episodes** (what your shows
+  put out since you subscribed, for a month), **Your shows**, **Save for later**, **Top shows**
+  (Apple's charts for your country, by category), **Downloaded** and **Search podcasts** (Apple's
+  directory, and Podcast Index's with a free key). The Y1 reads the feeds and plays the episodes
+  straight from each podcast's host, with or without a Rondo server.
+- **A show's page:** **Subscribe**, its **speed**, **Download new episodes** (on Wi-Fi, the latest 1
+  to 10 kept on the card, played ones deleted if you like; nothing downloads by itself otherwise),
+  **About this show**, and its episodes, newest first (a show told in order: episode 1 first), with a
+  dot on the ones you haven't started and the time left on the ones you have. Thousands of episodes
+  scroll as quickly as a few.
+- **Episodes play as audiobooks do:** their place kept, a little earlier after a pause, chapters
+  (the feed's chapter file or the MP3's own) or 30 s and 15 s skips, bookmarks, the sleep timer,
+  Episodes up next and Back to your music; **speed is kept per show**. A **video episode** opens in
+  the video player where you left it, and **Listen only** plays its sound with the screen off. An
+  episode's options also have **Show notes**.
+- **New episodes are looked for** when Podcasts opens and every 4 hours while the Y1 is on or
+  playing. **Podcast settings** (Podcasts' last row) has **Look for new episodes** and the **Country**
+  for the directory and the charts (the United States unless you choose another).
+- **Downloads** go to `Podcasts/<show>` on the card, as the podcast's own file, beside YouTube
+  Music's episodes.
+- **The dashboard's Podcasts page** has these shows first (YouTube Music's below): search, Top shows,
+  every list, a show's page with Subscribe, speed and Download new episodes, every episode's options,
+  **Add by address** (a private or paid show's feed, read only by the Y1), **Import OPML** and
+  **Export OPML** to move your shows from and to other podcast apps, the country, and without a
+  server a Podcast Index key of the Y1's own.
+
 - **Podcasts, from YouTube Music** (YouTube Music › **Podcasts**, a tab beside Home and Library):
   your saved shows, **Episodes for Later**, **New episodes**, what's downloaded, **Continue
   listening**, and search for shows and episodes (song search offers matching podcasts too; Home's
@@ -31,10 +58,20 @@ Through a server, podcasts need **Rondo server 3.7.0** (not released yet); direc
 work as they are. With an older server, YouTube Music › Podcasts says so and still plays what's on the
 card.
 
+The main menu's Podcasts need no server at all. With Rondo server 3.7.0 search finds Podcast Index's
+shows too (with the key on its admin page), and big feeds come from it a page at a time.
+
 ### Changed
 
 - YouTube Music's header shows the logo without the word "Music" and the battery alone when it has
   three tabs (Home, Library, Podcasts), as YouTube's does.
+
+### Fixed
+
+- **A book or an episode started after the card came back from a computer** (the USB drive) jumped
+  to where the music had been at its first pause and play.
+- **Big PNG pictures** (a 3000 × 3000 cover, common for podcasts and some albums) show instead of an
+  empty square: they're read a row at a time, without needing 36 MB at once.
 
 ## 4.1.2 (November 24, 2026)
 
