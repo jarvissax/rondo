@@ -20,6 +20,11 @@ the same paths either way.
   itself (`"49 songs"`, `"Liked Music"`, `"2.3B views"`) come from `lang/<code>.json`'s `device`
   section (`feed.*`; server/src/lang.ts `say()`). The answers kept for a while are kept per language.
   `/music/search` and `/video/search` stay in English (YouTube ranks results by the language asked).
+- **How far a video was watched:** since 3.8.0 a YouTube video in a list (`/video/home`,
+  `/video/subscriptions`, `/video/history`, search, related) may carry `"watched": <1–100>`, the
+  account's progress as YouTube's red bar shows it (youtubei.js: a lockup's `ThumbnailBottomOverlayView`
+  progress bar, a video's `ThumbnailOverlayResumePlayback`). The Rondo (4.3.0) opens a video it has no
+  place of its own for at about that point. Absent: not started, or no account.
 - **First run:** no admin password yet. The server prints a one-time **setup code** in its log
   (`docker logs rondo`): `Rondo setup: open <base>/admin and enter 482-913`. The page asks for that
   code and a new admin password (at least 10 characters). The code changes on every restart until

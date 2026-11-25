@@ -2,6 +2,7 @@
 #include "music_list.h"
 
 #include "downloads.h"
+#include "video_places.h"
 #include "podcasts.h"
 
 #include <math.h>
@@ -154,6 +155,54 @@ std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::
   return cards;
 }
 
+namespace {
+// a started video's options (hold center on its row): Resume, Start again, and a YouTube video's Download
+class VideoMenuScreen : public MusicListScreen {
+ public:
+  explicit VideoMenuScreen(Item video) : MusicListScreen(video.title) {
+    std::vector<Row> rows;
+    auto add = [&](const std::string& title, const Tile& tile, std::string subtitle, std::function<void()> f) {
+      Row r;
+      r.title = title, r.tile = &tile, r.subtitle = std::move(subtitle);
+      r.onSelect = std::move(f);
+      rows.push_back(std::move(r));
+    };
+    std::string key = videoPlaceKey(video);
+    add(tr("book.resume"), tiles::resume, videoLeftText(key, video.durationSec), [video] {
+      g_app->pop();
+      openVideo(video);
+    });
+    add(tr("book.startAgain"), tiles::startAgain, "", [video, key] {
+      videoStartAgain(key);
+      g_app->pop();
+      openVideo(video);
+    });
+    if (!video.id.empty() && video.id[0] != '/')
+      add(tr("songList.download"), tiles::downloads, "", [video] {
+        g_app->pop();
+        askDownload(video);
+      });
+    list_.setRows(std::move(rows));
+  }
+  void draw(Env& e, float w, float h) override {
+    now_ = e.now;
+    ambient_.draw(e, {0, 0, w, h});
+    darkHeader(e, w, title_, HeaderLogo::Video);
+    float top = float(e.dp(31));
+    list_.layout(e, w, h - top);
+    list_.draw(e, 0, top);
+    e.c.layer(0);
+  }
+};
+}  // namespace
+
+// hold center on a video's row: its options once it's started, else (YouTube's) Download
+void videoRowHold(const Item& item) {
+  bool card = !item.id.empty() && item.id[0] == '/';
+  if (videoHasPlace(videoPlaceKey(item))) return g_app->push(std::unique_ptr<Screen>(new VideoMenuScreen(item)));
+  if (!card) askDownload(item);
+}
+
 std::vector<Row> videoRows(const std::vector<Item>& items) {
   std::vector<Row> rows;
   for (const Item& it : items) {
@@ -162,9 +211,10 @@ std::vector<Row> videoRows(const std::vector<Item>& items) {
     r.subtitle = it.subtitle;
     r.trailing = it.durationSec < 0 ? "" : formatTime(it.durationSec);
     r.thumb = it.thumb;
+    r.place = videoPlaceKey(it), r.placeLen = it.durationSec, r.placePct = it.watchedPct;
     Item item = it;
     r.onSelect = [item] { openVideo(item); };
-    if (!it.id.empty() && it.id[0] != '/') r.onLongSelect = [item] { askDownload(item); };
+    r.onLongSelect = [item] { videoRowHold(item); };
     if (!it.id.empty() && it.id[0] != '/') r.ahead = it.id;
     rows.push_back(std::move(r));
   }

@@ -47,6 +47,8 @@
 #include "main_queue.h"
 #include "podcasts.h"
 #include "rss.h"
+#include "video_places.h"
+#include "../core/video_place.h"
 #include "screens.h"
 
 namespace rondo::shell {
@@ -1739,7 +1741,20 @@ std::string libraryJson() {
     if (std::find(names.begin(), names.end(), "Music") == names.end()) folders.push_back(str(std::string(r) + "/Music"));
     for (const std::string& n : names) folders.push_back(str(std::string(r) + "/" + n));
   }
-  return obj({{"songs", songsPart}, {"videos", videosPart}, {"scanning", boolean(g_library.scanning())}, {"folders", arr(folders)}});
+  // Continue watching (video_places.h): the card's videos started on the Rondo, the last watched first
+  std::vector<std::string> watching;
+  for (const Item& v : continueWatchingCard()) {
+    std::string key = videoPlaceKey(v);
+    const BookState* st = g_library.bookState(key);
+    if (!st) continue;
+    watching.push_back(obj({{"path", str(v.id)},
+                            {"positionMs", num(st->positionMs)},
+                            {"atText", str(formatTime(int(st->positionMs / 1000)))},
+                            {"leftText", str(videoLeftText(key, v.durationSec))},
+                            {"lastPlayed", num(st->lastPlayed)}}));
+  }
+  return obj({{"songs", songsPart}, {"videos", videosPart}, {"watching", arr(watching)}, {"scanning", boolean(g_library.scanning())},
+              {"folders", arr(folders)}});
 }
 
 std::string playlistJson(const Playlist& p) {
@@ -2272,6 +2287,14 @@ Response Server::api(Request& r, const std::string& path) {
       return json(t ? librarySongJson(*t) : "{}");
     });
   if (path == "/books" && m == "GET") return ui([] { return booksJson(); });
+  // POST /api/videos/again {path}: a card video's place forgotten (Start again), so it opens at its start
+  if (path == "/videos/again" && m == "POST")
+    return onUi([b] {
+      std::string p;
+      if (!b->text("path", p) || p.empty()) return error(400, "path");
+      videoStartAgain(videoKeyFor(p));
+      return json("{\"ok\":true}");
+    });
   if (path == "/books/detail" && m == "GET") {
     std::string key = r.param("key");
     return ui([key] { return bookDetailJson(key); });

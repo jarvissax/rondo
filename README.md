@@ -106,7 +106,10 @@ can do that part instead.
   </tr>
 </table>
 
-Streams play as they arrive. Nothing from YouTube is stored, except what you choose to download.
+Videos 10 minutes or longer pick up where you left off, on the card or on YouTube (signed in, even
+where you stopped on your phone), with **Continue watching** on YouTube's Home and in Library ›
+Videos. Streams play as they arrive. Nothing from YouTube is stored, except what you choose to
+download.
 
 ### WhatsApp (with your own server)
 

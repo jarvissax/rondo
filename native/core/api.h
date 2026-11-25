@@ -16,6 +16,7 @@ namespace rondo {
 struct Item {  // one row of any list the server returns
   std::string kind, id, title, subtitle, thumb;
   int durationSec = -1;
+  int watchedPct = -1;  // a video: how much of it YouTube says the account watched (the red bar), -1 unknown
 };
 struct Section {
   std::string title;

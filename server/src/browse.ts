@@ -43,6 +43,8 @@ export interface Item {
   subtitle: string;
   durationSec?: number;
   thumb?: string;
+  /** A video: how much of it the account has watched, as YouTube's red bar shows (percent, 1–100) */
+  watched?: number;
 }
 
 export interface Section {
@@ -210,9 +212,22 @@ export function trackItem(n: Node, fallbackThumb?: string): Item | undefined {
   return { ...item, kind: "song", thumb: item.thumb ?? fallbackThumb };
 }
 
+// YouTube's red bar under a video's picture (the account's progress), as a percent; undefined none
+export function watchedPercent(n: Node): number | undefined {
+  const bars: unknown[] = [];
+  for (const o of n?.content_image?.overlays ?? []) if (o?.type === "ThumbnailBottomOverlayView") bars.push(o.progress_bar?.start_percent);
+  for (const o of n?.thumbnail_overlays ?? []) if (o?.type === "ThumbnailOverlayResumePlayback") bars.push(o.percent_duration_watched);
+  for (const v of bars) {
+    const pct = typeof v === "string" ? Number(v) : v;
+    if (typeof pct === "number" && Number.isFinite(pct) && pct > 0) return Math.min(100, Math.round(pct));
+  }
+  return undefined;
+}
+
 export function videoItem(n: Node): Item | undefined {
   const id = n.video_id ?? n.id;
   if (typeof id !== "string") return undefined;
+  const watched = watchedPercent(n);
   return {
     kind: "video",
     id,
@@ -220,6 +235,7 @@ export function videoItem(n: Node): Item | undefined {
     subtitle: join([n.author?.name, text(n.short_view_count) || text(n.view_count)]),
     durationSec: seconds(n.duration),
     thumb: thumbLink(pickThumb(n.thumbnails)),
+    ...(watched ? { watched } : {}),
   };
 }
 
@@ -233,6 +249,7 @@ export function lockupItem(n: Node): Item | undefined {
     .map((p: Node) => text(p?.text))
     .filter(Boolean);
   const image = n.content_image?.image ?? n.content_image?.primary_thumbnail?.image;
+  const watched = watchedPercent(n);
   return {
     kind: "video",
     id: n.content_id,
@@ -241,6 +258,7 @@ export function lockupItem(n: Node): Item | undefined {
     subtitle: join(parts.slice(0, 2).map((p, i) => (i === 1 && /^\d[\d.,]*\s?[KMB]?$/.test(p) ? say("feed.views", { views: p }) : p))),
     durationSec,
     thumb: thumbLink(pickThumb(image)),
+    ...(watched ? { watched } : {}),
   };
 }
 

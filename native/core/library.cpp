@@ -995,6 +995,13 @@ const BookState* Library::bookState(const std::string& key) const {
   return it == bookStates_.end() ? nullptr : &it->second;
 }
 
+std::vector<BookState> Library::bookStates() const {
+  std::vector<BookState> out;
+  out.reserve(bookStates_.size());
+  for (auto& kv : bookStates_) out.push_back(kv.second);
+  return out;
+}
+
 void Library::setBookState(const BookState& s) {
   bookStates_[s.key] = s;
   saveBookState(s);

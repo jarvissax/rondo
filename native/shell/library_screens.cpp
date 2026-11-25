@@ -12,6 +12,7 @@
 #include "../ui/keyboard.h"
 #include "app.h"
 #include "screens.h"
+#include "video_places.h"
 
 namespace rondo::shell {
 
@@ -182,31 +183,85 @@ Item cardVideo(const Track& t) {
   return i;
 }
 
-// a list of card videos (all of them, the newest, one folder's)
-class LocalVideosScreen : public ShellListScreen {
+// a started card video's options (hold center on its row): Resume, Start again
+class CardVideoMenuScreen : public ShellListScreen {
  public:
-  LocalVideosScreen(std::string title, std::vector<const Track*> videos, bool search) : ShellListScreen(std::move(title)) {
+  explicit CardVideoMenuScreen(Item video) : ShellListScreen(video.title) {
     std::vector<Row> rows;
-    if (search) rows.push_back(searchRow(Scope::Videos));
-    for (const Track* t : videos) {
-      Row r;
-      r.title = t->title;
-      r.subtitle = subtitleOf(*t);
-      r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-      r.thumb = t->path;
-      Item item = cardVideo(*t);
-      r.onSelect = [item] { openVideo(item); };
-      rows.push_back(std::move(r));
-    }
-    if (rows.empty()) list_.setMessage(tr("library.noVideosHere"));
-    else list_.setRows(std::move(rows));
+    std::string key = videoPlaceKey(video);
+    Row resume;
+    resume.title = tr("book.resume"), resume.tile = &tiles::resume, resume.subtitle = videoLeftText(key, video.durationSec);
+    resume.onSelect = [video] {
+      g_app->pop();
+      openVideo(video);
+    };
+    rows.push_back(resume);
+    Row again;
+    again.title = tr("book.startAgain"), again.tile = &tiles::startAgain;
+    again.onSelect = [video, key] {
+      videoStartAgain(key);
+      g_app->pop();
+      openVideo(video);
+    };
+    rows.push_back(again);
+    list_.setRows(std::move(rows));
   }
 };
 
-// Library › Videos: all of them, the newest first, and each folder that has some
+void cardVideoHold(const Item& item) {
+  if (videoHasPlace(videoPlaceKey(item))) g_app->push(std::unique_ptr<Screen>(new CardVideoMenuScreen(item)));
+}
+
+// a card video's row: its length, or how much is left once it's started (video_places.h)
+Row cardVideoRow(const Track& t) {
+  Row r;
+  r.title = t.title;
+  r.subtitle = subtitleOf(t);
+  Item item = cardVideo(t);
+  std::string left = videoLeftText(videoPlaceKey(item), t.durationSec);
+  r.trailing = !left.empty() ? left : t.durationSec >= 0 ? formatTime(t.durationSec) : "";
+  r.thumb = t.path;
+  r.onSelect = [item] { openVideo(item); };
+  r.onLongSelect = [item] { cardVideoHold(item); };
+  return r;
+}
+
+// a list of card videos (all of them, the newest, one folder's, Continue watching's); what's left of
+// each is said again on coming back from one
+class LocalVideosScreen : public ShellListScreen {
+ public:
+  LocalVideosScreen(std::string title, std::vector<const Track*> videos, bool search, bool continuing = false)
+      : ShellListScreen(std::move(title)), videos_(std::move(videos)), search_(search), continuing_(continuing) {
+    render(false);
+  }
+  void onShow() override { render(true); }
+
+ private:
+  void render(bool keep) {
+    if (continuing_) {  // the last watched first; one watched to the end leaves
+      videos_.clear();
+      for (const Item& i : continueWatchingCard())
+        if (const Track* t = g_library.find(i.id)) videos_.push_back(t);
+    }
+    std::vector<Row> rows;
+    if (search_) rows.push_back(searchRow(Scope::Videos));
+    for (const Track* t : videos_) rows.push_back(cardVideoRow(*t));
+    if (rows.empty()) list_.setMessage(tr(continuing_ ? "video.continueNone" : "library.noVideosHere"));
+    else list_.setRows(std::move(rows), keep);
+  }
+  std::vector<const Track*> videos_;
+  bool search_, continuing_;
+};
+
+// Library › Videos: Continue watching (once one is started), all of them, the newest first, and each
+// folder that has some
 class VideosSectionScreen : public ShellListScreen {
  public:
-  VideosSectionScreen() : ShellListScreen(tr("library.videos")) {
+  VideosSectionScreen() : ShellListScreen(tr("library.videos")) { render(false); }
+  void onShow() override { render(true); }
+
+ private:
+  void render(bool keep) {
     std::vector<const Track*> all = g_library.videos();
     if (all.empty()) {
       list_.setMessage(tr("library.noVideos"));
@@ -219,6 +274,11 @@ class VideosSectionScreen : public ShellListScreen {
       r.onSelect = std::move(on);
       rows.push_back(std::move(r));
     };
+    size_t started = continueWatchingCard().size();
+    if (started)
+      add(tr("video.continueWatching"), &tiles::continueWatching, "", std::to_string(started), [] {
+        g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(tr("video.continueWatching"), {}, false, true)));
+      });
     add(tr("library.allVideos"), &tiles::videos, "", std::to_string(all.size()), [all] {
       g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(tr("library.allVideos"), all, true)));
     });
@@ -241,7 +301,7 @@ class VideosSectionScreen : public ShellListScreen {
             [name, v] { g_app->push(std::unique_ptr<Screen>(new LocalVideosScreen(name, v, false))); });
       }
     }
-    list_.setRows(std::move(rows));
+    list_.setRows(std::move(rows), keep);
   }
 };
 
@@ -441,12 +501,8 @@ class LibrarySearchScreen : public Screen {
     if (addTo_.empty()) {  // videos aren't added to playlists
       if (!found_.videos.empty()) header(tr("library.videos"));
       for (const Track* t : found_.videos) {
-        Row r;
-        r.title = t->title;
-        r.trailing = t->durationSec >= 0 ? formatTime(t->durationSec) : "";
-        r.thumb = t->path;
-        Item item = cardVideo(*t);
-        r.onSelect = [item] { openVideo(item); };
+        Row r = cardVideoRow(*t);
+        r.subtitle.clear();  // a search's rows: the title alone
         rows.push_back(std::move(r));
       }
       if (!found_.books.empty()) header(tr("books.title"));

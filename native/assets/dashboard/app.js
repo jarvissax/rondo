@@ -870,6 +870,7 @@ function prepLibrary() {
   S.libByPath = new Map();
   for (const s of S.library.songs) { s._key = fold(`${s.title} ${s.artist} ${s.album} ${s.albumArtist || ''} ${s.genre || ''} ${s.year || ''} ${fileName(s.path)}`); S.libByPath.set(s.path, s); }
   for (const v of S.library.videos) { v._video = true; v._key = fold(`${v.title} ${fileName(v.path)}`); S.libByPath.set(v.path, v); }
+  S.watching = new Map((S.library.watching || []).map((w) => [w.path, w]));
 }
 function renderLibrarySummary() {
   const lib = S.library;
@@ -887,7 +888,11 @@ function renderLibrarySummary() {
 }
 // sorts that only songs have (tags, listening)
 const SONG_SORTS = ['artist', 'album', 'albumArtist', 'genre', 'year', 'plays', 'played', 'rating'];
-const sortKey = () => (S.libKind === 'videos' && SONG_SORTS.includes(S.libSort) ? 'title' : S.libSort);
+// and one only videos have: Continue watching, the ones started on the Rondo (a place kept)
+const VIDEO_SORTS = ['watching'];
+const sortKey = () => (S.libKind === 'videos' ? (SONG_SORTS.includes(S.libSort) ? 'title' : S.libSort) : VIDEO_SORTS.includes(S.libSort) ? 'title' : S.libSort);
+// where a card video was left on the Rondo ({atText, leftText, lastPlayed}), undefined: not started
+const watchingOf = (it) => S.watching && S.watching.get(it.path);
 const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
 function dateGroup(ms) {
   if (!ms) return t('library.group.earlier');
@@ -907,6 +912,7 @@ function buildRows() {
   // the listening sorts show only what has been listened to (rated)
   if (sort === 'plays' || sort === 'played') items = items.filter((x) => x.plays > 0);
   if (sort === 'rating') items = items.filter((x) => x.rating > 0);
+  if (sort === 'watching') items = items.filter((x) => watchingOf(x));
   const byTitle = (a, b) => collator.compare(a.title || fileName(a.path), b.title || fileName(b.path));
   const emptyLast = (a, b) => (!a) - (!b) || collator.compare(a, b);
   const cmp = {
@@ -920,6 +926,7 @@ function buildRows() {
     plays: (a, b) => b.plays - a.plays || b.lastPlayed - a.lastPlayed || byTitle(a, b),
     played: (a, b) => b.lastPlayed - a.lastPlayed || byTitle(a, b),
     rating: (a, b) => b.rating - a.rating || b.plays - a.plays || byTitle(a, b),
+    watching: (a, b) => watchingOf(b).lastPlayed - watchingOf(a).lastPlayed || byTitle(a, b),
   }[sort];
   items.sort(cmp);
   const rows = [];
@@ -984,7 +991,7 @@ function renderLibrary() {
     return renderPlaylists();
   }
   const sel = $('#libSort');
-  for (const o of sel.options) o.hidden = videos && SONG_SORTS.includes(o.value);
+  for (const o of sel.options) o.hidden = videos ? SONG_SORTS.includes(o.value) : VIDEO_SORTS.includes(o.value);
   sel.value = sortKey();
   $$('#libHead [data-sort]').forEach((b) => (b.dataset.sort === sortKey() ? b.setAttribute('aria-sort', 'ascending') : b.removeAttribute('aria-sort')));
   libList.setAttribute('aria-label', videos ? t('library.videos') : t('library.songs'));
@@ -1002,8 +1009,9 @@ function renderLibrary() {
   // the listening sorts with nothing listened to (or rated) yet
   const LISTENING = { plays: [t('library.nothingPlayed'), t('library.nothingPlayedText')],
     played: [t('library.nothingPlayed'), t('library.nothingPlayedText')],
-    rating: [t('library.nothingRated'), t('library.nothingRatedText')] };
-  if (!count && total && !S.libQuery.trim() && LISTENING[sortKey()] && !videos) {
+    rating: [t('library.nothingRated'), t('library.nothingRatedText')],
+    watching: [t('library.nothingWatching'), t('library.nothingWatchingText')] };
+  if (!count && total && !S.libQuery.trim() && LISTENING[sortKey()] && (!videos || sortKey() === 'watching')) {
     const [h, p] = LISTENING[sortKey()];
     libList.innerHTML = `<div class="lib-empty"><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`;
     return;
@@ -1051,7 +1059,7 @@ function rowHtml(r) {
   if (r._video) {
     return `<div class="song is-video${isPlaying(r) ? ' is-playing' : ''}" role="listitem" data-path="${esc(r.path)}">
       <span class="art" data-art="${esc(r.path)}">${icon('film')}</span>
-      <span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${fmtBytes(r.size)}</span></span>
+      <span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(watchingOf(r)?.leftText || fmtBytes(r.size))}</span></span>
       <span class="s-size">${fmtBytes(r.size)}</span>
       <span class="s-time">${fmtDur(r.durationSec)}</span>${acts}</div>`;
   }
@@ -1226,8 +1234,10 @@ function confirmSheet({ title, text, action, danger = true }) {
 }
 function openItem(it) {
   const video = !!it._video, title = it.title || fileName(it.path);
+  const w = video ? watchingOf(it) : undefined;
   const facts = video
-    ? [[t('library.details.length'), fmtDur(it.durationSec)], [t('library.details.size'), fmtBytes(it.size)], [t('library.details.file'), it.path, 'path']]
+    ? [[t('library.details.length'), fmtDur(it.durationSec)], [t('library.details.place'), w ? [w.atText, w.leftText].filter(Boolean).join(' · ') : ''],
+      [t('library.details.size'), fmtBytes(it.size)], [t('library.details.file'), it.path, 'path']]
     : [[t('library.sort.artist'), it.artist], [t('library.sort.albumArtist'), it.albumArtist && it.albumArtist !== it.artist ? it.albumArtist : ''], [t('library.sort.album'), it.album],
       [t('library.details.disc'), it.disc || ''], [t('library.details.track'), it.track || ''], [t('library.sort.year'), it.year || ''], [t('library.sort.genre'), it.genre || ''], [t('library.details.length'), fmtDur(it.durationSec)],
       [t('library.details.played'), it.plays ? t('library.details.playedTimes', { count: it.plays, date: new Date(it.lastPlayed).toLocaleDateString(dateLocale(), { dateStyle: 'medium' }) }) : t('library.details.never')],
@@ -1237,7 +1247,7 @@ function openItem(it) {
       <div><h2>${esc(title)}</h2><p>${esc(video ? t('library.details.videoOnCard') : [it.artist, it.album].filter(Boolean).join(' · ') || t('common.onCard'))}</p></div></div>
       ${video ? '' : `<div class="rate" role="radiogroup" aria-label="${te('library.sort.rating')}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" role="radio" aria-checked="${n === it.rating}" aria-label="${te('library.details.stars', { count: n })}" data-rate="${n}" class="${n <= it.rating ? 'on' : ''}">★</button>`).join('')}</div>`}
       <dl class="facts">${facts.filter((f) => f[1] !== '' && f[1] != null).map(([k, v, c]) => `<dt>${esc(k)}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>
-      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>${te('common.delete')}</span></button>${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>${te('library.details.addToPlaylist')}</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>${te('common.playOnRondo')}</span></button>`}</div>`);
+      <div class="sheet-actions"><button class="btn btn-red-text" type="button" data-act="delete">${icon('trash')}<span>${te('common.delete')}</span></button>${w ? `<button class="btn" type="button" data-act="again">${icon('refresh')}<span>${te('library.details.startAgain')}</span></button>` : ''}${video ? '' : `<button class="btn" type="button" data-act="playlist">${icon('playlist')}<span>${te('library.details.addToPlaylist')}</span></button>`}${video ? '' : `<button class="btn btn-primary" type="button" data-act="play">${icon('play')}<span>${te('common.playOnRondo')}</span></button>`}</div>`);
     const art = $('.art[data-art]', sheet);
     if (art) loadArtInto(art, 240);
     ($('[data-act="play"]', sheet) || $('[data-act="delete"]', sheet)).focus();
@@ -1265,6 +1275,19 @@ function openItem(it) {
     const act = b.dataset.act;
     if (act === 'play') { b.disabled = true; if (await playItem(it)) sheet.close(); else b.disabled = false; }
     if (act === 'playlist') { sheet.removeEventListener('click', onClick); return addToPlaylistSheet(it); }
+    if (act === 'again') {  // its place on the Rondo forgotten: it opens at its start there
+      b.disabled = true;
+      try {
+        await api('POST', '/api/videos/again', { path: it.path });
+        S.watching.delete(it.path);
+        sheet.close();
+        renderLibrary();
+        toast(t('library.details.startsAgain', { name: title }));
+      } catch (e2) {
+        b.disabled = false;
+        if (e2.status !== 401) toast(t('common.didntWork', { reason: reason(e2) }));
+      }
+    }
     if (act === 'delete') confirm();
     if (act === 'back') detail();
     if (act === 'really') {

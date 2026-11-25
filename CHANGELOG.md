@@ -5,6 +5,30 @@ Rondo's releases, newest first. Each one is on the
 Innioasis Updater CE and the update for a Y1 that already runs Rondo. Since 3.0.2 the server has
 releases of its own, in [server/CHANGELOG.md](server/CHANGELOG.md).
 
+## Not released yet
+
+### New
+
+- **Videos pick up where you left off.** Every video 10 minutes or longer, on the card or on
+  YouTube, opens where you stopped it, a few seconds earlier ("Resuming at 23:41"), until you watch
+  it to the end; Shorts and shorter videos start over. A downloaded video shares its place with the
+  same video on YouTube.
+- **Continue watching:** at the top of Library › Videos for the card's videos, and on YouTube's Home
+  for YouTube's (a downloaded one plays from the card), the last one watched first. A started video's
+  row says how much is left, and YouTube's rows show a red bar under the picture, as YouTube's app
+  does. Hold center on a started video, or in the player, for **Start again**.
+- **Your phone's progress too:** signed in to YouTube, a video you half-watched on your phone opens on
+  the Y1 about where you left it, and its red bar shows in YouTube's lists, unless the Y1 has a place
+  of its own for it. The Y1 doesn't tell YouTube what it played. Through a server this needs Rondo
+  server 3.8.0.
+- **The dashboard's Library** sorts videos by **Continue watching**, says where you stopped in a
+  video's details, and has **Start again** there.
+
+### Changed
+
+- **Podcasts have an icon of their own** on the main menu, in YouTube Music's Podcasts tab and on the
+  dashboard, instead of Connections' waves.
+
 ## 4.2.0 (November 25, 2026)
 
 Podcasts: any show with a public feed, on the main menu, and YouTube Music's own. An update for the

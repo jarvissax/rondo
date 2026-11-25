@@ -4,6 +4,13 @@ The server's releases, newest first (tags `server-v<version>`, on the
 [releases page](https://github.com/jarvissax/rondo/releases)). Until 3.0.1 the server shared Rondo's
 version, and its changes are in Rondo's [CHANGELOG.md](../CHANGELOG.md).
 
+## Not released yet
+
+- **How far a video was watched:** a YouTube video in YouTube's lists (home, subscriptions, history,
+  search, related) carries `watched`, the account's progress as YouTube's red bar under its picture
+  shows it (1–100), for Rondo 4.3.0, which opens a video it has no place for at about that point and
+  draws the bar. A new field only: an older Rondo ignores it.
+
 ## 3.7.0 (November 25, 2026)
 
 Podcasts, for Rondo 4.2.0. All new routes: nothing an older Rondo asks changes, and a Rondo older

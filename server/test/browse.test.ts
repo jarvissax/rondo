@@ -255,6 +255,24 @@ describe("YouTube feed reducers", () => {
     });
   });
 
+  it("passes the account's progress (YouTube's red bar) as watched", () => {
+    // as youtubei.js reads a History lockup (Nov 25, 2026): the bar in the picture's bottom overlay
+    const overlays = [
+      { type: "ThumbnailBottomOverlayView", progress_bar: { type: "ThumbnailOverlayProgressBarView", start_percent: 10 }, badges: [] },
+      { type: "AnimatedThumbnailOverlayView" },
+    ];
+    const started = { ...lockup, content_image: { ...lockup.content_image, overlays } };
+    expect(lockupItem(started)!.watched).toBe(10);
+    expect(lockupItem(lockup)!.watched).toBeUndefined();
+    const zero = [{ type: "ThumbnailBottomOverlayView", progress_bar: { start_percent: 0 } }];
+    expect(lockupItem({ ...lockup, content_image: { ...lockup.content_image, overlays: zero } })!.watched).toBeUndefined();
+    // a classic Video node's resume overlay
+    const v = { type: "Video", id: "wfTISOEGVqQ", title: { text: "Chicken" }, duration: { seconds: 900 }, thumbnails: thumbs([336]) };
+    expect(videoItem({ ...v, thumbnail_overlays: [{ type: "ThumbnailOverlayResumePlayback", percent_duration_watched: 42 }] })!.watched).toBe(42);
+    expect(videoItem({ ...v, thumbnail_overlays: [{ type: "ThumbnailOverlayResumePlayback", percent_duration_watched: 140 }] })!.watched).toBe(100);
+    expect(videoItem(v)!.watched).toBeUndefined();
+  });
+
   it("adds 'views' to the bare counts of related videos", () => {
     const related = { ...lockup, metadata: { ...lockup.metadata, metadata: { metadata_rows: [{ metadata_parts: [{ text: { text: "George Michael" } }] }, { metadata_parts: [{ text: { text: "1.6B" } }, { text: { text: "17y ago" } }] }] } } };
     expect(lockupItem(related)!.subtitle).toBe("George Michael · 1.6B views");

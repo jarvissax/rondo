@@ -20,6 +20,7 @@ std::string json(const Item& i) {
   std::string s = "{\"kind\":" + quote(i.kind) + ",\"id\":" + quote(i.id) + ",\"title\":" + quote(i.title) +
                   ",\"subtitle\":" + quote(i.subtitle);
   if (i.durationSec > 0) s += ",\"durationSec\":" + std::to_string(i.durationSec);
+  if (i.watched > 0) s += ",\"watched\":" + std::to_string(i.watched);
   if (!i.thumb.empty()) s += ",\"thumb\":" + quote(i.thumb);
   return s + "}";
 }

@@ -19,6 +19,8 @@
 #include "screens.h"
 #include "scrub.h"
 #include "subtitles.h"
+#include "video_places.h"
+#include "../core/video_place.h"
 
 namespace rondo::shell {
 namespace {
@@ -37,9 +39,11 @@ std::vector<std::string> pictures(const Item& item, int height) { return videoPi
 
 class VideoPlayerScreen : public Screen {
  public:
-  // placeKey: a podcast episode's (rss.h): it opens where it was left, and keeps its place
+  // placeKey: a podcast episode's (rss.h): it opens where it was left, and keeps its place. Any other
+  // video 10 minutes or longer does too, by its own key (video_places.h)
   explicit VideoPlayerScreen(const Item& item, std::string placeKey = "")
       : item_(item), local_(!item.id.empty() && item.id[0] == '/'), placeKey_(std::move(placeKey)) {
+    if (placeKey_.empty()) videoKey_ = videoPlaceKey(item_);
     if (!placeKey_.empty() && !local_) tracksKnown_ = true;  // an episode from its host: no subtitles
     if (local_) {
       tracks_ = subtitleFiles(item_.id);
@@ -61,6 +65,7 @@ class VideoPlayerScreen : public Screen {
       if (VideoSurface* v = VideoSurface::get()) v->clear();  // the last video's picture is not this one's
       g_player.playVideo(videoSound(item_), pictures(item_, g_prefs.videoQuality));
       if (!placeKey_.empty()) startAt_ = rssVideoStart(placeKey_), sought_ = startAt_ <= 0;
+      else if (!videoKey_.empty()) startAt_ = -1, sought_ = false;  // decided once its length is known
       if (!local_ && placeKey_.empty()) {
         requests_.get("/captions/" + Api::escape(item_.id), 600000, [this](int status, const std::string& body) {
           std::vector<CaptionTrack> found;
@@ -144,14 +149,19 @@ class VideoPlayerScreen : public Screen {
   }
 
   bool tick(int64_t now) override {
-    if (!placeKey_.empty() && started_) {
+    if ((!placeKey_.empty() || !videoKey_.empty()) && started_) {
       PlayerState s = g_player.state();
       // where it was left, once this video plays (a seek while it's still opening is lost: the picture
       // starts at 0), as a scrub would
       bool ours = s.index >= 0 && videoSound(item_) == s.path;
       if (!sought_ && ours && s.durationMs > 0 && s.playing && PlayerHost::positionAt(s, now) > 300) {
         sought_ = true;
-        if (startAt_ < s.durationMs - 5000) g_player.seekTo(startAt_);
+        bool told = startAt_ < 0;  // a video's own: said on the screen
+        if (startAt_ < 0) startAt_ = videoOpensAt(videoKey_, s.durationMs, item_.watchedPct);
+        if (startAt_ > 0 && startAt_ < s.durationMs - 5000) {
+          g_player.seekTo(startAt_);
+          if (told) g_app->toast(tr("videoPlayer.resumingAt", {{"time", formatTime(int(startAt_ / 1000))}}));
+        }
       } else if (sought_ && now - savedAt_ >= 10 * kSec) {
         savePlace(false);
       }
@@ -338,6 +348,14 @@ class VideoPlayerScreen : public Screen {
       };
       rows.push_back(r);
     }
+    // a video that keeps its place: from the beginning
+    if (!videoKey_.empty() && videoKeepsPlace(g_player.state().durationMs)) {
+      header(tr("videoPlayer.thisVideo"));
+      PanelRow r;
+      r.text = tr("book.startAgain");
+      r.pick = [] { g_player.seekTo(0); };
+      rows.push_back(r);
+    }
     if (!local_ && placeKey_.empty()) {
       header(tr("videoPlayer.quality"));
       for (int q : kChoices) {
@@ -502,20 +520,21 @@ class VideoPlayerScreen : public Screen {
     e.c.popClip();
   }
 
-  // a podcast episode's place: every 10 s while it's on, and as it closes
+  // its place (a podcast episode's, a video's): every 10 s while it's on, and as it closes
   void savePlace(bool closing) {
-    if (placeKey_.empty() || !sought_) return;
+    if ((placeKey_.empty() && videoKey_.empty()) || !sought_) return;
     savedAt_ = now_ns();
     PlayerState s = g_player.state();
     if (s.index < 0 || s.durationMs <= 0 || videoSound(item_) != s.path) return;  // (not yet this video's state)
     int64_t at = PlayerHost::positionAt(s, savedAt_);
-    rssVideoPlace(placeKey_, at, s.durationMs, s.ended);
+    if (!placeKey_.empty()) rssVideoPlace(placeKey_, at, s.durationMs, s.ended);
+    else videoPlaceSave(videoKey_, item_, at, s.durationMs, s.ended);
     (void)closing;
   }
 
   Item item_;
   bool local_;
-  std::string placeKey_;
+  std::string placeKey_, videoKey_;
   int64_t startAt_ = 0, savedAt_ = 0;
   bool sought_ = true;
   bool started_ = false;

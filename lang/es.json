@@ -1,6 +1,7 @@
 {
   "_name": "Español",
   "device": {
+    "video.continueWatching": "Seguir viendo",
     "accent.amber": "Ámbar",
     "accent.graphite": "Grafito",
     "accent.ipodBlue": "Azul iPod",
@@ -1226,6 +1227,11 @@
     "usb.use": "Usar como unidad USB",
     "usb.whileOn": "Mientras está activada",
     "video.centerRetries": "El centro lo reintenta",
+    "video.continueCount": {
+      "one": "{count} video empezado",
+      "other": "{count} videos empezados"
+    },
+    "video.continueNone": "Nada que seguir viendo: un video de 10 minutos o más guarda por dónde ibas",
     "video.couldntLoad": "No se pudo cargar {name}: {problem}",
     "video.shortsSubtitle": "Videos cortos, uno tras otro",
     "video.tabHistory": "Historial",
@@ -1243,9 +1249,11 @@
     "videoPlayer.pause": "Pausar descarga",
     "videoPlayer.quality": "CALIDAD",
     "videoPlayer.resume": "Reanudar descarga",
+    "videoPlayer.resumingAt": "Reanudando en {time}",
     "videoPlayer.savesBattery": "ahorra batería",
     "videoPlayer.subtitles": "SUBTÍTULOS",
     "videoPlayer.subtitlesOff": "Desactivados",
+    "videoPlayer.thisVideo": "Este video",
     "videoPlayer.toCard": "a la tarjeta",
     "whatsapp.about": "Info.",
     "whatsapp.audio": "Audio",
@@ -2055,6 +2063,7 @@
     "library.details.file": "Archivo",
     "library.details.length": "Duración",
     "library.details.never": "Nunca",
+    "library.details.place": "Por dónde ibas",
     "library.details.played": "Reproducida",
     "library.details.playedTimes": {
       "one": "{count} vez, la última el {date}",
@@ -2065,6 +2074,8 @@
       "one": "{count} estrella",
       "other": "{count} estrellas"
     },
+    "library.details.startAgain": "Empezar de nuevo",
+    "library.details.startsAgain": "{name} empieza desde el principio en tu Rondo",
     "library.details.track": "Pista",
     "library.details.videoOnCard": "Video en la tarjeta",
     "library.detailsFor": "Detalles de {name}",
@@ -2092,6 +2103,8 @@
     "library.nothingPlayedText": "Las canciones aparecen aquí cuando las escuchas completas en tu Rondo.",
     "library.nothingRated": "Aún no hay nada valorado",
     "library.nothingRatedText": "Valora una canción desde sus detalles aquí, o en tu Rondo en Reproduciendo (mantén pulsado el botón central).",
+    "library.nothingWatching": "Nada que seguir viendo",
+    "library.nothingWatchingText": "Los videos de 10 minutos o más aparecen aquí cuando empiezas uno en tu Rondo.",
     "library.organize": "Organizar",
     "library.photos": "Fotos",
     "library.reading": "Leyendo la tarjeta…",
@@ -2118,6 +2131,7 @@
     "library.sort.plays": "Más reproducidas",
     "library.sort.rating": "Valoración",
     "library.sort.title": "Título",
+    "library.sort.watching": "Seguir viendo",
     "library.sort.year": "Año",
     "library.sortBy": "Ordenar por",
     "library.summary": "Música y videos de la tarjeta. Se reproducen sin internet.",

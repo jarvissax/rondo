@@ -5,6 +5,7 @@
 #include "../core/api.h"
 #include "downloads.h"
 #include "music_list.h"
+#include "video_places.h"
 
 namespace rondo::shell {
 namespace {
@@ -66,6 +67,7 @@ class DownloadsScreen : public MusicListScreen {
     for (const Item& it : downloadedVideos()) {
       Row r;
       r.title = it.title, r.subtitle = it.subtitle, r.thumb = it.thumb;
+      r.place = videoPlaceKey(it), r.placeLen = it.durationSec;
       Item item = it;
       r.onSelect = [item] { openVideo(item); };
       std::string file = it.id;
@@ -83,6 +85,47 @@ class DownloadsScreen : public MusicListScreen {
   }
   std::string key_;
 };
+
+// YouTube › Continue watching: the YouTube videos started on the Y1 (video_places.h), the last first; a
+// downloaded one plays from the card
+class ContinueWatchingScreen : public MusicListScreen {
+ public:
+  ContinueWatchingScreen() : MusicListScreen(tr("video.continueWatching")) {
+    list_.style = RowStyle::Video;
+    render();
+  }
+  void onShow() override { render(); }  // one watched to the end leaves, one watched further moves up
+  void draw(Env& e, float w, float h) override {
+    now_ = e.now;
+    const Row* sel = list_.selectedRow();
+    ambient_.follow(e, sel ? sel->thumb : "", e.dp(104), e.dp(58));
+    ambient_.draw(e, {0, 0, w, h});
+    darkHeader(e, w, title_, HeaderLogo::Video);
+    float top = float(e.dp(31));
+    list_.layout(e, w, h - top);
+    list_.draw(e, 0, top);
+    e.c.layer(0);
+  }
+
+ private:
+  void render() {
+    std::vector<Item> v = continueWatchingYouTube();
+    if (v.empty()) return list_.setMessage(tr("video.continueNone"));
+    list_.setRows(videoRows(v), true);
+  }
+};
+
+// Home's third row, once a YouTube video has a place: Continue watching (none: no row)
+bool continueRow(Row& r) {
+  std::vector<Item> v = continueWatchingYouTube();
+  if (v.empty()) return false;
+  r = Row();
+  r.title = tr("video.continueWatching");
+  r.subtitle = tr("video.continueCount", {{"count", int(v.size())}});
+  r.tile = &tiles::continueWatching;
+  r.onSelect = [] { g_app->push(std::unique_ptr<Screen>(new ContinueWatchingScreen())); };
+  return true;
+}
 
 // Home's second row
 Row downloadsRow() {
@@ -112,16 +155,23 @@ class VideoScreen : public TabbedListScreen {
     now_ = now;
     return syncTabs();
   }
-  // Home's Downloads row says what's on the card now (a download made since it loaded)
+  // Home's Downloads row says what's on the card now (a download made since it loaded), and its
+  // Continue watching row what was watched since (there once a video has a place, gone when none has)
   void onShow() override {
     const std::vector<Row>& rows = list_.rows();
     for (size_t i = 0; i < rows.size() && i < 2; i++) {
       if (rows[i].title != tr("downloads.title") || rows[i].tile != &tiles::downloads) continue;
-      Row now = downloadsRow();
-      if (now.subtitle == rows[i].subtitle) return;
       std::vector<Row> copy = rows;
-      copy[i] = now;
-      list_.setRows(std::move(copy), true);
+      copy[i] = downloadsRow();
+      Row cw;
+      bool want = continueRow(cw);
+      bool has = i + 1 < copy.size() && copy[i + 1].tile == &tiles::continueWatching;
+      if (want && has) copy[i + 1] = cw;
+      else if (want) copy.insert(copy.begin() + long(i) + 1, cw);
+      else if (has) copy.erase(copy.begin() + long(i) + 1);
+      bool same = copy.size() == rows.size();
+      for (size_t k = 0; same && k < copy.size(); k++) same = copy[k].title == rows[k].title && copy[k].subtitle == rows[k].subtitle;
+      if (!same) list_.setRows(std::move(copy), true);
       return;
     }
   }
@@ -184,7 +234,11 @@ class VideoScreen : public TabbedListScreen {
         msg.title = problem;
         msg.subtitle = tr("video.centerRetries");
         msg.onSelect = [this] { load(0); };
-        list_.setRows({downloadsRow(), msg});
+        std::vector<Row> offline{downloadsRow()};
+        Row cw;
+        if (continueRow(cw)) offline.push_back(cw);
+        offline.push_back(msg);
+        list_.setRows(std::move(offline));
         return;
       }
       ItemsPage page;
@@ -203,6 +257,8 @@ class VideoScreen : public TabbedListScreen {
         // play at once when Shorts is opened
         requests_.get("/video/shorts", 120000, [](int, const std::string&) {});
         rows.push_back(downloadsRow());
+        Row cw;
+        if (continueRow(cw)) rows.push_back(cw);
       }
       for (Row& r : videoRows(page.items)) rows.push_back(std::move(r));
       list_.setRows(std::move(rows));

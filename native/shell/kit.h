@@ -95,7 +95,7 @@ extern const Tile music, video, whatsapp, device, nowPlaying, settings, wifi, bl
     // Settings › Language
     language,
     // Library › Audiobooks and a book's screen
-    audiobooks, resume, chapters, bookmarks, speed, finished, startAgain, sleep,
+    audiobooks, resume, chapters, bookmarks, speed, finished, startAgain, sleep, continueWatching,
     // YouTube Music's Podcasts: a show, Episodes for Later, New episodes, Episodes up next, Save to library
     podcasts, later, newEpisodes, upNext, saveShow,
     // the main menu's Podcasts: Top shows (Apple's charts), an episode's Listen only and Show notes
@@ -132,6 +132,9 @@ struct Row {
   std::function<void()> onSelect, onLongSelect;
   bool dot = false;  // an accent dot before the trailing text: not started yet (an audiobook)
   std::string ahead;  // a song's or a video's id: resolved in the background once the wheel rests here
+  // a video (video_places.h): its place key, length and YouTube's progress, for the red bar on its picture
+  std::string place;
+  int placeLen = -1, placePct = -1;
 };
 
 // the row or card selected now ("" none), from the lists on each move: its streams are resolved

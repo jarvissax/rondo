@@ -1,6 +1,7 @@
 #include "kit.h"
 
 #include "../core/lang.h"
+#include "video_places.h"
 
 #include "../core/fold.h"
 
@@ -120,6 +121,8 @@ const Tile language{Icon::Globe, rgb(0x4fc3f7), rgb(0x0288d1)};  // Settings ›
 const Tile audiobooks{Icon::Book, rgb(0xffa24d), rgb(0xe8660c)};
 const Tile resume{Icon::Play, rgb(0x7be07b), rgb(0x26a83b)};
 const Tile startAgain{Icon::Refresh, rgb(0xffb04d), rgb(0xf07a12)};
+// Continue watching (Library › Videos, YouTube's Home): the videos started, as History's clock
+const Tile continueWatching{Icon::History, rgb(0x8c7bff), rgb(0x4b36d6)};
 const Tile chapters{Icon::Queue, rgb(0x5fb7ff), rgb(0x1f73e0)};
 const Tile bookmarks{Icon::Bookmark, rgb(0xc58cff), rgb(0x7b3fe0)};
 const Tile speed{Icon::Gauge, rgb(0x4fd8c8), rgb(0x139c8c)};
@@ -606,6 +609,16 @@ void RowList::drawMusic(Env& e, float x, float y) {
         c.shape(br, e.dpf(3), 0xdc000000);
         c.layer(4);
         drawLabel(e, b, br.x + e.dp(3), br.y + e.dp(1), p.white);
+      }
+      // how far it got (its place, else YouTube's): YouTube's red bar along the picture's foot
+      float got = r.place.empty() ? -1 : videoProgress(r.place, r.placeLen, r.placePct);
+      if (got >= 0) {
+        float inset = radius * 0.6f, bh = e.dpf(3), bw = ar.w - 2 * inset;
+        Rect track{ar.x + inset, ar.y + ar.h - bh, bw, bh};
+        c.layer(3);
+        c.fill(track, 0x99717171);
+        c.layer(4);
+        c.fill({track.x, track.y, std::max(e.dpf(2), bw * got), bh}, 0xffff0033);
       }
       float colX = left + artW + e.dp(9), colW = right - colX;
       c.layer(4);

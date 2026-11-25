@@ -161,6 +161,7 @@ class Library {
   const BookFileInfo* bookFileInfo(const std::string& path) const;
   // where each book was left (null: never played), saved on the library's thread
   const BookState* bookState(const std::string& key) const;
+  std::vector<BookState> bookStates() const;  // every place kept (books, episodes, videos)
   void setBookState(const BookState& s);
   const std::vector<Bookmark>& bookmarks(const std::string& key) const;
   void addBookmark(const Bookmark& b);

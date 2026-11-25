@@ -33,6 +33,8 @@ Item item(yyjson_val* o) {
   it.subtitle = str(o, "subtitle"), it.thumb = str(o, "thumb");
   yyjson_val* d = yyjson_obj_get(o, "durationSec");
   if (yyjson_is_num(d)) it.durationSec = int(yyjson_get_num(d));
+  yyjson_val* w = yyjson_obj_get(o, "watched");  // since server 3.7.1 and direct mode 4.3.0
+  if (yyjson_is_num(w)) it.watchedPct = std::max(0, std::min(100, int(yyjson_get_num(w))));
   return it;
 }
 

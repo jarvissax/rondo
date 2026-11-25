@@ -19,6 +19,7 @@ struct Item {
   std::string kind;  // song, video, album, artist, playlist
   std::string id, title, subtitle, thumb;
   int durationSec = 0;
+  int watched = 0;  // a video: the account's progress, as YouTube's red bar shows (percent; 0 none)
   bool ok() const { return !kind.empty() && !id.empty(); }
 };
 

@@ -48,6 +48,32 @@ std::vector<std::string> tileLines(J meta) {
   return out;
 }
 
+// The account's progress on a video, as YouTube's red bar under its picture shows (percent; 0 none):
+// a TV tile's or a web video's resume overlay (percentDurationWatched), a lockup's progress bar
+// (startPercent), wherever in the item's picture it sits
+int watchedPercent(J o, int depth = 0) {
+  if (!o || depth > 12) return 0;
+  if (yyjson_is_obj(o)) {
+    for (const char* k : {"percentDurationWatched", "startPercent"}) {
+      J v = key(o, k);
+      double pct = yyjson_is_num(v) ? yyjson_get_num(v) : isStr(v) ? atof(str(v).c_str()) : 0;
+      if (pct > 0) return pct >= 100 ? 100 : int(pct + 0.5);
+    }
+    size_t i, n;
+    J kk, v;
+    yyjson_obj_foreach(o, i, n, kk, v) {
+      if (int p = watchedPercent(v, depth + 1)) return p;
+    }
+  } else if (yyjson_is_arr(o)) {
+    size_t i, n;
+    J v;
+    yyjson_arr_foreach(o, i, n, v) {
+      if (int p = watchedPercent(v, depth + 1)) return p;
+    }
+  }
+  return 0;
+}
+
 // fromTile
 Item fromTile(J t) {
   std::string type = str(key(t, "contentType"));
@@ -84,6 +110,7 @@ Item fromTile(J t) {
   if (!seconds) return {};  // live streams, premieres and promos carry no duration
   if (lines.size() > 2) lines.resize(2);
   i.kind = "video", i.id = id, i.title = title, i.subtitle = joinDot(lines), i.durationSec = seconds, i.thumb = thumb;
+  i.watched = watchedPercent(header);
   return i;
 }
 
@@ -158,6 +185,7 @@ Item fromLockup(J l) {
     if (bare) parts[1] = say("feed.views", {{"views", v}});
   }
   i.kind = "video", i.id = id, i.title = title, i.subtitle = joinDot(parts), i.durationSec = seconds, i.thumb = thumb;
+  i.watched = watchedPercent(key(l, "contentImage"));
   return i;
 }
 
@@ -194,6 +222,7 @@ Item videoRenderer(J v) {
   i.subtitle = joinDot({author, views});
   i.durationSec = clockSeconds(text(key(v, "lengthText")));
   i.thumb = thumbLink(widest(key(v, "thumbnail")));
+  i.watched = watchedPercent(key(v, "thumbnailOverlays"));
   return i;
 }
 

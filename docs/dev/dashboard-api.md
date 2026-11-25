@@ -80,8 +80,14 @@ scripting the Y1.
 - `GET /api/library` →
   `{"songs": [{"path", "title", "artist", "album", "track", "disc", "year", "albumArtist", "genre",
     "plays", "lastPlayed", "rating", "durationSec", "size", "modified", "art": true}],
-    "videos": [{"path", "title", "durationSec", "size", "modified"}], "scanning": false,
+    "videos": [{"path", "title", "durationSec", "size", "modified"}],
+    "watching": [{"path", "positionMs", "atText", "leftText", "lastPlayed"}], "scanning": false,
     "folders": ["/storage/sdcard0/Music", …]}`
+  `watching` (4.3.0): the card's videos started on the Y1 and not watched to the end (Continue
+  watching), the last watched first; `atText` and `leftText` in the Y1's language ("23:41",
+  "36 min left").
+- `POST /api/videos/again` `{"path"}` → `{"ok": true}`: the video's place forgotten (Start again),
+  so it opens at its beginning on the Y1.
   `folders`: the storages' top folders (the card's first), where the page puts an upload by its
   kind (Music; Movies or Videos; Pictures).
 - `GET /api/art?path=<file>&size=<px>` → `image/jpeg`, the embedded cover (or a frame for videos),

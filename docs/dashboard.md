@@ -47,7 +47,9 @@ Everything on the card, in five parts as on the Y1: **Music** (songs, albums and
 album, album artist, genre, year or date added, and by what you listen to: most played, recently
 played and rating. Albums are a Cover Flow: arrow keys, the mouse wheel or a drag move through the
 covers, and the album's songs are listed below. A song's details show its tags and plays, with
-stars to rate it.
+stars to rate it. Videos sort by **Continue watching** too: the ones you started on the Rondo, the
+last one first, each with how much is left; a video's details say where you stopped, and **Start
+again** makes it open at its beginning on the Rondo.
 
 - **Upload** music, videos and photos straight onto the card, several at a time: music goes to
   Music, videos to Videos, photos to Pictures; **Organize** then puts them where Jellyfin expects

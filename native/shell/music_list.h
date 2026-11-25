@@ -42,6 +42,8 @@ std::vector<Card> musicCards(const std::vector<Item>& items, std::function<std::
 void openMusicItem(const Item& item, const std::vector<Item>& siblings);
 // videoRows(): YouTube's rows; center plays the video
 std::vector<Row> videoRows(const std::vector<Item>& items);
+// hold center on a video's row: Resume / Start again / Download once it's started, else Download
+void videoRowHold(const Item& item);
 // hold center on a YouTube video: Download, at a height picked (downloads.h)
 void askDownload(const Item& item);
 // offlineOr(): what a list says when it couldn't load (pointing at Settings › Wi-Fi without a network)

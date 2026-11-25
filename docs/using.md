@@ -95,7 +95,9 @@ Recently played, Top rated) and **The card** (Rescan, Organize). Every list of s
 - **Hold center on a song** to play it now, play it next, add it to the queue or a playlist, or
   delete it from the card.
 - **Videos** lists all the videos on the card, the newest first, and each folder that has some.
-  YouTube videos you downloaded are there too, in `Videos/YouTube`.
+  YouTube videos you downloaded are there too, in `Videos/YouTube`. **Continue watching**, at the
+  top once you've started one, has the videos you stopped partway, the last one first; a started
+  video's row says how much is left, and hold center on it for **Resume** or **Start again**.
 - **Photos** shows the JPEG and PNG pictures on the card and the internal storage, by folder (and
   all of them, the newest first), as a grid: turn the wheel to pick one, press center to see it full
   screen. There the wheel (or Next and Prev) slides from one to the next, center shows its name and
@@ -248,6 +250,10 @@ wheel on the tab row and press center to switch. YouTube Music's home is shelves
 each section a row of covers that slides along as you turn the wheel, then on into the next. **Search** uses an on-screen keyboard you type on
 with the wheel.
 
+- **YouTube's Home** starts with Shorts, **Downloads** and, once you've started one, **Continue
+  watching**: the YouTube videos you stopped partway on the Y1, the last one first (a downloaded one
+  plays from the card). A red bar under a video's picture shows how far it got, as in YouTube's app;
+  hold center on a started one for **Resume**, **Start again** or **Download**.
 - **Signed in**, you also get **Library** (your playlists and Liked Music) in YouTube Music, and
   **Subscriptions** and **History** in YouTube, whose home is then picked for you. Sign in with a
   code in **Settings › YouTube › YouTube account** (see [Settings](#settings)); through a server,
@@ -428,7 +434,13 @@ two blue read (or played).
 </p>
 
 - **Wheel:** volume. **Center:** scrub. **Next / Previous:** 10 seconds forward or back.
-- **Hold center** for the options: **Quality** (YouTube), **Subtitles** (Off, or one of the video's
+- **Where you stopped is kept** for every video 10 minutes or longer, from the card or YouTube: it
+  opens there next time, a few seconds earlier ("Resuming at 23:41"), until you watch it to the end.
+  A video you downloaded shares its place with the same video on YouTube. Shorts and shorter videos
+  start from the beginning. Signed in to YouTube, a video you started on your phone (its red bar)
+  opens about where you left it there, unless the Y1 has a place of its own for it; the Y1 doesn't
+  tell YouTube what it played.
+- **Hold center** for the options: **Start again** (a video that keeps its place), **Quality** (YouTube), **Subtitles** (Off, or one of the video's
   tracks) and **Download** (YouTube: to the card at the height picked). A YouTube video's tracks are
   its own and the speech recognition's; a video on the card has the subtitle files beside it
   (`Movie.srt`, `Movie.en.srt`, `Movie.en.forced.ass`…). The language picked last is shown first
