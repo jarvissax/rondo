@@ -631,6 +631,12 @@ void RowList::drawMusic(Env& e, float x, float y) {
       drawLabel(e, trail, end, ctop + float((ch - trail.h) / 2), mix(p.darkMuted, p.focusMuted, sel));
       end -= e.dp(6);
     }
+    if (r.dot) {  // an episode not heard yet (YouTube Music's podcasts): the iPod's dot, in the accent
+      int d = e.dp(7);
+      end -= d;
+      c.shape({end, ctop + float((ch - d) / 2), float(d), float(d)}, float(d) / 2, p.accent);
+      end -= e.dp(6);
+    }
     float colW = end - colX;
     Label tl = label(e, r.title, 13, sel > 0.5f, colW);
     Label sl;

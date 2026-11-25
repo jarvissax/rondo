@@ -146,7 +146,7 @@ class PodcastScreen : public EpisodeListScreen {
     list_.setMessage(tr("common.loading"));
     std::string p = path();
     requests_.get(p, podcastCacheMs(), [this, p](int status, const std::string& body) {
-      if (status == 404) return list_.setMessage(tr("podcasts.needNewerServer"));
+      if (status == 404) return list_.setMessage(tr("podcasts.needNewerServer") + "\n" + tr("podcasts.needNewerServerHint"));
       if (status != 200) return list_.setMessage(offlineOr(tr("music.cantLoad", {{"problem", httpProblem(status, p)}})));
       if (yyjson_doc* d = yyjson_read(body.data(), body.size(), 0)) {
         yyjson_val* r = yyjson_doc_get_root(d);
@@ -399,10 +399,12 @@ class EpisodeMenuScreen : public MusicListScreen {
     add(finished ? tr("podcasts.markUnplayed") : tr("podcasts.markPlayed"), tiles::finished, g_prefs.accountMusic ? tr("podcasts.markHint") : "",
         [this, e, finished] {
           markEpisodePlayed(e, !finished);
+          if (!finished) e_.later = 0;  // YouTube's Episodes for Later lets go of a played one
           g_app->toast(finished ? tr("podcasts.markedUnplayed") : tr("podcasts.markedPlayed"));
           render();
         });
-    if (g_prefs.accountMusic) {
+    // Episodes for Later keeps what isn't played yet (YouTube drops a played one from it)
+    if (g_prefs.accountMusic && (!finished || e_.later == 1)) {
       bool later = e_.later == 1;
       add(later ? tr("podcasts.removeFromLater") : tr("podcasts.saveForLater"), tiles::later, e_.later < 0 ? "" : tr("podcasts.laterHint"), [this, later] {
         Episode e = e_;
@@ -499,7 +501,8 @@ std::vector<Row> podcastsTabRows(bool signedIn, int status, const std::string& b
       }
       yyjson_doc_free(d);
     }
-  if (signedIn) {
+  // a server before podcasts (404) can't list Episodes for Later or New episodes: those rows wait for it
+  if (signedIn && status != 404) {
     add(tr("podcasts.later"), tiles::later, later.empty() ? tr("podcasts.laterRowHint") : later, [] {
       g_app->push(std::unique_ptr<Screen>(new PagedEpisodes(tr("podcasts.later"), "/music/podcasts/later", tr("podcasts.laterNone"))));
     });
@@ -513,27 +516,20 @@ std::vector<Row> podcastsTabRows(bool signedIn, int status, const std::string& b
       coming ? tr("downloads.downloadingCount", {{"count", coming}}) : onCard ? tr("downloads.onCard", {{"count", onCard}}) : tr("podcasts.downloadedHint"),
       [] { g_app->push(makePodcastDownloads()); });
   add(tr("podcasts.search"), tiles::search, tr("podcasts.searchHint"), [] { g_app->push(makePodcastSearch()); });
-  if (!signedIn) {
-    header(tr("podcasts.yourShows"));
-    Row m;
-    m.title = tr("podcasts.signInForShows");
-    m.subtitle = tr("podcasts.signInHint");
-    m.enabled = false;
-    rows.push_back(m);
-    return rows;
-  }
   header(tr("podcasts.yourShows"));
-  if (status == 503) {
+  // why there are none to show: a row of its own, with the Podcasts tile (no empty picture)
+  auto note = [&](const std::string& title, const std::string& subtitle) {
     Row m;
-    m.title = tr("podcasts.needCookies");
-    m.subtitle = tr("podcasts.needCookiesHint");
+    m.title = title, m.subtitle = subtitle, m.tile = &tiles::podcasts;
     m.enabled = false;
     rows.push_back(m);
+  };
+  if (!signedIn) {
+    note(tr("podcasts.signInForShows"), tr("podcasts.signInHint"));
+  } else if (status == 503) {
+    note(tr("podcasts.needCookies"), tr("podcasts.needCookiesHint"));
   } else if (status == 404) {
-    Row m;
-    m.title = tr("podcasts.needNewerServer");
-    m.enabled = false;
-    rows.push_back(m);
+    note(tr("podcasts.needNewerServer"), tr("podcasts.needNewerServerHint"));
   } else if (status != 200) {
     Row m;
     m.title = problem;
@@ -542,11 +538,7 @@ std::vector<Row> podcastsTabRows(bool signedIn, int status, const std::string& b
     m.onSelect = retry;
     rows.push_back(m);
   } else if (shows.empty()) {
-    Row m;
-    m.title = tr("podcasts.noShows");
-    m.subtitle = tr("podcasts.noShowsHint");
-    m.enabled = false;
-    rows.push_back(m);
+    note(tr("podcasts.noShows"), tr("podcasts.noShowsHint"));
   } else {
     for (Row& r : musicRows(shows, [shows] { return shows; })) rows.push_back(std::move(r));
   }

@@ -405,6 +405,7 @@ void markSpokenFinished(const std::string& key, bool finished) {
         if (d.paths[i] == st.file || d.paths.size() == 1) at = bookMsOf(d.fileMs, {int(i), st.positionMs});
       if (finishedAt(at, d.lengthMs)) st.file = d.paths.empty() ? "" : d.paths[0], st.positionMs = 0;
     }
+    if (st.positionMs <= 0) st.lastPlayed = 0;  // from its start: as never played (its dot again)
   }
   g_library.setBookState(st);
   if (finished != was) episodeFinishedChanged(key, finished);

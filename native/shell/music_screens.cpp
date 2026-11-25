@@ -535,6 +535,7 @@ class MusicSearchScreen : public Screen {
       if (!shows->empty()) {
         header(tr("podcasts.shows"));
         std::vector<Item> all = *shows;
+        if (all.size() > 8) all.resize(8);  // the best few: the episodes come into view sooner
         for (Row& r : musicRows(all, [all] { return all; })) rows.push_back(std::move(r));
       }
       if (!eps->empty()) {

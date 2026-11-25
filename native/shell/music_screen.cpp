@@ -82,7 +82,13 @@ class MusicScreen : public TabbedListScreen {
   void openSearch() override { g_app->push(podcastsTab(active_) ? makePodcastSearch() : makeMusicSearch()); }
   // the Podcasts pill's rows again (what's on the card, Continue listening, Up next), its list as it came
   void podcastRows(bool keep) {
+    // the same row stays selected when rows came or went above it (Continue listening, Episodes up next)
+    std::string was = keep && list_.selectedRow() ? list_.selectedRow()->title : "";
     list_.setRows(podcastsTabRows(g_prefs.accountMusic, podStatus_, podBody_, podProblem_, [this] { load(active_); }), keep);
+    if (was.empty()) return;
+    const std::vector<Row>& rows = list_.rows();
+    for (size_t i = 0; i < rows.size(); i++)
+      if (!rows[i].header && rows[i].enabled && rows[i].title == was) return list_.selectIndex(int(i));
   }
   // Home's Downloads says what's on the card now (a download made since it loaded)
   void onShow() override {
@@ -119,20 +125,28 @@ class MusicScreen : public TabbedListScreen {
     }
     return out;
   }
-  // the header: the logo, "Music", a pill per tab, the search button, the battery
+  // the header: the logo, "Music", a pill per tab, the search button, the battery. Three pills (Home,
+  // Library, Podcasts) leave no room for the word and the clock: the logo and the battery alone, as
+  // YouTube's header with its three
   void header(Env& e, float w, float h) {
     int H = e.dp(31);
     float x = float(e.dp(10));
     e.c.layer(4);
     int logo = e.dp(18);
     e.icons.musicLogo(e.c, {x, float((H - logo) / 2), float(logo), float(logo)});
-    x += logo + e.dp(6);
-    Label name = label(e, "Music", 15, true);
-    drawLabel(e, name, x, float((H - name.h) / 2), white);
-    x += name.w + e.dp(10);
+    bool three = tabs_.size() >= 3;
+    if (three) {
+      x += logo + e.dp(9);
+    } else {
+      x += logo + e.dp(6);
+      Label name = label(e, "Music", 15, true);
+      drawLabel(e, name, x, float((H - name.h) / 2), white);
+      x += name.w + e.dp(10);
+    }
     float pillsEnd = drawPills(e, x, H, h);
+    if (three) batteryIcon(e, w - e.dp(10), H, e.p.darkMuted);
     // battery only: the pills leave no room for Wi-Fi (the date goes too when they leave none for it)
-    statusIconsFit(e, pillsEnd + e.dp(10), w - e.dp(10), H, e.p.darkMuted, false);
+    else statusIconsFit(e, pillsEnd + e.dp(10), w - e.dp(10), H, e.p.darkMuted, false);
   }
   void load(int tab) override {
     active_ = tab;

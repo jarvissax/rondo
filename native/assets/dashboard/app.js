@@ -1888,7 +1888,7 @@ function epSheet(e) {
         ${b('ep-next', 'queue', t('podcasts.playNext'))}${b('ep-queue', 'plus', t('podcasts.addToQueue'))}
         ${e.onCard ? b('ep-undownload', 'trash', t('podcasts.deleteDownload'), ' btn-red-text') : b('ep-download', 'download', t('common.download'))}
         ${b('ep-played', 'check', e.played ? t('podcasts.markUnplayed') : t('podcasts.markPlayed'))}
-        ${signed ? b(e.later ? 'ep-unlater' : 'ep-later', 'clock', e.later ? t('podcasts.removeFromLater') : t('podcasts.saveForLater')) : ''}
+        ${signed && (!e.played || e.later) ? b(e.later ? 'ep-unlater' : 'ep-later', 'clock', e.later ? t('podcasts.removeFromLater') : t('podcasts.saveForLater')) : ''}
         ${e.showId && !(POD.view === 'show' && POD.show?.id === e.showId) ? b('ep-show', 'broadcast', t('podcasts.goToPodcast')) : ''}
       </div>`);
   const art = $('.art[data-thumb]', sheet);

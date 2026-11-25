@@ -365,6 +365,7 @@ void noteEpisodes(const std::vector<Episode>& list) {
       s.finished = a == PlayedAction::AdoptPlayed;
       if (s.finished && !s.lastPlayed) s.lastPlayed = wallNowMs();
       if (!s.finished && p.e.lengthMs > 0 && s.positionMs >= p.e.lengthMs - kFinishedWithinMs) s.positionMs = 0;  // unplayed: from its start
+      if (!s.finished && s.positionMs <= 0) s.lastPlayed = 0;  // as never played (its dot again)
       g_library.setBookState(s);
     } else if (a == PlayedAction::Tell) {
       push(e.id);

@@ -739,9 +739,9 @@
     "podcasts.markUnplayed": "Marcar como no escuchado",
     "podcasts.markedPlayed": "Marcado como escuchado",
     "podcasts.markedUnplayed": "Marcado como no escuchado",
-    "podcasts.needCookies": "Tus programas necesitan iniciar sesión con cookies.txt",
-    "podcasts.needCookiesHint": "Iniciar sesión con código no trae podcasts: añade cookies.txt en el panel o en el servidor",
-    "podcasts.needNewerServer": "Los podcasts necesitan un servidor Rondo más nuevo: actualízalo en su página de administración",
+    "podcasts.needCookies": "Requiere iniciar sesión con cookies.txt",
+    "podcasts.needCookiesHint": "Iniciar sesión con código no trae podcasts",
+    "podcasts.needNewerServer": "Requiere un servidor Rondo más nuevo",
     "podcasts.newEpisodes": "Episodios nuevos",
     "podcasts.newNone": "No hay episodios nuevos de tus programas",
     "podcasts.newRowHint": "Lo último de tus programas",
@@ -1398,7 +1398,8 @@
     "wifi.status.saved": "Guardada",
     "wifi.status.secured": "Protegida",
     "wifi.status.wrongPassword": "Contraseña incorrecta",
-    "wifi.turningOn": "Activando…"
+    "wifi.turningOn": "Activando…",
+    "podcasts.needNewerServerHint": "Actualízalo en su página de administración"
   },
   "dashboard": {
     "albums.coverFlow": "Cover Flow: las flechas recorren los álbumes",
@@ -2044,6 +2045,7 @@
     "podcasts.later": "Episodios para más tarde",
     "podcasts.laterNone": "Aún no hay nada guardado para más tarde.",
     "podcasts.laterRowHint": "Los episodios que guardaste para más tarde",
+    "podcasts.loading": "Cargando…",
     "podcasts.markPlayed": "Marcar como escuchado",
     "podcasts.markUnplayed": "Marcar como no escuchado",
     "podcasts.markedPlayed": "Marcado como escuchado",
@@ -2526,8 +2528,7 @@
     "youtube.tv.revoked": "El inicio de sesión se quitó de la cuenta de Google. Vuelve a iniciar sesión.",
     "youtube.uploadCookies": "Subir cookies.txt",
     "youtube.viaServer": "YouTube Music y YouTube llegan a través de tu servidor.",
-    "youtube.waitingGoogle": "Esperando a Google…",
-    "podcasts.loading": "Cargando…"
+    "youtube.waitingGoogle": "Esperando a Google…"
   },
   "admin": {
     "account.changePassword": "Cambiar contraseña",
