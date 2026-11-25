@@ -96,6 +96,37 @@ out. Export new ones in a private window, and close the window right after.
 Headphone match looks your headphone model up through a [Rondo server](server.md), so it needs one
 connected in **Settings › Server**. Everything else in Settings › Sound works without one.
 
+## Podcasts
+
+### "That address isn't a podcast feed" when adding a show by its address
+
+The address has to be the show's feed, not its web page: a podcast's site calls it the **RSS feed**
+(it often ends in `.xml`, `/rss` or `/feed`). A private or paid show's address carries its own key,
+so copy it whole. Then try **Add by address** on the dashboard's Podcasts page again.
+
+### "Apple's directory is busy: try again in a minute"
+
+Apple's podcast search takes about 20 searches a minute from one address. Wait a minute and search
+again. Shows you subscribe to aren't affected.
+
+### New episodes don't show up
+
+Rondo looks for them when you open Podcasts, and every 4 hours while the Y1 is on or playing; a
+sleeping Y1 doesn't wake up for it. **Podcasts › Podcast settings › Look for new episodes** looks
+now. Only episodes that came out after you subscribed count as new (and the show's newest one).
+
+### YouTube Music › Podcasts says "Needs a newer Rondo server"
+
+Through a server, YouTube Music's podcasts need Rondo server 3.7.0 or newer: update it with
+**Update** on its admin page. Directly to YouTube they work with no server, and the main menu's
+**Podcasts** never need one.
+
+### YouTube Music › Podcasts has no saved shows
+
+Your saved shows, Episodes for Later and New episodes come with the **cookies.txt** sign-in (the
+dashboard's YouTube page, or the server's admin page through a server). The code sign-in (the TV
+app's) has no podcasts.
+
 ## With a server
 
 ### Settings › Server says "Unreachable"

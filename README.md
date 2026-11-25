@@ -1,7 +1,7 @@
 # Rondo
 
-**A click-wheel firmware for the Innioasis Y1: the music on your card, YouTube Music, YouTube,
-WhatsApp and FM radio, all from the wheel.**
+**A click-wheel firmware for the Innioasis Y1: the music on your card, audiobooks, podcasts,
+YouTube Music, YouTube, WhatsApp and FM radio, all from the wheel.**
 
 <p align="center">
   <img src="docs/images/main-menu.png" width="400" alt="Rondo's main menu: Now Playing, Library, YouTube, YouTube Music, WhatsApp, FM Radio and Settings">
@@ -20,10 +20,11 @@ WhatsApp and FM radio, all from the wheel.**
 The Innioasis Y1 is a small music player with an iPod-style click wheel. Underneath, it runs
 Android 4.2. Rondo is a firmware for it, built from the community's Android 4.2 base with
 Android's whole app layer taken out: the Y1 starts straight into Rondo, a program of its own that
-draws every screen itself, 60 times a second, with menus made for the wheel. Play the music on
-your microSD card, stream YouTube Music and YouTube straight from the Y1, read and send WhatsApp
-messages through a server of your own, and listen to FM radio, all without a touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or
-the Y1's original software, and you can always go back.
+draws every screen itself, 60 times a second, with menus made for the wheel. Play the music and
+audiobooks on your microSD card, follow podcasts, stream YouTube Music and YouTube straight from
+the Y1, read and send WhatsApp messages through a server of your own, and listen to FM radio, all
+without a touchscreen. You install it with Innioasis Updater CE, the same way as Rockbox or the
+Y1's original software, and you can always go back.
 
 ## What it does
 
@@ -32,18 +33,13 @@ the Y1's original software, and you can always go back.
 Copy music onto the microSD card and Rondo sorts it by song, artist, album artist, album and
 genre, using the files' tags. You get covers, Cover Flow, lyrics that scroll along with the song,
 search as you type, ratings, and playlists you make on the Y1 or in your browser, including smart
-playlists that pick their songs by rules. Library also has the videos and photos on the card, and
+playlists that pick their songs by rules, plus Recently added, Most played, Recently played and Top
+rated. A sleep timer fades the music out after 15 to 60 minutes or at the end of the song, and after
+a restart the queue comes back where you left it. Library also has the videos and photos on the card, and
 a file manager. **Organize the card** puts everything in the folders Jellyfin, Plex and Kodi
 expect, after showing you every move, and the dashboard looks up a show's or a movie's years and
-fills in a song's missing genre, year and lyrics. Plugging the Y1 into a computer turns the card
-into a USB drive.
-
-**Audiobooks** have a place of their own, as on the stock firmware but further: each book remembers
-where you stopped, Next and Previous move by chapter, the speed goes from 0.75× to 3× with the
-voice's pitch kept, and there are bookmarks and a sleep timer. Your music waits while a book plays.
-**Podcasts** come from YouTube Music, with the same care: your saved shows, Episodes for Later and new
-episodes, each show at its own speed, YouTube's chapters, downloads, and played marks shared with
-YouTube Music on your phone.
+fills in a song's missing genre, year and lyrics. Plug the Y1 into a computer and choose **Use as
+USB drive** to reach the card from it.
 
 <table>
   <tr>
@@ -62,12 +58,40 @@ Every common music format: MP3, AAC/M4A, ALAC, FLAC, Ogg, Opus, WAV, AIFF, WMA, 
 AC-3, DTS, DSD and more. Lyrics come from the file's tags or an `.lrc` file next to it, and videos
 show the subtitle files beside them. Nothing on the card ever needs the internet.
 
+### Audiobooks and podcasts
+
+**Audiobooks** have a place of their own in Library, as on the stock firmware but further: each
+book remembers where you stopped, Next and Previous move by chapter, the speed goes from 0.75× to
+3× with the voice's pitch kept, and there are bookmarks and a sleep timer. Your music waits while a
+book plays, and comes back after.
+
+**Podcasts**, on the main menu, follow any show with a public feed, the way podcast apps do: search
+Apple's directory (and Podcast Index's too, with a free key), browse Apple's top charts for your country, subscribe, and
+the Y1 looks for new episodes by itself. Episodes play like books: each keeps its place, Next and
+Previous move by its chapters, and every show keeps its own speed. Video episodes play as video.
+Download an episode to the card, or let a show keep its latest ones there over Wi-Fi. On the
+dashboard, add a private or paid show by its feed address, or bring your shows from another podcast
+app with an OPML file. No server needed: the Y1 reads each feed and plays each episode straight from
+the podcast's own host.
+
+**YouTube Music's podcasts** are in its Podcasts tab, with the same care: search for shows and
+episodes, and, signed in with a cookies.txt, your saved shows, Episodes for Later and new episodes.
+YouTube's chapters, downloads, and played marks shared with YouTube Music on your phone come along.
+
 ### YouTube Music and YouTube
 
 Straight from the Y1 over Wi-Fi, with nothing to set up: home, search, artists, albums,
-playlists, up next, lyrics, Shorts, and video up to 720p with subtitles. Sign in with a code, the
-way you'd sign in a smart TV, for your own home, subscriptions, history and playlists, or use it
-without an account. Download a video to the card to watch it with no connection. If you'd rather
+playlists, up next, a radio from any song, lyrics, Shorts, and video up to 720p with subtitles in the
+look you choose. Sign in with a code, the way you'd sign in a smart TV, for YouTube's home for you,
+your subscriptions and history, and your YouTube Music playlists and Liked Music (a cookies.txt
+adds YouTube Music's own home and history), or use it without an account. YouTube's own words come
+in your language.
+
+**Download** to the card, to play with no connection: songs, whole albums and playlists from
+YouTube Music (tagged AAC files with their covers and lyrics; a downloaded playlist shows in Library
+and can be brought up to date), videos at the quality you pick with their subtitles, and podcast
+episodes. Downloads pause and resume, carry on after a restart, and wait by themselves while Wi-Fi
+is off, or the card is full or on a computer. If you'd rather
 the Y1 never talked to YouTube itself, a [Rondo server](#your-own-server-optional) of your own
 can do that part instead.
 
@@ -82,8 +106,7 @@ can do that part instead.
   </tr>
 </table>
 
-Streams play as they arrive. Nothing from YouTube is stored, except a video you choose to
-download.
+Streams play as they arrive. Nothing from YouTube is stored, except what you choose to download.
 
 ### WhatsApp (with your own server)
 
@@ -113,8 +136,12 @@ to 1 GB), so they open at once and without a connection.
 
 Every screen works with the wheel and five buttons. Each wheel pulse is one step, like Rockbox,
 with an optional buzz and click on every step and acceleration for long lists. Screens slide in
-and out like an iPod's, and lists glide. Searches, Wi-Fi passwords and playlist names are typed
-on a keyboard you move through with the wheel or the buttons. Choose a light or dark look, an
+and out like an iPod's, and lists glide. With the screen off, a press only wakes it, so nothing
+skips in your pocket. Searches, messages, Wi-Fi passwords and playlist names are typed on a
+keyboard you move through with the wheel or the buttons, with every emoji in tabs, skin tones and
+search by name (and Apple's emoji, if you make them on your own Mac). Rondo speaks English and
+Spanish: it asks on its first start, and Settings › Language changes it at once, the dashboard
+included. Choose a light or dark look, an
 accent color and a text size, and which entries the main menu shows, in which order.
 
 <table>
@@ -143,9 +170,11 @@ are set up from the wheel as well. A wired headset's buttons work too.
 ### A dashboard in your browser
 
 Open **Settings › Dashboard** on the Y1, then the address it shows on your phone or computer.
-From there you can upload music, videos and photos, manage the files on the card, make
-playlists and smart playlists, control what's playing, change the theme, the sound and every
-other setting, manage Wi-Fi, Bluetooth, YouTube and the radio, and shut down, restart or update
+From there you can upload music, videos, photos and audiobooks, manage the files on the card, make
+playlists and smart playlists, follow podcasts (and import or export them as OPML), control what's
+playing, change the theme, the sound and every
+other setting, download a video, a song or a playlist from its YouTube link, set the sleep timer,
+manage Wi-Fi, Bluetooth, YouTube and the radio, and shut down, restart or update
 the Y1. It runs on the Y1 itself, over your Wi-Fi.
 
 <p align="center">
@@ -167,7 +196,7 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
   sure which type yours is? See [Before you start](docs/install.md#before-you-start).
 - A **computer** (macOS, Windows or Linux) with **Innioasis Updater CE**, and a USB-C cable that
   carries data, for the install.
-- **2.4 GHz Wi-Fi** for YouTube, updates and the dashboard. The Y1 can't see 5 GHz networks.
+- **2.4 GHz Wi-Fi** for YouTube, podcasts, WhatsApp, updates and the dashboard. The Y1 can't see 5 GHz networks.
 - Optional: a **[Rondo server](docs/server.md)** of your own, on a computer at home that stays on
   (a 64-bit Raspberry Pi or a NAS is fine) or a small VPS. YouTube works without it; WhatsApp
   needs it.
@@ -176,7 +205,7 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
 
 1. **[Install Rondo](docs/install.md)** with Innioasis Updater CE: choose the Y1, Type A, then
    Rondo. It takes about 10 minutes, and your microSD card isn't touched.
-2. **[First start](docs/install.md#first-start):** join Wi-Fi, copy your music onto the card, and
+2. **[First start](docs/install.md#first-start):** pick your language, join Wi-Fi, copy your music onto the card, and
    look through Settings. YouTube Music and YouTube work as soon as the Y1 is online.
 3. **Sign in to YouTube** if you like: **Settings › YouTube › YouTube account** shows a code to
    enter at google.com/device.
@@ -191,7 +220,7 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
 | **Center** | Opens or selects. **Hold** it for options. |
 | **Menu** (top) | Back. |
 | **Play/Pause** (bottom) | Plays and pauses, from any screen. |
-| **Next / Previous** | Next or previous song. **Hold** to fast-forward or rewind. |
+| **Next / Previous** | Next or previous song (in a book or an episode, its next or previous chapter). **Hold** to fast-forward or rewind. |
 | **Hold center on the main menu** | Turns the Y1 off after 2 seconds. Restart is in Settings › System › Shut down. |
 
 [Using Rondo](docs/using.md) has the details for every screen, and every setting.
@@ -200,8 +229,8 @@ firmware itself says so, and installs with Innioasis Updater CE instead.
 
 <p align="center"><img src="docs/images/admin.png" width="640" alt="The server's admin page"></p>
 
-You don't need a server for YouTube: Rondo talks to YouTube itself. A Rondo server does more
-for those who'd like one:
+You don't need a server for YouTube or podcasts: Rondo talks to YouTube and reads podcast feeds
+itself. A Rondo server does more for those who'd like one:
 
 - **WhatsApp.** The server is your WhatsApp's linked device and keeps your chats, photos, videos
   and voice messages for the Y1. You link it on its admin page.
@@ -210,6 +239,8 @@ for those who'd like one:
   up with YouTube's changes and updates itself every day) and passes them on, with its own
   YouTube account signed in on its admin page.
 - **Headphone match**, the sound corrected for your headphone model.
+- **Podcast Index** in podcast search, with the free key you paste on its admin page (a Y1 without
+  a server can take one on its dashboard), and big podcast feeds read for the Y1 a page at a time.
 
 You run it with Docker at home or on a VPS, set it up from its admin page in the browser and
 connect your Y1 with a six-digit code in **Settings › Server**; a new version installs with one
@@ -224,9 +255,11 @@ click there. One server serves one Y1. See [Setting up a Rondo server](docs/serv
 │ music on SD   │         or through   ┌───────────────────┐  │          │
 │ FM, Bluetooth │  Wi-Fi  ───────────▶ │ your Rondo server │─▶│          │
 └───────────────┘                      │ (Node, yt-dlp,    │  └──────────┘
-                                       │  Baileys)         │─▶┌──────────┐
-                                       └───────────────────┘  │ WhatsApp │
-                                                              └──────────┘
+        │                              │  Baileys)         │─▶┌──────────┐
+        │ Wi-Fi, directly              └───────────────────┘  │ WhatsApp │
+        ▼                                                     └──────────┘
+ podcasts' own hosts,
+ Apple's podcast directory
 ```
 
 Rondo has its own YouTube client built in: it browses YouTube Music and YouTube the way their
@@ -237,6 +270,10 @@ server**, the Y1 talks only to your server instead, which browses YouTube with
 it can play. WhatsApp always goes through the server, which is one of your WhatsApp's linked
 devices thanks to [Baileys](https://github.com/WhiskeySockets/Baileys) and passes the Y1 your
 chats, contacts and media, and sends what you write or record.
+
+Podcasts need neither: the Y1 finds shows in Apple's podcast directory (and Podcast Index's), reads
+each show's RSS feed and plays its episodes straight from the podcast's own host, as podcast apps
+do.
 
 ## The project
 
@@ -284,7 +321,8 @@ Rondo stands on other people's work:
   **libpng**, **libjpeg-turbo**, **yyjson**, **nghttp2**, **Sonic**, and the **Roboto** and **Noto Color
   Emoji** fonts. On the server: **youtubei.js**, **yt-dlp**, **Baileys**, **Fastify** and **sharp**.
   **[AutoEq](https://github.com/jaakkopasanen/AutoEq)**'s measurements are behind Headphone match,
-  and **[LRCLIB](https://lrclib.net)** has many of the lyrics. See
+  **[LRCLIB](https://lrclib.net)** has many of the lyrics, and Apple's podcast directory and
+  **[Podcast Index](https://podcastindex.org)** find the podcasts. See
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License and fine print

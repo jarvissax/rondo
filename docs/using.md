@@ -538,6 +538,8 @@ the same Wi-Fi and type the code. From there you can:
 - see what's playing and control it, and shut down, restart or update Rondo,
 - browse, search, upload and delete music, videos and photos, manage the card's files and
   folders, organize the card, and make playlists and smart playlists,
+- upload audiobooks and follow their progress, and follow podcasts: search, Top shows, a show by
+  its address, and OPML import and export,
 - change the theme, the sound, the menu and every setting above,
 - manage Wi-Fi, Bluetooth and the FM radio, sign in to YouTube, download YouTube videos, and
   connect a server (its own **Server** page).
