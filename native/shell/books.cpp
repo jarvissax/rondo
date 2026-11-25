@@ -44,6 +44,10 @@ struct Session {
   bool detailed = false;   // chapters from the library (a book restored at startup has only its files)
   bool finishedHandled = false;
   bool held = false;  // a voice message has the player (booksHold): nothing saved, nothing ended meanwhile
+  // just put in the player: until it says so (a new track) or a moment passes, what it says is still the
+  // queue before (ended, at its end): nothing saved or ended from that
+  int64_t startedAt = 0;
+  uint32_t serialBefore = 0;
 };
 Session g;
 
@@ -81,6 +85,7 @@ void saveSession(bool force = false) {
   Place p;
   PlayerState s;
   if (!placeNow(p, &s)) return;
+  if (g.startedAt && now_ns() - g.startedAt < 2 * kSec && s.trackSerial == g.serialBefore) return;  // still the queue before
   bool playing = s.playing && !s.ended;
   BookState st;
   const BookState* old = g_library.bookState(g.book.key);
@@ -277,6 +282,8 @@ void playFrom(const BookPlay& d, Place p, bool play) {
   writeSessionQueue();
   g_player.setShuffle(false);  // a book in its order, once
   g_player.setRepeat(0);
+  g.serialBefore = g_player.state().trackSerial;
+  g.startedAt = now_ns();
   g_player.playBook(d.paths, p.file, p.ms, play, speed);
   writeSessionState(p.file, p.ms, play);
   // started (again): not finished, played now
@@ -494,7 +501,8 @@ bool booksTick(int64_t now) {
     writeSessionQueue();
     if (s.speed != g.speed) g_player.setSpeed(g.speed);
   }
-  if (g.on && !g.held) {
+  bool settling = g.on && g.startedAt && now - g.startedAt < 2 * kSec && s.trackSerial == g.serialBefore;
+  if (g.on && !g.held && !settling) {
     BookPlay d;
     if (!g.detailed && spokenDetails(g.book.key, d))
       if (d.paths == g.book.paths) g.book = d, g.detailed = true, changed = true;
