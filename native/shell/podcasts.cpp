@@ -36,6 +36,7 @@ struct Kept {
 };
 std::map<std::string, Kept> g_eps;
 std::vector<std::string> g_upNext;  // Episodes up next (ids), in order
+std::map<std::string, std::string> g_covers;  // a show's square cover (MPSP… -> its /thumb address)
 bool g_read = false, g_dirty = false;
 int64_t g_writtenAt = 0;
 int64_t g_changedAt = 0;  // the account changed (now_ns): lists asked fresh for a while
@@ -99,6 +100,7 @@ void readStore() {
     if (!e.id.empty()) g_eps[e.id] = std::move(p);
   }
   yyjson_arr_foreach(yyjson_obj_get(r, "upNext"), i, n, v) if (yyjson_is_str(v)) g_upNext.push_back(yyjson_get_str(v));
+  yyjson_obj_foreach(yyjson_obj_get(r, "shows"), i, n, k, v) if (yyjson_is_str(v)) g_covers[yyjson_get_str(k)] = yyjson_get_str(v);
   yyjson_doc_free(d);
 }
 
@@ -127,7 +129,17 @@ void writeStore() {
   }
   j += "},\"upNext\":[";
   for (size_t k = 0; k < g_upNext.size(); k++) j += (k ? "," : "") + jq(g_upNext[k]);
-  j += "]}\n";
+  // the shows' covers: at most 300, those of kept episodes always
+  if (g_covers.size() > 300)
+    for (auto it = g_covers.begin(); it != g_covers.end() && g_covers.size() > 300;) {
+      bool used = false;
+      for (auto& [id, p] : g_eps) used = used || p.e.showId == it->first;
+      it = used ? std::next(it) : g_covers.erase(it);
+    }
+  j += "],\"shows\":{";
+  n = 0;
+  for (auto& [id, thumb] : g_covers) j += std::string(n++ ? "," : "") + jq(id) + ":" + jq(thumb);
+  j += "}}\n";
   std::string tmp = storePath() + ".part";
   if (FILE* f = fopen(tmp.c_str(), "wb")) {
     bool ok = fwrite(j.data(), 1, j.size(), f) == j.size() && fflush(f) == 0;
@@ -169,7 +181,7 @@ Kept* kept(const std::string& id) {
 
 Item streamItemOf(const Episode& e) {
   Item it;
-  it.kind = "episode", it.id = e.id, it.title = e.title, it.subtitle = e.show, it.thumb = e.thumb;
+  it.kind = "episode", it.id = e.id, it.title = e.title, it.subtitle = e.show, it.thumb = episodeArt(e);
   it.durationSec = e.lengthMs > 0 ? int(e.lengthMs / 1000) : -1;
   return it;
 }
@@ -221,6 +233,25 @@ bool isEpisodeKey(const std::string& key) { return key.compare(0, 3, "yt:") == 0
 std::string episodeKey(const std::string& id) { return "yt:" + id; }
 std::string episodeIdOf(const std::string& key) { return isEpisodeKey(key) ? key.substr(3) : ""; }
 std::string showSpeedKey(const std::string& showId) { return "ytshow:" + showId; }
+
+void noteShowCover(const std::string& showId, const std::string& thumb) {
+  if (showId.empty() || thumb.empty()) return;
+  readStore();
+  std::string& had = g_covers[showId];
+  if (had != thumb) had = thumb, changed();
+}
+
+std::string episodeArt(const Episode& e) {
+  readStore();
+  std::string show = e.showId;
+  if (show.empty())
+    if (const Kept* p = kept(e.id)) show = p->e.showId;
+  auto it = g_covers.find(show);
+  if (it != g_covers.end()) return it->second;
+  if (!e.thumb.empty()) return e.thumb;
+  const Kept* p = kept(e.id);
+  return p ? p->e.thumb : "";
+}
 
 std::string episodeSpeedKey(const std::string& key) {
   const Kept* p = kept(episodeIdOf(key));
@@ -326,6 +357,7 @@ void parseEpisodes(const std::string& json, std::vector<Episode>& out, std::vect
     } else if (kind == "podcast" && shows) {
       Item it;
       it.kind = kind, it.id = sval(v, "id"), it.title = sval(v, "title"), it.subtitle = sval(v, "subtitle"), it.thumb = sval(v, "thumb");
+      noteShowCover(it.id, it.thumb);
       if (!it.id.empty()) shows->push_back(it);
     }
   }
@@ -537,11 +569,11 @@ std::string podcastDownloadDir() { return std::string(files::kRoots[0]) + "/Podc
 
 bool downloadEpisode(const Episode& e) {
   Kept& p = keep(e);
-  // its show's square picture when the show's page was seen (a show's cover suits a file), else its own
-  p.cover = e.thumb;
+  // its show's square picture when the show is known (a show's cover suits a file), else its own
+  p.cover = episodeArt(e);
   writeStore();
   Item it;
-  it.kind = "episode", it.id = e.id, it.title = e.title, it.subtitle = e.show, it.thumb = e.thumb;
+  it.kind = "episode", it.id = e.id, it.title = e.title, it.subtitle = e.show, it.thumb = p.cover;
   return downloadEpisodeJob(it);
 }
 
@@ -652,7 +684,7 @@ std::string episodeJson(const Episode& e) {
   const Kept* p = kept(e.id);
   int64_t len = e.lengthMs > 0 ? e.lengthMs : p ? p->e.lengthMs : 0;
   std::string s = "{\"kind\":\"episode\",\"id\":" + jq(e.id) + ",\"title\":" + jq(e.title) + ",\"show\":" + jq(e.show) + ",\"showId\":" + jq(e.showId) +
-                  ",\"thumb\":" + jq(e.thumb) + ",\"date\":" + jq(e.date) + ",\"status\":" + jq(e.status) + ",\"lengthMs\":" + std::to_string(len) +
+                  ",\"thumb\":" + jq(episodeArt(e)) + ",\"date\":" + jq(e.date) + ",\"status\":" + jq(e.status) + ",\"lengthMs\":" + std::to_string(len) +
                   ",\"subtitle\":" + jq(episodeSubtitle(e, false)) + ",\"new\":" + (episodeNew(e) ? "true" : "false") +
                   ",\"played\":" + ((st && st->finished) || (!st && e.played) ? "true" : "false") +
                   ",\"positionMs\":" + std::to_string(st && st->lastPlayed > 0 && !st->finished ? st->positionMs : 0) +
@@ -674,6 +706,7 @@ std::string podcastListJson(const std::string& body, const std::string& showId) 
   if (yyjson_is_bool(yyjson_obj_get(r, "saved")))
     out += std::string(n++ ? "," : "") + "\"saved\":" + (yyjson_get_bool(yyjson_obj_get(r, "saved")) ? "true" : "false");
   if (!showId.empty()) out += std::string(n++ ? "," : "") + "\"speed\":" + std::to_string(spokenSpeed(showSpeedKey(showId)));
+  noteShowCover(showId, sval(r, "thumb"));  // a show's page: its episodes' pictures
   std::vector<Episode> eps;
   std::vector<Item> shows;
   std::string next;

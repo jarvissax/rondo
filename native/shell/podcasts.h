@@ -54,6 +54,10 @@ bool parseEpisode(const std::string& json, Episode& out);  // /music/episode/<id
 // a list's items: its episodes (kind "episode") and shows (kind "podcast", as Items); next: its token
 void parseEpisodes(const std::string& json, std::vector<Episode>& out, std::vector<Item>* shows = nullptr, std::string* next = nullptr);
 Episode episodeOf(const Item& item);  // a home shelf's card or a mixed list's row
+// A show's square cover (its page's, the library's, a search's), kept: an episode's picture is its
+// show's (YouTube's own is a 16:9 frame, cut square in a row), its own until the show's is known
+void noteShowCover(const std::string& showId, const std::string& thumb);
+std::string episodeArt(const Episode& e);
 // What YouTube says of these now: their Played marks (and percents) agreed with the Y1's (both ways)
 void noteEpisodes(const std::vector<Episode>& list);
 
@@ -83,6 +87,9 @@ int podcastCacheMs();
 void openPodcast(const std::string& showId, const std::string& title);  // a show
 void openEpisodeMenu(const Episode& e, bool onItsShow = false);
 std::vector<Row> episodeRows(const std::vector<Episode>& list, bool withShow);
+// what an episode's row says now (its place, its marks, the one playing, on the card): for a RowList's
+// fill, so a row is up to date whenever it's drawn
+void fillEpisodeRow(const Episode& e, bool withShow, Row& r);
 // YouTube Music's Podcasts pill: its rows from GET /music/podcasts (status 0 or the body), or without an
 // account (signedIn false); problem: what to say when it couldn't load
 std::vector<Row> podcastsTabRows(bool signedIn, int status, const std::string& body, const std::string& problem, std::function<void()> retry);

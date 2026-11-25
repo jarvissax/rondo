@@ -406,12 +406,25 @@ class MusicSearchScreen : public Screen {
       : video_(find == Find::Videos), podcasts_(find == Find::Podcasts), kb_(tr("keyboard.search"), Keyboard::Style::YouTube) {
     results_.style = video_ ? RowStyle::Video : RowStyle::Music;
     results_.onNearEnd = [this] { more(); };
+    // Podcasts: an episode's row says where it is whenever it's drawn (one played from here comes back
+    // saying so)
+    if (podcasts_)
+      results_.fill = [this](int i, Row& r) {
+        int k = i - epFirst_;
+        if (epFirst_ >= 0 && k >= 0 && k < int(eps_.size())) fillEpisodeRow(eps_[size_t(k)], true, r);
+      };
     if (!query.empty()) {
       kb_.setTyped(query);
       search();
     }
   }
   std::string title() const override { return video_ ? tr("music.searchYouTube") : podcasts_ ? tr("podcasts.searchTitle") : tr("music.searchMusic"); }
+  // a place, a speed or a played mark changed (an episode played from the results): drawn again
+  bool tick(int64_t) override {
+    if (!podcasts_ || g_library.bookChanges() == changes_) return false;
+    changes_ = g_library.bookChanges();
+    return showing_;
+  }
   bool statusBar() const override { return false; }
   bool onAction(Action a, int steps) override {
     if (showing_) {
@@ -472,6 +485,7 @@ class MusicSearchScreen : public Screen {
     requests_.cancelAll();
     loading_ = false;  // a page that was loading went with the cancel
     next_.clear();
+    eps_.clear(), epFirst_ = -1;
     results_.setMessage(tr("music.searching", {{"query", q}}));
     if (podcasts_) return searchPodcasts(q);
     std::string path = (video_ ? "/video/search?q=" : "/music/search?type=song&q=") + Api::escape(q);
@@ -542,6 +556,8 @@ class MusicSearchScreen : public Screen {
       }
       if (!eps->empty()) {
         header(tr("podcasts.episodes"));
+        epFirst_ = int(rows.size());
+        eps_ = *eps;
         for (Row& r : episodeRows(*eps, true)) rows.push_back(std::move(r));
       }
       results_.setRows(std::move(rows));
@@ -571,6 +587,7 @@ class MusicSearchScreen : public Screen {
         std::vector<Episode> eps;
         parseEpisodes(body, eps, nullptr, &next_);
         noteEpisodes(eps);
+        eps_.insert(eps_.end(), eps.begin(), eps.end());
         return results_.appendRows(episodeRows(eps, true));
       }
       ItemsPage page;
@@ -588,6 +605,9 @@ class MusicSearchScreen : public Screen {
   RowList results_;
   bool showing_ = false, loading_ = false;
   std::vector<Item> found_;
+  std::vector<Episode> eps_;  // Podcasts: the episodes found, rows from epFirst_ on (-1 none yet)
+  int epFirst_ = -1;
+  uint64_t changes_ = 0;
   std::string next_;
   Requests requests_;
 };

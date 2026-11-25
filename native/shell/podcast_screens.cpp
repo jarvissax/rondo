@@ -27,7 +27,7 @@ void playNow(const Episode& e) {
 Row episodeRow(const Episode& e) {
   Row r;
   r.title = e.title;
-  r.thumb = e.thumb;
+  r.thumb = episodeArt(e);  // its show's square cover, once known
   r.ahead = e.id;
   Episode copy = e;
   r.onSelect = [copy] { playNow(copy); };
@@ -42,12 +42,7 @@ class EpisodeListScreen : public MusicListScreen {
   EpisodeListScreen(std::string title, bool withShow) : MusicListScreen(std::move(title)), withShow_(withShow) {
     list_.fill = [this](int i, Row& r) {
       int k = i - first_;
-      if (k < 0 || k >= int(eps_.size())) return;
-      const Episode& e = eps_[size_t(k)];
-      r.subtitle = episodeSubtitle(e, withShow_);
-      r.dot = episodeNew(e);
-      const BookPlay* b = bookNow();
-      r.trailing = b && b->key == episodeKey(e.id) ? tr("songList.playing") : downloadedEpisode(e.id).empty() ? "" : tr("podcasts.onCardMark");
+      if (k >= 0 && k < int(eps_.size())) fillEpisodeRow(eps_[size_t(k)], withShow_, r);
     };
   }
   bool tick(int64_t now) override {
@@ -153,6 +148,7 @@ class PodcastScreen : public EpisodeListScreen {
         if (!sval(r, "title").empty()) title_ = sval(r, "title");
         by_ = sval(r, "subtitle");
         thumb_ = sval(r, "thumb");
+        noteShowCover(id_, thumb_);  // its episodes' pictures
         yyjson_val* s = yyjson_obj_get(r, "saved");
         saved_ = yyjson_is_bool(s) ? (yyjson_get_bool(s) ? 1 : 0) : -1;
         yyjson_doc_free(d);
@@ -450,12 +446,18 @@ void openEpisodeMenu(const Episode& e, bool onItsShow) { g_app->push(std::unique
 std::unique_ptr<Screen> makeEpisodesUpNext() { return std::unique_ptr<Screen>(new UpNextScreen()); }
 std::unique_ptr<Screen> makePodcastDownloads() { return std::unique_ptr<Screen>(new DownloadedScreen()); }
 
+void fillEpisodeRow(const Episode& e, bool withShow, Row& r) {
+  r.subtitle = episodeSubtitle(e, withShow);
+  r.dot = episodeNew(e);
+  const BookPlay* b = bookNow();
+  r.trailing = b && b->key == episodeKey(e.id) ? tr("songList.playing") : downloadedEpisode(e.id).empty() ? "" : tr("podcasts.onCardMark");
+}
+
 std::vector<Row> episodeRows(const std::vector<Episode>& list, bool withShow) {
   std::vector<Row> rows;
   for (const Episode& e : list) {
     Row r = episodeRow(e);
-    r.subtitle = episodeSubtitle(e, withShow);
-    r.dot = episodeNew(e);
+    fillEpisodeRow(e, withShow, r);
     rows.push_back(std::move(r));
   }
   return rows;
@@ -497,6 +499,7 @@ std::vector<Row> podcastsTabRows(bool signedIn, int status, const std::string& b
       yyjson_arr_foreach(yyjson_obj_get(r, "items"), i, n, v) {
         Item it;
         it.kind = "podcast", it.id = sval(v, "id"), it.title = sval(v, "title"), it.subtitle = sval(v, "subtitle"), it.thumb = sval(v, "thumb");
+        noteShowCover(it.id, it.thumb);
         if (!it.id.empty()) shows.push_back(it);
       }
       yyjson_doc_free(d);
