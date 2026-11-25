@@ -332,9 +332,18 @@ int RowList::firstSelectable() const {
 
 void RowList::setRows(std::vector<Row> rows, bool keepSelection) {
   int previous = selected_;
+  bool had = keepSelection && previous >= 0 && previous < int(rows_.size());
+  Row was = had ? rows_[size_t(previous)] : Row();
   rows_ = std::move(rows);
   message_ = rows_.empty() ? tr("common.nothingHere") : "";
-  selected_ = keepSelection && selectable(previous) ? previous : firstSelectable();
+  // the same row, wherever it went (a row put in above it: Continue watching), else the same place
+  int same = -1;
+  if (had)
+    for (int i = 0; i < int(rows_.size()); i++)
+      if (selectable(i) && rows_[size_t(i)].title == was.title && rows_[size_t(i)].thumb == was.thumb && rows_[size_t(i)].tile == was.tile &&
+          (same < 0 || abs(i - previous) < abs(same - previous)))
+        same = i;
+  selected_ = same >= 0 ? same : keepSelection && selectable(previous) ? previous : firstSelectable();
   top_.clear();
   placed_ = false;
   if (onSelectionChanged) onSelectionChanged();
